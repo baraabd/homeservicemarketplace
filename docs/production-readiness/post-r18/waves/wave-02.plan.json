@@ -8,7 +8,7 @@
   "blockedLanes": ["R24", "R25", "R26", "R27", "R28"],
   "coordinator": "G1 delegated engineering coordinator for baraabd",
   "decisionRecord": "docs/production-readiness/post-r18/gates/g1/SOURCE_MANIFEST.json",
-  "publicationRequirement": "The source is accepted, but this record is not yet owner-merged. Verify its actual publication commit before the coordinator changes any lane to READY_TO_START.",
+  "publicationRequirement": "G1 engineering acceptance is recorded; owner review/merge and verification of this separate acceptance-record commit are still required. No lane starts from this unmerged publication.",
   "lanes": [
     {
       "id": "R24",
@@ -194,7 +194,7 @@
         "All behavioral, negative and integration tests in the complete authoritative prompt",
         "Exact final-head CI and CodeQL; real-service evidence; limitations and rollback"
       ],
-      "ownershipApproval": "EXACT_PATHS_APPROVED_PENDING_G1_PUBLICATION",
+      "ownershipApproval": "CONDITIONAL_ON_G1_PUBLICATION",
       "blockedBy": ["G1-PUBLICATION-PENDING"],
       "isolatedRuntime": {
         "composeProject": "hsm-r26-<session>",

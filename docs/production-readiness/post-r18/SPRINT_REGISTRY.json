@@ -98,7 +98,7 @@
           "id": "CR-002",
           "state": "MERGED",
           "owner": "G1 coordinator and R19/R24/R31",
-          "gateDisposition": "Named event registered with transactional idempotent R17 inbox consumer. No R31 entitlement, verification, work access or payout grant.",
+          "gateDisposition": "PR #169 registers the real R17 inbox consumer; transaction, rollback and durable dedupe pass on the merged source. R31 entitlements and live callers remain later-lane work.",
           "sourceCommit": "40cdac5c9ce6acaa8dedc0385984a807ae9a84d0"
         },
         {
@@ -153,6 +153,13 @@
         ],
         "verifiedCandidateSha": "40cdac5c9ce6acaa8dedc0385984a807ae9a84d0",
         "decision": "SANDBOX_ACCEPTED"
+      },
+      "acceptance": {
+        "gate": "G1",
+        "sourceSha": "40cdac5c9ce6acaa8dedc0385984a807ae9a84d0",
+        "treeSha": "109b514fe9833a9aac3e8caecd7f9b14d4f61b3b",
+        "evidence": "docs/production-readiness/post-r18/gates/g1/ACCEPTANCE_EVIDENCE.json",
+        "scope": "Integrated Wave 1 technical/disposable-service boundaries; not hosted, commercial-policy or release acceptance."
       }
     },
     {
@@ -273,22 +280,16 @@
           "mergedAt": "2026-10-14T07:42:12Z",
           "author": "baraabd"
         },
-        "followUps": [
-          {
-            "number": 169,
-            "title": "fix(g1): close Wave 1 source gaps and require missing runtime evidence",
-            "url": "https://github.com/baraabd/homeservicemarketplace/pull/169",
-            "head": "a93bdf6e5f6d403f6395f4c140fe52ff4ed319c4",
-            "branch": "coord/g1-wave1-remediation",
-            "base": "develop",
-            "merged": true,
-            "mergeCommit": "40cdac5c9ce6acaa8dedc0385984a807ae9a84d0",
-            "mergedAt": "2026-10-16T21:20:48Z",
-            "author": "baraabd"
-          }
-        ],
+        "followUps": [],
         "verifiedCandidateSha": "40cdac5c9ce6acaa8dedc0385984a807ae9a84d0",
         "decision": "SANDBOX_ACCEPTED"
+      },
+      "acceptance": {
+        "gate": "G1",
+        "sourceSha": "40cdac5c9ce6acaa8dedc0385984a807ae9a84d0",
+        "treeSha": "109b514fe9833a9aac3e8caecd7f9b14d4f61b3b",
+        "evidence": "docs/production-readiness/post-r18/gates/g1/ACCEPTANCE_EVIDENCE.json",
+        "scope": "Integrated Wave 1 technical/disposable-service boundaries; not hosted, commercial-policy or release acceptance."
       }
     },
     {
@@ -412,6 +413,13 @@
         ],
         "verifiedCandidateSha": "40cdac5c9ce6acaa8dedc0385984a807ae9a84d0",
         "decision": "SANDBOX_ACCEPTED"
+      },
+      "acceptance": {
+        "gate": "G1",
+        "sourceSha": "40cdac5c9ce6acaa8dedc0385984a807ae9a84d0",
+        "treeSha": "109b514fe9833a9aac3e8caecd7f9b14d4f61b3b",
+        "evidence": "docs/production-readiness/post-r18/gates/g1/ACCEPTANCE_EVIDENCE.json",
+        "scope": "Integrated Wave 1 technical/disposable-service boundaries; not hosted, commercial-policy or release acceptance."
       }
     },
     {
@@ -530,6 +538,13 @@
         ],
         "verifiedCandidateSha": "40cdac5c9ce6acaa8dedc0385984a807ae9a84d0",
         "decision": "SANDBOX_ACCEPTED"
+      },
+      "acceptance": {
+        "gate": "G1",
+        "sourceSha": "40cdac5c9ce6acaa8dedc0385984a807ae9a84d0",
+        "treeSha": "109b514fe9833a9aac3e8caecd7f9b14d4f61b3b",
+        "evidence": "docs/production-readiness/post-r18/gates/g1/ACCEPTANCE_EVIDENCE.json",
+        "scope": "Integrated Wave 1 technical/disposable-service boundaries; not hosted, commercial-policy or release acceptance."
       }
     },
     {
@@ -666,6 +681,13 @@
         ],
         "verifiedCandidateSha": "40cdac5c9ce6acaa8dedc0385984a807ae9a84d0",
         "decision": "SANDBOX_ACCEPTED"
+      },
+      "acceptance": {
+        "gate": "G1",
+        "sourceSha": "40cdac5c9ce6acaa8dedc0385984a807ae9a84d0",
+        "treeSha": "109b514fe9833a9aac3e8caecd7f9b14d4f61b3b",
+        "evidence": "docs/production-readiness/post-r18/gates/g1/ACCEPTANCE_EVIDENCE.json",
+        "scope": "Integrated Wave 1 technical/disposable-service boundaries; not hosted, commercial-policy or release acceptance."
       }
     },
     {
@@ -718,7 +740,7 @@
       "startBarrier": {
         "gate": "G1",
         "decision": "ACCEPTED",
-        "publication": "PENDING_OWNER_REVIEW_AND_MERGE"
+        "publication": "PENDING_OWNER_REVIEW_AND_RECORD_MERGE"
       }
     },
     {
@@ -806,7 +828,7 @@
       "startBarrier": {
         "gate": "G1",
         "decision": "ACCEPTED",
-        "publication": "PENDING_OWNER_REVIEW_AND_MERGE"
+        "publication": "PENDING_OWNER_REVIEW_AND_RECORD_MERGE"
       }
     },
     {
@@ -871,7 +893,7 @@
       "startBarrier": {
         "gate": "G1",
         "decision": "ACCEPTED",
-        "publication": "PENDING_OWNER_REVIEW_AND_MERGE"
+        "publication": "PENDING_OWNER_REVIEW_AND_RECORD_MERGE"
       }
     },
     {
@@ -960,7 +982,7 @@
       "startBarrier": {
         "gate": "G1",
         "decision": "ACCEPTED",
-        "publication": "PENDING_OWNER_REVIEW_AND_MERGE"
+        "publication": "PENDING_OWNER_REVIEW_AND_RECORD_MERGE"
       }
     },
     {
@@ -1019,7 +1041,7 @@
       "startBarrier": {
         "gate": "G1",
         "decision": "ACCEPTED",
-        "publication": "PENDING_OWNER_REVIEW_AND_MERGE"
+        "publication": "PENDING_OWNER_REVIEW_AND_RECORD_MERGE"
       }
     },
     {
@@ -1217,9 +1239,9 @@
       "note": "Complete R19-R28 prompts recovered and verified; every required implementation/corrective PR merged. G1 BLOCKED on remaining source/evidence gaps. Historical G0 records retained; no retroactive approval of simultaneous R19/R21 schema leases."
     },
     {
-      "observedAt": "2026-10-16T21:42:17.935Z",
-      "by": "G1 delegated coordinator",
-      "note": "PR #169 owner-merged. Exact post-merge service reports inspected and ZIP digests verified. Wave 1 sandbox source accepted at 40cdac5c9ce6acaa8dedc0385984a807ae9a84d0; all Wave 2 lanes remain held pending owner merge/publication verification of this separate record."
+      "observedAt": "2026-10-16T21:41:51.823662+00:00",
+      "by": "G1 acceptance-publication coordinator",
+      "note": "PR #169 merged; actual post-merge evidence verified. Wave 1 SANDBOX_ACCEPTED. Frozen Wave 2 source assigned, but all lanes held until separate owner-reviewed acceptance publication is merged and verified."
     }
   ],
   "gates": {

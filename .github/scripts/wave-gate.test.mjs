@@ -15,9 +15,8 @@ const initial = {
   wave: await read('waves/wave-02.plan.json'),
   registry: await read('SPRINT_REGISTRY.json'),
 };
-// Negative cases must keep exercising a blocked record after the live source
-// advances to accepted-but-unpublished. These are synthetic fixtures, not
-// evidence or permissions for the repository's real wave.
+// Negative controls must remain blocked fixtures when the real gate advances.
+// They are synthetic validation inputs, never evidence or a live decision.
 const copy = () => {
   const x = structuredClone(initial);
   Object.assign(x.gate, {
@@ -25,21 +24,23 @@ const copy = () => {
     frozenBaseSha: null,
     frozenTreeSha: null,
     acceptedSprints: [],
-    blockers: [{ id: 'synthetic-unresolved', state: 'OPEN' }],
+    blockers: [{ id: 'SYNTHETIC', state: 'OPEN' }],
+    mandatoryEvidence: x.gate.mandatoryEvidence.map((e) => ({ ...e, status: 'NOT_RUN' })),
+    publication: { state: 'DRAFT_PENDING_OWNER_REVIEW', acceptanceRecordCommitSha: null },
   });
   Object.assign(x.wave, {
-    baseSha: null,
     status: 'BLOCKED',
+    baseSha: null,
     startableLanes: [],
     blockedLanes: x.wave.lanes.map((lane) => lane.id),
   });
   for (const lane of x.wave.lanes) {
-    Object.assign(lane, { frozenBaseSha: null, status: 'BLOCKED' });
+    Object.assign(lane, { status: 'BLOCKED', frozenBaseSha: null });
     Object.assign(
-      x.registry.sprints.find((sprint) => sprint.id === lane.id),
+      x.registry.sprints.find((s) => s.id === lane.id),
       {
-        frozenBase: null,
         status: 'PLANNED',
+        frozenBase: null,
         startBarrier: { gate: 'G1', decision: 'BLOCKED' },
       },
     );
@@ -48,12 +49,8 @@ const copy = () => {
 };
 const problems = ({ gate, wave, registry }) => waveGateProblems(gate, wave, registry);
 
-test('the committed G1 decision, wave and registry are consistent', () => {
+test('the committed G1, wave manifest and registry are internally consistent', () => {
   assert.deepEqual(problems(initial), []);
-  if (initial.gate.publication.state !== 'MERGED') {
-    assert.equal(initial.wave.status, 'BLOCKED');
-    assert.deepEqual(initial.wave.startableLanes, []);
-  }
 });
 
 test('blocked G1 preparation is internally consistent and grants no start', () => {
@@ -213,10 +210,10 @@ test('accepted gate still refuses an unmerged publication', () => {
   x.gate.publication.state = 'DRAFT_PENDING_OWNER_REVIEW';
   assert.ok(problems(x).some((p) => /separately published merged/u.test(p)));
 });
-test('an accepted source can await publication while every lane stays held', () => {
+test('a complete acceptance can await publication while all lanes remain held', () => {
   const x = acceptedFixture();
   x.gate.publication = {
-    state: 'PENDING_OWNER_REVIEW_AND_MERGE',
+    state: 'DRAFT_PENDING_OWNER_REVIEW',
     acceptanceRecordCommitSha: null,
   };
   x.wave.status = 'BLOCKED';
@@ -224,14 +221,9 @@ test('an accepted source can await publication while every lane stays held', () 
   x.wave.blockedLanes = x.wave.lanes.map((lane) => lane.id);
   for (const lane of x.wave.lanes) {
     lane.status = 'BLOCKED';
-    x.registry.sprints.find((sprint) => sprint.id === lane.id).status = 'PLANNED';
+    x.registry.sprints.find((s) => s.id === lane.id).status = 'PLANNED';
   }
   assert.deepEqual(problems(x), []);
-  x.wave.status = 'READY_TO_START';
-  x.wave.startableLanes = [x.wave.blockedLanes.shift()];
-  x.wave.lanes[0].status = 'READY_TO_START';
-  x.registry.sprints.find((sprint) => sprint.id === x.wave.lanes[0].id).status = 'READY_TO_START';
-  assert.ok(problems(x).some((problem) => /separately published merged/u.test(problem)));
 });
 test('accepted gate refuses a pending required run', () => {
   const x = acceptedFixture();

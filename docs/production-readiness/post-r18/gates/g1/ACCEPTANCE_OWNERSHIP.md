@@ -1,45 +1,48 @@
-# G1 acceptance-publication ownership
+# G1 acceptance publication ownership
 
-Mode A: integration and bug-fix coordination. Authority: the owner's ongoing
-delegation to resolve G1, prepare review PRs without merge/deployment, and resume
-R26 after the gate is accepted. This continues G1-06 after owner-merged PR #169.
+Mode A — verification and publication of the merged Wave 1 source.
 
-Writer: the current delegated G1 coordinator. Branch:
-`coord/g1-acceptance-publication`. Starting source:
-`40cdac5c9ce6acaa8dedc0385984a807ae9a84d0`; tree:
-`109b514fe9833a9aac3e8caecd7f9b14d4f61b3b`.
-The live repository had no open PRs when this lease was reserved. Peer branches,
-worktrees and stashes are untouched. No R26 implementation starts under this lease.
+The owner delegated closure of all G1 blockers, fixes/tests and a review PR,
+without merge or deployment, on 2026-10-16. This successor coordination work
+prepares G1-06 after the owner merged remediation PR #169. The preceding
+remediation lease expired at that owner merge. Remote inspection found no open
+PR or acceptance branch before reserving this branch. One writer: this
+acceptance-publication session. No runtime lane is reassigned here.
 
-Exact files reserved before editing:
+- Branch: `coord/g1-wave2-acceptance`.
+- Source/base: `40cdac5c9ce6acaa8dedc0385984a807ae9a84d0`.
+- Source tree: `109b514fe9833a9aac3e8caecd7f9b14d4f61b3b`.
+- Scope: verify actual post-merge artifacts, publish an evidence-backed G1
+  decision, retain all independent release limitations and hold Wave 2 until
+  the owner merges the acceptance record and its identity is verified.
+- Expiry: this PR closes, the owner merges it, or an explicit handoff.
+- Publication: review PR only. No merge, deployment, live activation or grants.
 
-- `.github/scripts/wave-gate.test.mjs`
+## Exact files reserved before edits
+
+- `.github/scripts/wave-gate.test.mjs` — separate synthetic blocked fixtures
+  from the live record so both blocked and accepted publication states remain
+  tested without weakening any validator or assertion.
 - `docs/production-readiness/post-r18/SPRINT_REGISTRY.json`
 - `docs/production-readiness/post-r18/ACTIVE_STATUS.md`
-- `docs/production-readiness/post-r18/waves/wave-02.plan.json`
 - `docs/production-readiness/post-r18/waves/WAVE_02.md`
+- `docs/production-readiness/post-r18/waves/wave-02.plan.json`
 - `docs/production-readiness/post-r18/gates/g1/ACCEPTANCE_OWNERSHIP.md`
-- `docs/production-readiness/post-r18/gates/g1/ACCEPTANCE_PUBLICATION.md`
+- `docs/production-readiness/post-r18/gates/g1/ACCEPTANCE_EVIDENCE.md`
 - `docs/production-readiness/post-r18/gates/g1/ACCEPTANCE_EVIDENCE.json`
-- `docs/production-readiness/post-r18/gates/g1/SOURCE_MANIFEST.json`
 - `docs/production-readiness/post-r18/gates/g1/DECISION.md`
+- `docs/production-readiness/post-r18/gates/g1/SOURCE_MANIFEST.json`
 - `docs/production-readiness/post-r18/gates/g1/BLOCKERS.md`
+- `docs/production-readiness/post-r18/gates/g1/MERGE_MATRIX.md`
 - `docs/production-readiness/post-r18/gates/g1/REQUIREMENTS.md`
 - `docs/production-readiness/post-r18/gates/g1/CHANGE_REQUESTS.md`
 - `docs/production-readiness/post-r18/gates/g1/INTEGRATION_EVIDENCE.md`
-- `docs/production-readiness/post-r18/gates/g1/MERGE_MATRIX.md`
-- `docs/production-readiness/post-r18/gates/g1/ROLLBACK.md`
 
-Scope: inspect post-merge execution and artifact provenance, propose the G1
-acceptance record, reconcile the active registry, retain publication holds,
-and make governance regression fixtures independent of the live gate's state.
-Existing negative assertions and publication checks remain mandatory. No
-application, schema, dependency, workflow or runtime behavior is changed.
+Historical findings remain dated evidence. The new acceptance evidence will
+state which source gaps the remediation closes and which facts remain outside
+G1. No source, schema, migration, dependency, CI workflow or R27 implementation
+is changed. R27 remains assigned to `feat/r27-performance-capacity` and needs
+its documented handoff after G1 publication.
 
-The frozen runtime source and the later acceptance-record commit are different
-identities. A PR proposing ACCEPTED is not a merged publication. Until owner
-review/merge is observed and its actual commit is recorded, all Wave 2 lanes
-remain held. No guessed or self-referential commit identity is permitted.
-
-This lease ends when this PR closes or the coordinator records a handoff.
-It does not grant merge, auto-merge, deployment, live funds, permissions or spend.
+Rollback: revert this publication's records/test-fixture change through review;
+retain remediation source and migration. No runtime or data rollback applies.

@@ -2,28 +2,20 @@
   "schemaVersion": 1,
   "gateId": "G1",
   "decision": "ACCEPTED",
-  "decisionAtUtc": "2026-10-16T21:42:17.935Z",
-  "authority": "Delegated G1 engineering coordinator under the owner instruction to resolve G1 and prepare review PRs without merge/deploy; acceptance publication still requires owner review/merge.",
+  "decisionAtUtc": "2026-10-16T21:41:51.823662+00:00",
+  "authority": "Successor G1 coordinator under the owner delegation to close all G1 blockers and prepare a review PR without merge/deploy. Acceptance is limited to the integrated Wave 1 source; publication is pending.",
   "candidateSourceSha": "40cdac5c9ce6acaa8dedc0385984a807ae9a84d0",
   "candidateTreeSha": "109b514fe9833a9aac3e8caecd7f9b14d4f61b3b",
   "frozenBaseSha": "40cdac5c9ce6acaa8dedc0385984a807ae9a84d0",
   "frozenTreeSha": "109b514fe9833a9aac3e8caecd7f9b14d4f61b3b",
   "acceptanceRecordCommitSha": null,
   "coordinationPrHeadSha": null,
-  "identityResolution": "The frozen runtime source is the already merged PR #169 result. This separate record has no self-referential hash. Its immutable publication commit/head are recorded externally in its PR; the actual merged publication must be verified before authorizing any lane.",
+  "identityResolution": "Frozen source and acceptance-record commits are distinct. The PR binds its final head externally. Once the owner merges this record, a follow-up verifies that immutable record commit and updates publication and lane readiness together; no self-referential SHA or premature start.",
   "publication": {
-    "state": "PENDING_OWNER_REVIEW_AND_MERGE",
-    "branch": "coord/g1-acceptance-publication",
+    "state": "DRAFT_PENDING_OWNER_REVIEW",
+    "branch": "coord/g1-wave2-acceptance",
     "acceptanceRecordCommitSha": null,
-    "requirement": "Owner review/merge of this separate ACCEPTED record, then coordinator verification of the actual publication commit and source, followed by an explicit manifest/registry start decision.",
-    "blockers": [
-      {
-        "id": "G1-06-PUBLICATION",
-        "owner": "repository owner + coordinator",
-        "state": "PENDING",
-        "closure": "Review/merge the prepared acceptance PR and verify its actual merged identity. No lane starts from this unmerged record."
-      }
-    ]
+    "requirement": "Owner review/merge of this separate acceptance record, then source and publication identity verification before any Wave 2 start."
   },
   "acceptedSprints": ["R19", "R20", "R21", "R22", "R23"],
   "blockers": [],
@@ -33,97 +25,63 @@
       "status": "PASS",
       "sourceSha": "40cdac5c9ce6acaa8dedc0385984a807ae9a84d0",
       "reference": "https://github.com/baraabd/homeservicemarketplace/actions/runs/38968728679",
-      "scope": "Seven post-merge workflows pass on the exact frozen source; see ACCEPTANCE_EVIDENCE.json."
+      "scope": "28 latest checks successful; required aggregate CI, CodeQL analysis and governance successful."
     },
     {
       "id": "r20-real-storage",
       "status": "PASS",
       "sourceSha": "40cdac5c9ce6acaa8dedc0385984a807ae9a84d0",
       "reference": "https://github.com/baraabd/homeservicemarketplace/actions/runs/38968728679/artifacts/12076590416",
-      "scope": "40/40 cases, zero skipped/failed; retention 29/29 separately."
+      "scope": "40/40 S3, root, authorization and overwrite-protection tests; zero skipped/failed; separately 29/29 retention tests."
     },
     {
       "id": "r21-real-smtp",
       "status": "PASS",
       "sourceSha": "40cdac5c9ce6acaa8dedc0385984a807ae9a84d0",
       "reference": "https://github.com/baraabd/homeservicemarketplace/actions/runs/38968728679/artifacts/12075759523",
-      "scope": "Durable mail 13/13 including all three Mailpit SMTP cases, zero skipped/failed."
+      "scope": "13/13 durable-mail tests, including all three real SMTP cases; feedback suite 13/13."
     },
     {
       "id": "r22-process-and-replay",
       "status": "PASS",
       "sourceSha": "40cdac5c9ce6acaa8dedc0385984a807ae9a84d0",
       "reference": "https://github.com/baraabd/homeservicemarketplace/actions/runs/38968728679/artifacts/12075759523",
-      "scope": "Replay 8/8 and reliability 21/21; compiled Linux processes 3/3 in their own report, zero skipped/failed."
+      "scope": "8/8 replay, 21/21 reliability and 3/3 compiled independent-process cases; zero skipped in dedicated runs."
     },
     {
       "id": "r19-interface-freeze",
       "status": "PASS",
       "sourceSha": "40cdac5c9ce6acaa8dedc0385984a807ae9a84d0",
       "reference": "https://github.com/baraabd/homeservicemarketplace/actions/runs/38968728679/artifacts/12075759523",
-      "scope": "Callable V1 ports and consumer fixtures compiled; all 19 R19 integration cases passed, including direct SQL compensation and transactional notification delivery."
+      "scope": "Versioned callable ports and consumer fixture compile in the API verification job; 19/19 SQL compensation, activation, rollback and dedupe tests pass."
     },
     {
       "id": "r23-boundary-instrumentation",
       "status": "PASS",
       "sourceSha": "40cdac5c9ce6acaa8dedc0385984a807ae9a84d0",
       "reference": "https://github.com/baraabd/homeservicemarketplace/actions/runs/38968728679/artifacts/12075759523",
-      "scope": "Four transport-boundary, three export-bootstrap and two scheduler tests pass; actual retention/dispute-worker metric assertions pass in their service reports."
+      "scope": "4 transport-boundary, 3 exporter-bootstrap and 2 diagnostic-scheduler tests pass; dedicated real retention/dispute-worker suites assert protected metric producers. Alert firing/recovery proof is separately identified as identical-tree pre-merge evidence."
     }
   ],
-  "sourceRepair": "CR-R20-01 merged in #168; remaining G1 corrective source merged in #169. The exact combined result is certified by the post-merge evidence below.",
+  "sourceRepair": "PR #168 source fixes and PR #169 complete source remediation are merged into the frozen source. This publication changes records and a governance test fixture only.",
   "nonG1ReleaseLimitations": [
     "R18-G1 branch protection: develop reports protected=false; separate historical release blocker.",
     "Repository-wide CodeQL inventory unavailable through exposed connector; R26/security owner must supply current IDs/dispositions. Historical #2/#13/#16/#20 are not asserted current.",
     "R18-H1 hosting/DNS/registry/secrets, real sender deliverability, hosted storage IAM/KMS/CDN, production alert receivers/region/retention and SLO approval remain owner/R28/R37 work.",
     "R16 money/payout policies, R18 D-2/D-3/D-13/D-19 and R19 commercial policies remain explicit owner decisions. Live rails and payouts stay disabled."
   ],
-  "acceptanceScope": "Integrated Wave 1 source and disposable-service sandbox boundaries; no hosted, policy, release or live-money acceptance.",
-  "resolvedBlockers": [
+  "publicationBlockers": [
     {
-      "id": "G1-01",
-      "owner": "R19 domain owner + coordinator",
-      "requirement": "R19 implementation 3/6/7: complete callable internal-port freeze and compensation invariants",
-      "state": "CLOSED_ON_MERGED_SOURCE",
-      "closure": "Merged repair PR #169 plus exact merged-source reports; see ACCEPTANCE_PUBLICATION.md.",
-      "sourceSha": "40cdac5c9ce6acaa8dedc0385984a807ae9a84d0",
-      "reference": "https://github.com/baraabd/homeservicemarketplace/actions/runs/38968728679"
-    },
-    {
-      "id": "G1-02",
-      "owner": "R20 + coordinator",
-      "requirement": "R20 overwrite protection and real storage acceptance",
-      "state": "CLOSED_ON_MERGED_SOURCE",
-      "closure": "Merged repair PR #169 plus exact merged-source reports; see ACCEPTANCE_PUBLICATION.md.",
-      "sourceSha": "40cdac5c9ce6acaa8dedc0385984a807ae9a84d0",
-      "reference": "https://github.com/baraabd/homeservicemarketplace/actions/runs/38968728679"
-    },
-    {
-      "id": "G1-03",
-      "owner": "R21 + coordinator CI owner",
-      "requirement": "R21 real SMTP scenarios on the combined source",
-      "state": "CLOSED_ON_MERGED_SOURCE",
-      "closure": "Merged repair PR #169 plus exact merged-source reports; see ACCEPTANCE_PUBLICATION.md.",
-      "sourceSha": "40cdac5c9ce6acaa8dedc0385984a807ae9a84d0",
-      "reference": "https://github.com/baraabd/homeservicemarketplace/actions/runs/38968728679"
-    },
-    {
-      "id": "G1-04",
-      "owner": "R22 + coordinator schema/CI owner",
-      "requirement": "R22 audited replay and independent-process crash/SIGTERM proof",
-      "state": "CLOSED_ON_MERGED_SOURCE",
-      "closure": "Merged repair PR #169 plus exact merged-source reports; see ACCEPTANCE_PUBLICATION.md.",
-      "sourceSha": "40cdac5c9ce6acaa8dedc0385984a807ae9a84d0",
-      "reference": "https://github.com/baraabd/homeservicemarketplace/actions/runs/38968728679"
-    },
-    {
-      "id": "G1-05",
-      "owner": "R23 + coordinator + boundary owners",
-      "requirement": "R23 runtime telemetry/diagnostics producers",
-      "state": "CLOSED_ON_MERGED_SOURCE",
-      "closure": "Merged repair PR #169 plus exact merged-source reports; see ACCEPTANCE_PUBLICATION.md.",
-      "sourceSha": "40cdac5c9ce6acaa8dedc0385984a807ae9a84d0",
-      "reference": "https://github.com/baraabd/homeservicemarketplace/actions/runs/38968728679"
+      "id": "G1-06",
+      "state": "PENDING_OWNER_REVIEW_AND_RECORD_MERGE",
+      "owner": "repository owner + coordinator",
+      "requirement": "The corrective source and merged-source evidence are complete. This separate record must be owner-reviewed/merged and its identity verified before Wave 2 is released."
     }
-  ]
+  ],
+  "evidenceRecord": "docs/production-readiness/post-r18/gates/g1/ACCEPTANCE_EVIDENCE.json",
+  "historicalDecision": {
+    "sourceSha": "54a69f78c0227a2f2b94df851a3ebb941348d8aa",
+    "decision": "BLOCKED",
+    "preservedInCommit": "40cdac5c9ce6acaa8dedc0385984a807ae9a84d0"
+  }
 }

@@ -1,8 +1,8 @@
 # Post-R18 active status index
 
 Authority: `SPRINT_REGISTRY.json`. Reconciled by G1 on 2026-10-16.
-G1 source is **ACCEPTED**, pending owner review/merge of its separate publication.
-Wave 2 frozen base: `40cdac5c9ce6acaa8dedc0385984a807ae9a84d0`; no lane is startable yet.
+G1 technical source is **ACCEPTED** at `40cdac5c9ce6acaa8dedc0385984a807ae9a84d0`.
+The separate acceptance publication is pending owner review/merge; Wave 2 has no startable lane.
 Historical R18 release NO-GO remains separate. Unnumbered PR #156 is merged.
 
 | ID  | Title                                                                              | Wave | Status                   | Branch                             | PR   |
@@ -28,6 +28,6 @@ Historical R18 release NO-GO remains separate. Unnumbered PR #156 is merged.
 | R37 | (pending package)                                                                  | 4    | RESERVED_PENDING_PACKAGE | —                                  | —    |
 | R38 | (pending package)                                                                  | 4    | RESERVED_PENDING_PACKAGE | —                                  | —    |
 
-Wave 1 `SANDBOX_ACCEPTED` covers the exact merged source and disposable-service evidence; it is not hosted or release acceptance.
-Wave 2 `PLANNED` describes reviewed preparation with an assigned source, held until owner-merged G1 publication is verified. R27 provisional PR #162 was merged before G1; it is not accepted Wave 2 delivery.
+Wave 1 `SANDBOX_ACCEPTED` covers the certified integrated technical boundaries and disposable real services. Hosted, policy and release decisions remain separate.
+Wave 2 `PLANNED` describes reviewed preparation only. R27 provisional PR #162 was merged before G1; it is not accepted Wave 2 delivery.
 R29–R38 remain reserved in this bounded G1 task. See `gates/g1/DECISION.md` and `waves/WAVE_02.md`.

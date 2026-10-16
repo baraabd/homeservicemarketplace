@@ -17,6 +17,12 @@ G1-06 owner-publication hold remains; no Wave 2 start is implied.
 
 # Shared-change request disposition ledger
 
+> Historical assessment below, preserved as recorded before PR #169. Current
+> merged-source closure at `40cdac5c9ce6acaa8dedc0385984a807ae9a84d0` is in
+> [ACCEPTANCE_EVIDENCE.md](ACCEPTANCE_EVIDENCE.md), [DECISION.md](DECISION.md)
+> and [BLOCKERS.md](BLOCKERS.md). Former OPEN/PARTIAL wording below is not the
+> current G1 technical status. Hosted/policy/downstream limitations remain open.
+
 Inspected source for every OPEN row: `54a69f78c0227a2f2b94df851a3ebb941348d8aa`. States describe facts, not sprint lifecycle enums.
 Exact request files retain original evidence; this ledger supersedes stale status text only.
 

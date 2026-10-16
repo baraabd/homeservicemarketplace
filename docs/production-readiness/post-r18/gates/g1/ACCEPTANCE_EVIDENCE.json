@@ -1,1674 +1,798 @@
 {
   "schemaVersion": 1,
-  "repository": "baraabd/homeservicemarketplace",
-  "capturedAt": "2026-10-16T21:42:17.935Z",
+  "gateId": "G1",
+  "observedAtUtc": "2026-10-16T21:41:51.823662+00:00",
   "sourceSha": "40cdac5c9ce6acaa8dedc0385984a807ae9a84d0",
   "sourceTreeSha": "109b514fe9833a9aac3e8caecd7f9b14d4f61b3b",
-  "sourceMerge": {
-    "pr": 169,
-    "merged": true,
-    "mergedAt": "2026-10-16T21:20:48Z",
-    "mergeCommit": "40cdac5c9ce6acaa8dedc0385984a807ae9a84d0",
-    "testedPrHead": "a93bdf6e5f6d403f6395f4c140fe52ff4ed319c4",
-    "fullTreeEqualityVerified": true,
-    "originalWave1MergeCommitsAreAncestors": true
-  },
-  "postMergeWorkflows": [
+  "remediationPr": 169,
+  "ciRunId": 38968728679,
+  "ciUrl": "https://github.com/baraabd/homeservicemarketplace/actions/runs/38968728679",
+  "checks": [
     {
-      "id": 38968728537,
-      "name": "Authentication lifecycle acceptance",
-      "path": ".github/workflows/auth-lifecycle.yml",
-      "event": "push",
-      "head_sha": "40cdac5c9ce6acaa8dedc0385984a807ae9a84d0",
-      "run_attempt": 1,
+      "id": 117209193052,
+      "name": "CI gate",
       "status": "completed",
       "conclusion": "success",
-      "html_url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/38968728537",
-      "run_started_at": "2026-10-16T21:20:51Z",
-      "completePagination": true,
-      "jobs": [
-        {
-          "id": 117201562331,
-          "name": "R04 real browser, SMTP and Postgres",
-          "run_id": 38968728537,
-          "run_attempt": 1,
-          "status": "completed",
-          "conclusion": "success"
-        }
-      ],
-      "artifacts": [
-        {
-          "id": 12076470004,
-          "name": "r04-auth-lifecycle-evidence",
-          "size_in_bytes": 58173,
-          "digest": "sha256:1ef02a528383c786f8332c66cc13489e3b2d3c1cf440d62cccc4408a695852a6",
-          "expired": false,
-          "created_at": "2026-10-16T21:23:07Z",
-          "expires_at": "2026-10-23T21:23:06Z",
-          "workflow_run": {
-            "id": 38968728537,
-            "repository_id": 1182381313,
-            "head_repository_id": 1182381313,
-            "head_branch": "develop",
-            "head_sha": "40cdac5c9ce6acaa8dedc0385984a807ae9a84d0"
-          }
-        }
-      ]
+      "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/38968728679/job/117209193052",
+      "app": "github-actions"
     },
     {
-      "id": 38968728535,
-      "name": "Staging release boundary",
-      "path": ".github/workflows/staging-boundary.yml",
-      "event": "push",
-      "head_sha": "40cdac5c9ce6acaa8dedc0385984a807ae9a84d0",
-      "run_attempt": 1,
+      "id": 117209141646,
+      "name": "R18 functional completion acceptance",
       "status": "completed",
       "conclusion": "success",
-      "html_url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/38968728535",
-      "run_started_at": "2026-10-16T21:20:51Z",
-      "completePagination": true,
-      "jobs": [
-        {
-          "id": 117201561781,
-          "name": "Staging release controls (windows-latest)",
-          "run_id": 38968728535,
-          "run_attempt": 1,
-          "status": "completed",
-          "conclusion": "success"
-        },
-        {
-          "id": 117201562273,
-          "name": "Staging release controls (ubuntu-latest)",
-          "run_id": 38968728535,
-          "run_attempt": 1,
-          "status": "completed",
-          "conclusion": "success"
-        },
-        {
-          "id": 117201562339,
-          "name": "Staging image boundaries",
-          "run_id": 38968728535,
-          "run_attempt": 1,
-          "status": "completed",
-          "conclusion": "success"
-        },
-        {
-          "id": 117202738681,
-          "name": "Staging boundary gate",
-          "run_id": 38968728535,
-          "run_attempt": 1,
-          "status": "completed",
-          "conclusion": "success"
-        }
-      ],
-      "artifacts": [
-        {
-          "id": 12075508654,
-          "name": "staging-image-boundary",
-          "size_in_bytes": 576,
-          "digest": "sha256:e4d740c4fef8b1480585f45507beda2e360a481ba623ed9677cad3ed7220e8f6",
-          "expired": false,
-          "created_at": "2026-10-16T21:23:56Z",
-          "expires_at": "2026-10-23T21:23:55Z",
-          "workflow_run": {
-            "id": 38968728535,
-            "repository_id": 1182381313,
-            "head_repository_id": 1182381313,
-            "head_branch": "develop",
-            "head_sha": "40cdac5c9ce6acaa8dedc0385984a807ae9a84d0"
-          }
-        },
-        {
-          "id": 12075233376,
-          "name": "staging-controls-windows-latest",
-          "size_in_bytes": 2620,
-          "digest": "sha256:6bb04fb497ead1dc41211341bac76b9de8c0fe48ec31343dd031966e82dd02c8",
-          "expired": false,
-          "created_at": "2026-10-16T21:21:11Z",
-          "expires_at": "2026-10-23T21:21:11Z",
-          "workflow_run": {
-            "id": 38968728535,
-            "repository_id": 1182381313,
-            "head_repository_id": 1182381313,
-            "head_branch": "develop",
-            "head_sha": "40cdac5c9ce6acaa8dedc0385984a807ae9a84d0"
-          }
-        },
-        {
-          "id": 12074654854,
-          "name": "staging-controls-ubuntu-latest",
-          "size_in_bytes": 2741,
-          "digest": "sha256:52147b9ad73b1ba9348723f111496981aaa561fa756c97f15704706faf5b4452",
-          "expired": false,
-          "created_at": "2026-10-16T21:20:59Z",
-          "expires_at": "2026-10-23T21:20:58Z",
-          "workflow_run": {
-            "id": 38968728535,
-            "repository_id": 1182381313,
-            "head_repository_id": 1182381313,
-            "head_branch": "develop",
-            "head_sha": "40cdac5c9ce6acaa8dedc0385984a807ae9a84d0"
-          }
-        }
-      ]
+      "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/38968728679/job/117209141646",
+      "app": "github-actions"
     },
     {
-      "id": 38968728491,
-      "name": "CodeQL",
-      "path": ".github/workflows/codeql.yml",
-      "event": "push",
-      "head_sha": "40cdac5c9ce6acaa8dedc0385984a807ae9a84d0",
-      "run_attempt": 1,
+      "id": 117204694731,
+      "name": "Phase 5 real-route and persistence evidence",
       "status": "completed",
       "conclusion": "success",
-      "html_url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/38968728491",
-      "run_started_at": "2026-10-16T21:20:51Z",
-      "completePagination": true,
-      "jobs": [
-        {
-          "id": 117201562017,
-          "name": "Analyze JavaScript/TypeScript",
-          "run_id": 38968728491,
-          "run_attempt": 1,
-          "status": "completed",
-          "conclusion": "success"
-        }
-      ],
-      "artifacts": [
-        {
-          "id": 12075268530,
-          "name": "codeql-sarif",
-          "size_in_bytes": 162333,
-          "digest": "sha256:67a05225824b163abd95e080b691251108651f569410def9904c289cdcd4a4e2",
-          "expired": false,
-          "created_at": "2026-10-16T21:24:10Z",
-          "expires_at": "2026-10-30T21:24:10Z",
-          "workflow_run": {
-            "id": 38968728491,
-            "repository_id": 1182381313,
-            "head_repository_id": 1182381313,
-            "head_branch": "develop",
-            "head_sha": "40cdac5c9ce6acaa8dedc0385984a807ae9a84d0"
-          }
-        }
-      ]
+      "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/38968728679/job/117204694731",
+      "app": "github-actions"
     },
     {
-      "id": 38968728501,
+      "id": 117203388168,
+      "name": "Compose stack smoke (migrate / boot / readiness / media / OTP)",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/38968728679/job/117203388168",
+      "app": "github-actions"
+    },
+    {
+      "id": 117203388003,
+      "name": "Evidence retention / real Postgres, S3 versions and ClamAV",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/38968728679/job/117203388003",
+      "app": "github-actions"
+    },
+    {
+      "id": 117203387996,
+      "name": "Integration & E2E (real Postgres / Redis)",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/38968728679/job/117203387996",
+      "app": "github-actions"
+    },
+    {
+      "id": 117203387965,
+      "name": "Dispute journey / real HTTP, browser, Postgres and ClamAV",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/38968728679/job/117203387965",
+      "app": "github-actions"
+    },
+    {
+      "id": 117203387938,
+      "name": "Dependency, secret, and container scans",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/38968728679/job/117203387938",
+      "app": "github-actions"
+    },
+    {
+      "id": 117203387928,
+      "name": "Auth cookie contract (real browser + real API)",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/38968728679/job/117203387928",
+      "app": "github-actions"
+    },
+    {
+      "id": 117203387910,
+      "name": "Docker cold build + production boot",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/38968728679/job/117203387910",
+      "app": "github-actions"
+    },
+    {
+      "id": 117203387882,
+      "name": "Admin review real-route and persistence evidence",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/38968728679/job/117203387882",
+      "app": "github-actions"
+    },
+    {
+      "id": 117203387871,
+      "name": "Browser E2E (Playwright / Chromium)",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/38968728679/job/117203387871",
+      "app": "github-actions"
+    },
+    {
+      "id": 117203387849,
+      "name": "Phase 5 visual, responsive and accessibility gate",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/38968728679/job/117203387849",
+      "app": "github-actions"
+    },
+    {
+      "id": 117202738681,
+      "name": "Staging boundary gate",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/38968728535/job/117202738681",
+      "app": "github-actions"
+    },
+    {
+      "id": 117202150504,
+      "name": "Verify / Verify API (lint / typecheck / unit / build)",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/38968728679/job/117202150504",
+      "app": "github-actions"
+    },
+    {
+      "id": 117201910565,
+      "name": "Verify / Verify Web (lint / typecheck / unit / build)",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/38968728679/job/117201910565",
+      "app": "github-actions"
+    },
+    {
+      "id": 117201910405,
+      "name": "Verify / Verify Database",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/38968728679/job/117201910405",
+      "app": "github-actions"
+    },
+    {
+      "id": 117201724065,
+      "name": "Verify / Verify Contracts",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/38968728679/job/117201724065",
+      "app": "github-actions"
+    },
+    {
+      "id": 117201562933,
+      "name": "Verify / Install & lockfile integrity",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/38968728679/job/117201562933",
+      "app": "github-actions"
+    },
+    {
+      "id": 117201562339,
+      "name": "Staging image boundaries",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/38968728535/job/117201562339",
+      "app": "github-actions"
+    },
+    {
+      "id": 117201562331,
+      "name": "R04 real browser, SMTP and Postgres",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/38968728537/job/117201562331",
+      "app": "github-actions"
+    },
+    {
+      "id": 117201562273,
+      "name": "Staging release controls (ubuntu-latest)",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/38968728535/job/117201562273",
+      "app": "github-actions"
+    },
+    {
+      "id": 117201562127,
       "name": "Production governance",
-      "path": ".github/workflows/production-governance.yml",
-      "event": "push",
-      "head_sha": "40cdac5c9ce6acaa8dedc0385984a807ae9a84d0",
-      "run_attempt": 1,
       "status": "completed",
       "conclusion": "success",
-      "html_url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/38968728501",
-      "run_started_at": "2026-10-16T21:20:51Z",
-      "completePagination": true,
-      "jobs": [
-        {
-          "id": 117201562127,
-          "name": "Production governance",
-          "run_id": 38968728501,
-          "run_attempt": 1,
-          "status": "completed",
-          "conclusion": "success"
-        }
-      ],
-      "artifacts": [
-        {
-          "id": 12075712890,
-          "name": "production-governance-source",
-          "size_in_bytes": 6126885,
-          "digest": "sha256:dfe046645b3448b63113def242ff648392c43f00cbe32a209b71ce746d0d13b1",
-          "expired": false,
-          "created_at": "2026-10-16T21:21:09Z",
-          "expires_at": "2026-10-23T21:21:08Z",
-          "workflow_run": {
-            "id": 38968728501,
-            "repository_id": 1182381313,
-            "head_repository_id": 1182381313,
-            "head_branch": "develop",
-            "head_sha": "40cdac5c9ce6acaa8dedc0385984a807ae9a84d0"
-          }
-        }
-      ]
+      "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/38968728501/job/117201562127",
+      "app": "github-actions"
     },
     {
-      "id": 38968728472,
-      "name": "Web development startup",
-      "path": ".github/workflows/web-startup.yml",
-      "event": "push",
-      "head_sha": "40cdac5c9ce6acaa8dedc0385984a807ae9a84d0",
-      "run_attempt": 1,
+      "id": 117201562090,
+      "name": "Dev browser startup (windows-latest)",
       "status": "completed",
       "conclusion": "success",
-      "html_url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/38968728472",
-      "run_started_at": "2026-10-16T21:20:51Z",
-      "completePagination": true,
-      "jobs": [
-        {
-          "id": 117201561479,
-          "name": "Dev browser startup (ubuntu-latest)",
-          "run_id": 38968728472,
-          "run_attempt": 1,
-          "status": "completed",
-          "conclusion": "success"
-        },
-        {
-          "id": 117201562090,
-          "name": "Dev browser startup (windows-latest)",
-          "run_id": 38968728472,
-          "run_attempt": 1,
-          "status": "completed",
-          "conclusion": "success"
-        }
-      ],
-      "artifacts": [
-        {
-          "id": 12076023235,
-          "name": "web-startup-ubuntu-latest",
-          "size_in_bytes": 12802600,
-          "digest": "sha256:8c67bf18cd7c2dc0528eaf322a8a07c492e6302e187e7b13e0be082aa5c87861",
-          "expired": false,
-          "created_at": "2026-10-16T21:24:09Z",
-          "expires_at": "2026-10-30T21:24:07Z",
-          "workflow_run": {
-            "id": 38968728472,
-            "repository_id": 1182381313,
-            "head_repository_id": 1182381313,
-            "head_branch": "develop",
-            "head_sha": "40cdac5c9ce6acaa8dedc0385984a807ae9a84d0"
-          }
-        },
-        {
-          "id": 12075334738,
-          "name": "web-startup-windows-latest",
-          "size_in_bytes": 13118399,
-          "digest": "sha256:0fc926ba7a1b61527f9818d6761bd6efb6df88475ccb227a7f220386047b42a4",
-          "expired": false,
-          "created_at": "2026-10-16T21:28:26Z",
-          "expires_at": "2026-10-30T21:28:23Z",
-          "workflow_run": {
-            "id": 38968728472,
-            "repository_id": 1182381313,
-            "head_repository_id": 1182381313,
-            "head_branch": "develop",
-            "head_sha": "40cdac5c9ce6acaa8dedc0385984a807ae9a84d0"
-          }
-        }
-      ]
+      "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/38968728472/job/117201562090",
+      "app": "github-actions"
     },
     {
-      "id": 38968728434,
-      "name": "Real application startup performance",
-      "path": ".github/workflows/startup-performance.yml",
-      "event": "push",
-      "head_sha": "40cdac5c9ce6acaa8dedc0385984a807ae9a84d0",
-      "run_attempt": 1,
+      "id": 117201562017,
+      "name": "Analyze JavaScript/TypeScript",
       "status": "completed",
       "conclusion": "success",
-      "html_url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/38968728434",
-      "run_started_at": "2026-10-16T21:20:51Z",
-      "completePagination": true,
-      "jobs": [
-        {
-          "id": 117201561812,
-          "name": "Real Seeker Provider Admin startup",
-          "run_id": 38968728434,
-          "run_attempt": 1,
-          "status": "completed",
-          "conclusion": "success"
-        }
-      ],
-      "artifacts": [
-        {
-          "id": 12075794484,
-          "name": "real-startup-performance-40cdac5c9ce6acaa8dedc0385984a807ae9a84d0",
-          "size_in_bytes": 21577,
-          "digest": "sha256:e35d946556955aa8717b51fa367f125de7034ee05742f58f2985804ace8fc2ab",
-          "expired": false,
-          "created_at": "2026-10-16T21:28:26Z",
-          "expires_at": "2026-10-30T21:28:26Z",
-          "workflow_run": {
-            "id": 38968728434,
-            "repository_id": 1182381313,
-            "head_repository_id": 1182381313,
-            "head_branch": "develop",
-            "head_sha": "40cdac5c9ce6acaa8dedc0385984a807ae9a84d0"
-          }
-        }
-      ]
+      "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/38968728491/job/117201562017",
+      "app": "github-actions"
     },
     {
-      "id": 38968728679,
-      "name": "CI",
-      "path": ".github/workflows/ci.yml",
-      "event": "push",
-      "head_sha": "40cdac5c9ce6acaa8dedc0385984a807ae9a84d0",
-      "run_attempt": 1,
+      "id": 117201561812,
+      "name": "Real Seeker Provider Admin startup",
       "status": "completed",
       "conclusion": "success",
-      "html_url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/38968728679",
-      "run_started_at": "2026-10-16T21:20:51Z",
-      "completePagination": true,
-      "jobs": [
-        {
-          "id": 117201562933,
-          "name": "Verify / Install & lockfile integrity",
-          "run_id": 38968728679,
-          "run_attempt": 1,
-          "status": "completed",
-          "conclusion": "success"
-        },
-        {
-          "id": 117201724065,
-          "name": "Verify / Verify Contracts",
-          "run_id": 38968728679,
-          "run_attempt": 1,
-          "status": "completed",
-          "conclusion": "success"
-        },
-        {
-          "id": 117201910405,
-          "name": "Verify / Verify Database",
-          "run_id": 38968728679,
-          "run_attempt": 1,
-          "status": "completed",
-          "conclusion": "success"
-        },
-        {
-          "id": 117201910565,
-          "name": "Verify / Verify Web (lint / typecheck / unit / build)",
-          "run_id": 38968728679,
-          "run_attempt": 1,
-          "status": "completed",
-          "conclusion": "success"
-        },
-        {
-          "id": 117202150504,
-          "name": "Verify / Verify API (lint / typecheck / unit / build)",
-          "run_id": 38968728679,
-          "run_attempt": 1,
-          "status": "completed",
-          "conclusion": "success"
-        },
-        {
-          "id": 117203387849,
-          "name": "Phase 5 visual, responsive and accessibility gate",
-          "run_id": 38968728679,
-          "run_attempt": 1,
-          "status": "completed",
-          "conclusion": "success"
-        },
-        {
-          "id": 117203387871,
-          "name": "Browser E2E (Playwright / Chromium)",
-          "run_id": 38968728679,
-          "run_attempt": 1,
-          "status": "completed",
-          "conclusion": "success"
-        },
-        {
-          "id": 117203387882,
-          "name": "Admin review real-route and persistence evidence",
-          "run_id": 38968728679,
-          "run_attempt": 1,
-          "status": "completed",
-          "conclusion": "success"
-        },
-        {
-          "id": 117203387910,
-          "name": "Docker cold build + production boot",
-          "run_id": 38968728679,
-          "run_attempt": 1,
-          "status": "completed",
-          "conclusion": "success"
-        },
-        {
-          "id": 117203387928,
-          "name": "Auth cookie contract (real browser + real API)",
-          "run_id": 38968728679,
-          "run_attempt": 1,
-          "status": "completed",
-          "conclusion": "success"
-        },
-        {
-          "id": 117203387938,
-          "name": "Dependency, secret, and container scans",
-          "run_id": 38968728679,
-          "run_attempt": 1,
-          "status": "completed",
-          "conclusion": "success"
-        },
-        {
-          "id": 117203387965,
-          "name": "Dispute journey / real HTTP, browser, Postgres and ClamAV",
-          "run_id": 38968728679,
-          "run_attempt": 1,
-          "status": "completed",
-          "conclusion": "success"
-        },
-        {
-          "id": 117203387996,
-          "name": "Integration & E2E (real Postgres / Redis)",
-          "run_id": 38968728679,
-          "run_attempt": 1,
-          "status": "completed",
-          "conclusion": "success"
-        },
-        {
-          "id": 117203388003,
-          "name": "Evidence retention / real Postgres, S3 versions and ClamAV",
-          "run_id": 38968728679,
-          "run_attempt": 1,
-          "status": "completed",
-          "conclusion": "success"
-        },
-        {
-          "id": 117203388168,
-          "name": "Compose stack smoke (migrate / boot / readiness / media / OTP)",
-          "run_id": 38968728679,
-          "run_attempt": 1,
-          "status": "completed",
-          "conclusion": "success"
-        },
-        {
-          "id": 117204694731,
-          "name": "Phase 5 real-route and persistence evidence",
-          "run_id": 38968728679,
-          "run_attempt": 1,
-          "status": "completed",
-          "conclusion": "success"
-        },
-        {
-          "id": 117209141646,
-          "name": "R18 functional completion acceptance",
-          "run_id": 38968728679,
-          "run_attempt": 1,
-          "status": "completed",
-          "conclusion": "success"
-        },
-        {
-          "id": 117209193052,
-          "name": "CI gate",
-          "run_id": 38968728679,
-          "run_attempt": 1,
-          "status": "completed",
-          "conclusion": "success"
-        }
-      ],
-      "artifacts": [
-        {
-          "id": 12077555313,
-          "name": "r17-b-notifications-evidence",
-          "size_in_bytes": 474020,
-          "digest": "sha256:4aaf2d34f43f123fa18547a299ff24cfa5c5733878d8cc17de56e8873df91e58",
-          "expired": false,
-          "created_at": "2026-10-16T21:40:46Z",
-          "expires_at": "2026-10-30T21:40:44Z",
-          "workflow_run": {
-            "id": 38968728679,
-            "repository_id": 1182381313,
-            "head_repository_id": 1182381313,
-            "head_branch": "develop",
-            "head_sha": "40cdac5c9ce6acaa8dedc0385984a807ae9a84d0"
-          }
-        },
-        {
-          "id": 12077530264,
-          "name": "r13-support-evidence",
-          "size_in_bytes": 201907,
-          "digest": "sha256:31af54587e64f62ccff63883bb683b06be0844ad043a3308bcba4e503a67b017",
-          "expired": false,
-          "created_at": "2026-10-16T21:38:44Z",
-          "expires_at": "2026-10-30T21:38:43Z",
-          "workflow_run": {
-            "id": 38968728679,
-            "repository_id": 1182381313,
-            "head_repository_id": 1182381313,
-            "head_branch": "develop",
-            "head_sha": "40cdac5c9ce6acaa8dedc0385984a807ae9a84d0"
-          }
-        },
-        {
-          "id": 12077520271,
-          "name": "r11-reviews-reputation-evidence",
-          "size_in_bytes": 413980,
-          "digest": "sha256:ca7512bfcdbfd93025a2adfdb54df5569627756ca463b82f8fa959ede00dfd62",
-          "expired": false,
-          "created_at": "2026-10-16T21:38:03Z",
-          "expires_at": "2026-10-30T21:38:01Z",
-          "workflow_run": {
-            "id": 38968728679,
-            "repository_id": 1182381313,
-            "head_repository_id": 1182381313,
-            "head_branch": "develop",
-            "head_sha": "40cdac5c9ce6acaa8dedc0385984a807ae9a84d0"
-          }
-        },
-        {
-          "id": 12077390671,
-          "name": "phase5-real-api-evidence",
-          "size_in_bytes": 309027,
-          "digest": "sha256:3180870b434f2eae4102cf14b27c39c73df1192d601435d275d286374611ffbf",
-          "expired": false,
-          "created_at": "2026-10-16T21:41:06Z",
-          "expires_at": "2026-10-30T21:41:04Z",
-          "workflow_run": {
-            "id": 38968728679,
-            "repository_id": 1182381313,
-            "head_repository_id": 1182381313,
-            "head_branch": "develop",
-            "head_sha": "40cdac5c9ce6acaa8dedc0385984a807ae9a84d0"
-          }
-        },
-        {
-          "id": 12077380749,
-          "name": "r18-functional-completion-evidence",
-          "size_in_bytes": 213736,
-          "digest": "sha256:b37dc9b204b1e605d62fc9589904d6990663d42b1c632c079b3e880ffefe96e6",
-          "expired": false,
-          "created_at": "2026-10-16T21:39:18Z",
-          "expires_at": "2026-10-30T21:39:16Z",
-          "workflow_run": {
-            "id": 38968728679,
-            "repository_id": 1182381313,
-            "head_repository_id": 1182381313,
-            "head_branch": "develop",
-            "head_sha": "40cdac5c9ce6acaa8dedc0385984a807ae9a84d0"
-          }
-        },
-        {
-          "id": 12077315454,
-          "name": "r10-working-hours-evidence",
-          "size_in_bytes": 267784,
-          "digest": "sha256:6915bae4fd05cc4965f0935ebd262762c222664b84995929b2805cb5643cee46",
-          "expired": false,
-          "created_at": "2026-10-16T21:37:40Z",
-          "expires_at": "2026-10-30T21:37:38Z",
-          "workflow_run": {
-            "id": 38968728679,
-            "repository_id": 1182381313,
-            "head_repository_id": 1182381313,
-            "head_branch": "develop",
-            "head_sha": "40cdac5c9ce6acaa8dedc0385984a807ae9a84d0"
-          }
-        },
-        {
-          "id": 12077260685,
-          "name": "r12-booking-communication-evidence",
-          "size_in_bytes": 480655,
-          "digest": "sha256:717884d68ddefefee04de4c7eced83dc61450fe5a24440324892e184933b79d3",
-          "expired": false,
-          "created_at": "2026-10-16T21:38:30Z",
-          "expires_at": "2026-10-30T21:38:29Z",
-          "workflow_run": {
-            "id": 38968728679,
-            "repository_id": 1182381313,
-            "head_repository_id": 1182381313,
-            "head_branch": "develop",
-            "head_sha": "40cdac5c9ce6acaa8dedc0385984a807ae9a84d0"
-          }
-        },
-        {
-          "id": 12077190312,
-          "name": "r09-work-area-geo-authority-evidence",
-          "size_in_bytes": 241790,
-          "digest": "sha256:6dc6129a37535c0d386fc50ab59a5539b13dd1c229363d160091769349f3c879",
-          "expired": false,
-          "created_at": "2026-10-16T21:37:14Z",
-          "expires_at": "2026-10-30T21:37:12Z",
-          "workflow_run": {
-            "id": 38968728679,
-            "repository_id": 1182381313,
-            "head_repository_id": 1182381313,
-            "head_branch": "develop",
-            "head_sha": "40cdac5c9ce6acaa8dedc0385984a807ae9a84d0"
-          }
-        },
-        {
-          "id": 12077075202,
-          "name": "r17e-provider-real-evidence",
-          "size_in_bytes": 1130182,
-          "digest": "sha256:6306e005671c560b59f260b03058a2d4f28c65792d37026d73bfb9a446232bea",
-          "expired": false,
-          "created_at": "2026-10-16T21:34:45Z",
-          "expires_at": "2026-10-30T21:34:44Z",
-          "workflow_run": {
-            "id": 38968728679,
-            "repository_id": 1182381313,
-            "head_repository_id": 1182381313,
-            "head_branch": "develop",
-            "head_sha": "40cdac5c9ce6acaa8dedc0385984a807ae9a84d0"
-          }
-        },
-        {
-          "id": 12077015403,
-          "name": "r07-request-provider-lifecycle-evidence",
-          "size_in_bytes": 245923,
-          "digest": "sha256:b441696f52d8a522accb9ac4495774902aa35138b93e4d566bfe0cf638ccdda1",
-          "expired": false,
-          "created_at": "2026-10-16T21:34:57Z",
-          "expires_at": "2026-10-30T21:34:56Z",
-          "workflow_run": {
-            "id": 38968728679,
-            "repository_id": 1182381313,
-            "head_repository_id": 1182381313,
-            "head_branch": "develop",
-            "head_sha": "40cdac5c9ce6acaa8dedc0385984a807ae9a84d0"
-          }
-        },
-        {
-          "id": 12077010250,
-          "name": "r05-seeker-stability-evidence",
-          "size_in_bytes": 2499531,
-          "digest": "sha256:f738d4bd511bce311ca1b4a334b1783c83578e3816b2f2914163fc9cfe469ff8",
-          "expired": false,
-          "created_at": "2026-10-16T21:34:38Z",
-          "expires_at": "2026-10-30T21:34:36Z",
-          "workflow_run": {
-            "id": 38968728679,
-            "repository_id": 1182381313,
-            "head_repository_id": 1182381313,
-            "head_branch": "develop",
-            "head_sha": "40cdac5c9ce6acaa8dedc0385984a807ae9a84d0"
-          }
-        },
-        {
-          "id": 12076990401,
-          "name": "r06-request-media-real-api-evidence",
-          "size_in_bytes": 3104536,
-          "digest": "sha256:b1b571f8ac7b6fc6f901c4a220d42e50168127dc895d2323c2d3e686b542ad45",
-          "expired": false,
-          "created_at": "2026-10-16T21:34:47Z",
-          "expires_at": "2026-10-30T21:34:45Z",
-          "workflow_run": {
-            "id": 38968728679,
-            "repository_id": 1182381313,
-            "head_repository_id": 1182381313,
-            "head_branch": "develop",
-            "head_sha": "40cdac5c9ce6acaa8dedc0385984a807ae9a84d0"
-          }
-        },
-        {
-          "id": 12076985178,
-          "name": "r05-seeker-real-api-evidence",
-          "size_in_bytes": 655502,
-          "digest": "sha256:6d4995066b049bb82574bdcdadad164a5d97cdff87958750efb7569460e5ee7b",
-          "expired": false,
-          "created_at": "2026-10-16T21:34:07Z",
-          "expires_at": "2026-10-30T21:34:06Z",
-          "workflow_run": {
-            "id": 38968728679,
-            "repository_id": 1182381313,
-            "head_repository_id": 1182381313,
-            "head_branch": "develop",
-            "head_sha": "40cdac5c9ce6acaa8dedc0385984a807ae9a84d0"
-          }
-        },
-        {
-          "id": 12076950282,
-          "name": "provider-onboarding-repairs-real-api-evidence",
-          "size_in_bytes": 23610189,
-          "digest": "sha256:386e340c56d974b7d94569da7004c872af8a7ad3b28ecf2c95a4d15c944605b5",
-          "expired": false,
-          "created_at": "2026-10-16T21:33:59Z",
-          "expires_at": "2026-10-30T21:33:56Z",
-          "workflow_run": {
-            "id": 38968728679,
-            "repository_id": 1182381313,
-            "head_repository_id": 1182381313,
-            "head_branch": "develop",
-            "head_sha": "40cdac5c9ce6acaa8dedc0385984a807ae9a84d0"
-          }
-        },
-        {
-          "id": 12076652064,
-          "name": "platform-tx-commit-evidence",
-          "size_in_bytes": 224750,
-          "digest": "sha256:96e258fdc10a86e5cf65a9e1693502573254aa7d9b590493948ff8e3d3734cf1",
-          "expired": false,
-          "created_at": "2026-10-16T21:40:53Z",
-          "expires_at": "2026-10-30T21:40:52Z",
-          "workflow_run": {
-            "id": 38968728679,
-            "repository_id": 1182381313,
-            "head_repository_id": 1182381313,
-            "head_branch": "develop",
-            "head_sha": "40cdac5c9ce6acaa8dedc0385984a807ae9a84d0"
-          }
-        },
-        {
-          "id": 12076590416,
-          "name": "g1-storage-evidence",
-          "size_in_bytes": 3112,
-          "digest": "sha256:2d35a325867f50c57aae6b260ba1afedbc19aeafa9f657a42763001ec245983b",
-          "expired": false,
-          "created_at": "2026-10-16T21:27:55Z",
-          "expires_at": "2027-01-14T21:20:51Z",
-          "workflow_run": {
-            "id": 38968728679,
-            "repository_id": 1182381313,
-            "head_repository_id": 1182381313,
-            "head_branch": "develop",
-            "head_sha": "40cdac5c9ce6acaa8dedc0385984a807ae9a84d0"
-          }
-        },
-        {
-          "id": 12076485876,
-          "name": "r17c-dispute-real-evidence",
-          "size_in_bytes": 585016,
-          "digest": "sha256:449d7f3d58ba8e4ad5b240c0dc37d9a373783181262910e2ffa998f7d24dbfe5",
-          "expired": false,
-          "created_at": "2026-10-16T21:29:44Z",
-          "expires_at": "2026-10-30T21:29:43Z",
-          "workflow_run": {
-            "id": 38968728679,
-            "repository_id": 1182381313,
-            "head_repository_id": 1182381313,
-            "head_branch": "develop",
-            "head_sha": "40cdac5c9ce6acaa8dedc0385984a807ae9a84d0"
-          }
-        },
-        {
-          "id": 12076462462,
-          "name": "e18-my-bids-real-evidence",
-          "size_in_bytes": 345385,
-          "digest": "sha256:3eaf504d86716ae48d29edcf414dd07772f6fb9f8e0aa4a6c01e24f894bfecb6",
-          "expired": false,
-          "created_at": "2026-10-16T21:36:16Z",
-          "expires_at": "2026-10-30T21:36:15Z",
-          "workflow_run": {
-            "id": 38968728679,
-            "repository_id": 1182381313,
-            "head_repository_id": 1182381313,
-            "head_branch": "develop",
-            "head_sha": "40cdac5c9ce6acaa8dedc0385984a807ae9a84d0"
-          }
-        },
-        {
-          "id": 12076402803,
-          "name": "playwright-report",
-          "size_in_bytes": 66862172,
-          "digest": "sha256:da974d4eca7bb3e6c04ccd724ef14cb838b8c3486db5e7cd774d3e765d0c7c2e",
-          "expired": false,
-          "created_at": "2026-10-16T21:37:35Z",
-          "expires_at": "2026-10-23T21:37:31Z",
-          "workflow_run": {
-            "id": 38968728679,
-            "repository_id": 1182381313,
-            "head_repository_id": 1182381313,
-            "head_branch": "develop",
-            "head_sha": "40cdac5c9ce6acaa8dedc0385984a807ae9a84d0"
-          }
-        },
-        {
-          "id": 12076347055,
-          "name": "retention-real-services-evidence",
-          "size_in_bytes": 1897,
-          "digest": "sha256:b2c30a82ece06dc6fcc19acf889047cb8ecf90ec4e55ea2919ad1154a283cc5a",
-          "expired": false,
-          "created_at": "2026-10-16T21:27:57Z",
-          "expires_at": "2026-10-30T21:27:56Z",
-          "workflow_run": {
-            "id": 38968728679,
-            "repository_id": 1182381313,
-            "head_repository_id": 1182381313,
-            "head_branch": "develop",
-            "head_sha": "40cdac5c9ce6acaa8dedc0385984a807ae9a84d0"
-          }
-        },
-        {
-          "id": 12076268159,
-          "name": "r14-budget-authority-evidence",
-          "size_in_bytes": 198417,
-          "digest": "sha256:ccfbdffbbe8f9bde5b54ec739c12841d3cc5465602f5a48e28e02c7e5ce4fa4e",
-          "expired": false,
-          "created_at": "2026-10-16T21:38:54Z",
-          "expires_at": "2026-10-30T21:38:53Z",
-          "workflow_run": {
-            "id": 38968728679,
-            "repository_id": 1182381313,
-            "head_repository_id": 1182381313,
-            "head_branch": "develop",
-            "head_sha": "40cdac5c9ce6acaa8dedc0385984a807ae9a84d0"
-          }
-        },
-        {
-          "id": 12076232720,
-          "name": "r08-provider-v2-all-field-authority-evidence",
-          "size_in_bytes": 236100,
-          "digest": "sha256:4a4b610d240c9d91981e6d1518f31dcc2e7b2ae9aaff2be0d48c4deed6336121",
-          "expired": false,
-          "created_at": "2026-10-16T21:35:50Z",
-          "expires_at": "2026-10-30T21:35:49Z",
-          "workflow_run": {
-            "id": 38968728679,
-            "repository_id": 1182381313,
-            "head_repository_id": 1182381313,
-            "head_branch": "develop",
-            "head_sha": "40cdac5c9ce6acaa8dedc0385984a807ae9a84d0"
-          }
-        },
-        {
-          "id": 12076208566,
-          "name": "admin-review-visual-samples",
-          "size_in_bytes": 1888802,
-          "digest": "sha256:2c520d01edac88794963e45dc9efe9298d7251cd17eb7f9ec4ee29ed883111dd",
-          "expired": false,
-          "created_at": "2026-10-16T21:31:46Z",
-          "expires_at": "2026-10-30T21:31:45Z",
-          "workflow_run": {
-            "id": 38968728679,
-            "repository_id": 1182381313,
-            "head_repository_id": 1182381313,
-            "head_branch": "develop",
-            "head_sha": "40cdac5c9ce6acaa8dedc0385984a807ae9a84d0"
-          }
-        },
-        {
-          "id": 12076198118,
-          "name": "sbom",
-          "size_in_bytes": 85591,
-          "digest": "sha256:dfec18e8b6730336c9be6b3df151877f9a0122a35de05646914c4a707190a676",
-          "expired": false,
-          "created_at": "2026-10-16T21:27:52Z",
-          "expires_at": "2027-01-14T21:20:51Z",
-          "workflow_run": {
-            "id": 38968728679,
-            "repository_id": 1182381313,
-            "head_repository_id": 1182381313,
-            "head_branch": "develop",
-            "head_sha": "40cdac5c9ce6acaa8dedc0385984a807ae9a84d0"
-          }
-        },
-        {
-          "id": 12076193187,
-          "name": "secret-scan-tree",
-          "size_in_bytes": 6730,
-          "digest": "sha256:83a2316d203dd206709f6909b619020d7557a6d2242b26a02ff1e8e34d47b906",
-          "expired": false,
-          "created_at": "2026-10-16T21:26:08Z",
-          "expires_at": "2026-11-15T21:26:08Z",
-          "workflow_run": {
-            "id": 38968728679,
-            "repository_id": 1182381313,
-            "head_repository_id": 1182381313,
-            "head_branch": "develop",
-            "head_sha": "40cdac5c9ce6acaa8dedc0385984a807ae9a84d0"
-          }
-        },
-        {
-          "id": 12076153313,
-          "name": "hsm-api-sbom.cyclonedx.json",
-          "size_in_bytes": 85591,
-          "digest": "sha256:dfec18e8b6730336c9be6b3df151877f9a0122a35de05646914c4a707190a676",
-          "expired": false,
-          "created_at": "2026-10-16T21:27:51Z",
-          "expires_at": "2027-01-14T21:20:51Z",
-          "workflow_run": {
-            "id": 38968728679,
-            "repository_id": 1182381313,
-            "head_repository_id": 1182381313,
-            "head_branch": "develop",
-            "head_sha": "40cdac5c9ce6acaa8dedc0385984a807ae9a84d0"
-          }
-        },
-        {
-          "id": 12076113603,
-          "name": "dispute-workspace-real-evidence",
-          "size_in_bytes": 5820795,
-          "digest": "sha256:c12b260586286d645bcaa32cbe59ebe70c4da91ed4142d7e777b98138e0356a7",
-          "expired": false,
-          "created_at": "2026-10-16T21:28:21Z",
-          "expires_at": "2026-10-30T21:28:20Z",
-          "workflow_run": {
-            "id": 38968728679,
-            "repository_id": 1182381313,
-            "head_repository_id": 1182381313,
-            "head_branch": "develop",
-            "head_sha": "40cdac5c9ce6acaa8dedc0385984a807ae9a84d0"
-          }
-        },
-        {
-          "id": 12076084157,
-          "name": "admin-review-real-api-evidence",
-          "size_in_bytes": 112589191,
-          "digest": "sha256:1e1be19354614d231c5b120b41c887e56543b2eee1bf7d2a4ec9747c2d689b5d",
-          "expired": false,
-          "created_at": "2026-10-16T21:31:45Z",
-          "expires_at": "2026-10-30T21:31:40Z",
-          "workflow_run": {
-            "id": 38968728679,
-            "repository_id": 1182381313,
-            "head_repository_id": 1182381313,
-            "head_branch": "develop",
-            "head_sha": "40cdac5c9ce6acaa8dedc0385984a807ae9a84d0"
-          }
-        },
-        {
-          "id": 12075924115,
-          "name": "phase5-visual-evidence",
-          "size_in_bytes": 3681198,
-          "digest": "sha256:885c4cddadd9af5a6507f4f0df913d968d731f238359a65fd0a1dfd23769f577",
-          "expired": false,
-          "created_at": "2026-10-16T21:29:00Z",
-          "expires_at": "2026-10-30T21:28:58Z",
-          "workflow_run": {
-            "id": 38968728679,
-            "repository_id": 1182381313,
-            "head_repository_id": 1182381313,
-            "head_branch": "develop",
-            "head_sha": "40cdac5c9ce6acaa8dedc0385984a807ae9a84d0"
-          }
-        },
-        {
-          "id": 12075764331,
-          "name": "r17d-admin-real-evidence",
-          "size_in_bytes": 1989293,
-          "digest": "sha256:9b9d0a9025bf0e782e15a6d6c98e57e3bd8707473a62cff5fa4072f996e1d12d",
-          "expired": false,
-          "created_at": "2026-10-16T21:31:15Z",
-          "expires_at": "2026-10-30T21:31:15Z",
-          "workflow_run": {
-            "id": 38968728679,
-            "repository_id": 1182381313,
-            "head_repository_id": 1182381313,
-            "head_branch": "develop",
-            "head_sha": "40cdac5c9ce6acaa8dedc0385984a807ae9a84d0"
-          }
-        },
-        {
-          "id": 12075759523,
-          "name": "g1-worker-process-evidence",
-          "size_in_bytes": 248071,
-          "digest": "sha256:805e378de5eface4a1c11e4d043f12788c9a491f7489a88b8d78b985ce8ddaec",
-          "expired": false,
-          "created_at": "2026-10-16T21:31:36Z",
-          "expires_at": "2027-01-14T21:20:51Z",
-          "workflow_run": {
-            "id": 38968728679,
-            "repository_id": 1182381313,
-            "head_repository_id": 1182381313,
-            "head_branch": "develop",
-            "head_sha": "40cdac5c9ce6acaa8dedc0385984a807ae9a84d0"
-          }
-        },
-        {
-          "id": 12075729194,
-          "name": "dependency-audit",
-          "size_in_bytes": 586,
-          "digest": "sha256:4898b5dc7291cb4bc7696b468a044ac2454c5b687ada7fb77e59ca480dc8ce40",
-          "expired": false,
-          "created_at": "2026-10-16T21:26:03Z",
-          "expires_at": "2026-11-15T21:26:03Z",
-          "workflow_run": {
-            "id": 38968728679,
-            "repository_id": 1182381313,
-            "head_repository_id": 1182381313,
-            "head_branch": "develop",
-            "head_sha": "40cdac5c9ce6acaa8dedc0385984a807ae9a84d0"
-          }
-        },
-        {
-          "id": 12075694914,
-          "name": "r17-a-messaging-evidence",
-          "size_in_bytes": 278515,
-          "digest": "sha256:f40c78f41754758331bbe47ca3230b10fc5aa43fba783eea799a754a7876fef1",
-          "expired": false,
-          "created_at": "2026-10-16T21:40:05Z",
-          "expires_at": "2026-10-30T21:40:04Z",
-          "workflow_run": {
-            "id": 38968728679,
-            "repository_id": 1182381313,
-            "head_repository_id": 1182381313,
-            "head_branch": "develop",
-            "head_sha": "40cdac5c9ce6acaa8dedc0385984a807ae9a84d0"
-          }
-        },
-        {
-          "id": 12075414111,
-          "name": "gitleaks-results.sarif",
-          "size_in_bytes": 6820,
-          "digest": "sha256:90246331b5ad686e53a7ee4ff20c83e3c3ca115b5bcda5cdb4efd352d9c3a6c6",
-          "expired": false,
-          "created_at": "2026-10-16T21:26:05Z",
-          "expires_at": "2027-01-14T21:20:51Z",
-          "workflow_run": {
-            "id": 38968728679,
-            "repository_id": 1182381313,
-            "head_repository_id": 1182381313,
-            "head_branch": "develop",
-            "head_sha": "40cdac5c9ce6acaa8dedc0385984a807ae9a84d0"
-          }
-        }
-      ]
+      "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/38968728434/job/117201561812",
+      "app": "github-actions"
+    },
+    {
+      "id": 117201561781,
+      "name": "Staging release controls (windows-latest)",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/38968728535/job/117201561781",
+      "app": "github-actions"
+    },
+    {
+      "id": 117201561479,
+      "name": "Dev browser startup (ubuntu-latest)",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/38968728472/job/117201561479",
+      "app": "github-actions"
     }
   ],
-  "verifiedArtifacts": [
+  "artifacts": [
     {
       "id": 12075759523,
       "name": "g1-worker-process-evidence",
       "digest": "sha256:805e378de5eface4a1c11e4d043f12788c9a491f7489a88b8d78b985ce8ddaec",
-      "size_in_bytes": 248071,
-      "created_at": "2026-10-16T21:31:36Z",
-      "expires_at": "2027-01-14T21:20:51Z",
-      "workflow_run": {
-        "id": 38968728679,
-        "repository_id": 1182381313,
-        "head_repository_id": 1182381313,
-        "head_branch": "develop",
-        "head_sha": "40cdac5c9ce6acaa8dedc0385984a807ae9a84d0"
-      },
-      "zipDigestVerified": true,
-      "reports": [
-        {
-          "report": "r22-process-report.json",
-          "numTotalTests": 3,
-          "numPassedTests": 3,
-          "numFailedTests": 0,
-          "numPendingTests": 0,
-          "numPassedTestSuites": 1,
-          "numPendingTestSuites": 0,
-          "success": true,
-          "suites": [
-            {
-              "name": "r22-outbox-process.integration.spec.ts",
-              "counts": {
-                "passed": 3
-              },
-              "cases": [
-                {
-                  "name": "R22 outbox worker processes (real Postgres, compiled worker) a worker killed mid-dispatch loses no committed intent and duplicates no effect",
-                  "status": "passed"
-                },
-                {
-                  "name": "R22 outbox worker processes (real Postgres, compiled worker) two concurrent worker processes drain one backlog with exactly one effect per event",
-                  "status": "passed"
-                },
-                {
-                  "name": "R22 outbox worker processes (real Postgres, compiled worker) graceful shutdown hands its batch back at once and a restarted worker finishes it",
-                  "status": "passed"
-                }
-              ]
-            }
-          ]
-        },
-        {
-          "report": "g1-api-report.json",
-          "numTotalTests": 6167,
-          "numPassedTests": 6086,
-          "numFailedTests": 0,
-          "numPendingTests": 81,
-          "numPassedTestSuites": 331,
-          "numPendingTestSuites": 13,
-          "success": true,
-          "suites": [
-            {
-              "name": "r19-subscription-money.integration.spec.ts",
-              "counts": {
-                "passed": 19
-              },
-              "cases": [
-                {
-                  "name": "R19 - subscription confirmation, ledger posting and periods (real Postgres) one confirmation posts once, opens one period and enqueues one identifier-only event",
-                  "status": "passed"
-                },
-                {
-                  "name": "R19 - subscription confirmation, ledger posting and periods (real Postgres) activation inbox delivery rolls back atomically and survives marker removal without duplicate notices",
-                  "status": "passed"
-                },
-                {
-                  "name": "R19 - subscription confirmation, ledger posting and periods (real Postgres) a replay returns the stored result; an altered payload with the same key changes nothing",
-                  "status": "passed"
-                },
-                {
-                  "name": "R19 - subscription confirmation, ledger posting and periods (real Postgres) a second confirmation of the same intent under another key is refused",
-                  "status": "passed"
-                },
-                {
-                  "name": "R19 - subscription confirmation, ledger posting and periods (real Postgres) wrong amount, wrong currency, zero total and an unconfirmable intent write nothing",
-                  "status": "passed"
-                },
-                {
-                  "name": "R19 - subscription confirmation, ledger posting and periods (real Postgres) five identical concurrent commands produce one posting and one period",
-                  "status": "passed"
-                },
-                {
-                  "name": "R19 - subscription confirmation, ledger posting and periods (real Postgres) five distinct concurrent confirmations of one intent: exactly one succeeds",
-                  "status": "passed"
-                },
-                {
-                  "name": "R19 - subscription confirmation, ledger posting and periods (real Postgres) a failure before the outbox commit rolls back the posting, period and status; a retry succeeds",
-                  "status": "passed"
-                },
-                {
-                  "name": "R19 - subscription confirmation, ledger posting and periods (real Postgres) a failed ledger audit write rolls back the whole unit",
-                  "status": "passed"
-                },
-                {
-                  "name": "R19 - subscription confirmation, ledger posting and periods (real Postgres) in a caller-owned transaction nothing survives an outer rollback, and all of it commits with the caller",
-                  "status": "passed"
-                },
-                {
-                  "name": "R19 - subscription confirmation, ledger posting and periods (real Postgres) a renewal opens the next period at the previous end, never overlapping",
-                  "status": "passed"
-                },
-                {
-                  "name": "R19 - subscription confirmation, ledger posting and periods (real Postgres) a manual confirmation names its restricted receipt and reviewer; a webhook names neither",
-                  "status": "passed"
-                },
-                {
-                  "name": "R19 - subscription confirmation, ledger posting and periods (real Postgres) introducing the models grants no permission, posts no booking revenue and backfills nothing",
-                  "status": "passed"
-                },
-                {
-                  "name": "R19 - subscription confirmation, ledger posting and periods (real Postgres) the migration is expand-only: it alters no table it did not create",
-                  "status": "passed"
-                },
-                {
-                  "name": "R19 - subscription confirmation, ledger posting and periods (real Postgres) the database refuses confirmations that are not exactly one succeeded intent and one posting",
-                  "status": "passed"
-                },
-                {
-                  "name": "R19 - subscription confirmation, ledger posting and periods (real Postgres) the database refuses repricing, illegal transitions and overlapping periods",
-                  "status": "passed"
-                },
-                {
-                  "name": "R19 - subscription confirmation, ledger posting and periods (real Postgres) refund reservations never exceed the confirmed amount, also under concurrency",
-                  "status": "passed"
-                },
-                {
-                  "name": "R19 - subscription confirmation, ledger posting and periods (real Postgres) a partial refund is a linked compensating posting; the full reversal stays an exact R15 mirror",
-                  "status": "passed"
-                },
-                {
-                  "name": "R19 - subscription confirmation, ledger posting and periods (real Postgres) coupon limits hold under concurrency and a usage key is counted once",
-                  "status": "passed"
-                }
-              ]
-            },
-            {
-              "name": "r22-outbox-reliability.integration.spec.ts",
-              "counts": {
-                "passed": 21
-              },
-              "cases": [
-                {
-                  "name": "R22 outbox reliability (real Postgres) post-commit publication an intent enqueued in an open transaction is invisible until commit",
-                  "status": "passed"
-                },
-                {
-                  "name": "R22 outbox reliability (real Postgres) post-commit publication a hung post-commit callback cannot hold the claimed batch or retry committed effects",
-                  "status": "passed"
-                },
-                {
-                  "name": "R22 outbox reliability (real Postgres) post-commit publication a late callback cannot launch subsequent callbacks or change committed notifications",
-                  "status": "passed"
-                },
-                {
-                  "name": "R22 outbox reliability (real Postgres) post-commit publication a rolled-back business transaction emits nothing",
-                  "status": "passed"
-                },
-                {
-                  "name": "R22 outbox reliability (real Postgres) lease fencing a stale owner cannot overwrite a newer result, and its effect rolls back",
-                  "status": "passed"
-                },
-                {
-                  "name": "R22 outbox reliability (real Postgres) lease fencing a reclaimed event is delivered once: the stale owner rolls back, the new owner commits",
-                  "status": "passed"
-                },
-                {
-                  "name": "R22 outbox reliability (real Postgres) lease fencing a stale owner cannot record a failure over the new owner",
-                  "status": "passed"
-                },
-                {
-                  "name": "R22 outbox reliability (real Postgres) database-clock reclaim and heartbeat an application clock running ahead does not reclaim a live claim",
-                  "status": "passed"
-                },
-                {
-                  "name": "R22 outbox reliability (real Postgres) database-clock reclaim and heartbeat heartbeat renews only the caller\u2019s own leases and never re-acquires",
-                  "status": "passed"
-                },
-                {
-                  "name": "R22 outbox reliability (real Postgres) database-clock reclaim and heartbeat the worker heartbeats a batch so its last event is not reclaimed while queued",
-                  "status": "passed"
-                },
-                {
-                  "name": "R22 outbox reliability (real Postgres) failure handling a permanent error dead-letters on the first attempt",
-                  "status": "passed"
-                },
-                {
-                  "name": "R22 outbox reliability (real Postgres) failure handling a transient retry-after hint lengthens the backoff on the database clock",
-                  "status": "passed"
-                },
-                {
-                  "name": "R22 outbox reliability (real Postgres) failure handling a delivery past its deadline is abandoned, rolled back and retried",
-                  "status": "passed"
-                },
-                {
-                  "name": "R22 outbox reliability (real Postgres) failure handling a poison event neither blocks nor starves unrelated work",
-                  "status": "passed"
-                },
-                {
-                  "name": "R22 outbox reliability (real Postgres) failure handling a producer budget above the ceiling still dead-letters",
-                  "status": "passed"
-                },
-                {
-                  "name": "R22 outbox reliability (real Postgres) failure handling an unknown event type dead-letters without touching other events",
-                  "status": "passed"
-                },
-                {
-                  "name": "R22 outbox reliability (real Postgres) duplicate delivery and registration a redelivery with one completed handler still runs the other handler (tx not aborted)",
-                  "status": "passed"
-                },
-                {
-                  "name": "R22 outbox reliability (real Postgres) duplicate delivery and registration duplicate delivery after a crash between commit and ack produces one effect",
-                  "status": "passed"
-                },
-                {
-                  "name": "R22 outbox reliability (real Postgres) duplicate delivery and registration refuses to construct a worker whose handlers share a marker name",
-                  "status": "passed"
-                },
-                {
-                  "name": "R22 outbox reliability (real Postgres) graceful shutdown finishes the in-flight event, releases the rest of its batch, and stops claiming",
-                  "status": "passed"
-                },
-                {
-                  "name": "R22 outbox reliability (real Postgres) graceful shutdown bounds the wait for a hung delivery and leaves it recoverable",
-                  "status": "passed"
-                }
-              ]
-            },
-            {
-              "name": "r21-durable-mail.integration.spec.ts",
-              "counts": {
-                "passed": 13
-              },
-              "cases": [
-                {
-                  "name": "R21 durable mail (real Postgres) registration OTP reaches real SMTP; the code verifies; the row records ACCEPTED with no sealed secret left",
-                  "status": "passed"
-                },
-                {
-                  "name": "R21 durable mail (real Postgres) password-reset link is correct, single-use, and an expired link is refused",
-                  "status": "passed"
-                },
-                {
-                  "name": "R21 durable mail (real Postgres) email-verification link is correct and verifies the account",
-                  "status": "passed"
-                },
-                {
-                  "name": "R21 durable mail (real Postgres) a rolled-back business transaction leaves no delivery row and sends nothing",
-                  "status": "passed"
-                },
-                {
-                  "name": "R21 durable mail (real Postgres) a password-reset whose audit write fails commits neither token nor message (no phantom email)",
-                  "status": "passed"
-                },
-                {
-                  "name": "R21 durable mail (real Postgres) the queued envelope holds no readable secret or address at rest",
-                  "status": "passed"
-                },
-                {
-                  "name": "R21 durable mail (real Postgres) one messageKey is one message even when enqueued from two transactions",
-                  "status": "passed"
-                },
-                {
-                  "name": "R21 durable mail (real Postgres) per-address throttle: the 7th reset request in the window records and sends nothing, with the same public result",
-                  "status": "passed"
-                },
-                {
-                  "name": "R21 durable mail (real Postgres) SMTP unreachable: the request still answers; the intent stays QUEUED (transient) and a later dispatcher delivers it",
-                  "status": "passed"
-                },
-                {
-                  "name": "R21 durable mail (real Postgres) a sender that dies mid-flight loses nothing: the lease lapses and exactly one successor sends",
-                  "status": "passed"
-                },
-                {
-                  "name": "R21 durable mail (real Postgres) two dispatchers draining one backlog never send a row twice",
-                  "status": "passed"
-                },
-                {
-                  "name": "R21 durable mail (real Postgres) permanent rejection closes FAILED, clears the sealed secret and is never retried",
-                  "status": "passed"
-                },
-                {
-                  "name": "R21 durable mail (real Postgres) retention expires overdue queued intents and erases their sealed secret",
-                  "status": "passed"
-                }
-              ]
-            },
-            {
-              "name": "r22-outbox-replay.integration.spec.ts",
-              "counts": {
-                "passed": 8
-              },
-              "cases": [
-                {
-                  "name": "R22 outbox dead-letter replay (real Postgres) refuses a user without the permission, and a suspended holder of it",
-                  "status": "passed"
-                },
-                {
-                  "name": "R22 outbox dead-letter replay (real Postgres) dry-run lists scoped dead letters without writing anything",
-                  "status": "passed"
-                },
-                {
-                  "name": "R22 outbox dead-letter replay (real Postgres) never selects a live (non-DEAD) event",
-                  "status": "passed"
-                },
-                {
-                  "name": "R22 outbox dead-letter replay (real Postgres) execution fails closed if its audit capability is unavailable",
-                  "status": "passed"
-                },
-                {
-                  "name": "R22 outbox dead-letter replay (real Postgres) with CR-01 applied replays only DEAD rows in scope, resets the budget, and audits in the same transaction",
-                  "status": "passed"
-                },
-                {
-                  "name": "R22 outbox dead-letter replay (real Postgres) with CR-01 applied a replayed event whose handler already committed does not repeat the effect",
-                  "status": "passed"
-                },
-                {
-                  "name": "R22 outbox dead-letter replay (real Postgres) with CR-01 applied rate-limits an operator by the audit trail",
-                  "status": "passed"
-                },
-                {
-                  "name": "R22 outbox dead-letter replay (real Postgres) with CR-01 applied concurrent replays of the same scope replay each event once",
-                  "status": "passed"
-                }
-              ]
-            },
-            {
-              "name": "r22-outbox-process.integration.spec.ts",
-              "counts": {
-                "pending": 3
-              },
-              "cases": [
-                {
-                  "name": "R22 outbox worker processes (real Postgres, compiled worker) a worker killed mid-dispatch loses no committed intent and duplicates no effect",
-                  "status": "pending"
-                },
-                {
-                  "name": "R22 outbox worker processes (real Postgres, compiled worker) two concurrent worker processes drain one backlog with exactly one effect per event",
-                  "status": "pending"
-                },
-                {
-                  "name": "R22 outbox worker processes (real Postgres, compiled worker) graceful shutdown hands its batch back at once and a restarted worker finishes it",
-                  "status": "pending"
-                }
-              ]
-            },
-            {
-              "name": "g1-telemetry-boundaries.spec.ts",
-              "counts": {
-                "passed": 4
-              },
-              "cases": [
-                {
-                  "name": "SMTP telemetry preserves the transport result and exact failure without leaking the envelope",
-                  "status": "passed"
-                },
-                {
-                  "name": "S3 middleware keeps requests and errors intact and emits bounded operation labels",
-                  "status": "passed"
-                },
-                {
-                  "name": "scanner telemetry retains the fail-closed verdict on an unavailable scanner",
-                  "status": "passed"
-                },
-                {
-                  "name": "outbox tick emits success and failure metrics while retaining its existing retry loop",
-                  "status": "passed"
-                }
-              ]
-            },
-            {
-              "name": "telemetry-bootstrap.service.spec.ts",
-              "counts": {
-                "passed": 3
-              },
-              "cases": [
-                {
-                  "name": "keeps export disabled without an endpoint",
-                  "status": "passed"
-                },
-                {
-                  "name": "connects the validated configuration to a bounded export pipeline",
-                  "status": "passed"
-                },
-                {
-                  "name": "exports a sampled job through the configured local collector with its secret header",
-                  "status": "passed"
-                }
-              ]
-            },
-            {
-              "name": "diagnostics.scheduler.spec.ts",
-              "counts": {
-                "passed": 2
-              },
-              "cases": [
-                {
-                  "name": "bounds a hung probe, prevents overlap, and continues after failure",
-                  "status": "passed"
-                },
-                {
-                  "name": "records configured probes without probing absent payment rails",
-                  "status": "passed"
-                }
-              ]
-            }
-          ]
-        }
-      ]
+      "runId": 38968728679,
+      "sourceSha": "40cdac5c9ce6acaa8dedc0385984a807ae9a84d0",
+      "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/38968728679/artifacts/12075759523",
+      "digestVerified": true
     },
     {
       "id": 12076590416,
       "name": "g1-storage-evidence",
       "digest": "sha256:2d35a325867f50c57aae6b260ba1afedbc19aeafa9f657a42763001ec245983b",
-      "size_in_bytes": 3112,
-      "created_at": "2026-10-16T21:27:55Z",
-      "expires_at": "2027-01-14T21:20:51Z",
-      "workflow_run": {
-        "id": 38968728679,
-        "repository_id": 1182381313,
-        "head_repository_id": 1182381313,
-        "head_branch": "develop",
-        "head_sha": "40cdac5c9ce6acaa8dedc0385984a807ae9a84d0"
-      },
-      "zipDigestVerified": true,
-      "reports": [
-        {
-          "report": "r20-storage-report.json",
-          "numTotalTests": 40,
-          "numPassedTests": 40,
-          "numFailedTests": 0,
-          "numPendingTests": 0,
-          "success": true,
-          "suites": [
-            {
-              "name": "r20-s3-storage.integration.spec.ts",
-              "counts": {
-                "passed": 29
-              }
-            },
-            {
-              "name": "r20-mediated-read-s3.integration.spec.ts",
-              "counts": {
-                "passed": 9
-              }
-            },
-            {
-              "name": "r20-orphan-cleanup-s3.integration.spec.ts",
-              "counts": {
-                "passed": 2
-              }
-            }
-          ]
-        }
-      ]
+      "runId": 38968728679,
+      "sourceSha": "40cdac5c9ce6acaa8dedc0385984a807ae9a84d0",
+      "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/38968728679/artifacts/12076590416",
+      "digestVerified": true
     },
     {
       "id": 12076347055,
       "name": "retention-real-services-evidence",
       "digest": "sha256:b2c30a82ece06dc6fcc19acf889047cb8ecf90ec4e55ea2919ad1154a283cc5a",
-      "size_in_bytes": 1897,
-      "created_at": "2026-10-16T21:27:57Z",
-      "expires_at": "2026-10-30T21:27:56Z",
-      "workflow_run": {
-        "id": 38968728679,
-        "repository_id": 1182381313,
-        "head_repository_id": 1182381313,
-        "head_branch": "develop",
-        "head_sha": "40cdac5c9ce6acaa8dedc0385984a807ae9a84d0"
-      },
-      "zipDigestVerified": true,
-      "reports": [
-        {
-          "report": "retention-ci-report.json",
-          "numTotalTests": 29,
-          "numPassedTests": 29,
-          "numFailedTests": 0,
-          "numPendingTests": 0,
-          "success": true,
-          "suites": [
-            {
-              "name": "evidence-retention.integration.spec.ts",
-              "counts": {
-                "passed": 28
-              }
-            },
-            {
-              "name": "manifest-evidence-retention.integration.spec.ts",
-              "counts": {
-                "passed": 1
-              }
-            }
-          ]
-        }
-      ]
+      "runId": 38968728679,
+      "sourceSha": "40cdac5c9ce6acaa8dedc0385984a807ae9a84d0",
+      "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/38968728679/artifacts/12076347055",
+      "digestVerified": true
     },
     {
       "id": 12076113603,
       "name": "dispute-workspace-real-evidence",
       "digest": "sha256:c12b260586286d645bcaa32cbe59ebe70c4da91ed4142d7e777b98138e0356a7",
-      "size_in_bytes": 5820795,
-      "created_at": "2026-10-16T21:28:21Z",
-      "expires_at": "2026-10-30T21:28:20Z",
-      "workflow_run": {
-        "id": 38968728679,
-        "repository_id": 1182381313,
-        "head_repository_id": 1182381313,
-        "head_branch": "develop",
-        "head_sha": "40cdac5c9ce6acaa8dedc0385984a807ae9a84d0"
-      },
-      "zipDigestVerified": true,
-      "reports": [
+      "runId": 38968728679,
+      "sourceSha": "40cdac5c9ce6acaa8dedc0385984a807ae9a84d0",
+      "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/38968728679/artifacts/12076113603",
+      "digestVerified": true
+    },
+    {
+      "id": 12077075202,
+      "name": "r17e-provider-real-evidence",
+      "digest": "sha256:6306e005671c560b59f260b03058a2d4f28c65792d37026d73bfb9a446232bea",
+      "runId": 38968728679,
+      "sourceSha": "40cdac5c9ce6acaa8dedc0385984a807ae9a84d0",
+      "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/38968728679/artifacts/12077075202",
+      "digestVerified": true
+    },
+    {
+      "id": 12075764331,
+      "name": "r17d-admin-real-evidence",
+      "digest": "sha256:9b9d0a9025bf0e782e15a6d6c98e57e3bd8707473a62cff5fa4072f996e1d12d",
+      "runId": 38968728679,
+      "sourceSha": "40cdac5c9ce6acaa8dedc0385984a807ae9a84d0",
+      "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/38968728679/artifacts/12075764331",
+      "digestVerified": true
+    },
+    {
+      "id": 12076485876,
+      "name": "r17c-dispute-real-evidence",
+      "digest": "sha256:449d7f3d58ba8e4ad5b240c0dc37d9a373783181262910e2ffa998f7d24dbfe5",
+      "runId": 38968728679,
+      "sourceSha": "40cdac5c9ce6acaa8dedc0385984a807ae9a84d0",
+      "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/38968728679/artifacts/12076485876",
+      "digestVerified": true
+    },
+    {
+      "id": 12076462462,
+      "name": "e18-my-bids-real-evidence",
+      "digest": "sha256:3eaf504d86716ae48d29edcf414dd07772f6fb9f8e0aa4a6c01e24f894bfecb6",
+      "runId": 38968728679,
+      "sourceSha": "40cdac5c9ce6acaa8dedc0385984a807ae9a84d0",
+      "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/38968728679/artifacts/12076462462",
+      "digestVerified": true
+    }
+  ],
+  "reports": [
+    {
+      "artifactId": 12075759523,
+      "report": "r22-process-report.json",
+      "passed": 3,
+      "failed": 0,
+      "skipped": 0,
+      "total": 3,
+      "passedSuites": 1,
+      "suites": [
         {
-          "report": "api/dispute-workspace-ci.json",
-          "numTotalTests": 31,
-          "numPassedTests": 31,
-          "numFailedTests": 0,
-          "numPendingTests": 0,
-          "success": true,
-          "suites": [
-            {
-              "name": "dispute-workspace.integration.spec.ts",
-              "counts": {
-                "passed": 13
-              }
-            },
-            {
-              "name": "dispute-worker-process.integration.spec.ts",
-              "counts": {
-                "passed": 3
-              }
-            },
-            {
-              "name": "dispute-private-lifecycle.integration.spec.ts",
-              "counts": {
-                "passed": 8
-              }
-            },
-            {
-              "name": "dispute-decision-boundaries.integration.spec.ts",
-              "counts": {
-                "passed": 5
-              }
-            },
-            {
-              "name": "dispute-workspace-browser.integration.spec.ts",
-              "counts": {
-                "passed": 1
-              }
-            },
-            {
-              "name": "dispute-workspace-http.integration.spec.ts",
-              "counts": {
-                "passed": 1
-              }
-            }
-          ]
+          "path": "test/integration/r22-outbox-process.integration.spec.ts",
+          "counts": {
+            "passed": 3
+          }
+        }
+      ]
+    },
+    {
+      "artifactId": 12075759523,
+      "report": "g1-api-report.json",
+      "passed": 6086,
+      "failed": 0,
+      "skipped": 81,
+      "total": 6167,
+      "passedSuites": 331,
+      "suites": [
+        {
+          "path": "test/integration/r19-subscription-money.integration.spec.ts",
+          "counts": {
+            "passed": 19
+          }
+        },
+        {
+          "path": "test/integration/r22-outbox-reliability.integration.spec.ts",
+          "counts": {
+            "passed": 21
+          }
+        },
+        {
+          "path": "test/integration/r21-durable-mail.integration.spec.ts",
+          "counts": {
+            "passed": 13
+          }
+        },
+        {
+          "path": "test/integration/r21-mail-feedback.integration.spec.ts",
+          "counts": {
+            "passed": 13
+          }
+        },
+        {
+          "path": "test/integration/r22-outbox-replay.integration.spec.ts",
+          "counts": {
+            "passed": 8
+          }
+        },
+        {
+          "path": "src/infrastructure/telemetry/span-pipeline.spec.ts",
+          "counts": {
+            "passed": 13
+          }
+        },
+        {
+          "path": "test/integration/r22-outbox-process.integration.spec.ts",
+          "counts": {
+            "pending": 3
+          }
+        },
+        {
+          "path": "src/infrastructure/telemetry/telemetry.service.spec.ts",
+          "counts": {
+            "passed": 12
+          }
+        },
+        {
+          "path": "test/unit/r19-money-contract-fixtures.spec.ts",
+          "counts": {
+            "passed": 13
+          }
+        },
+        {
+          "path": "src/infrastructure/telemetry/trace-context.spec.ts",
+          "counts": {
+            "passed": 21
+          }
+        },
+        {
+          "path": "test/unit/g1-telemetry-boundaries.spec.ts",
+          "counts": {
+            "passed": 4
+          }
+        },
+        {
+          "path": "test/unit/r19-money-wire.spec.ts",
+          "counts": {
+            "passed": 10
+          }
+        },
+        {
+          "path": "src/infrastructure/telemetry/metrics-access.guard.spec.ts",
+          "counts": {
+            "passed": 9
+          }
+        },
+        {
+          "path": "src/infrastructure/telemetry/domain-metrics.spec.ts",
+          "counts": {
+            "passed": 11
+          }
+        },
+        {
+          "path": "src/infrastructure/telemetry/dependency-diagnostics.spec.ts",
+          "counts": {
+            "passed": 5
+          }
+        },
+        {
+          "path": "test/unit/r19-canonical-json-regression.spec.ts",
+          "counts": {
+            "passed": 15
+          }
+        },
+        {
+          "path": "src/infrastructure/telemetry/telemetry-bootstrap.service.spec.ts",
+          "counts": {
+            "passed": 3
+          }
+        },
+        {
+          "path": "src/modules/notifications/subscription-activated.handler.spec.ts",
+          "counts": {
+            "passed": 7
+          }
+        },
+        {
+          "path": "src/infrastructure/telemetry/label-bounds.spec.ts",
+          "counts": {
+            "passed": 7
+          }
+        },
+        {
+          "path": "src/infrastructure/health/diagnostics.scheduler.spec.ts",
+          "counts": {
+            "passed": 2
+          }
+        },
+        {
+          "path": "src/infrastructure/telemetry/metrics.service.spec.ts",
+          "counts": {
+            "passed": 4
+          }
+        }
+      ]
+    },
+    {
+      "artifactId": 12076590416,
+      "report": "r20-storage-report.json",
+      "passed": 40,
+      "failed": 0,
+      "skipped": 0,
+      "total": 40,
+      "passedSuites": 3,
+      "suites": [
+        {
+          "path": "test/integration/r20-storage/r20-s3-storage.integration.spec.ts",
+          "counts": {
+            "passed": 29
+          }
+        },
+        {
+          "path": "test/integration/r20-storage/r20-mediated-read-s3.integration.spec.ts",
+          "counts": {
+            "passed": 9
+          }
+        },
+        {
+          "path": "test/integration/r20-storage/r20-orphan-cleanup-s3.integration.spec.ts",
+          "counts": {
+            "passed": 2
+          }
+        }
+      ]
+    },
+    {
+      "artifactId": 12076347055,
+      "report": "retention-ci-report.json",
+      "passed": 29,
+      "failed": 0,
+      "skipped": 0,
+      "total": 29,
+      "passedSuites": 2,
+      "suites": [
+        {
+          "path": "test/integration/evidence-retention.integration.spec.ts",
+          "counts": {
+            "passed": 28
+          }
+        },
+        {
+          "path": "test/integration/manifest-evidence-retention.integration.spec.ts",
+          "counts": {
+            "passed": 1
+          }
+        }
+      ]
+    },
+    {
+      "artifactId": 12076113603,
+      "report": "api/dispute-workspace-ci.json",
+      "passed": 31,
+      "failed": 0,
+      "skipped": 0,
+      "total": 31,
+      "passedSuites": 6,
+      "suites": [
+        {
+          "path": "test/integration/dispute-workspace.integration.spec.ts",
+          "counts": {
+            "passed": 13
+          }
+        },
+        {
+          "path": "test/integration/dispute-worker-process.integration.spec.ts",
+          "counts": {
+            "passed": 3
+          }
+        },
+        {
+          "path": "test/integration/dispute-private-lifecycle.integration.spec.ts",
+          "counts": {
+            "passed": 8
+          }
+        },
+        {
+          "path": "test/integration/dispute-decision-boundaries.integration.spec.ts",
+          "counts": {
+            "passed": 5
+          }
+        },
+        {
+          "path": "test/integration/dispute-workspace-browser.integration.spec.ts",
+          "counts": {
+            "passed": 1
+          }
+        },
+        {
+          "path": "test/integration/dispute-workspace-http.integration.spec.ts",
+          "counts": {
+            "passed": 1
+          }
+        }
+      ]
+    },
+    {
+      "artifactId": 12077075202,
+      "report": "api/r17e-provider-browser-ci.json",
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "total": 1,
+      "passedSuites": 1,
+      "suites": [
+        {
+          "path": "test/integration/r17-provider-surfaces-browser.integration.spec.ts",
+          "counts": {
+            "passed": 1
+          }
+        }
+      ]
+    },
+    {
+      "artifactId": 12077075202,
+      "report": "api/r17e-provider-ci.json",
+      "passed": 30,
+      "failed": 0,
+      "skipped": 0,
+      "total": 30,
+      "passedSuites": 1,
+      "suites": [
+        {
+          "path": "test/integration/r17-provider-surfaces.integration.spec.ts",
+          "counts": {
+            "passed": 30
+          }
+        }
+      ]
+    },
+    {
+      "artifactId": 12077075202,
+      "report": "api/r17e-closure-browser-ci.json",
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "total": 1,
+      "passedSuites": 1,
+      "suites": [
+        {
+          "path": "test/integration/r17-e-closure-browser.integration.spec.ts",
+          "counts": {
+            "passed": 1
+          }
+        }
+      ]
+    },
+    {
+      "artifactId": 12077075202,
+      "report": "api/r17e-closure-ci.json",
+      "passed": 12,
+      "failed": 0,
+      "skipped": 0,
+      "total": 12,
+      "passedSuites": 1,
+      "suites": [
+        {
+          "path": "test/integration/r17-e-closure.integration.spec.ts",
+          "counts": {
+            "passed": 12
+          }
+        }
+      ]
+    },
+    {
+      "artifactId": 12075764331,
+      "report": "api/r17d-admin-browser-ci.json",
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "total": 1,
+      "passedSuites": 1,
+      "suites": [
+        {
+          "path": "test/integration/r17-admin-operations-browser.integration.spec.ts",
+          "counts": {
+            "passed": 1
+          }
+        }
+      ]
+    },
+    {
+      "artifactId": 12075764331,
+      "report": "api/r17d-admin-ci.json",
+      "passed": 13,
+      "failed": 0,
+      "skipped": 0,
+      "total": 13,
+      "passedSuites": 1,
+      "suites": [
+        {
+          "path": "test/integration/r17-admin-operations.integration.spec.ts",
+          "counts": {
+            "passed": 13
+          }
+        }
+      ]
+    },
+    {
+      "artifactId": 12076485876,
+      "report": "api/r17c-disputes-browser-ci.json",
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "total": 1,
+      "passedSuites": 1,
+      "suites": [
+        {
+          "path": "test/integration/r17-dispute-legacy-browser.integration.spec.ts",
+          "counts": {
+            "passed": 1
+          }
+        }
+      ]
+    },
+    {
+      "artifactId": 12076485876,
+      "report": "api/r17c-disputes-ci.json",
+      "passed": 22,
+      "failed": 0,
+      "skipped": 0,
+      "total": 22,
+      "passedSuites": 2,
+      "suites": [
+        {
+          "path": "test/integration/r17-disputes.integration.spec.ts",
+          "counts": {
+            "passed": 15
+          }
+        },
+        {
+          "path": "test/integration/r17-dispute-legacy-http.integration.spec.ts",
+          "counts": {
+            "passed": 7
+          }
+        }
+      ]
+    },
+    {
+      "artifactId": 12076462462,
+      "report": "api/e18-my-bids-browser-ci.json",
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "total": 1,
+      "passedSuites": 1,
+      "suites": [
+        {
+          "path": "test/integration/provider-my-bids-browser.integration.spec.ts",
+          "counts": {
+            "passed": 1
+          }
+        }
+      ]
+    },
+    {
+      "artifactId": 12076462462,
+      "report": "api/e18-my-bids-ci.json",
+      "passed": 6,
+      "failed": 0,
+      "skipped": 0,
+      "total": 6,
+      "passedSuites": 1,
+      "suites": [
+        {
+          "path": "test/integration/provider-my-bids.integration.spec.ts",
+          "counts": {
+            "passed": 6
+          }
         }
       ]
     }
   ],
-  "supplementalIdenticalTreeEvidence": {
-    "headSha": "a93bdf6e5f6d403f6395f4c140fe52ff4ed319c4",
+  "skippedCaseAccounting": {
+    "generalApiInvocationSkipped": 81,
+    "exactNamesPassedInDedicatedReports": 81,
+    "remainingUnproved": [],
+    "method": "Compare every skipped assertion fullName with a passed assertion fullName in downloaded dedicated reports from the same merged-source workflow. Skips are not counted as passes."
+  },
+  "alertEvidence": {
+    "runId": 38964502500,
+    "artifactId": 12074741275,
+    "sourceSha": "a93bdf6e5f6d403f6395f4c140fe52ff4ed319c4",
     "treeSha": "109b514fe9833a9aac3e8caecd7f9b14d4f61b3b",
-    "officialCodeQL": {
-      "id": 117188663161,
-      "app": "github-advanced-security",
-      "conclusion": "success",
-      "annotations": 0
-    },
-    "alertRun": 38964502500,
-    "nativeRecoveryRun": 38964502569,
-    "note": "PR/dispatch-only evidence on the identical complete tree; not represented as post-merge reruns or a repository-wide finding inventory."
+    "digest": "62791a4b047bb6ef36d20080ed00e594375082e4ecf87edb4a981d28f128a34a",
+    "evidenceClass": "PRE_MERGE_IDENTICAL_FULL_TREE",
+    "qualification": "This workflow is PR/path-filtered. It did not rerun on the merge commit. Both complete Git trees are identical; producer and protected-worker-metric tests reran on the merge commit.",
+    "passed": true,
+    "alertRules": 16,
+    "dashboardQueries": 27,
+    "notificationStates": ["firing", "resolved"]
   },
-  "browser": {
-    "jobId": 117203387871,
-    "passed": 836,
-    "failed": 0,
-    "skipped": 349,
-    "setupPassed": 6,
-    "note": "Existing flag-gated skips in the main invocation remain visible; real-route and visual jobs run independently."
+  "codeql": {
+    "mergedSourceAnalysis": "success",
+    "identicalTreePrSecurityCheckId": 117188663161,
+    "identicalTreePrSecuritySource": "a93bdf6e5f6d403f6395f4c140fe52ff4ed319c4",
+    "conclusion": "success",
+    "annotations": 0,
+    "scope": "No new alerts in changed code; not a claim of an empty repository-wide alert inventory."
   },
-  "declaredEnvironment": {
-    "workflowBlobSha": "85db93094b2b303669afd1602c416139ae805efe",
+  "environment": {
     "node": "24.21.0",
     "pnpm": "10.32.1",
-    "prisma": "6.12.0",
-    "postgres": "postgres:16-alpine",
-    "redis": "redis:7-alpine",
-    "smtp": "axllent/mailpit:latest",
-    "scanner": "clamav/clamav:stable",
-    "minio": "Built by versioned scripts/ci/install-minio-fixture.sh from this exact source",
-    "mc": "Built by versioned scripts/ci/install-minio-client-fixture.sh from this exact source",
-    "go": "1.24.8",
-    "requiredSwitches": [
-      "RUN_DB_INTEGRATION=1",
-      "RUN_REDIS_INTEGRATION=1",
-      "R21_MAILPIT_SMTP_PORT=1025",
-      "R21_MAILPIT_API_URL=http://127.0.0.1:8025",
-      "RUN_R22_WORKER_PROCESS=1 (dedicated step)",
-      "RUN_R20_STORAGE_INTEGRATION=1 (dedicated step)",
-      "RUN_RETENTION_INTEGRATION=1"
-    ],
-    "secrets": "Disposable, excluded; no credential/session/document values in this record",
-    "scope": "Declared disposable fixture configuration, not hosted target attestation"
+    "runtime": "GitHub Actions disposable Linux PostgreSQL/Redis/Mailpit/S3/ClamAV jobs, configured by the immutable workflow",
+    "ciWorkflowSha256": "5211d77afcd1b38c3115fd833dbd5bbb651defd030456c83dc57145906818a56",
+    "lockfileSha256": "724b826ea09da6e070f4721a30f5dd9145a333606fac124e0249b5ef7fe18222",
+    "secrets": "No credentials, raw environment, traces or private media copied into this record."
   },
-  "limits": {
-    "gatePublication": "PENDING_OWNER_REVIEW_AND_MERGE",
-    "wave2Started": false,
-    "mergePerformed": false,
-    "deploymentPerformed": false,
-    "developProtected": false,
-    "repositoryWideAlertInventory": "NOT_RECONCILED; R26/security owner",
-    "hostedAcceptance": false
+  "localVerification": {
+    "frozenInstall": "pnpm install --frozen-lockfile: exit 0; normal prepare and Husky setup ran",
+    "baselineGovernance": {
+      "command": "node --test .github/scripts/*.test.mjs",
+      "passed": 158,
+      "failed": 0,
+      "skipped": 0
+    },
+    "existingR27Harness": {
+      "command": "node --test scripts/perf/post-r18/lib/lib.test.mjs",
+      "passed": 17,
+      "failed": 0,
+      "skipped": 0,
+      "scope": "Verification of existing pure utilities only; no R27 performance or integration acceptance."
+    },
+    "finalPublicationChecks": "Exact final local and PR-head results are recorded in the review PR; no self-referential final SHA is embedded here."
   },
-  "declaredEnvironmentFingerprintSha256": "d6fcb82f24362dd1aca5b2ff6e845c5319f9328422c4efcd2a513634e2c13a57"
+  "limits": [
+    "No new manual screenshot inspection, hosted measurement, production load or release acceptance.",
+    "The existing general Playwright invocation has separately documented flag-gated skips; no new skips were introduced.",
+    "Owner merge of this separate record and publication identity verification remain required before starting Wave 2."
+  ]
 }
