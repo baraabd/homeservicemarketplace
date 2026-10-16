@@ -23,7 +23,7 @@ function job(source, name) {
   const header = source.match(new RegExp(`^  ${name}:\\n`, 'm'));
   assert.ok(header, `Missing CI job: ${name}`);
   const body = source.slice(header.index + header[0].length);
-  const next = body.search(/^  [a-z][a-z0-9-]*:\n/m);
+  const next = body.search(/^ {2}[a-z][a-z0-9-]*:\n/m);
   return next === -1 ? body : body.slice(0, next);
 }
 
@@ -53,7 +53,7 @@ for (const [field, type, relation] of inverseFields) {
 }
 
 test('SupportModule and LedgerModule are both in the root module imports', () => {
-  const imports = app.match(/imports:\s*\[([\s\S]*?)\n  \],/);
+  const imports = app.match(/imports:\s*\[([\s\S]*?)\n {2}\],/);
   assert.ok(imports, 'Root module imports must be identifiable');
   for (const name of ['SupportModule', 'LedgerModule']) {
     assert.match(imports[1], new RegExp(`^\\s*${name},`, 'm'));
@@ -94,7 +94,7 @@ test('migration inventory preserves both support and ledger ownership', () => {
 
 test('startup uses explicit fail-fast bash on both operating systems', () => {
   assert.match(workflow, /os: \[ubuntu-latest, windows-latest\]/);
-  assert.match(workflow, /    defaults:\n      run:\n        shell: bash\n/);
+  assert.match(workflow, / {4}defaults:\n {6}run:\n {8}shell: bash\n/);
   assert.doesNotMatch(
     workflow.split('    steps:')[1],
     /^ {8}shell:/m,
@@ -143,7 +143,7 @@ test('startup shell refuses an upstream pipeline failure', () => {
 
 test('CI retains the actual R12, R13 and R14 real-browser journeys', () => {
   const ci = job(read('.github/workflows/ci.yml'), 'phase5-real-api');
-  const steps = ci.split(/^      - /m);
+  const steps = ci.split(/^ {6}- /m);
   for (const [spec, artifact] of [
     ['r12-booking-communication.real-api.spec.ts', 'r12-booking-communication-evidence'],
     ['r13-support.real-api.spec.ts', 'r13-support-evidence'],
@@ -174,11 +174,14 @@ test('real PostgreSQL integration keeps the complete current API suite enabled',
   const integration = job(read('.github/workflows/ci.yml'), 'integration-e2e');
   assert.match(integration, /RUN_DB_INTEGRATION: '1'/);
   assert.match(integration, /pnpm --filter @homeservicemarketplace\/database migrate:deploy/);
-  assert.match(integration, /run: pnpm --filter @homeservicemarketplace\/api test\s*\n/);
+  assert.match(
+    integration,
+    /run: pnpm --filter @homeservicemarketplace\/api test --json --outputFile=g1-api-report\.json\s*\n/,
+  );
   assert.match(integration, /uses: actions\/checkout@/);
   assert.doesNotMatch(
     integration,
-    /^          ref: '[a-f0-9]{40}'/m,
+    /^ {10}ref: '[a-f0-9]{40}'/m,
     'Integration must not validate a historical pinned source',
   );
 });

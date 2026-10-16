@@ -74,6 +74,7 @@ export function putAvatarBytes(
     // The presigned URL was issued for THIS exact content type; both backends
     // reject a PUT whose header disagrees with the signed value.
     xhr.setRequestHeader('Content-Type', blob.type);
+    xhr.setRequestHeader('If-None-Match', '*');
 
     xhr.upload.onprogress = (event) => {
       if (!event.lengthComputable) return;

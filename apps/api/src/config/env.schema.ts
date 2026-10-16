@@ -12,7 +12,6 @@ const baseEnvSchema = z.object({
   // No default key and no public rollout: private collaboration is explicitly configured.
   DISPUTE_PRIVATE_ACTIVE_KEY: z.string().default(''),
   DISPUTE_PRIVATE_KEYS_JSON: z.string().default(''),
-  DISPUTE_WORKER_ENABLED: trueish.default(false),
   DISPUTE_WORKER_INTERVAL_MS: z.coerce.number().int().min(1000).max(3600000).default(30000),
   NODE_ENV: nodeEnv.default('development'),
   APP_ENV: z.enum(['dev', 'test', 'staging', 'prod']).default('dev'),
@@ -89,6 +88,9 @@ const baseEnvSchema = z.object({
   // so the event runs twice concurrently (survivable — the idempotency marker
   // catches it — but wasted work).
   OUTBOX_CLAIM_TIMEOUT_MS: z.coerce.number().int().positive().default(120_000),
+  OUTBOX_DELIVERY_TX_TIMEOUT_MS: z.coerce.number().int().min(1_000).max(120_000).default(15_000),
+  OUTBOX_DELIVERY_DEADLINE_MS: z.coerce.number().int().min(1_000).max(180_000).default(20_000),
+  OUTBOX_SHUTDOWN_GRACE_MS: z.coerce.number().int().min(0).max(120_000).default(20_000),
   OUTBOX_RETRY_BASE_MS: z.coerce.number().int().positive().default(1_000),
   OUTBOX_RETRY_CAP_MS: z.coerce.number().int().positive().default(300_000),
   // How long PROCESSED rows are kept before the cleanup job reaps them. They
@@ -330,6 +332,10 @@ const baseEnvSchema = z.object({
   // production the endpoint stops existing (404) rather than serving to
   // anyone who asks. Health probes are unaffected — they live on
   // /health/live and /health/ready and are never gated by this.
+  OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: z.string().url().optional(),
+  OTEL_EXPORTER_OTLP_HEADERS: z.string().max(8192).optional(),
+  OTEL_TRACES_SAMPLER_RATIO: z.coerce.number().min(0).max(1).default(0),
+  OTEL_SPAN_QUEUE_MAX: z.coerce.number().int().min(1).max(65_536).default(2048),
   METRICS_TOKEN: z.string().min(16).optional(),
 
   // Rate-limit counters live in Redis so the budget is shared across API
@@ -482,6 +488,37 @@ const baseEnvSchema = z.object({
 // onto the object literal: chaining re-indents all 200+ lines of the object
 // and buries a four-line behaviour change in a whole-file diff.
 export const envSchema = baseEnvSchema.superRefine((env, ctx) => {
+  const issue = (path: string, message: string) =>
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: [path], message });
+  if (env.OUTBOX_DELIVERY_DEADLINE_MS <= env.OUTBOX_DELIVERY_TX_TIMEOUT_MS)
+    issue('OUTBOX_DELIVERY_DEADLINE_MS', 'Must exceed the delivery transaction timeout');
+  if (env.OUTBOX_DELIVERY_TX_TIMEOUT_MS >= env.OUTBOX_CLAIM_TIMEOUT_MS)
+    issue('OUTBOX_CLAIM_TIMEOUT_MS', 'Must exceed the delivery transaction timeout');
+  const endpoint = env.OTEL_EXPORTER_OTLP_TRACES_ENDPOINT;
+  if (endpoint && URL.canParse(endpoint)) {
+    const url = new URL(endpoint);
+    if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password || url.hash)
+      issue(
+        'OTEL_EXPORTER_OTLP_TRACES_ENDPOINT',
+        'Requires an HTTP(S) endpoint without userinfo or fragment',
+      );
+    if (env.NODE_ENV === 'production' && url.protocol !== 'https:')
+      issue('OTEL_EXPORTER_OTLP_TRACES_ENDPOINT', 'Production export requires HTTPS');
+  }
+  if (env.OTEL_EXPORTER_OTLP_HEADERS) {
+    if (!endpoint) issue('OTEL_EXPORTER_OTLP_HEADERS', 'Requires an export endpoint');
+    const names = new Set<string>();
+    for (const pair of env.OTEL_EXPORTER_OTLP_HEADERS.split(',')) {
+      const match = /^([!#$%&'*+.^_`|~0-9A-Za-z-]+)=([^\r\n]+)$/.exec(pair.trim());
+      if (
+        !match ||
+        ['host', 'content-length', 'connection', '__proto__'].includes(match[1].toLowerCase()) ||
+        names.has(match[1].toLowerCase())
+      ) {
+        issue('OTEL_EXPORTER_OTLP_HEADERS', 'Requires unique valid header assignments');
+      } else names.add(match[1].toLowerCase());
+    }
+  }
   if (env.MONGODB_ENABLED && !env.MONGODB_URI) {
     ctx.addIssue({
       code: z.ZodIssueCode.custom,

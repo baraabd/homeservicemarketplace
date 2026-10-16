@@ -138,6 +138,10 @@ const SYSTEM_ROLES: RoleSpec[] = [
 ];
 
 const PERMISSIONS: PermissionSpec[] = [
+  {
+    key: 'outbox:replay',
+    description: 'Replay dead-lettered outbox events (audited, rate-limited)',
+  },
   { key: 'portfolio:read', description: 'Read provider portfolio submissions for review' },
   { key: 'portfolio:review', description: 'Approve or reject provider portfolio publication' },
   { key: 'reviews:read', description: 'Read customer reviews of bookings for moderation' },
@@ -190,7 +194,8 @@ const PERMISSIONS: PermissionSpec[] = [
 const ROLE_PERMISSIONS: Record<string, string[]> = {
   customer: ['user:read:self', 'user:write:self'],
   provider: ['user:read:self', 'user:write:self'],
-  admin: PERMISSIONS.map((p) => p.key),
+  // Operator replay is registered, never automatically granted (G1/R22).
+  admin: PERMISSIONS.filter((p) => p.key !== 'outbox:replay').map((p) => p.key),
 };
 
 async function upsertRoles(tx: Prisma.TransactionClient): Promise<Map<string, string>> {

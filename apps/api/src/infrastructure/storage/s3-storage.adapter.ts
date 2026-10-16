@@ -1,7 +1,10 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { instrumentStorage } from './storage-telemetry';
+import { TelemetryService } from '../telemetry/telemetry.service';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import {
   DeleteObjectCommand,
   GetObjectCommand,
+  HeadBucketCommand,
   GetPublicAccessBlockCommand,
   GetBucketPolicyStatusCommand,
   PutObjectCommand,
@@ -13,7 +16,6 @@ import type { Readable } from 'node:stream';
 import { AppConfigService } from '../../config/app-config.service';
 import { PresignUploadInput, PresignedUpload, StoragePort } from './storage.port';
 import { isStagedPortfolioKey } from './portfolio-storage-policy';
-import { isRequestAttachmentKey } from './request-attachment-storage-policy';
 import { S3BucketRootGuard } from './s3-storage-root';
 import {
   StorageFaultError,
@@ -50,7 +52,10 @@ export class S3StorageAdapter extends StoragePort {
   /** R20 — refuses a bucket marked for another namespace (storage-root.ts). */
   private readonly root = new S3BucketRootGuard(() => this.client);
 
-  constructor(private readonly config: AppConfigService) {
+  constructor(
+    private readonly config: AppConfigService,
+    @Optional() telemetry?: TelemetryService,
+  ) {
     super();
     const endpoint = this.config.get('S3_ENDPOINT');
     this.client = new S3Client({
@@ -74,6 +79,16 @@ export class S3StorageAdapter extends StoragePort {
           }
         : {}),
     });
+    instrumentStorage(this.client, telemetry);
+  }
+
+  async headBuckets(signal: AbortSignal): Promise<void> {
+    const buckets = ['S3_BUCKET', 'S3_PORTFOLIO_BUCKET', 'S3_RESTRICTED_BUCKET'] as const;
+    for (const key of buckets) {
+      const bucket = this.config.get(key);
+      if (bucket)
+        await this.client.send(new HeadBucketCommand({ Bucket: bucket }), { abortSignal: signal });
+    }
   }
 
   async presignUpload(input: PresignUploadInput): Promise<PresignedUpload> {
@@ -94,11 +109,8 @@ export class S3StorageAdapter extends StoragePort {
       Key: input.key,
       ContentType: input.contentType,
       ContentLength: input.sizeBytes,
-      // R06 — request attachments are write-once as well: the signed URL
-      // outlives finalization, so an overwrite after verification must fail.
-      ...(isStagedPortfolioKey(input.key) || isRequestAttachmentKey(input.key)
-        ? { IfNoneMatch: '*' }
-        : {}),
+      // Every minted key is unique. Replays must never replace finalized bytes.
+      IfNoneMatch: '*',
     });
     // R20 — `content-type` must be SIGNED. By default the presigner signs only
     // host, content-length and if-none-match, so the browser could store any

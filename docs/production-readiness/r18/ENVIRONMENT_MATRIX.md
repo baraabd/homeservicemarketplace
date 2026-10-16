@@ -32,3 +32,29 @@ No new vendor is selected here. `infra/production/STAGING.md` is the
 supported topology: an operator-managed rollout onto an already authorized
 target. Until the owner supplies that target, every hosted row is
 `HOSTED_ENVIRONMENT_BLOCKED`.
+
+## G1 source correction (2026-10-16; no hosted acceptance)
+
+The dated environment inventory above is historical. The G1 corrective source
+adds the following runtime configuration; it provisions no hosted dependency.
+
+| Configuration                        | Default | Validation / behavior                                                      |
+| ------------------------------------ | ------- | -------------------------------------------------------------------------- |
+| `OUTBOX_DELIVERY_TX_TIMEOUT_MS`      | 15000   | integer 1000–120000; below claim timeout                                   |
+| `OUTBOX_DELIVERY_DEADLINE_MS`        | 20000   | integer 1000–180000; above transaction timeout                             |
+| `OUTBOX_SHUTDOWN_GRACE_MS`           | 20000   | integer 0–120000                                                           |
+| `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` | unset   | export off; HTTP(S), no userinfo/fragment, production requires HTTPS       |
+| `OTEL_EXPORTER_OTLP_HEADERS`         | unset   | secret; endpoint required; bounded unique header assignments; never logged |
+| `OTEL_TRACES_SAMPLER_RATIO`          | 0       | number in [0,1]                                                            |
+| `OTEL_SPAN_QUEUE_MAX`                | 2048    | integer 1–65536; bounded loss on collector outage                          |
+
+API diagnostics check configured SMTP, S3 buckets and ClamAV every 60 seconds,
+with a 3-second deadline, abort signals and no overlapping runs. Only the
+existing bearer-protected metrics expose dependency status. Liveness and
+readiness keep their existing scope. No payment adapter means no misleading
+payment-UP metric. Standalone workers expose their generic job metrics through
+their existing protected endpoints; no new exporter is enabled there.
+
+`DISPUTE_WORKER_ENABLED` was inert and is removed from the API schema; the
+standalone dispute worker remains controlled by its actual process and worker
+configuration. The historical R18 inventory is not a live configuration list.

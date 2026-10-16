@@ -482,6 +482,8 @@ model Message {
 }
 
 model Notification {
+  /// Internal domain event identity. Replay preserves read/deleted state.
+  dedupeKey String? @unique
   id           String                    @id @default(cuid())
   userId       String
   type         NotificationType
@@ -1030,6 +1032,8 @@ enum TokenPurpose {
 }
 
 enum AuditEventType {
+  /// G1/R22: audited operator replay; grants no permissions.
+  OUTBOX_DEAD_LETTER_REPLAYED
   MONEY_LEDGER_POSTED
   MONEY_LEDGER_REVERSED
   DISPUTE_PRIVATE_RETENTION

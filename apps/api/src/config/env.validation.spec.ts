@@ -445,3 +445,44 @@ describe('validateEnv', () => {
     });
   });
 });
+
+describe('G1 outbox deadlines and default-off trace export', () => {
+  it('defaults to bounded outbox execution and disabled export', () => {
+    const env = validateEnv(baseEnv);
+    expect(env.OUTBOX_DELIVERY_TX_TIMEOUT_MS).toBe(15000);
+    expect(env.OUTBOX_DELIVERY_DEADLINE_MS).toBe(20000);
+    expect(env.OUTBOX_SHUTDOWN_GRACE_MS).toBe(20000);
+    expect(env.OTEL_EXPORTER_OTLP_TRACES_ENDPOINT).toBeUndefined();
+    expect(env.OTEL_TRACES_SAMPLER_RATIO).toBe(0);
+  });
+  it.each([
+    { OUTBOX_DELIVERY_TX_TIMEOUT_MS: '0' },
+    { OUTBOX_DELIVERY_DEADLINE_MS: '15000' },
+    { OUTBOX_CLAIM_TIMEOUT_MS: '10000' },
+    { OUTBOX_SHUTDOWN_GRACE_MS: '-1' },
+    { OTEL_TRACES_SAMPLER_RATIO: '1.1' },
+    { OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: 'not-a-url' },
+    { OTEL_TRACES_SAMPLER_RATIO: '-0.1' },
+    { OTEL_SPAN_QUEUE_MAX: '65537' },
+    { OTEL_EXPORTER_OTLP_HEADERS: 'x-observe=value' },
+    { OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: 'https://user@collector.test' },
+    { OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: 'ftp://collector.test' },
+    {
+      OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: 'https://collector.test',
+      OTEL_EXPORTER_OTLP_HEADERS: 'host=untrusted',
+    },
+    {
+      OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: 'https://collector.test',
+      OTEL_EXPORTER_OTLP_HEADERS: 'x-test=one,X-Test=two',
+    },
+  ])('refuses invalid security-sensitive settings %j', (over) => {
+    expect(() => validateEnv({ ...baseEnv, ...over })).toThrow();
+  });
+  it('permits a local test collector but requires HTTPS in production', () => {
+    const settings = { ...baseEnv, OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: 'http://127.0.0.1:4318' };
+    expect(validateEnv(settings).OTEL_EXPORTER_OTLP_TRACES_ENDPOINT).toBe(
+      settings.OTEL_EXPORTER_OTLP_TRACES_ENDPOINT,
+    );
+    expect(() => validateEnv({ ...settings, NODE_ENV: 'production' })).toThrow(/OTEL_EXPORTER/);
+  });
+});

@@ -1,3 +1,4 @@
+import { TelemetryBootstrap } from './telemetry-bootstrap.service';
 import { Global, MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
 
 import { HttpTelemetryMiddleware } from './http-telemetry.middleware';
@@ -9,7 +10,13 @@ import { TelemetryService } from './telemetry.service';
 @Global()
 @Module({
   controllers: [MetricsController],
-  providers: [MetricsService, MetricsAccessGuard, TelemetryService, HttpTelemetryMiddleware],
+  providers: [
+    TelemetryBootstrap,
+    MetricsService,
+    MetricsAccessGuard,
+    TelemetryService,
+    HttpTelemetryMiddleware,
+  ],
   exports: [MetricsService, TelemetryService],
 })
 export class MetricsModule implements NestModule {

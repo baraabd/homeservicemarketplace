@@ -175,7 +175,7 @@ describe('seedWithTx (unit)', () => {
     expect(keys.length).toBeGreaterThanOrEqual(8);
   });
 
-  it('wires admin to every permission and end-users to self-only', async () => {
+  it('wires admin to ordinary permissions, leaves replay ungranted, and end-users self-only', async () => {
     const tx = makeFakeTx();
     await seedWithTx(tx as never);
     const adminId = tx._rolesByName.get('admin')!.id;
@@ -190,7 +190,12 @@ describe('seedWithTx (unit)', () => {
       p.includes(`"roleId":"${providerId}"`),
     );
 
-    expect(adminPairs.length).toBe(tx._permsByKey.size);
+    const replayId = tx._permsByKey.get('outbox:replay')!.id;
+    expect(replayId).toBeDefined();
+    expect(
+      [...tx._rolePermPairs].some((pair) => pair.includes(`"permissionId":"${replayId}"`)),
+    ).toBe(false);
+    expect(adminPairs.length).toBe(tx._permsByKey.size - 1);
     expect(customerPairs.length).toBe(2);
     expect(providerPairs.length).toBe(2);
   });

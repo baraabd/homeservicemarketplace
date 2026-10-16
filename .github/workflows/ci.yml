@@ -88,7 +88,14 @@ jobs:
         options: >-
           --health-cmd "redis-cli ping"
           --health-interval 10s --health-timeout 5s --health-retries 10
+      mailpit:
+        image: axllent/mailpit:latest
+        env:
+          MP_SMTP_DISABLE_RDNS: 'true'
+        ports: ['1025:1025', '8025:8025']
     env:
+      R21_MAILPIT_SMTP_PORT: '1025'
+      R21_MAILPIT_API_URL: http://127.0.0.1:8025
       DATABASE_URL: postgresql://postgres:postgres@localhost:5432/homeservicemarketplace
       REDIS_HOST: localhost
       REDIS_PORT: '6379'
@@ -189,7 +196,29 @@ jobs:
         # which is the isolation this needs.
         run: pnpm --filter @homeservicemarketplace/database verify:migrations
       - name: Run the API suite with the DB- and Redis-gated specs ENABLED
-        run: pnpm --filter @homeservicemarketplace/api test
+        run: pnpm --filter @homeservicemarketplace/api test --json --outputFile=g1-api-report.json
+      - name: Build API for independent worker evidence
+        id: g1-worker-build
+        # Keep independent evidence running after an API assertion fails.
+        # The original failure still fails this job; no continue-on-error.
+        if: ${{ !cancelled() }}
+        run: pnpm --filter @homeservicemarketplace/api build
+      - name: R22 independent worker crash and SIGTERM recovery
+        if: ${{ !cancelled() && steps.g1-worker-build.outcome == 'success' }}
+        env:
+          RUN_R22_WORKER_PROCESS: '1'
+        run: pnpm --filter @homeservicemarketplace/api exec jest --runInBand --testPathPatterns=r22-outbox-process --json --outputFile=r22-process-report.json
+      - name: Retain G1 worker evidence
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: g1-worker-process-evidence
+          path: |
+            apps/api/r22-process-report.json
+            apps/api/g1-api-report.json
+          if-no-files-found: error
+      - name: G1 worker CLI and evidence wiring regressions
+        run: node --test scripts/production/workers/outbox-replay.test.cjs .github/scripts/g1-runtime-evidence.test.mjs
       - name: Upload API logs on failure
         if: failure()
         uses: actions/upload-artifact@v6
@@ -1634,6 +1663,8 @@ jobs:
         # public Go checksum database. The helper retries only recognized network
         # transport failures; compilation/checksum failures stop immediately.
         run: bash scripts/ci/install-minio-fixture.sh "$RUNNER_TEMP/retention-bin"
+      - name: Build the pinned least-privilege test client
+        run: bash scripts/ci/install-minio-client-fixture.sh "$RUNNER_TEMP/retention-bin"
       - name: Start storage and verify both services actually answer
         run: |
           MINIO_ROOT_USER="$RETENTION_TEST_S3_USER" MINIO_ROOT_PASSWORD="$RETENTION_TEST_S3_SECRET" \
@@ -1666,6 +1697,26 @@ jobs:
           pnpm --filter @homeservicemarketplace/api exec jest \
             --runInBand --testPathPatterns=evidence-retention.integration \
             --json --outputFile=retention-ci-report.json
+      - name: G1 R20 storage plan invariants
+        run: |
+          node scripts/production/storage/storage-plan.cjs --check
+          node --test scripts/production/storage/storage-plan.test.cjs scripts/production/storage/storage-cli.test.cjs
+      - name: G1 R20 real storage and authorization acceptance
+        env:
+          RUN_DB_INTEGRATION: '1'
+          RUN_R20_STORAGE_INTEGRATION: '1'
+          R20_S3_ENDPOINT: http://127.0.0.1:19000
+          R20_S3_ROOT_USER: ${{ env.RETENTION_TEST_S3_USER }}
+          R20_S3_ROOT_SECRET: ${{ env.RETENTION_TEST_S3_SECRET }}
+          R20_MC: ${{ runner.temp }}/retention-bin/mc
+        run: pnpm --filter @homeservicemarketplace/api exec jest --runInBand --testPathPatterns=r20-storage --json --outputFile=r20-storage-report.json
+      - name: Retain G1 storage evidence
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: g1-storage-evidence
+          path: apps/api/r20-storage-report.json
+          if-no-files-found: error
       - name: Retain synthetic test evidence
         if: always()
         uses: actions/upload-artifact@v6

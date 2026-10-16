@@ -524,7 +524,11 @@ integration.each(['local', 's3'] as const)(
           headers: { Authorization: `Bearer ${token}` },
         });
         expect(metrics.status).toBe(200);
-        expect(await metrics.text()).toContain('evidence_retention_jobs');
+        const scrape = await metrics.text();
+        expect(scrape).toContain('evidence_retention_jobs');
+        expect(scrape).toMatch(
+          /background_job_runs_total\{job_name="evidence.retention",outcome="success"\} [1-9]/,
+        );
         expect(output).not.toContain('sensitive-synthetic');
         expect(output).not.toContain(key);
         child.kill('SIGTERM');
