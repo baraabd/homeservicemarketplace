@@ -1,3 +1,4 @@
+import { TelemetryService } from '../telemetry/telemetry.service';
 import { Module } from '@nestjs/common';
 
 import { AppConfigService } from '../../config/app-config.service';
@@ -13,19 +14,21 @@ import {
 export async function selectPublicStorage(
   config: AppConfigService,
   local: LocalDiskStorageAdapter,
+  telemetry?: TelemetryService,
 ): Promise<StoragePort> {
   if (config.get('STORAGE_DRIVER') !== 's3') return local;
   const { S3StorageAdapter } = await import('./s3-storage.adapter');
-  return new S3StorageAdapter(config);
+  return new S3StorageAdapter(config, telemetry);
 }
 
 export async function selectRestrictedStorage(
   config: AppConfigService,
   local: LocalDiskRestrictedStorageAdapter,
+  telemetry?: TelemetryService,
 ): Promise<RestrictedObjectStoragePort> {
   if (config.get('STORAGE_DRIVER') !== 's3') return local;
   const { S3RestrictedStorageAdapter } = await import('./s3-restricted-storage.adapter');
-  return new S3RestrictedStorageAdapter(config);
+  return new S3RestrictedStorageAdapter(config, telemetry);
 }
 
 // Env-gated storage adapter selection. Mirrors the MailModule pattern
@@ -62,12 +65,20 @@ export async function selectRestrictedStorage(
     LocalDiskRestrictedStorageAdapter,
     {
       provide: STORAGE_PORT,
-      inject: [AppConfigService, LocalDiskStorageAdapter],
+      inject: [
+        AppConfigService,
+        LocalDiskStorageAdapter,
+        { token: TelemetryService, optional: true },
+      ],
       useFactory: selectPublicStorage,
     },
     {
       provide: RESTRICTED_OBJECT_STORAGE,
-      inject: [AppConfigService, LocalDiskRestrictedStorageAdapter],
+      inject: [
+        AppConfigService,
+        LocalDiskRestrictedStorageAdapter,
+        { token: TelemetryService, optional: true },
+      ],
       useFactory: selectRestrictedStorage,
     },
   ],

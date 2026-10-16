@@ -1,4 +1,5 @@
-import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import { TelemetryService } from '../telemetry/telemetry.service';
+import { Injectable, Logger, OnModuleInit, Optional } from '@nestjs/common';
 import { createTransport, type Transporter } from 'nodemailer';
 import type SMTPTransport from 'nodemailer/lib/smtp-transport';
 
@@ -11,7 +12,10 @@ export class NodemailerMailAdapter extends MailPort implements OnModuleInit {
   private readonly logger = new Logger(NodemailerMailAdapter.name);
   private transporter!: Transporter<SMTPTransport.SentMessageInfo>;
 
-  constructor(private readonly config: AppConfigService) {
+  constructor(
+    private readonly config: AppConfigService,
+    @Optional() private readonly telemetry?: TelemetryService,
+  ) {
     super();
   }
 
@@ -40,17 +44,49 @@ export class NodemailerMailAdapter extends MailPort implements OnModuleInit {
     this.logger.log({ msg: 'smtp.configured', host, port, secure });
   }
 
+  async verify(signal: AbortSignal): Promise<void> {
+    // A separate bounded connection: cancelling a diagnostic never closes a real send.
+    const user = this.config.get('SMTP_USER');
+    const pass = this.config.get('SMTP_PASS');
+    const secure = this.config.get('SMTP_SECURE');
+    const probe = createTransport({
+      host: this.config.get('SMTP_HOST'),
+      port: this.config.get('SMTP_PORT'),
+      secure,
+      requireTLS: this.config.isProduction && !secure,
+      ...(this.config.isProduction ? { tls: { rejectUnauthorized: true } } : {}),
+      ...(user && pass ? { auth: { user, pass } } : {}),
+      connectionTimeout: 3000,
+      greetingTimeout: 3000,
+      socketTimeout: 3000,
+    });
+    const abort = () => probe.close();
+    signal.throwIfAborted();
+    signal.addEventListener('abort', abort, { once: true });
+    try {
+      await probe.verify();
+    } finally {
+      signal.removeEventListener('abort', abort);
+      probe.close();
+    }
+  }
+
   async send(message: MailMessage): Promise<MailSendResult> {
     const from = this.config.get('SMTP_FROM');
 
-    const info = await this.transporter.sendMail({
-      from,
-      to: message.to,
-      subject: message.subject,
-      text: message.text,
-      ...(message.html ? { html: message.html } : {}),
-      ...(message.messageId ? { messageId: message.messageId } : {}),
-    });
+    const send = () =>
+      this.transporter.sendMail({
+        from,
+        to: message.to,
+        subject: message.subject,
+        text: message.text,
+        ...(message.html ? { html: message.html } : {}),
+        ...(message.messageId ? { messageId: message.messageId } : {}),
+      });
+
+    const info = await (this.telemetry
+      ? this.telemetry.callDependency('smtp', 'send', send)
+      : send());
 
     // Log envelope metadata only — never the body (contains one-time tokens).
     this.logger.log({

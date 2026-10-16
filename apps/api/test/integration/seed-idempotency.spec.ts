@@ -37,6 +37,12 @@ d('seed idempotency (postgres)', () => {
       expect(permsA).toBe(permsB);
       expect(rpA).toBe(rpB);
       expect(rolesA).toBeGreaterThanOrEqual(3);
+      const replayPermission = await db.prisma.permission.findUniqueOrThrow({
+        where: { key: 'outbox:replay' },
+      });
+      expect(
+        await db.prisma.rolePermission.count({ where: { permissionId: replayPermission.id } }),
+      ).toBe(0);
     });
 
     await db.prisma.$disconnect();

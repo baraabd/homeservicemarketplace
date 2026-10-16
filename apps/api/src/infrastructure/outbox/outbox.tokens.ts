@@ -11,6 +11,7 @@ export const OUTBOX_HANDLERS = Symbol('OUTBOX_HANDLERS');
  *  name with no handler, and the worker will dead-letter them. Add new names;
  *  do not repurpose old ones. */
 export const OutboxEventType = {
+  MONEY_SUBSCRIPTION_ACTIVATED: 'money.subscription.activated.v1',
   /** A request was created and should be fanned out to matching providers.
    *  Consumed by the dispatcher, which resolves recipients and emits slices. */
   REQUEST_AVAILABLE: 'request.available',

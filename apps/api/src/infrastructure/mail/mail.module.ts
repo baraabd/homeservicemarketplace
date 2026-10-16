@@ -1,3 +1,4 @@
+import { TelemetryService } from '../telemetry/telemetry.service';
 import { Global, Logger, Module } from '@nestjs/common';
 
 import { AppConfigService } from '../../config/app-config.service';
@@ -27,11 +28,15 @@ import { ProviderStatusEmailHandler } from './provider-status-email.handler';
     InMemoryMailAdapter,
     {
       provide: MAIL_TRANSPORT,
-      inject: [AppConfigService, InMemoryMailAdapter],
-      useFactory: (config: AppConfigService, inMemory: InMemoryMailAdapter): MailPort => {
+      inject: [AppConfigService, InMemoryMailAdapter, { token: TelemetryService, optional: true }],
+      useFactory: (
+        config: AppConfigService,
+        inMemory: InMemoryMailAdapter,
+        telemetry?: TelemetryService,
+      ): MailPort => {
         const log = new Logger('MailModule');
         if (config.get('SMTP_HOST')) {
-          const adapter = new NodemailerMailAdapter(config);
+          const adapter = new NodemailerMailAdapter(config, telemetry);
           // Factory-created instances don't receive NestJS lifecycle hooks,
           // so we call init eagerly here. The transporter setup is synchronous.
           adapter.onModuleInit();

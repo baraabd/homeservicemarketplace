@@ -1,4 +1,5 @@
-import { Injectable } from '@nestjs/common';
+import { TelemetryService } from '../../../../infrastructure/telemetry/telemetry.service';
+import { Injectable, Optional } from '@nestjs/common';
 import { connect, type Socket } from 'node:net';
 
 import { AppConfigService } from '../../../../config/app-config.service';
@@ -46,7 +47,10 @@ export class ClamAvMalwareScanner extends MalwareScannerPort {
   private readonly port: number;
   private readonly timeoutMs: number;
 
-  constructor(config: AppConfigService) {
+  constructor(
+    config: AppConfigService,
+    @Optional() private readonly telemetry?: TelemetryService,
+  ) {
     super();
     const host = (config.get('CLAMAV_HOST') as string | undefined) ?? '';
     if (host.trim() === '') {
@@ -70,13 +74,47 @@ export class ClamAvMalwareScanner extends MalwareScannerPort {
    */
   async scan({ bytes }: { bytes: Uint8Array; assetId: string }): Promise<ScanVerdict> {
     try {
-      const reply = await this.converse(bytes);
+      const reply = await (this.telemetry
+        ? this.telemetry.callDependency('scanner', 'scan', () => this.converse(bytes))
+        : this.converse(bytes));
       return this.interpret(reply);
     } catch (err) {
       // Classify, never describe. `reason` is logged, so it carries no host,
       // no port, no path and nothing derived from the file.
       return { state: 'FAILED', scannerId: this.scannerId, reason: classify(err) };
     }
+  }
+
+  ping(signal: AbortSignal): Promise<string> {
+    return new Promise((resolve, reject) => {
+      if (signal.aborted) {
+        reject(new Error('ScannerDiagnosticAborted'));
+        return;
+      }
+      const socket = connect({ host: this.host, port: this.port });
+      const abort = () => socket.destroy(new Error('ScannerDiagnosticAborted'));
+      signal.addEventListener('abort', abort, { once: true });
+      socket.once('connect', () => socket.write('zPING\0'));
+      socket.setTimeout(3000, () => socket.destroy(new Error('ScannerDiagnosticTimeout')));
+      let reply = '';
+      socket.on('data', (chunk) => {
+        reply += chunk.toString();
+        if (reply.length > 128) {
+          socket.destroy(new Error('ScannerDiagnosticBounds'));
+          return;
+        }
+        if (reply.includes('\0') || reply.includes('\n')) {
+          resolve(reply);
+          socket.destroy();
+        }
+      });
+      socket.once('error', reject);
+      socket.once('close', () => {
+        signal.removeEventListener('abort', abort);
+        if (!reply.includes('\0') && !reply.includes('\n'))
+          reject(new Error('ScannerDiagnosticIncomplete'));
+      });
+    });
   }
 
   private converse(bytes: Uint8Array): Promise<string> {

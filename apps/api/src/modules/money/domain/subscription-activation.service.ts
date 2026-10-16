@@ -1,3 +1,5 @@
+import { OutboxEventType } from '../../../infrastructure/outbox/outbox.tokens';
+import type { SubscriptionActivationPortV1 } from './money-ports.v1';
 import { createHash } from 'node:crypto';
 
 import { Injectable } from '@nestjs/common';
@@ -37,8 +39,8 @@ export const ACTIVATION_SYSTEM_ACTOR: LedgerActor = {
   kind: 'SYSTEM',
   system: 'money.subscription-activation',
 };
-/** Pending outbox registration (r19 shared change request CR-002). */
-export const SUBSCRIPTION_ACTIVATED_EVENT = 'money.subscription.activated.v1';
+/** Stable database event name, registered by the G1 coordinator. */
+export const SUBSCRIPTION_ACTIVATED_EVENT = OutboxEventType.MONEY_SUBSCRIPTION_ACTIVATED;
 
 export interface ConfirmAndActivateCommand {
   idempotencyKey: string;
@@ -128,7 +130,7 @@ function validate(command: ConfirmAndActivateCommand): ConfirmAndActivateCommand
 }
 
 @Injectable()
-export class SubscriptionActivationService {
+export class SubscriptionActivationService implements SubscriptionActivationPortV1 {
   constructor(
     private readonly tx: TransactionRunner,
     private readonly ledger: LedgerService,

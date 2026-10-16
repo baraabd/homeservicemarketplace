@@ -1,4 +1,12 @@
-import { Inject, Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import { TelemetryService } from '../telemetry/telemetry.service';
+import {
+  Inject,
+  Optional,
+  Injectable,
+  Logger,
+  OnModuleDestroy,
+  OnModuleInit,
+} from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
 import type { OutboxEvent } from '@homeservicemarketplace/database';
 
@@ -85,6 +93,7 @@ export class OutboxWorker implements OnModuleInit, OnModuleDestroy {
     private readonly config: AppConfigService,
     private readonly metrics: MetricsService,
     @Inject(OUTBOX_HANDLERS) private readonly handlers: OutboxHandler[],
+    @Optional() private readonly telemetry?: TelemetryService,
   ) {
     // R22 — fail the boot on a registration that would silently lose work
     // (duplicate marker names, a handler that consumes nothing).
@@ -185,7 +194,13 @@ export class OutboxWorker implements OnModuleInit, OnModuleDestroy {
     this.running = true;
     let claimed = 0;
     try {
-      claimed = await this.runOnce();
+      claimed = await (this.telemetry
+        ? this.telemetry.runInstrumentedJob(
+            'outbox.tick',
+            () => this.runOnce(),
+            this.config.get('OTEL_TRACES_SAMPLER_RATIO'),
+          )
+        : this.runOnce());
     } catch (err) {
       // A failure HERE is the loop itself failing (database unreachable), not
       // a handler failing. It must never kill the loop.

@@ -174,6 +174,9 @@ async function eventually<T>(
         const text = await response.text();
         expect(text).toContain('dispute_worker_last_success_unixtime');
         expect(text).toContain('dispute_worker_backlog');
+        expect(text).toMatch(
+          /background_job_runs_total\{job_name="dispute.maintenance",outcome="success"\} [1-9]/,
+        );
         expect(text).not.toContain(bookingId);
         await new Promise((resolve) => setTimeout(resolve, 1200));
         expect(await f.db.disputePrivateDraft.findUnique({ where: { id: before.id } })).toEqual(

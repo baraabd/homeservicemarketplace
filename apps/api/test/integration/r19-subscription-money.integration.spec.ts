@@ -274,6 +274,22 @@ d('R19 - subscription confirmation, ledger posting and periods (real Postgres)',
     // Outbox rows are not money history: remove only this run's activation
     // events before the queue lock is released.
     if (prisma) {
+      const notices = await prisma.notification.findMany({
+        where: {
+          userId: `${PROVIDER}-user`,
+          dedupeKey: { startsWith: 'money.subscription.activated.v1:' },
+        },
+        select: { id: true },
+      });
+      await prisma.outboxEvent.deleteMany({
+        where: {
+          aggregateType: 'Notification',
+          aggregateId: { in: notices.map((row: { id: string }) => row.id) },
+        },
+      });
+      await prisma.notification.deleteMany({
+        where: { id: { in: notices.map((row: { id: string }) => row.id) } },
+      });
       const subscriptions = await prisma.providerSubscription.findMany({
         where: { providerProfileId: { in: [PROVIDER, OTHER_PROVIDER] } },
         select: { id: true },
@@ -338,6 +354,78 @@ d('R19 - subscription confirmation, ledger posting and periods (real Postgres)',
     expect(Object.values(event.payload)).not.toContain('1000');
     expect(Object.values(event.payload)).not.toContain('XTS');
     expect(Object.values(event.payload).every((v) => typeof v === 'string' && v !== '')).toBe(true);
+  });
+
+  it('activation inbox delivery rolls back atomically and survives marker removal without duplicate notices', async () => {
+    const {
+      NotificationsService,
+    } = require('../../src/modules/notifications/notifications.service');
+    const {
+      NotificationRepository,
+    } = require('../../src/infrastructure/persistence/notifications/notification.repository');
+    const {
+      SubscriptionActivatedHandler,
+    } = require('../../src/modules/notifications/subscription-activated.handler');
+    const { OutboxWorker } = require('../../src/infrastructure/outbox/outbox.worker');
+    const { MetricsService } = require('../../src/infrastructure/telemetry/metrics.service');
+    const prismaSvc = { client: prisma };
+    const notice = new SubscriptionActivatedHandler(
+      new NotificationsService(new NotificationRepository(prismaSvc), outbox, {
+        run: (run: any) => prisma.$transaction(run),
+      }),
+    );
+    const failing = {
+      name: 'g1.failure-after-notice.v1',
+      eventTypes: notice.eventTypes,
+      handle: async () => {
+        throw new Error('synthetic rollback after notice');
+      },
+    };
+    const config = { get: () => undefined };
+    const metrics = new MetricsService();
+    const failedWorker = new OutboxWorker(outbox, prismaSvc, config, metrics, [notice, failing]);
+    const worker = new OutboxWorker(outbox, prismaSvc, config, metrics, [notice]);
+    const result = await activation.confirmAndActivate(
+      command(await intent(monthly, 1000n), 1000n),
+    );
+    const dedupeKey = `money.subscription.activated.v1:${result.paymentConfirmationId}`;
+    const event = await prisma.outboxEvent.findUniqueOrThrow({ where: { dedupeKey } });
+    // Scope the lease to our own fixture. The real delivery transaction, marker,
+    // handler, notification repository and lease fence run unchanged; no global drain.
+    const deliver = async (target: any) => {
+      const claimed = await prisma.outboxEvent.update({
+        where: { id: event.id },
+        data: { status: 'PROCESSING', claimedBy: target.id, claimedAt: new Date() },
+      });
+      await target.processEvent(claimed);
+      return prisma.outboxEvent.findUniqueOrThrow({ where: { id: event.id } });
+    };
+    expect((await deliver(failedWorker)).status).toBe('PENDING');
+    expect(await prisma.notification.count({ where: { dedupeKey } })).toBe(0);
+    expect(await prisma.outboxHandlerRun.count({ where: { eventId: event.id } })).toBe(0);
+    expect((await deliver(worker)).status).toBe('PROCESSED');
+    expect((await deliver(worker)).status).toBe('PROCESSED');
+    const stored = await prisma.notification.findUniqueOrThrow({ where: { dedupeKey } });
+    expect(stored.userId).toBe(`${PROVIDER}-user`);
+    expect(stored.deepLink).toBe('/provider/profile');
+    const announcementKey = `notification.created:${stored.id}`;
+    expect(await prisma.outboxEvent.count({ where: { dedupeKey: announcementKey } })).toBe(1);
+    const markedAt = new Date('2026-10-16T00:00:00Z');
+    await prisma.notification.update({
+      where: { id: stored.id },
+      data: { readAt: markedAt, deletedAt: markedAt },
+    });
+    await prisma.outboxHandlerRun.deleteMany({ where: { eventId: event.id } });
+    expect((await deliver(worker)).status).toBe('PROCESSED');
+    expect(await prisma.notification.count({ where: { dedupeKey } })).toBe(1);
+    expect(await prisma.notification.findUnique({ where: { dedupeKey } })).toMatchObject({
+      readAt: markedAt,
+      deletedAt: markedAt,
+    });
+    expect(await prisma.outboxEvent.count({ where: { dedupeKey: announcementKey } })).toBe(1);
+    await prisma.outboxEvent.deleteMany({ where: { dedupeKey: announcementKey } });
+    await prisma.notification.deleteMany({ where: { dedupeKey } });
+    metrics.registry.clear();
   });
 
   it('a replay returns the stored result; an altered payload with the same key changes nothing', async () => {
@@ -780,6 +868,7 @@ d('R19 - subscription confirmation, ledger posting and periods (real Postgres)',
       idempotencyKey: key('comp'),
       currency: 'XTS',
       description: 'R19 partial refund compensation',
+      externalReference: `money.refund:${refund.id}`,
       lines: [
         { accountId: credit, side: 'DEBIT', amountMinor: 300n },
         { accountId: debit, side: 'CREDIT', amountMinor: 300n },
@@ -795,6 +884,49 @@ d('R19 - subscription confirmation, ledger posting and periods (real Postgres)',
         ),
       /compensation_only_when_succeeded/u,
     );
+    // Direct SQL cannot mark success without matching immutable compensation.
+    await refusedByDb(
+      (tx) =>
+        tx.$executeRawUnsafe(
+          `UPDATE "MoneyRefund" SET "status"='SUCCEEDED' WHERE "id"=$1`,
+          refund.id,
+        ),
+      /requires its compensating posting/u,
+    );
+    for (const variant of ['amount', 'accounts', 'direction', 'reference'] as const) {
+      const bad = await ledger.post(SYSTEM, {
+        idempotencyKey: key(`bad-${variant}`),
+        currency: 'XTS',
+        description: 'G1 negative compensation',
+        externalReference: variant === 'reference' ? 'unrelated' : `money.refund:${refund.id}`,
+        lines: [
+          {
+            accountId:
+              variant === 'accounts'
+                ? await account(`wrong-${seq}`, 'XTS')
+                : variant === 'direction'
+                  ? debit
+                  : credit,
+            side: 'DEBIT',
+            amountMinor: variant === 'amount' ? 1n : 300n,
+          },
+          {
+            accountId: variant === 'direction' ? credit : debit,
+            side: 'CREDIT',
+            amountMinor: variant === 'amount' ? 1n : 300n,
+          },
+        ],
+      });
+      await refusedByDb(
+        (tx) =>
+          tx.$executeRawUnsafe(
+            `UPDATE "MoneyRefund" SET "status"='SUCCEEDED', "compensatingLedgerTransactionId"=$1 WHERE "id"=$2`,
+            bad.transaction.id,
+            refund.id,
+          ),
+        /compensation/u,
+      );
+    }
     await prisma.moneyRefund.update({
       where: { id: refund.id },
       data: { status: 'SUCCEEDED', compensatingLedgerTransactionId: compensation.transaction.id },
@@ -841,6 +973,42 @@ d('R19 - subscription confirmation, ledger posting and periods (real Postgres)',
       description: 'R19 full refund reversal',
     });
     expect(reversal.transaction.kind).toBe('REVERSAL');
+    const fullDone = await activation.confirmAndActivate(
+      command(await intent(monthly, 1000n), 1000n),
+    );
+    const fullRefund = await prisma.moneyRefund.create({
+      data: {
+        paymentConfirmationId: fullDone.paymentConfirmationId,
+        amountMinor: 1000n,
+        currency: 'XTS',
+        reasonCode: 'G1_FULL',
+        idempotencyKey: key('full-refund'),
+        requestDigest: 'e'.repeat(64),
+      },
+    });
+    await prisma.moneyRefund.update({
+      where: { id: fullRefund.id },
+      data: { status: 'DISPATCHED' },
+    });
+    await refusedByDb(
+      (tx) =>
+        tx.$executeRawUnsafe(
+          `UPDATE "MoneyRefund" SET "status"='SUCCEEDED', "compensatingLedgerTransactionId"=$1 WHERE "id"=$2`,
+          reversal.transaction.id,
+          fullRefund.id,
+        ),
+      /own full confirmed posting/u,
+    );
+    const fullReversal = await ledger.reverse(SYSTEM, {
+      idempotencyKey: key('full-reversal'),
+      transactionId: fullDone.ledgerTransactionId,
+      description: 'G1 full compensation',
+    });
+    await prisma.moneyRefund.update({
+      where: { id: fullRefund.id },
+      data: { status: 'SUCCEEDED', compensatingLedgerTransactionId: fullReversal.transaction.id },
+    });
+
     const after = await prisma.ledgerTransaction.findUniqueOrThrow({
       where: { id: done.ledgerTransactionId },
       include: { entries: true },

@@ -2,15 +2,8 @@
  * Lazily loaded Prisma client and units; see outbox.integration.spec.ts. */
 // R22 — operator replay of dead letters against REAL Postgres.
 //
-// Execution needs AuditEventType.OUTBOX_DEAD_LETTER_REPLAYED, which is a
-// coordinator-owned migration (shared-change-requests/CR-01). Until it lands:
-//
-//   * by default this suite proves execution REFUSES (fail closed) and that
-//     dry-run, authorization and scoping work;
-//   * with R22_APPLY_CR01_IN_TEST=1, and ONLY against a disposable database,
-//     setup applies CR-01's exact enum statement so the execute path, audit row
-//     and rate limit are exercised for real. ALTER TYPE ... ADD VALUE cannot be
-//     rolled back, which is why it is opt-in and never run on a shared DB.
+// Execution uses the real migration. The missing-audit refusal is injected
+// at the catalog query boundary; no enum or shared database is altered.
 //
 // Locks: `outbox` (queue consumer) then `seed` (the global Permission row this
 // suite creates and removes), in db-isolation's documented order.
@@ -31,7 +24,6 @@ import {
 } from './r22-support/outbox-harness';
 
 const shouldRun = process.env.RUN_DB_INTEGRATION === '1';
-const applyCr01 = process.env.R22_APPLY_CR01_IN_TEST === '1';
 const d = shouldRun ? describe : describe.skip;
 
 jest.setTimeout(120_000);
@@ -94,17 +86,12 @@ d('R22 outbox dead-letter replay (real Postgres)', () => {
     replay = require('../../src/infrastructure/outbox/outbox-replay.service');
     svc = new replay.OutboxReplayService({ client: prisma });
 
-    if (applyCr01) {
-      // CR-01's statement, verbatim. Disposable databases only.
-      await prisma.$executeRawUnsafe(
-        `ALTER TYPE "AuditEventType" ADD VALUE IF NOT EXISTS 'OUTBOX_DEAD_LETTER_REPLAYED'`,
-      );
-    }
     const [{ present }] = await prisma.$queryRawUnsafe(
       `SELECT EXISTS (SELECT 1 FROM pg_enum e JOIN pg_type t ON t.oid = e.enumtypid
          WHERE t.typname = 'AuditEventType' AND e.enumlabel = 'OUTBOX_DEAD_LETTER_REPLAYED') AS present`,
     );
     auditPresent = present;
+    expect(auditPresent).toBe(true);
 
     await cleanup(prisma);
     for (const id of [operator, outsider, suspended, effectUser]) await ensureUser(prisma, id);
@@ -190,18 +177,19 @@ d('R22 outbox dead-letter replay (real Postgres)', () => {
     expect(result.candidates).toEqual([]);
   });
 
-  (applyCr01 ? it.skip : it)(
-    'execution fails closed while the audit type is not migrated',
-    async () => {
-      expect(auditPresent).toBe(false);
-      const e = await deadEvent();
+  it('execution fails closed if its audit capability is unavailable', async () => {
+    const e = await deadEvent();
+    const probe = jest.spyOn(svc, 'auditTypePresent').mockResolvedValue(false);
+    try {
       expect(await refusal(svc.replay(request({ dryRun: false })))).toBe('audit-unavailable');
       expect((await prisma.outboxEvent.findUnique({ where: { id: e.id } })).status).toBe('DEAD');
-    },
-  );
+    } finally {
+      probe.mockRestore();
+    }
+  });
 
   describe('with CR-01 applied', () => {
-    const run = applyCr01 ? it : it.skip;
+    const run = it;
 
     run(
       'replays only DEAD rows in scope, resets the budget, and audits in the same transaction',

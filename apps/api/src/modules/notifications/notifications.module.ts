@@ -1,3 +1,4 @@
+import { SubscriptionActivatedHandler } from './subscription-activated.handler';
 import { Module } from '@nestjs/common';
 
 import { AuthenticationModule } from '../iam/authentication/authentication.module';
@@ -18,7 +19,7 @@ import { NotificationsService } from './notifications.service';
 @Module({
   imports: [AuthenticationModule],
   controllers: [NotificationsController],
-  providers: [NotificationsService, NotificationCreatedHandler],
-  exports: [NotificationsService, NotificationCreatedHandler],
+  providers: [SubscriptionActivatedHandler, NotificationsService, NotificationCreatedHandler],
+  exports: [SubscriptionActivatedHandler, NotificationsService, NotificationCreatedHandler],
 })
 export class NotificationsModule {}

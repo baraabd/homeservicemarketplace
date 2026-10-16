@@ -10,6 +10,7 @@ import type {
 import { PrismaService } from '../../prisma/prisma.service';
 
 export interface CreateNotificationInput {
+  dedupeKey?: string;
   userId: string;
   type: NotificationType;
   title: string;
@@ -46,18 +47,26 @@ export class NotificationRepository {
   // change (accept-bid / cancel-booking) so the notification can never
   // disagree with the action that produced it.
   create(input: CreateNotificationInput, tx?: PrismaTx): Promise<Notification> {
-    return this.db(tx).notification.create({
-      data: {
-        userId: input.userId,
-        type: input.type,
-        title: input.title,
-        body: input.body,
-        resourceType: input.resourceType ?? null,
-        resourceId: input.resourceId ?? null,
-        deepLink: input.deepLink ?? null,
-        metadata: input.metadata ?? Prisma.JsonNull,
-      },
-    });
+    const data = {
+      userId: input.userId,
+      type: input.type,
+      title: input.title,
+      body: input.body,
+      resourceType: input.resourceType ?? null,
+      resourceId: input.resourceId ?? null,
+      deepLink: input.deepLink ?? null,
+      metadata: input.metadata ?? Prisma.JsonNull,
+    };
+    if (input.dedupeKey) {
+      // The unique domain key survives outbox marker removal and handler replay.
+      // Empty update preserves readAt/deletedAt and never resurrects a notice.
+      return this.db(tx).notification.upsert({
+        where: { dedupeKey: input.dedupeKey },
+        create: { ...data, dedupeKey: input.dedupeKey },
+        update: {},
+      });
+    }
+    return this.db(tx).notification.create({ data });
   }
 
   // Sprint 6 — batched insert for outbox fan-out.

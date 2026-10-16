@@ -1,3 +1,4 @@
+import { SubscriptionActivatedHandler } from './modules/notifications/subscription-activated.handler';
 import { MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
 import { APP_FILTER, APP_GUARD } from '@nestjs/core';
 import { ThrottlerModule } from '@nestjs/throttler';
@@ -98,6 +99,7 @@ import { SupportModule } from './modules/support/support.module';
         DisputeIntakeEventsHandler,
         WorkspaceEventsHandler,
         NotificationCreatedHandler,
+        SubscriptionActivatedHandler,
         ProviderStatusEmailHandler,
       ],
     }),

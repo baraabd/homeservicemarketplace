@@ -173,21 +173,22 @@ d('R20 storage adapters — real S3-compatible service', () => {
       expect(statuses.filter((s) => s !== 200).every((s) => s === 412 || s === 409)).toBe(true);
     });
 
-    it('DOCUMENTED GAP (CR-R20-03): an S3 avatar presign is not write-once yet', async () => {
-      // The web avatar client sends no If-None-Match, so the server cannot sign
-      // one without breaking avatar upload (apps/web is outside this lane).
-      // A replay inside the 5-minute window replaces finalized avatar bytes.
-      // This assertion flips when CR-R20-03 lands, forcing this test to change.
+    it('an S3 avatar presign is write-once, including after finalization', async () => {
       const key = avatarKey();
       const p = await publicAdapter().presignUpload({
         key,
         contentType: 'image/png',
         sizeBytes: PNG.length,
       });
-      expect(await put(p.uploadUrl, PNG, { 'Content-Type': 'image/png' })).toBe(200);
+      expect(
+        await put(p.uploadUrl, PNG, { 'Content-Type': 'image/png', 'If-None-Match': '*' }),
+      ).toBe(200);
       const swapped = Buffer.from(PNG);
       swapped[PNG.length - 1] ^= 0xff;
-      expect(await put(p.uploadUrl, swapped, { 'Content-Type': 'image/png' })).toBe(200);
+      expect(
+        await put(p.uploadUrl, swapped, { 'Content-Type': 'image/png', 'If-None-Match': '*' }),
+      ).toBe(412);
+      expect(await readAll((await publicAdapter().readObjectStream(key))!)).toEqual(PNG);
     });
 
     it('refuses a different MIME type than the one signed', async () => {

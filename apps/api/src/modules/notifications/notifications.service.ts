@@ -26,6 +26,8 @@ import { AppError } from '../../shared/errors/app-error';
 const DEFAULT_PAGE_SIZE = 50;
 
 export interface CreateNotificationForUserInput {
+  /** Internal domain identity; never accepted by an HTTP create endpoint. */
+  dedupeKey?: string;
   userId: string;
   type: NotificationType;
   title: string;
@@ -156,8 +158,13 @@ export class NotificationsService {
   // Without a caller transaction, both are written in one local transaction.
   async createForUser(input: CreateNotificationForUserInput, tx?: PrismaTx): Promise<Notification> {
     if (!tx) return this.tx.run((own) => this.createForUser(input, own));
+    if (input.dedupeKey) {
+      const existing = await tx.notification.findUnique({ where: { dedupeKey: input.dedupeKey } });
+      if (existing) return existing;
+    }
     const created = await this.notifications.create(
       {
+        ...(input.dedupeKey ? { dedupeKey: input.dedupeKey } : {}),
         userId: input.userId,
         type: input.type,
         title: input.title,
@@ -173,6 +180,13 @@ export class NotificationsService {
     // delayed announcement still carries it and the client can silence UX
     // feedback when actor === self. The notification itself is persisted
     // either way.
+    if (
+      input.dedupeKey &&
+      (await tx.outboxEvent.findUnique({
+        where: { dedupeKey: `notification.created:${created.id}` },
+      }))
+    )
+      return created;
     await this.outbox.enqueue(
       {
         aggregateType: 'Notification',

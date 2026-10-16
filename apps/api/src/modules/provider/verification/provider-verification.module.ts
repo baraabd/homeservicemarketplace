@@ -1,3 +1,4 @@
+import { TelemetryService } from '../../../infrastructure/telemetry/telemetry.service';
 import { ProviderCapabilityModule } from '../capability/provider-capability.module';
 import { Module } from '@nestjs/common';
 
@@ -141,8 +142,8 @@ import { Logger } from '@nestjs/common';
       // the correct outcome: the alternative is an API that looks healthy while
       // trusting every file it is given.
       provide: MALWARE_SCANNER_PORT,
-      inject: [AppConfigService],
-      useFactory: (config: AppConfigService): MalwareScannerPort => {
+      inject: [AppConfigService, { token: TelemetryService, optional: true }],
+      useFactory: (config: AppConfigService, telemetry?: TelemetryService): MalwareScannerPort => {
         const selection = resolveScannerSelection({
           driver: config.get('EVIDENCE_SCANNER_DRIVER') as string | undefined,
           isProduction: config.isProduction,
@@ -157,7 +158,7 @@ import { Logger } from '@nestjs/common';
 
         switch (selection.kind) {
           case 'clamav':
-            return new ClamAvMalwareScanner(config);
+            return new ClamAvMalwareScanner(config, telemetry);
           case 'test':
             return new DeterministicTestScanner();
           case 'none':

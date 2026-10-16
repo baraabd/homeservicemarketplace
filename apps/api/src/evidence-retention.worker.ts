@@ -1,8 +1,10 @@
+import { MetricsService } from './infrastructure/telemetry/metrics.service';
+import { TelemetryService } from './infrastructure/telemetry/telemetry.service';
 import 'reflect-metadata';
 import { createServer } from 'node:http';
 import { timingSafeEqual } from 'node:crypto';
 import { PrismaClient } from '@homeservicemarketplace/database';
-import { Registry, Gauge, Counter } from 'prom-client';
+import { Gauge, Counter } from 'prom-client';
 import type { AppConfigService } from './config/app-config.service';
 import type { PrismaService } from './infrastructure/prisma/prisma.service';
 import { LocalDiskRestrictedStorageAdapter } from './infrastructure/storage/local-disk-restricted-storage.adapter';
@@ -27,17 +29,19 @@ export async function runRetentionWorker(env: NodeJS.ProcessEnv = process.env) {
       return configValues[key];
     },
   } as AppConfigService;
+  const sharedMetrics = new MetricsService();
+  const telemetry = new TelemetryService(sharedMetrics);
   const db = new PrismaClient({ datasources: { db: { url: c.DATABASE_URL } }, log: [] });
   const storage =
     c.STORAGE_DRIVER === 's3'
-      ? new S3RestrictedStorageAdapter(config)
+      ? new S3RestrictedStorageAdapter(config, telemetry)
       : new LocalDiskRestrictedStorageAdapter(config);
   const repo = new EvidenceRetentionRepository(
     db,
     new OutboxRepository({ client: db } as PrismaService),
   );
   const service = new EvidenceRetentionService(repo, storage);
-  const registry = new Registry();
+  const registry = sharedMetrics.registry;
   const lastRun = new Gauge({
     name: 'evidence_retention_last_success_unixtime',
     help: 'Last completed sweep',
@@ -105,11 +109,13 @@ export async function runRetentionWorker(env: NodeJS.ProcessEnv = process.env) {
   });
   async function tick() {
     try {
-      const result = await service.runOnce(
-        c.policy,
-        c.EVIDENCE_RETENTION_MODE as 'shadow' | 'enforce',
-        c.EVIDENCE_RETENTION_BATCH,
-        () => stopping,
+      const result = await telemetry.runInstrumentedJob('evidence.retention', () =>
+        service.runOnce(
+          c.policy,
+          c.EVIDENCE_RETENTION_MODE as 'shadow' | 'enforce',
+          c.EVIDENCE_RETENTION_BATCH,
+          () => stopping,
+        ),
       );
       for (const [outcome, count] of Object.entries(result)) operations.inc({ outcome }, count);
       const counts = await repo.counts(new Date());

@@ -1,8 +1,10 @@
+import { MetricsService } from './infrastructure/telemetry/metrics.service';
+import { TelemetryService } from './infrastructure/telemetry/telemetry.service';
 import 'reflect-metadata';
 import { createServer } from 'node:http';
 import { timingSafeEqual } from 'node:crypto';
 import { PrismaClient } from '@homeservicemarketplace/database';
-import { Counter, Gauge, Registry } from 'prom-client';
+import { Counter, Gauge } from 'prom-client';
 import type { AppConfigService } from './config/app-config.service';
 import type { PrismaService } from './infrastructure/prisma/prisma.service';
 import { TransactionRunner } from './infrastructure/prisma/transaction.runner';
@@ -37,6 +39,8 @@ export async function runDisputeWorker(env: NodeJS.ProcessEnv = process.env) {
       return values[key];
     },
   } as AppConfigService;
+  const sharedMetrics = new MetricsService();
+  const telemetry = new TelemetryService(sharedMetrics);
   const db = new PrismaClient({ datasources: { db: { url: c.DATABASE_URL } }, log: [] });
   const database = { client: db } as PrismaService;
   const tx = new TransactionRunner(database);
@@ -51,14 +55,14 @@ export async function runDisputeWorker(env: NodeJS.ProcessEnv = process.env) {
   if (c.DISPUTE_WORKER_MODE === 'enforce') cipher.ready();
   const objects =
     c.STORAGE_DRIVER === 's3'
-      ? new S3RestrictedStorageAdapter(config)
+      ? new S3RestrictedStorageAdapter(config, telemetry)
       : new LocalDiskRestrictedStorageAdapter(config);
   const scanner =
     c.DISPUTE_WORKER_MODE === 'shadow'
       ? new UnconfiguredMalwareScanner()
       : c.EVIDENCE_SCANNER_DRIVER === 'test'
         ? new DeterministicTestScanner()
-        : new ClamAvMalwareScanner(config);
+        : new ClamAvMalwareScanner(config, telemetry);
   const events = new WorkspaceEvents(new OutboxRepository(database));
   const maintenance = new WorkspaceMaintenance(
     repo,
@@ -67,7 +71,7 @@ export async function runDisputeWorker(env: NodeJS.ProcessEnv = process.env) {
     new WorkspaceEvidence(repo, tx, cipher, events, objects, scanner),
     new WorkspacePrivateLifecycle(repo, tx, events),
   );
-  const registry = new Registry();
+  const registry = sharedMetrics.registry;
   const last = new Gauge({
     name: 'dispute_worker_last_success_unixtime',
     help: 'Last completed maintenance pass',
@@ -125,10 +129,12 @@ export async function runDisputeWorker(env: NodeJS.ProcessEnv = process.env) {
   });
   async function loop() {
     try {
-      const result = await maintenance.runOnce(
-        c.DISPUTE_WORKER_MODE as 'shadow' | 'enforce',
-        c.DISPUTE_WORKER_BATCH,
-        () => stopping,
+      const result = await telemetry.runInstrumentedJob('dispute.maintenance', () =>
+        maintenance.runOnce(
+          c.DISPUTE_WORKER_MODE as 'shadow' | 'enforce',
+          c.DISPUTE_WORKER_BATCH,
+          () => stopping,
+        ),
       );
       for (const [k, v] of Object.entries(result)) queue.set({ kind: k }, v);
       lastAt = Date.now();

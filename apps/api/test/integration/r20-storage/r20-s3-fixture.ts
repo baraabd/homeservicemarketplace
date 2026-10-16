@@ -1,4 +1,7 @@
 /* eslint-disable @typescript-eslint/no-require-imports -- the AWS SDK loads only inside the R20 real-storage gate. */
+import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { randomBytes, randomUUID } from 'node:crypto';
 import type { S3Client } from '@aws-sdk/client-s3';
@@ -224,18 +227,37 @@ export async function readAll(stream: NodeJS.ReadableStream): Promise<Buffer> {
 // ─── least-privilege principals (MinIO `mc`, inside the lane's container) ───
 
 function mc(args: string[], stdin?: string): string {
+  const binary = process.env.R20_MC;
   const container = process.env.R20_MINIO_CONTAINER;
-  if (!container) throw new Error('least-privilege-tests-require-R20_MINIO_CONTAINER');
-  return execFileSync('docker', ['exec', '-i', container, 'mc', ...args], {
-    input: stdin,
-    encoding: 'utf8',
-    env: { ...process.env, MSYS_NO_PATHCONV: '1' },
-  });
+  if (!binary && !container) throw new Error('least-privilege-tests-require-R20_MC-or-container');
+  const credentials = rootCredentials();
+  const url = new URL(endpoint());
+  url.username = credentials.accessKeyId;
+  url.password = credentials.secretAccessKey;
+  try {
+    return execFileSync(
+      binary ?? 'docker',
+      binary ? args : ['exec', '-i', container!, 'mc', ...args],
+      {
+        input: stdin,
+        encoding: 'utf8',
+        stdio: ['pipe', 'pipe', 'pipe'],
+        env: {
+          ...process.env,
+          MSYS_NO_PATHCONV: '1',
+          ...(binary ? { MC_HOST_r20: url.href } : {}),
+        },
+      },
+    );
+  } catch {
+    // Child-process errors embed argv/env/output. Never print generated credentials.
+    throw new Error('r20-least-privilege-fixture-command-failed');
+  }
 }
 
 let aliasReady = false;
 function ensureAlias(): void {
-  if (aliasReady) return;
+  if (aliasReady || process.env.R20_MC) return;
   // The container's own root env, so no credential crosses this command line.
   const container = process.env.R20_MINIO_CONTAINER;
   if (!container) throw new Error('least-privilege-tests-require-R20_MINIO_CONTAINER');
@@ -259,13 +281,24 @@ export function createPrincipal(name: string, policy: unknown): Credentials {
   const accessKeyId = `${name}${randomBytes(4).toString('hex')}`;
   const secretAccessKey = randomBytes(24).toString('hex');
   const policyName = `${accessKeyId}-policy`;
-  const file = `/tmp/${policyName}.json`;
-  execFileSync(
-    'docker',
-    ['exec', '-i', process.env.R20_MINIO_CONTAINER as string, 'sh', '-c', 'cat > "$0"', file],
-    { input: JSON.stringify(policy), env: { ...process.env, MSYS_NO_PATHCONV: '1' } },
-  );
-  mc(['--quiet', 'admin', 'policy', 'create', 'r20', policyName, file]);
+  if (process.env.R20_MC) {
+    const directory = mkdtempSync(join(tmpdir(), 'hsm-r20-policy-'));
+    try {
+      const file = join(directory, 'policy.json');
+      writeFileSync(file, JSON.stringify(policy), { mode: 0o600 });
+      mc(['--quiet', 'admin', 'policy', 'create', 'r20', policyName, file]);
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  } else {
+    const file = `/tmp/${policyName}.json`;
+    execFileSync(
+      'docker',
+      ['exec', '-i', process.env.R20_MINIO_CONTAINER as string, 'sh', '-c', 'cat > "$0"', file],
+      { input: JSON.stringify(policy), env: { ...process.env, MSYS_NO_PATHCONV: '1' } },
+    );
+    mc(['--quiet', 'admin', 'policy', 'create', 'r20', policyName, file]);
+  }
   mc(['--quiet', 'admin', 'user', 'add', 'r20', accessKeyId, secretAccessKey]);
   mc(['--quiet', 'admin', 'policy', 'attach', 'r20', policyName, '--user', accessKeyId]);
   return { accessKeyId, secretAccessKey };

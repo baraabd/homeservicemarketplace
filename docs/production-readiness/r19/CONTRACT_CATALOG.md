@@ -51,12 +51,46 @@ transaction, or its own. A missing adapter or configuration produces no
 confirmation: the unit only persists a confirmation that a verified adapter
 hands it.
 
-**Remaining freeze handoff:** this catalog supplies wire DTOs, the existing
-`MoneyCatalogPort` and the activation method; it does not yet supply explicit
-versioned callable ports for every later lifecycle, receipt-review,
-refund-dispatch/result and reconciliation/projection operation requested by
-the lane prompt. The coordinator and R19/R24 consumers must review those ports
-at G1. The bounded CR-004 correction does not invent their implementations.
+**G1 callable freeze candidate:**
+`apps/api/src/modules/money/domain/money-ports.v1.ts` defines the server-side
+ports below. `test/support/money-ports-consumer.fixture.ts` compiles a consumer
+for each later-lane operation under API typecheck. This proves signatures,
+not implementations or live-provider execution. Review of this catalog and
+these types is part of G1 owner acceptance.
+
+| Port                           | Callable methods                                                | Transaction rule                                                           |
+| ------------------------------ | --------------------------------------------------------------- | -------------------------------------------------------------------------- |
+| `QuoteCreationPortV1`          | `quote`                                                         | optional caller transaction                                                |
+| `PaymentLifecyclePortV1`       | `createIntent`, `startAttempt`, `recordAttempt`, `cancelIntent` | optional caller transaction; confirmation uses the activation unit         |
+| `ReceiptReviewPortV1`          | `review`                                                        | fresh reviewer authority; optional caller transaction                      |
+| `SubscriptionActivationPortV1` | `confirmAndActivate`                                            | existing atomic R19 implementation; caller result provisional until commit |
+| `RefundPortV1`                 | `reserve`, `dispatch`, `recordResult`                           | reserve/result transactional; dispatch outside transaction locks           |
+| `FinancialProjectionPortV1`    | `read`                                                          | explicit currency and as-of; never sum unlike currencies                   |
+| `ReconciliationPortV1`         | `record`, `list`                                                | record transactional; bounded cursor list                                  |
+
+Writes carry the `hsm.money.v1` contract version, idempotency key and explicit
+actor (the existing activation command retains its already frozen signature).
+The implementation must authorize fresh capabilities and ownership, replay an
+equal key/payload, and reject a changed payload. Internal amounts remain bigint;
+wire values remain decimal strings. No lifecycle/refund/rail implementation or
+HTTP endpoint is fabricated to satisfy this interface handoff.
+
+G1 strengthens `money_refund_guard`: success requires posted compensation of
+exactly the reserved amount and currency, reversing only the original accounts
+and directions. A full reversal must reference that confirmation's original
+posting. A standard compensation carries `money.refund:<refundId>`. The existing
+unique compensation link, reservation cap, state machine and R15 immutability
+remain enforced in PostgreSQL, including direct SQL callers. The migration
+validates existing succeeded/linked refunds and refuses an inconsistent history.
+
+CR-002 is resolved by the existing R17 inbox boundary: a registered
+`SubscriptionActivatedHandler` validates persisted identifiers and writes one
+provider notification plus its announcement in the delivery transaction. A
+unique notification domain key also prevents duplicate notices if a handler
+marker is removed and replayed. Read/deleted state is preserved. The handler
+creates no R31 entitlement engine, verification result, work-access grant,
+payout or provider withdrawable balance. Its link targets the existing provider
+profile route; it introduces no subscription-management page.
 
 ## Approvals the contracts do not make
 

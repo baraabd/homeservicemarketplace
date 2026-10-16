@@ -1,4 +1,6 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { instrumentStorage } from './storage-telemetry';
+import { TelemetryService } from '../telemetry/telemetry.service';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import {
   DeleteObjectCommand,
   GetObjectCommand,
@@ -46,9 +48,13 @@ export class S3RestrictedStorageAdapter extends RestrictedObjectStoragePort {
   /** R20 — refuses a bucket marked for another namespace (storage-root.ts). */
   private readonly root = new S3BucketRootGuard(() => this.client);
 
-  constructor(private readonly config: AppConfigService) {
+  constructor(
+    private readonly config: AppConfigService,
+    @Optional() telemetry?: TelemetryService,
+  ) {
     super();
     this.client = this.createClient();
+    instrumentStorage(this.client, telemetry);
   }
 
   /**
