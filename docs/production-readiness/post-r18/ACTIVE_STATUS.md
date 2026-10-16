@@ -1,3 +1,5 @@
+> Coordinator update (2026-10-16T23:08:21.661691+00:00): #170 and #171 are owner-merged. Verified publication `0568739096ceeaf0cfc79034626886e258fe4328`. R26 alone is authorized and executing under its exact ownership record; other lanes await handoff. Publication-pending text below is historical and superseded by SOURCE_MANIFEST.json and wave-02.plan.json.
+
 # Post-R18 active status index
 
 Authority: `SPRINT_REGISTRY.json`. Reconciled by G1 on 2026-10-16.
@@ -14,7 +16,7 @@ Historical R18 release NO-GO remains separate. Unnumbered PR #156 is merged.
 | R23 | Observability, privacy-safe diagnostics and incident detection                     | 1    | SANDBOX_ACCEPTED         | feat/r23-observability-incidents   | #163 |
 | R24 | Money application API and module wiring; freeze adapter integration boundaries     | 2    | PLANNED                  | feat/r24-money-api-integration     | —    |
 | R25 | Realtime multi-instance activation and reconnect recovery                          | 2    | PLANNED                  | feat/r25-realtime-multi-instance   | —    |
-| R26 | Application security and effective authorization hardening                         | 2    | PLANNED                  | feat/r26-application-security      | —    |
+| R26 | Application security and effective authorization hardening                         | 2    | READY_TO_START           | feat/r26-application-security      | —    |
 | R27 | Measured startup, bundle and database performance                                  | 2    | PLANNED                  | feat/r27-performance-capacity      | #162 |
 | R28 | Authorized hosted topology, infrastructure and release inputs                      | 2    | PLANNED                  | feat/r28-hosted-platform           | —    |
 | R29 | (pending package)                                                                  | 3    | RESERVED_PENDING_PACKAGE | —                                  | —    |

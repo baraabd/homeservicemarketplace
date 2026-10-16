@@ -1,0 +1,133 @@
+name: R26 application security acceptance
+
+on:
+  pull_request:
+    branches: ['main', 'develop']
+  push:
+    branches: ['main', 'develop']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: r26-security-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  acceptance:
+    name: R26 cookies, authorization and enforced CSP
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: r26_security_ci
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s --health-timeout 5s --health-retries 12
+      redis:
+        image: redis:7-alpine
+        ports: ['6379:6379']
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s --health-timeout 5s --health-retries 12
+      mailpit:
+        image: axllent/mailpit:v1.31.1
+        ports: ['1025:1025', '8025:8025']
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/r26_security_ci
+      REDIS_HOST: localhost
+      REDIS_PORT: '6379'
+      SMTP_HOST: localhost
+      SMTP_PORT: '1025'
+      SMTP_FROM: noreply@example.test
+      FRONTEND_URL: http://127.0.0.1:5326
+      CORS_ORIGINS: http://127.0.0.1:5326
+      COOKIE_SECURE: 'false'
+      COOKIE_SAMESITE: lax
+      AUTH_REQUIRE_EMAIL_VERIFICATION: 'true'
+      VERIFICATION_ENFORCED: 'true'
+      WORK_ACCESS_ENFORCED: 'true'
+      EVIDENCE_SCANNER_DRIVER: test
+      EVIDENCE_SCAN_WORKER_ENABLED: 'true'
+      EVIDENCE_SCAN_INTERVAL_MS: '1000'
+      RESTRICTED_STORAGE_DIR: /tmp/r26-restricted
+      R26_ACCEPTANCE_SCOPE: isolated-ci
+      R26_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+      E2E_REAL_API: http://127.0.0.1:4326
+      E2E_MAILPIT: http://127.0.0.1:8025
+      E2E_BASE_URL: http://127.0.0.1:5326
+      VITE_API_URL: http://127.0.0.1:4326
+      VITE_PROVIDER_ONBOARDING_V2: 'true'
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '24.21.0'
+          cache: pnpm
+      - name: Generate ephemeral authentication secret
+        run: |
+          secret="$(openssl rand -hex 48)"
+          echo "::add-mask::$secret"
+          echo "JWT_ACCESS_SECRET=$secret" >> "$GITHUB_ENV"
+      - run: pnpm install --frozen-lockfile
+      - name: Generate, migrate and seed disposable reference and test data
+        run: |
+          set -euo pipefail
+          printf 'DATABASE_URL=%s\n' "$DATABASE_URL" > .env
+          pnpm --filter @homeservicemarketplace/database generate
+          pnpm --filter @homeservicemarketplace/database migrate:deploy
+          pnpm --filter @homeservicemarketplace/database build
+          pnpm --filter @homeservicemarketplace/database seed
+          pnpm --filter @homeservicemarketplace/contracts build
+      - name: Real database authorization and last-active-admin race
+        env:
+          RUN_DB_INTEGRATION: '1'
+        run: pnpm --filter @homeservicemarketplace/api exec jest test/integration/r26-authorization.integration.spec.ts test/integration/r18-admin-floor.integration.spec.ts --runInBand
+      - name: Build API and production SPA and check adversarial policy cases
+        run: |
+          set -euo pipefail
+          node --test scripts/production/security-app/verify-boundaries.test.cjs
+          pnpm --filter @homeservicemarketplace/api build
+          pnpm --filter @homeservicemarketplace/web build
+          pnpm --filter @homeservicemarketplace/web typecheck:e2e
+      - name: Install Chromium
+        run: pnpm --filter @homeservicemarketplace/web exec playwright install --with-deps chromium
+      - name: Start isolated compiled API and production browser bundle
+        run: |
+          set -euo pipefail
+          NODE_ENV=development APP_ENV=test PORT=4326 node apps/api/dist/main.js > /tmp/r26-api.log 2>&1 &
+          pnpm --filter @homeservicemarketplace/web exec vite preview --host 127.0.0.1 --port 5326 --strictPort > /tmp/r26-web.log 2>&1 &
+          for i in $(seq 1 60); do
+            if curl -sf http://127.0.0.1:4326/health/ready >/dev/null && curl -sf http://127.0.0.1:5326/login >/dev/null && curl -sf http://127.0.0.1:8025/api/v1/messages >/dev/null; then
+              exit 0
+            fi
+            sleep 1
+          done
+          echo 'R26 services did not become ready; raw logs are not published'
+          exit 1
+      - run: node scripts/production/security-app/verify-boundaries.cjs
+      - name: Real cookie, private media and enforced CSP browser acceptance
+        run: pnpm --filter @homeservicemarketplace/web exec playwright test --config playwright.r26.config.ts
+      - name: Summarize browser results without cookies or response bodies
+        if: always()
+        run: node scripts/production/security-app/verify-boundaries.cjs --summarize-browser
+      - name: Retain sanitized source-bound evidence and synthetic previews
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: r26-security-${{ github.event.pull_request.head.sha || github.sha }}
+          path: |
+            r26-evidence/*.json
+            apps/web/test-results/r26-browser/**/synthetic-*.png
+          if-no-files-found: warn
+          retention-days: 14

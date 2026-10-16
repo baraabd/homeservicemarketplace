@@ -1,3 +1,5 @@
+> Coordinator update (2026-10-16T23:08:21.661691+00:00): #170 and #171 are owner-merged. Verified publication `0568739096ceeaf0cfc79034626886e258fe4328`. R26 alone is authorized and executing under its exact ownership record; other lanes await handoff. Publication-pending text below is historical and superseded by SOURCE_MANIFEST.json and wave-02.plan.json.
+
 # G1 closure and remaining publication condition
 
 Certified source: `40cdac5c9ce6acaa8dedc0385984a807ae9a84d0` / `109b514fe9833a9aac3e8caecd7f9b14d4f61b3b`.

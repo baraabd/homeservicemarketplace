@@ -3,12 +3,12 @@
   "wave": 2,
   "startGate": "G1",
   "baseSha": "40cdac5c9ce6acaa8dedc0385984a807ae9a84d0",
-  "status": "BLOCKED",
-  "startableLanes": [],
-  "blockedLanes": ["R24", "R25", "R26", "R27", "R28"],
+  "status": "READY_TO_START",
+  "startableLanes": ["R26"],
+  "blockedLanes": ["R24", "R25", "R27", "R28"],
   "coordinator": "G1 delegated engineering coordinator for baraabd",
   "decisionRecord": "docs/production-readiness/post-r18/gates/g1/SOURCE_MANIFEST.json",
-  "publicationRequirement": "G1 engineering acceptance is recorded; owner review/merge and verification of this separate acceptance-record commit are still required. No lane starts from this unmerged publication.",
+  "publicationRequirement": "Owner-merged acceptance #170/#171 verified. Only R26 has a current assigned writer and explicit start decision; other lanes remain held.",
   "lanes": [
     {
       "id": "R24",
@@ -48,7 +48,7 @@
         "Exact final-head CI and CodeQL; real-service evidence; limitations and rollback"
       ],
       "ownershipApproval": "CONDITIONAL_ON_G1_PUBLICATION",
-      "blockedBy": ["G1-PUBLICATION-PENDING"],
+      "blockedBy": ["COORDINATOR_LANE_HANDOFF_PENDING"],
       "isolatedRuntime": {
         "composeProject": "hsm-r24-<session>",
         "database": "hsm_r24_<session>",
@@ -133,7 +133,7 @@
         "Exact final-head CI and CodeQL; real-service evidence; limitations and rollback"
       ],
       "ownershipApproval": "CONDITIONAL_ON_G1_PUBLICATION",
-      "blockedBy": ["G1-PUBLICATION-PENDING"],
+      "blockedBy": ["COORDINATOR_LANE_HANDOFF_PENDING"],
       "isolatedRuntime": {
         "composeProject": "hsm-r25-<session>",
         "database": "hsm_r25_<session>",
@@ -151,8 +151,8 @@
       "wave": 2,
       "lane": 3,
       "branch": "feat/r26-application-security",
-      "owner": "R26 delegated owner session; current G1 coordinator handoff required before implementation",
-      "status": "BLOCKED",
+      "owner": "R26 current delegated owner session",
+      "status": "READY_TO_START",
       "frozenBaseSha": "40cdac5c9ce6acaa8dedc0385984a807ae9a84d0",
       "dependencies": ["R20", "R21", "R23"],
       "exactFiles": [
@@ -183,9 +183,33 @@
         "docs/production-readiness/r26/ROLLBACK.md",
         "docs/production-readiness/r26/shared-change-requests/CR-001-integration.md",
         "scripts/production/security-app/verify-boundaries.cjs",
-        "scripts/production/security-app/verify-boundaries.test.cjs"
+        "scripts/production/security-app/verify-boundaries.test.cjs",
+        "apps/api/src/infrastructure/http/cors-policy.ts",
+        "apps/api/src/infrastructure/http/cors-policy.spec.ts",
+        "apps/api/src/infrastructure/http/request-body.ts",
+        "apps/api/src/infrastructure/http/request-body.spec.ts",
+        "scripts/production/security-app/web-csp.cjs",
+        "docs/production-readiness/r26/OWNERSHIP.md"
       ],
-      "leases": [],
+      "leases": [
+        {
+          "paths": [
+            "apps/api/src/main.ts",
+            "apps/web/vite.config.ts",
+            "apps/web/vercel.json",
+            "apps/web/nginx.conf",
+            "apps/web/playwright.config.ts",
+            "apps/web/playwright.r26.config.ts",
+            ".github/workflows/r26-security.yml",
+            "apps/web/Dockerfile"
+          ],
+          "kind": "SERIALIZED_R26_SECURITY_INTEGRATION",
+          "grantedBy": "Current delegated G1 coordinator under continuing owner authority; recorded before implementation",
+          "scope": "Only R26 request-boundary/CSP implementation and isolated acceptance wiring. No deployment, dependency, IAM permission, money-policy, peer-lane or unrelated design change.",
+          "expires": "R26 PR closure, G2 decision or earlier coordinator revocation",
+          "handoff": "Publish final head and scoped evidence; coordinator verifies no concurrent writer before reassignment."
+        }
+      ],
       "requiredEvidence": [
         "docs/production-readiness/r26/IMPLEMENTATION.md",
         "docs/production-readiness/r26/ACCEPTANCE.md",
@@ -194,8 +218,8 @@
         "All behavioral, negative and integration tests in the complete authoritative prompt",
         "Exact final-head CI and CodeQL; real-service evidence; limitations and rollback"
       ],
-      "ownershipApproval": "CONDITIONAL_ON_G1_PUBLICATION",
-      "blockedBy": ["G1-PUBLICATION-PENDING"],
+      "ownershipApproval": "APPROVED",
+      "blockedBy": [],
       "isolatedRuntime": {
         "composeProject": "hsm-r26-<session>",
         "database": "hsm_r26_<session>",
@@ -205,6 +229,12 @@
         "webPort": 5326,
         "browser": "fresh isolated context and cookie jar; never share userDataDir",
         "secrets": "generated disposable credentials only; no copied .env; inspect fixed container/volume names before boot"
+      },
+      "execution": {
+        "state": "IN_PROGRESS",
+        "startedAtUtc": "2026-10-16T23:08:21.661691+00:00",
+        "coordinationBaseSha": "0568739096ceeaf0cfc79034626886e258fe4328",
+        "frozenRuntimeSourceSha": "40cdac5c9ce6acaa8dedc0385984a807ae9a84d0"
       }
     },
     {
@@ -281,7 +311,7 @@
         "Exact final-head CI and CodeQL; real-service evidence; limitations and rollback"
       ],
       "ownershipApproval": "CONDITIONAL_ON_G1_PUBLICATION",
-      "blockedBy": ["G1-PUBLICATION-PENDING"],
+      "blockedBy": ["COORDINATOR_LANE_HANDOFF_PENDING"],
       "isolatedRuntime": {
         "composeProject": "hsm-r27-<session>",
         "database": "hsm_r27_<session>",
@@ -344,7 +374,7 @@
         "Exact final-head CI and CodeQL; real-service evidence; limitations and rollback"
       ],
       "ownershipApproval": "CONDITIONAL_ON_G1_PUBLICATION",
-      "blockedBy": ["G1-PUBLICATION-PENDING"],
+      "blockedBy": ["COORDINATOR_LANE_HANDOFF_PENDING"],
       "isolatedRuntime": {
         "composeProject": "hsm-r28-<session>",
         "database": "hsm_r28_<session>",
