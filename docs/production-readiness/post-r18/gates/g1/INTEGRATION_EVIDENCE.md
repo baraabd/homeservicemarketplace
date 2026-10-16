@@ -113,6 +113,14 @@ All 23 changed/new files match the exact coordinator allowlist.
 
 ## Publication checks
 
+The first published head `9c5b3f36e2bd37558a2d0c7ef5873f5e6484ce0e`
+failed its tracked-tree secret scan in job `116891924918`, run `38875799702`.
+Gitleaks 8.24.3 reported two generic-api-key matches in ordinary R19 requirement
+prose (REQUIREMENTS.md and the retained prompt). The pinned scanner reproduced
+both locally; the records were reworded with provenance, without an exclusion
+or scanner-policy change. The original failed run is retained and is not PASS.
+The successor head requires fresh checks.
+
 Final coordinator-head CI must be inspected after publishing. Its head and run
 URLs are maintained in the English Draft PR, avoiding a commit that embeds its
 own SHA. Mandatory final-head evidence is not claimed in advance. G1 remains

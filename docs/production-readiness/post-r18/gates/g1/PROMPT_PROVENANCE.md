@@ -9,7 +9,12 @@ Source SHA-256: `bf82bef2f6417450b5c411f1f396f39ef966c4dbfb00747edd1e6c6c6079892
 `prompts/R19-R28.md` preserves the complete ten standalone prompts, including
 their common execution rules; 122011 bytes before repository formatting.
 Extraction SHA-256 before repository formatting: `96a878af83f1376ef9e2d8a9185a080b1f89cf1ebd412bc3270ea0965c53aed4`.
-Formatting may normalize Markdown whitespace only; requirements are unchanged.
+Repository formatting normalizes Markdown whitespace. One editorial normalization
+in R19 implementation item 4 expands the slash-separated usage/coupon and
+refund/reservation wording into ordinary prose. Gitleaks 8.24.3 reproduced two
+generic-api-key false positives on that wording in the retained prompt and
+requirement summary. The immutable original above remains authoritative; no
+requirement, scanner rule, allowlist or security budget was changed.
 The owner-supplied G1 task is the authority for this bounded coordination action.
 No requirements were reconstructed from branch names or shortened chat excerpts.
 
