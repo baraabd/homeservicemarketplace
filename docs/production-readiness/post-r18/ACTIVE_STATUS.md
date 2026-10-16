@@ -1,12 +1,5 @@
 # Post-R18 active status index
 
-> **Post-merge update (R27 handoff):** PR #171 was owner-merged at
-> `0568739096ceeaf0cfc79034626886e258fe4328`. Its frozen runtime source/tree
-> and ancestry were verified; 29 latest publication-head checks succeeded.
-> `SOURCE_MANIFEST.json` now records MERGED. Only assigned R27 is READY_TO_START;
-> other lanes await their own session handoff. The pre-merge account below is
-> retained as history and its publication hold is superseded by this notice.
-
 Authority: `SPRINT_REGISTRY.json`. Reconciled by G1 on 2026-10-16.
 G1 technical source is **ACCEPTED** at `40cdac5c9ce6acaa8dedc0385984a807ae9a84d0`.
 The separate acceptance publication is pending owner review/merge; Wave 2 has no startable lane.
@@ -22,7 +15,7 @@ Historical R18 release NO-GO remains separate. Unnumbered PR #156 is merged.
 | R24 | Money application API and module wiring; freeze adapter integration boundaries     | 2    | PLANNED                  | feat/r24-money-api-integration     | —    |
 | R25 | Realtime multi-instance activation and reconnect recovery                          | 2    | PLANNED                  | feat/r25-realtime-multi-instance   | —    |
 | R26 | Application security and effective authorization hardening                         | 2    | PLANNED                  | feat/r26-application-security      | —    |
-| R27 | Measured startup, bundle and database performance                                  | 2    | READY_TO_START           | feat/r27-performance-capacity      | #162 |
+| R27 | Measured startup, bundle and database performance                                  | 2    | PLANNED                  | feat/r27-performance-capacity      | #162 |
 | R28 | Authorized hosted topology, infrastructure and release inputs                      | 2    | PLANNED                  | feat/r28-hosted-platform           | —    |
 | R29 | (pending package)                                                                  | 3    | RESERVED_PENDING_PACKAGE | —                                  | —    |
 | R30 | (pending package)                                                                  | 3    | RESERVED_PENDING_PACKAGE | —                                  | —    |

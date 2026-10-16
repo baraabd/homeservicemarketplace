@@ -36,6 +36,7 @@ import { LANE } from './lib/lane-env.mjs';
 import { classifyStatements, scansOf, seqScanFindings, statementLabel } from './lib/plans.mjs';
 import { REPO_ROOT, hostProvenance, sourceProvenance } from './lib/provenance.mjs';
 import { summarize } from './lib/stats.mjs';
+import { measureWorkloads } from './profile-workloads.mjs';
 
 const args = process.argv.slice(2);
 const option = (name, fallback) => {
@@ -44,6 +45,7 @@ const option = (name, fallback) => {
 };
 const COPIES = Number(option('copies', 300));
 const OUT = option('out-json', null);
+const ASSERT_REPAIRS = args.includes('--assert-repairs');
 const SEEKERS = 6;
 const PROVIDERS = 4;
 const REQUESTS_PER_SEEKER = 6;
@@ -112,6 +114,7 @@ const itemsOf = (body) =>
 async function measure(db, scenario) {
   await db.query('SELECT pg_stat_statements_reset()');
   const first = await api(scenario.who.jar, scenario.path);
+  if (first.status !== 200) throw new Error(`${scenario.name} returned HTTP ${first.status}`);
   const counted = classifyStatements(await captured(db));
   const latencies = [];
   for (let i = 0; i < REPEATS; i += 1) {
@@ -296,6 +299,48 @@ async function negatives(f) {
   return results;
 }
 
+async function bidCountContract(db, fixtures) {
+  const owner = fixtures.seekers[0];
+  const requestId = owner.requestIds[0]; // Open request: no accepted booking/ledger.
+  const bids = await db.query('SELECT id FROM "Bid" WHERE "requestId"=$1 ORDER BY id', [requestId]);
+  if (bids.rows.length !== 4) throw new Error('expected four original fixture bids');
+  await db.query('UPDATE "Bid" SET status=\'WITHDRAWN\' WHERE id IN ($1,$2)', [
+    bids.rows[0].id,
+    bids.rows[1].id,
+  ]);
+  await db.query('UPDATE "Bid" SET "deletedAt"=NOW() WHERE id=$1', [bids.rows[2].id]);
+  const read = async () => {
+    const list = await api(owner.jar, '/v1/me/requests?limit=100');
+    // The amplified graph sorts after the original; use the scoped detail to
+    // compare its semantics and walk to the original page deterministically.
+    let page = list;
+    let row = page.body.items.find((item) => item.id === requestId);
+    let count = 0;
+    while (!row && page.body.nextCursor && count++ < 100) {
+      page = await api(
+        owner.jar,
+        '/v1/me/requests?limit=100&cursor=' + encodeURIComponent(page.body.nextCursor),
+      );
+      if (page.status !== 200) throw new Error('bid-count page failed');
+      row = page.body.items.find((item) => item.id === requestId);
+    }
+    const detail = await api(owner.jar, '/v1/me/requests/' + requestId);
+    if (!row || detail.status !== 200) throw new Error('fixture request disappeared');
+    return { list: row.bidsCount, detail: detail.body.bidsCount };
+  };
+  const one = await read();
+  await db.query('UPDATE "Bid" SET status=\'WITHDRAWN\' WHERE id=$1', [bids.rows[3].id]);
+  const zero = await read();
+  const pass = one.list === 1 && one.detail === 1 && zero.list === 0 && zero.detail === 0;
+  if (!pass) throw new Error('visible-bid count contract failed: ' + JSON.stringify({ one, zero }));
+  return {
+    pass,
+    one,
+    zero,
+    fixture: 'Only four bids on one open disposable request changed; no financial row altered.',
+  };
+}
+
 async function main() {
   const db = await laneDb();
   await db.query('CREATE EXTENSION IF NOT EXISTS pg_stat_statements');
@@ -376,17 +421,58 @@ async function main() {
       plans[name] = await plansFor(db, row.queries);
     }
     const pagination = {
-      'provider bids': await walkPages(providers[0].jar, '/v1/provider/bids', 20),
-      'seeker requests': await walkPages(seekers[0].jar, '/v1/me/requests', 20),
-      'seeker bookings': await walkPages(seekers[0].jar, '/v1/me/bookings', 20),
-      'provider bookings': await walkPages(providers[0].jar, '/v1/provider/bookings', 20),
-      'provider available requests': await walkPages(
+      'provider bids': await walkPages(
         providers[0].jar,
+        '/v1/provider/bids',
+        20,
+        Math.ceil(amplified.Bid / 20) + 1,
+      ),
+      'seeker requests': await walkPages(
+        seekers[0].jar,
+        '/v1/me/requests',
+        20,
+        Math.ceil(amplified.ServiceRequest / 20) + 1,
+      ),
+      'seeker bookings': await walkPages(
+        seekers[0].jar,
+        '/v1/me/bookings',
+        20,
+        Math.ceil(amplified.Booking / 20) + 1,
+      ),
+      'provider bookings': await walkPages(
+        providers[1].jar,
+        '/v1/provider/bookings',
+        20,
+        Math.ceil(amplified.Booking / 20) + 1,
+      ),
+      'provider available requests': await walkPages(
+        freshProvider.jar,
         '/v1/provider/available-requests',
         20,
+        Math.ceil(amplified.ServiceRequest / 20) + 1,
       ),
     };
     const cacheAuth = await negatives(fixtures);
+    const bidCounts = await bidCountContract(db, fixtures);
+    const workloads = await measureWorkloads(handle.pid, () =>
+      api(seekers[0].jar, '/v1/me/requests?limit=20'),
+    );
+    for (const [name, walk] of Object.entries(pagination)) {
+      if (walk.error || walk.duplicates || !walk.terminated || walk.distinctItems === 0) {
+        throw new Error('pagination contract failed: ' + name);
+      }
+    }
+    if (ASSERT_REPAIRS) {
+      if (pageSize['admin users'].verdict !== 'bounded') throw new Error('admin user N+1 remains');
+      if (
+        plans['seeker requests'].some(
+          (plan) =>
+            plan.error || plan.seqScansOnLargeTables?.some((scan) => scan.startsWith('Bid ')),
+        )
+      ) {
+        throw new Error('page bid count still scans the large Bid table');
+      }
+    }
 
     for (const phase of Object.values(phases)) {
       for (const row of Object.values(phase.scenarios)) delete row.queries;
@@ -424,6 +510,9 @@ async function main() {
       plans,
       pagination,
       cacheAuthorization: cacheAuth,
+      bidCountContract: bidCounts,
+      workloads,
+      repairAssertionsEnabled: ASSERT_REPAIRS,
     };
     if (OUT) writeFileSync(resolve(REPO_ROOT, OUT), `${JSON.stringify(report, null, 2)}\n`);
     for (const c of comparison) {

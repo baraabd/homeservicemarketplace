@@ -1,0 +1,5 @@
+{
+  "extends": "../tsconfig.e2e.json",
+  "include": ["./*.ts", "../playwright.r27.config.ts"],
+  "exclude": []
+}

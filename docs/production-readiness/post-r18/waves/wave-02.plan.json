@@ -3,12 +3,12 @@
   "wave": 2,
   "startGate": "G1",
   "baseSha": "40cdac5c9ce6acaa8dedc0385984a807ae9a84d0",
-  "status": "READY_TO_START",
-  "startableLanes": ["R27"],
-  "blockedLanes": ["R24", "R25", "R26", "R28"],
+  "status": "BLOCKED",
+  "startableLanes": [],
+  "blockedLanes": ["R24", "R25", "R26", "R27", "R28"],
   "coordinator": "G1 delegated engineering coordinator for baraabd",
   "decisionRecord": "docs/production-readiness/post-r18/gates/g1/SOURCE_MANIFEST.json",
-  "publicationRequirement": "PR #171 owner-merged and verified at 0568739096ceeaf0cfc79034626886e258fe4328. Only assigned R27 is handed off; other lanes require their own session handoff.",
+  "publicationRequirement": "G1 engineering acceptance is recorded; owner review/merge and verification of this separate acceptance-record commit are still required. No lane starts from this unmerged publication.",
   "lanes": [
     {
       "id": "R24",
@@ -48,7 +48,7 @@
         "Exact final-head CI and CodeQL; real-service evidence; limitations and rollback"
       ],
       "ownershipApproval": "CONDITIONAL_ON_G1_PUBLICATION",
-      "blockedBy": ["SESSION_HANDOFF_PENDING"],
+      "blockedBy": ["G1-PUBLICATION-PENDING"],
       "isolatedRuntime": {
         "composeProject": "hsm-r24-<session>",
         "database": "hsm_r24_<session>",
@@ -133,7 +133,7 @@
         "Exact final-head CI and CodeQL; real-service evidence; limitations and rollback"
       ],
       "ownershipApproval": "CONDITIONAL_ON_G1_PUBLICATION",
-      "blockedBy": ["SESSION_HANDOFF_PENDING"],
+      "blockedBy": ["G1-PUBLICATION-PENDING"],
       "isolatedRuntime": {
         "composeProject": "hsm-r25-<session>",
         "database": "hsm_r25_<session>",
@@ -195,7 +195,7 @@
         "Exact final-head CI and CodeQL; real-service evidence; limitations and rollback"
       ],
       "ownershipApproval": "CONDITIONAL_ON_G1_PUBLICATION",
-      "blockedBy": ["SESSION_HANDOFF_PENDING"],
+      "blockedBy": ["G1-PUBLICATION-PENDING"],
       "isolatedRuntime": {
         "composeProject": "hsm-r26-<session>",
         "database": "hsm_r26_<session>",
@@ -213,8 +213,8 @@
       "wave": 2,
       "lane": 4,
       "branch": "feat/r27-performance-capacity",
-      "owner": "R27 Work Mode session; successor delegated G1 coordinator handoff recorded in r27/ALLOWLIST.md",
-      "status": "READY_TO_START",
+      "owner": "R27 lane author (repository owner assigns session)",
+      "status": "BLOCKED",
       "frozenBaseSha": "40cdac5c9ce6acaa8dedc0385984a807ae9a84d0",
       "dependencies": ["R20", "R23"],
       "exactFiles": [
@@ -229,12 +229,9 @@
         "docs/performance/post-r18/api-boot-profile.json",
         "docs/performance/post-r18/bundle-after-cr01-cr02.json",
         "docs/performance/post-r18/bundle-baseline.json",
-        "docs/performance/post-r18/g1-bundle-after.json",
-        "docs/performance/post-r18/g1-bundle-baseline.json",
         "docs/performance/post-r18/query-profile-baseline.json",
         "docs/production-readiness/r27/ACCEPTANCE.md",
         "docs/production-readiness/r27/ALLOWLIST.md",
-        "docs/production-readiness/r27/G1_HANDOFF.json",
         "docs/production-readiness/r27/IMPLEMENTATION.md",
         "docs/production-readiness/r27/RISKS.md",
         "docs/production-readiness/r27/ROLLBACK.md",
@@ -251,14 +248,12 @@
         "docs/production-readiness/r27/shared-change-requests/CR-R27-06-booking-completed-index/README.md",
         "docs/production-readiness/r27/shared-change-requests/CR-R27-07-ci-harness-tests/README.md",
         "docs/production-readiness/r27/shared-change-requests/CR-R27-08-admin-users-n-plus-one/README.md",
-        "docs/production-readiness/r27/shared-change-requests/CR-R27-09-harness-isolation/README.md",
         "docs/production-readiness/r27/shared-change-requests/README.md",
         "scripts/perf/post-r18/api-boot-profile.mjs",
         "scripts/perf/post-r18/api-boot.mjs",
         "scripts/perf/post-r18/budgets.proposed.json",
         "scripts/perf/post-r18/bundle-report.mjs",
         "scripts/perf/post-r18/check-budgets.mjs",
-        "scripts/perf/post-r18/compare-reports.mjs",
         "scripts/perf/post-r18/compose.r27.yml",
         "scripts/perf/post-r18/lane-db-reset.sh",
         "scripts/perf/post-r18/lib/amplify.mjs",
@@ -273,52 +268,10 @@
         "scripts/perf/post-r18/lib/lib.test.mjs",
         "scripts/perf/post-r18/lib/plans.mjs",
         "scripts/perf/post-r18/lib/provenance.mjs",
-        "scripts/perf/post-r18/lib/runtime.test.mjs",
         "scripts/perf/post-r18/lib/stats.mjs",
-        "scripts/perf/post-r18/profile-workloads.mjs",
         "scripts/perf/post-r18/query-profile.mjs"
       ],
-      "leases": [
-        {
-          "kind": "SERIALIZED_G1_PUBLICATION",
-          "paths": [
-            "docs/production-readiness/post-r18/gates/g1/SOURCE_MANIFEST.json",
-            "docs/production-readiness/post-r18/gates/g1/DECISION.md",
-            "docs/production-readiness/post-r18/gates/g1/BLOCKERS.md",
-            "docs/production-readiness/post-r18/gates/g1/ACCEPTANCE_PUBLICATION.md",
-            "docs/production-readiness/post-r18/waves/wave-02.plan.json",
-            "docs/production-readiness/post-r18/waves/WAVE_02.md",
-            "docs/production-readiness/post-r18/SPRINT_REGISTRY.json",
-            "docs/production-readiness/post-r18/ACTIVE_STATUS.md"
-          ],
-          "grantedBy": "Successor delegated G1 coordinator for baraabd; owner resume instruction 2026-10-16",
-          "scope": "Verify already-merged PR #171; publish its immutable identity; release only this assigned R27 handoff. No peer runtime writes or gate-validator relaxation.",
-          "expires": "R27 PR merge/closure, G2 decision or earlier coordinator revocation",
-          "handoff": "Single writer: current R27 Work Mode session. Publish final head, evidence and exact paths; recheck develop and active PRs before integration. Coordinator releases these paths before reassignment."
-        },
-        {
-          "kind": "MEASURED_UI_REPAIRS",
-          "paths": [
-            "apps/web/src/app/components/admin/AdminRouteContent.tsx",
-            "apps/web/src/app/components/admin/AdminRouteContent.test.tsx",
-            "apps/web/src/app/components/admin/DashboardOverview.test.tsx",
-            "apps/web/src/app/components/profile/SavedAddressesPage.tsx",
-            "apps/web/src/app/components/profile/SavedAddressesPage.test.tsx"
-          ],
-          "grantedBy": "Successor delegated G1 coordinator for baraabd; owner resume instruction 2026-10-16",
-          "scope": "CR-R27-01/02 lazy chart/map boundaries and existing behavior tests only, after current-source baseline. No route table, Root, Vite config, auth or visual redesign.",
-          "expires": "R27 PR merge/closure, G2 decision or earlier coordinator revocation",
-          "handoff": "Single writer: current R27 Work Mode session. Publish final head, evidence and exact paths; recheck develop and active PRs before integration. Coordinator releases these paths before reassignment."
-        },
-        {
-          "kind": "ISOLATED_MEASUREMENT_CI",
-          "paths": [".github/workflows/r27-performance.yml", "apps/web/playwright.r27.config.ts"],
-          "grantedBy": "Successor delegated G1 coordinator for baraabd; owner resume instruction 2026-10-16",
-          "scope": "Dedicated disposable R27 measurement/browser job. Preserve existing CI, thresholds and assertions. No hosted deployment or external paid resources.",
-          "expires": "R27 PR merge/closure, G2 decision or earlier coordinator revocation",
-          "handoff": "Single writer: current R27 Work Mode session. Publish final head, evidence and exact paths; recheck develop and active PRs before integration. Coordinator releases these paths before reassignment."
-        }
-      ],
+      "leases": [],
       "requiredEvidence": [
         "docs/production-readiness/r27/IMPLEMENTATION.md",
         "docs/production-readiness/r27/ACCEPTANCE.md",
@@ -327,11 +280,11 @@
         "All behavioral, negative and integration tests in the complete authoritative prompt",
         "Exact final-head CI and CodeQL; real-service evidence; limitations and rollback"
       ],
-      "ownershipApproval": "APPROVED_EXACT_R27_HANDOFF_AFTER_VERIFIED_G1_PUBLICATION",
-      "blockedBy": [],
+      "ownershipApproval": "CONDITIONAL_ON_G1_PUBLICATION",
+      "blockedBy": ["G1-PUBLICATION-PENDING"],
       "isolatedRuntime": {
-        "composeProject": "hsm-r27-perf (single instance on assigned host; fixed containers verified before start)",
-        "database": "hsm_r27_perf (disposable, loopback port 54397, r27 user)",
+        "composeProject": "hsm-r27-<session>",
+        "database": "hsm_r27_<session>",
         "redis": "separate disposable instance",
         "storage": "r27/<session>/ with distinct public/restricted/staging namespaces",
         "apiPort": 4327,
@@ -344,7 +297,7 @@
         "mergedAs": "f52d7b0aeac8ae9e16152fb26b3bdbe21d7dadf0",
         "originalBase": "059c018576a75837d4dfb262ee49168d9217d881",
         "state": "PRE_G1_MERGED_NOT_ACCEPTED",
-        "reconciliation": "Old head is ancestor of frozen source. Assigned fresh worktree at frozen source fast-forwarded merged metadata to 0568739096ceeaf0cfc79034626886e258fe4328; historical harness retained, current baselines required."
+        "reconciliation": "Preserve merged harness; after G1, create a fresh worktree at the certified base, compare existing branch, obtain an explicit handoff, rerun baselines. No automatic reset/rebase/force push."
       }
     },
     {
@@ -391,7 +344,7 @@
         "Exact final-head CI and CodeQL; real-service evidence; limitations and rollback"
       ],
       "ownershipApproval": "CONDITIONAL_ON_G1_PUBLICATION",
-      "blockedBy": ["SESSION_HANDOFF_PENDING"],
+      "blockedBy": ["G1-PUBLICATION-PENDING"],
       "isolatedRuntime": {
         "composeProject": "hsm-r28-<session>",
         "database": "hsm_r28_<session>",

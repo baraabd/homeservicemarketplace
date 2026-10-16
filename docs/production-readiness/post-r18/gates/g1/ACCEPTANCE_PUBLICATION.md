@@ -1,12 +1,5 @@
 # G1 acceptance publication and R26 handoff
 
-> **Post-merge update (R27 handoff):** PR #171 was owner-merged at
-> `0568739096ceeaf0cfc79034626886e258fe4328`. Its frozen runtime source/tree
-> and ancestry were verified; 29 latest publication-head checks succeeded.
-> `SOURCE_MANIFEST.json` now records MERGED. Only assigned R27 is READY_TO_START;
-> other lanes await their own session handoff. The pre-merge account below is
-> retained as history and its publication hold is superseded by this notice.
-
 Mode A. **Integrated source accepted; owner publication pending.** This is
 the separate G1-06 record after owner-merged corrective PR #169. It is not R26
 implementation, a merged publication, a hosted release or live activation.

@@ -57,6 +57,59 @@ function resetLaneRedis() {
   });
 }
 
+async function overloadAndRecovery(logDir) {
+  resetLaneRedis();
+  const handle = await startApi({ profile: 'production', logFile: join(logDir, 'overload.log') });
+  try {
+    const statuses = {};
+    let next = 0;
+    const started = performance.now();
+    await Promise.all(
+      Array.from({ length: 8 }, async () => {
+        while (next++ < 150) {
+          const response = await fetch(`${LANE.api}/v1/services`, {
+            signal: AbortSignal.timeout(10_000),
+          });
+          statuses[response.status] = (statuses[response.status] ?? 0) + 1;
+          const body = await response.json();
+          if (response.status === 429 && body.error?.code !== 'RATE_LIMITED') {
+            throw new Error('overload response lost the stable RATE_LIMITED envelope');
+          }
+          if (![200, 429].includes(response.status))
+            throw new Error('unexpected overload HTTP ' + response.status);
+        }
+      }),
+    );
+    if (!statuses[200] || !statuses[429])
+      throw new Error('production overload did not exercise both admission and rejection');
+    // Observe real default-window expiry; do not flush counters to fake recovery.
+    let recovered = false;
+    while (performance.now() - started < 75_000) {
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+      const response = await timed('/v1/services');
+      if (response.status === 200) {
+        recovered = true;
+        break;
+      }
+      if (response.status !== 429) throw new Error('unexpected recovery HTTP ' + response.status);
+    }
+    if (!recovered)
+      throw new Error('production throttle did not recover after its default 60-second window');
+    return {
+      requests: 150,
+      concurrency: 8,
+      statusCounts: statuses,
+      recovered,
+      recoveryObservedMs: Math.round(performance.now() - started),
+      policy:
+        'Unmodified default 100 requests / 60 seconds. Only disposable lane Redis cleared BEFORE the burst; natural expiry afterward.',
+      limits: 'Admission-control/recovery contract only; not saturation or production capacity.',
+    };
+  } finally {
+    await stopApi(handle);
+  }
+}
+
 async function main() {
   const logDir = mkdtempSync(join(tmpdir(), 'hsm-r27-api-'));
   const runs = [];
@@ -103,6 +156,7 @@ async function main() {
     }
   }
 
+  const overload = PROFILE === 'production' ? await overloadAndRecovery(logDir) : null;
   const report = {
     schemaVersion: 1,
     kind: 'r27-api-boot',
@@ -132,6 +186,7 @@ async function main() {
       concurrentLoad: 'none from this harness; other lanes may run on the host',
     },
     runs,
+    overload,
     summary: {
       liveMs: summarize(runs.map((r) => r.liveMs)),
       readyMs: summarize(runs.map((r) => r.readyMs)),

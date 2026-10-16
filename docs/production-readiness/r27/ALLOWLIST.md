@@ -1,3 +1,12 @@
+> **Single-writer reconciliation:** After the initial empty open-PR inventory,
+> coordinator PR #172 appeared at 2026-10-16T23:18:01Z, owning the G1 metadata.
+> R27 withdraws its eight metadata diffs completely; those exact files remain
+> at the merged integration base in this branch. The earlier publication lease
+> below is RELEASED, not concurrent. `G1_HANDOFF.json.ownership` is the current
+> exact R27 extension and runtime/measurement leases under the prior delegated
+> authority. Central transcription is an explicit coordinator integration task.
+> No unmerged peer source is consumed and no other lane is started by this PR.
+
 # R27 — current exact ownership and handoff
 
 Coordinator-recorded **before implementation** on 2026-10-16 after owner
@@ -22,8 +31,8 @@ this R27 session, branch `feat/r27-performance-capacity`, fresh worktree
 - Current remote open PR inventory is empty. Other four lanes stay held for
   their own assignment/handoff; their files/leases are not changed.
 
-The machine-readable exact owned files and leases are synchronized in
-`../post-r18/waves/wave-02.plan.json` and `../post-r18/SPRINT_REGISTRY.json`.
+The current R27 exact extension is in `G1_HANDOFF.json.ownership`. Its
+central transcription was withdrawn to preserve the active coordinator writer.
 All additions below were checked against other four lane allowlists/leases.
 Lease expiry: R27 PR merge/closure, G2 decision or earlier revocation.
 
@@ -108,3 +117,30 @@ need an explicit serialized extension before any write.
 
 None were edited. Every runtime, route, schema, CI or global configuration
 change is a change request under `shared-change-requests/`.
+
+## API repair lease extension (before runtime writes)
+
+CR-R27-03/05/08 only. Current G1 baseline job 117241110118 reproduced 52 SQL statements for 15 admin users (22 for 5), whole-Bid scan with 43344 rows and 37.85 ms request-list p50, and 136 ms sampled mongoose/mongodb self time while disabled. Batch page reads and defer disabled optional Mongo imports. No auth, grants, money, schema, main/AppModule/config or peer edits.
+
+- `apps/api/src/infrastructure/persistence/requests/service-request.repository.ts`
+- `apps/api/src/infrastructure/persistence/requests/service-request.repository.spec.ts`
+- `apps/api/src/infrastructure/persistence/iam/user.repository.ts`
+- `apps/api/src/infrastructure/persistence/iam/user.repository.spec.ts`
+- `apps/api/src/infrastructure/persistence/iam/admin-access-request.repository.ts`
+- `apps/api/src/modules/admin/users/admin-users.service.ts`
+- `apps/api/src/modules/admin/users/admin-users.service.spec.ts`
+- `apps/api/src/infrastructure/mongo/mongo.service.ts`
+- `apps/api/src/infrastructure/mongo/mongo.providers.ts`
+- `apps/api/src/infrastructure/mongo/mongo.disabled-load.spec.ts`
+
+## Browser harness exact extension (before writes)
+
+Dedicated R27 tests avoid changing the shared Playwright configuration or
+accidentally running real-service tests in the mocked browser suite.
+
+- `scripts/perf/post-r18/browser-servers.mjs`
+- `apps/web/r27-tests/performance.real-api.spec.ts`
+- `apps/web/r27-tests/tsconfig.json`
+
+The leased `apps/web/playwright.r27.config.ts` selects only this test directory.
+API 4327, web 5327, alternate 5427; R28 port 5328 is not used.

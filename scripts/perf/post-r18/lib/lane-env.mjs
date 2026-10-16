@@ -17,7 +17,7 @@ export const LANE = Object.freeze({
   mailpit: 'http://127.0.0.1:18027',
   apiPort: 4327,
   api: 'http://127.0.0.1:4327',
-  webPorts: [5327, 5328],
+  webPorts: [5327, 5427],
 });
 
 /** Throws unless `url` names this lane's loopback database. */

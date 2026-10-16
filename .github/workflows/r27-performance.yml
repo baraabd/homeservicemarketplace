@@ -28,6 +28,9 @@ jobs:
       DATABASE_URL: postgresql://r27:r27-local-only@127.0.0.1:54397/hsm_r27_perf
       R27_HARNESS_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
       VITE_API_URL: http://127.0.0.1:4327
+      E2E_REAL_API: http://127.0.0.1:4327
+      E2E_MAILPIT: http://127.0.0.1:18027
+      R27_CANDIDATE: ${{ matrix.source == 'candidate' && 'true' || 'false' }}
     steps:
       - name: Checkout measurement harness
         uses: actions/checkout@v5
@@ -54,7 +57,10 @@ jobs:
           set -euo pipefail
           cp -R ../harness/scripts/perf/post-r18/. scripts/perf/post-r18/
           git diff --exit-code -- apps packages infra .github/workflows pnpm-lock.yaml
-          mkdir .r27-evidence
+          cp ../harness/apps/web/playwright.r27.config.ts apps/web/playwright.r27.config.ts
+          mkdir -p apps/web/r27-tests
+          cp -R ../harness/apps/web/r27-tests/. apps/web/r27-tests/
+          mkdir r27-evidence
       - run: pnpm install --frozen-lockfile
       - name: Harness regressions and source identity
         run: |
@@ -81,17 +87,40 @@ jobs:
       - name: Measure bundles, repeated production-policy boot and query hotlists
         run: |
           set -euo pipefail
-          node scripts/perf/post-r18/bundle-report.mjs --label '${{ matrix.source }}' --out-json .r27-evidence/bundle.json
-          node scripts/perf/post-r18/api-boot.mjs --runs 5 --requests 30 --profile production --out-json .r27-evidence/boot.json
-          node scripts/perf/post-r18/api-boot-profile.mjs --out-json .r27-evidence/boot-profile.json
-          node scripts/perf/post-r18/query-profile.mjs --copies 300 --out-json .r27-evidence/query.json
+          node scripts/perf/post-r18/bundle-report.mjs --label '${{ matrix.source }}' --out-json r27-evidence/bundle.json
+          node scripts/perf/post-r18/api-boot.mjs --runs 5 --requests 30 --profile production --out-json r27-evidence/boot.json
+          node scripts/perf/post-r18/api-boot-profile.mjs --out-json r27-evidence/boot-profile.json
+          node scripts/perf/post-r18/query-profile.mjs --copies 300 ${{ matrix.source == 'candidate' && '--assert-repairs' || '' }} --out-json r27-evidence/query.json
+      - name: Build and typecheck real browser harness
+        run: |
+          set -euo pipefail
+          pnpm --filter @homeservicemarketplace/web build
+          pnpm --filter @homeservicemarketplace/web exec tsc -p r27-tests/tsconfig.json --noEmit
+          pnpm --filter @homeservicemarketplace/web exec playwright install --with-deps chromium
+      - name: Production bundle browser measurements and fault recovery
+        env:
+          R27_BROWSER_MODE: production
+        run: |
+          set -euo pipefail
+          bash scripts/perf/post-r18/lane-db-reset.sh
+          pnpm --filter @homeservicemarketplace/web exec playwright test --config playwright.r27.config.ts
+      - name: Development browser measurements on a freshly reset fixture
+        env:
+          R27_BROWSER_MODE: development
+        run: |
+          set -euo pipefail
+          bash scripts/perf/post-r18/lane-db-reset.sh
+          pnpm --filter @homeservicemarketplace/web exec playwright test --config playwright.r27.config.ts
       - name: Retain sanitized measurements only
         if: always()
         uses: actions/upload-artifact@v6
         with:
           name: r27-${{ matrix.source }}-${{ github.event.pull_request.head.sha || github.sha }}
-          path: subject/.r27-evidence/*.json
-          if-no-files-found: warn
+          path: |
+            subject/r27-evidence/*.json
+            subject/r27-evidence/browser/**/*.json
+            subject/r27-evidence/browser/**/*.png
+          if-no-files-found: error
           retention-days: 14
       - name: Remove only this job's disposable services
         if: always() && env.R27_SERVICES_OWNED == 'true'
