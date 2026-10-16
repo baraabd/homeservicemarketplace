@@ -49,7 +49,7 @@ for (const [name, change, pattern] of [
   [
     'an invented title on a reserved id',
     (r) => {
-      r.sprints[1].title = 'Something';
+      r.sprints[10].title = 'Something';
     },
     /must not carry an invented title/u,
   ],

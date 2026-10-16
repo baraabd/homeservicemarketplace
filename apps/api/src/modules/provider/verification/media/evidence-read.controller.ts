@@ -81,16 +81,13 @@ export class EvidenceReadController {
     // Never let a browser sniff its way to a different type than the bytes
     // actually are; the type below is the DETECTED one.
     res.setHeader('X-Content-Type-Options', 'nosniff');
-    // Attachment, not inline: a document is downloaded and inspected, not
-    // rendered in a tab where an active-content payload would execute in our
-    // origin. Combined with the PDF/JPEG/PNG allowlist this is belt and braces.
-    res.setHeader('Content-Disposition', contentDisposition(grant.displayFilename));
-    res.setHeader('Content-Type', grant.detectedMimeType);
     res.setHeader('Referrer-Policy', 'no-referrer');
 
     let stream;
     try {
-      stream = await this.objects.openReadStream(grant.storageKey);
+      stream = await this.objects.openReadStream(grant.storageKey, {
+        sizeBytes: grant.sizeBytes,
+      });
     } catch {
       // An unresolvable or missing object is a data problem, not a client one.
       // The caller gets the same 404 every other denial gets — no signal about
@@ -98,6 +95,12 @@ export class EvidenceReadController {
       this.log.error({ msg: 'evidence.read.object_unavailable', documentId });
       throw new AppError('NOT_FOUND', 'Document not found.', 404);
     }
+
+    // Set document headers only after the integrity-checked object opens.
+    // A storage refusal must retain the normal JSON error response rather
+    // than label it as a PDF download. Privacy headers apply to both paths.
+    res.setHeader('Content-Disposition', contentDisposition(grant.displayFilename));
+    res.setHeader('Content-Type', grant.detectedMimeType);
 
     stream.on('error', (err) => {
       // Headers are already sent by the time a stream error surfaces, so the

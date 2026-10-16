@@ -8,6 +8,7 @@
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { waveGateProblems } from './wave-gate.mjs';
 
 export const REGISTRY = 'docs/production-readiness/post-r18/SPRINT_REGISTRY.json';
 export const STATUS_INDEX = 'docs/production-readiness/post-r18/ACTIVE_STATUS.md';
@@ -102,7 +103,18 @@ export function registryProblems(registry, statusIndex = null) {
       if (typeof sprint.branch !== 'string' || !sprint.branch.trim())
         problems.push(`${id} needs a branch`);
       if (!sprint.owner) problems.push(`${id} needs an owner`);
-      if (!SHA.test(sprint.frozenBase ?? '')) problems.push(`${id} needs a full frozen base SHA`);
+      // A known lane may be planned while its start gate is explicitly blocked.
+      // It owns no executable baseline until the separate gate is accepted.
+      const awaitingGate =
+        sprint.status === 'PLANNED' &&
+        sprint.frozenBase === null &&
+        sprint.wave === 2 &&
+        sprint.startBarrier?.gate === 'G1' &&
+        sprint.startBarrier?.decision === 'BLOCKED' &&
+        registry.gates?.G1 &&
+        registry.waveManifests?.['2'];
+      if (!awaitingGate && !SHA.test(sprint.frozenBase ?? ''))
+        problems.push(`${id} needs a full frozen base SHA`);
       if (!Array.isArray(sprint.requiredEvidence) || !sprint.requiredEvidence.length) {
         problems.push(`${id} needs required evidence`);
       }
@@ -121,6 +133,10 @@ export function registryProblems(registry, statusIndex = null) {
       if (glue) problems.push(`${id} claims coordinator-owned ${entry} outside a lease`);
     }
     for (const lease of sprint.ownedPaths?.leases ?? []) {
+      for (const entry of lease.paths ?? []) {
+        if (entry.includes('..') || path.isAbsolute(entry))
+          problems.push(`${id} has an unsafe lease path ${entry}`);
+      }
       if (
         !lease.grantedBy ||
         !lease.expires ||
@@ -136,8 +152,12 @@ export function registryProblems(registry, statusIndex = null) {
   for (const a of sprints) {
     for (const b of sprints) {
       if (a.id >= b.id || a.wave !== b.wave) continue;
-      for (const pa of owned(a)) {
-        for (const pb of owned(b)) {
+      const allOwned = (s) => [
+        ...owned(s),
+        ...(s.ownedPaths?.leases ?? []).flatMap((l) => l.paths ?? []),
+      ];
+      for (const pa of allOwned(a)) {
+        for (const pb of allOwned(b)) {
           if (overlaps(pa, pb))
             problems.push(`${a.id} and ${b.id} both own ${pa} / ${pb} in wave ${a.wave}`);
         }
@@ -180,7 +200,17 @@ export function registryProblems(registry, statusIndex = null) {
 export async function verifyRegistry(root) {
   const registry = JSON.parse(await readFile(path.join(root, REGISTRY), 'utf8'));
   const index = await readFile(path.join(root, STATUS_INDEX), 'utf8');
-  return registryProblems(registry, index);
+  const problems = registryProblems(registry, index);
+  if (registry.gates?.G1 || registry.waveManifests?.['2']) {
+    const expectedGate = 'docs/production-readiness/post-r18/gates/g1/SOURCE_MANIFEST.json';
+    const expectedWave = 'docs/production-readiness/post-r18/waves/wave-02.plan.json';
+    if (registry.gates?.G1 !== expectedGate || registry.waveManifests?.['2'] !== expectedWave)
+      return [...problems, 'G1 records must use the canonical paths'];
+    const gate = JSON.parse(await readFile(path.join(root, expectedGate), 'utf8'));
+    const wave = JSON.parse(await readFile(path.join(root, expectedWave), 'utf8'));
+    problems.push(...waveGateProblems(gate, wave, registry));
+  }
+  return problems;
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
