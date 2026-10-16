@@ -63,7 +63,9 @@ async function main() {
         sourceSha,
         builtIndexSha256: createHash('sha256').update(html).digest('hex'),
         observedAt: new Date().toISOString(),
-        apiReady: api.status,
+        // The equality assertion above is the evidence. Persist only this
+        // fixed-schema verified result, never data supplied by a remote peer.
+        apiReady: 200,
         servedDocumentMatchesBuild: true,
         browserOrigin: process.env.E2E_BASE_URL,
         apiOrigin: process.env.E2E_REAL_API,

@@ -10,7 +10,10 @@ function server(production: boolean) {
   const app = express();
   const filter = new AllExceptionsFilter({ isProduction: production } as AppConfigService);
   app.use(buildRequestBodyParser());
-  app.use((req, res) => res.json({ bytes: Buffer.isBuffer(req.body) ? req.body.length : 0 }));
+  app.use((req, res) => {
+    const body: unknown = req.body;
+    res.json({ bytes: Buffer.isBuffer(body) ? Buffer.byteLength(body) : 0 });
+  });
   app.use(
     (error: unknown, req: express.Request, res: express.Response, _next: express.NextFunction) => {
       filter.catch(error, {

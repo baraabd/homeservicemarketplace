@@ -20,11 +20,11 @@ test('CSP explicitly binds API, socket, media and upload origins without widenin
   assert.deepEqual(csp['script-src'], ["'self'"]);
   assert.deepEqual(csp['script-src-attr'], ["'none'"]);
   assert.deepEqual(csp['default-src'], ["'none'"]);
-  assert.ok(csp['connect-src'].includes('wss://api.example.test'));
-  assert.ok(csp['connect-src'].includes('https://uploads.example.test'));
-  assert.ok(csp['img-src'].includes('https://cdn.example.test'));
-  assert.ok(csp['img-src'].includes('blob:'));
-  assert.ok(csp['font-src'].includes('https://fonts.gstatic.com'));
+  assert.ok(new Set(csp['connect-src']).has('wss://api.example.test'));
+  assert.ok(new Set(csp['connect-src']).has('https://uploads.example.test'));
+  assert.ok(new Set(csp['img-src']).has('https://cdn.example.test'));
+  assert.ok(new Set(csp['img-src']).has('blob:'));
+  assert.ok(new Set(csp['font-src']).has('https://fonts.gstatic.com'));
   assert.deepEqual(csp['worker-src'], ["'self'"]);
   assert.deepEqual(csp['frame-src'], ["'none'"]);
   assert.ok(
