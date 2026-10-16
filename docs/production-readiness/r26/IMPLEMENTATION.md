@@ -4,7 +4,7 @@ Status: IMPLEMENTED, local unit/type/build source verification complete; INTEGRA
 
 ## Source and authority
 
-Frozen G1 runtime source: `40cdac5c9ce6acaa8dedc0385984a807ae9a84d0`, tree `109b514fe9833a9aac3e8caecd7f9b14d4f61b3b`. The owner merged acceptance PRs #170 and #171. This branch starts at published coordination base `0568739096ceeaf0cfc79034626886e258fe4328`; runtime paths are identical to frozen G1. Exact ownership and the serialized shared-file lease are in [OWNERSHIP.md](OWNERSHIP.md). Other Wave 2 lanes remain held for their own handoff.
+Frozen G1 runtime source: `40cdac5c9ce6acaa8dedc0385984a807ae9a84d0`, tree `109b514fe9833a9aac3e8caecd7f9b14d4f61b3b`. The owner merged acceptance PRs #170 and #171. This branch starts at published coordination base `0568739096ceeaf0cfc79034626886e258fe4328`; runtime paths are identical to frozen G1. Exact ownership and the serialized shared-file lease are in [OWNERSHIP.md](OWNERSHIP.md). Owner-merged #172 later released the other assigned Wave 2 lanes; its records-only base `07c8e584c684111bfc80995c7efb0144cfb6161b` is integrated without consuming peer runtime code.
 
 The final published commit is the PR's `Final SHA`, checked against the live head by existing governance. R26 CI checks out that same head and puts it in `boundaries.json` and `browser.json`; the built HTML additionally has a SHA-256 digest. A document cannot contain its own final Git commit SHA. No unmerged peer implementation is consumed.
 

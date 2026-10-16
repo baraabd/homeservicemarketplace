@@ -87,7 +87,7 @@
         "Exact final-head CI and CodeQL; real-service evidence; limitations and rollback"
       ],
       "pr": 159,
-      "scopeNote": "Accepted integrated Wave 1 source and disposable-service boundaries on the G1 frozen source; hosted, policy and release controls remain external. Publication of this decision is pending owner review/merge.",
+      "scopeNote": "Accepted integrated Wave 1 source and disposable-service boundaries on the G1 frozen source; hosted, policy and release controls remain external. Publication is owner-merged as PR #171 and its immutable identity is verified.",
       "changeRequests": [
         {
           "id": "CR-001",
@@ -266,7 +266,7 @@
         "Exact final-head CI and CodeQL; real-service evidence; limitations and rollback"
       ],
       "pr": 161,
-      "scopeNote": "Accepted integrated Wave 1 source and disposable-service boundaries on the G1 frozen source; hosted, policy and release controls remain external. Publication of this decision is pending owner review/merge.",
+      "scopeNote": "Accepted integrated Wave 1 source and disposable-service boundaries on the G1 frozen source; hosted, policy and release controls remain external. Publication is owner-merged as PR #171 and its immutable identity is verified.",
       "mergeEvidence": {
         "implementation": {
           "number": 161,
@@ -371,7 +371,7 @@
         "Exact final-head CI and CodeQL; real-service evidence; limitations and rollback"
       ],
       "pr": 160,
-      "scopeNote": "Accepted integrated Wave 1 source and disposable-service boundaries on the G1 frozen source; hosted, policy and release controls remain external. Publication of this decision is pending owner review/merge.",
+      "scopeNote": "Accepted integrated Wave 1 source and disposable-service boundaries on the G1 frozen source; hosted, policy and release controls remain external. Publication is owner-merged as PR #171 and its immutable identity is verified.",
       "mergeEvidence": {
         "implementation": {
           "number": 160,
@@ -496,7 +496,7 @@
         "Exact final-head CI and CodeQL; real-service evidence; limitations and rollback"
       ],
       "pr": 158,
-      "scopeNote": "Accepted integrated Wave 1 source and disposable-service boundaries on the G1 frozen source; hosted, policy and release controls remain external. Publication of this decision is pending owner review/merge.",
+      "scopeNote": "Accepted integrated Wave 1 source and disposable-service boundaries on the G1 frozen source; hosted, policy and release controls remain external. Publication is owner-merged as PR #171 and its immutable identity is verified.",
       "mergeEvidence": {
         "implementation": {
           "number": 158,
@@ -639,7 +639,7 @@
         "Exact final-head CI and CodeQL; real-service evidence; limitations and rollback"
       ],
       "pr": 163,
-      "scopeNote": "Accepted integrated Wave 1 source and disposable-service boundaries on the G1 frozen source; hosted, policy and release controls remain external. Publication of this decision is pending owner review/merge.",
+      "scopeNote": "Accepted integrated Wave 1 source and disposable-service boundaries on the G1 frozen source; hosted, policy and release controls remain external. Publication is owner-merged as PR #171 and its immutable identity is verified.",
       "mergeEvidence": {
         "implementation": {
           "number": 163,
@@ -701,7 +701,7 @@
         "lane": "R24 lane author (repository owner assigns session)",
         "coordinator": "G1 delegated coordinator for baraabd"
       },
-      "status": "PLANNED",
+      "status": "READY_TO_START",
       "frozenBase": "40cdac5c9ce6acaa8dedc0385984a807ae9a84d0",
       "dependencies": ["R19", "R22", "R23"],
       "legacyAliases": ["P37", "P42-foundation  "],
@@ -736,12 +736,13 @@
         "Exact final-head CI and CodeQL; real-service evidence; limitations and rollback"
       ],
       "pr": null,
-      "scopeNote": "Complete requirements are preserved in gates/g1/prompts/R19-R28.md; integration acceptance is not inferred from merge.",
+      "scopeNote": "G1 publication identity verified; exact lane ownership released to the owner-assigned session. READY_TO_START is not implementation or acceptance. Complete requirements remain in gates/g1/prompts/R19-R28.md; preserve frozen source and all policy/external holds.",
       "startBarrier": {
         "gate": "G1",
         "decision": "ACCEPTED",
         "publication": "MERGED",
-        "acceptanceRecordCommitSha": "0568739096ceeaf0cfc79034626886e258fe4328"
+        "acceptanceRecordCommitSha": "0568739096ceeaf0cfc79034626886e258fe4328",
+        "verificationRecord": "docs/production-readiness/post-r18/gates/g1/PUBLICATION_VERIFICATION.json"
       }
     },
     {
@@ -755,7 +756,7 @@
         "lane": "R25 lane author (repository owner assigns session)",
         "coordinator": "G1 delegated coordinator for baraabd"
       },
-      "status": "PLANNED",
+      "status": "READY_TO_START",
       "frozenBase": "40cdac5c9ce6acaa8dedc0385984a807ae9a84d0",
       "dependencies": ["R22", "R23"],
       "legacyAliases": ["P44  "],
@@ -825,12 +826,13 @@
         "Exact final-head CI and CodeQL; real-service evidence; limitations and rollback"
       ],
       "pr": null,
-      "scopeNote": "Complete requirements are preserved in gates/g1/prompts/R19-R28.md; integration acceptance is not inferred from merge.",
+      "scopeNote": "G1 publication identity verified; exact lane ownership released to the owner-assigned session. READY_TO_START is not implementation or acceptance. Complete requirements remain in gates/g1/prompts/R19-R28.md; preserve frozen source and all policy/external holds.",
       "startBarrier": {
         "gate": "G1",
         "decision": "ACCEPTED",
         "publication": "MERGED",
-        "acceptanceRecordCommitSha": "0568739096ceeaf0cfc79034626886e258fe4328"
+        "acceptanceRecordCommitSha": "0568739096ceeaf0cfc79034626886e258fe4328",
+        "verificationRecord": "docs/production-readiness/post-r18/gates/g1/PUBLICATION_VERIFICATION.json"
       }
     },
     {
@@ -914,13 +916,14 @@
         "All behavioral, negative and integration tests in the complete authoritative prompt",
         "Exact final-head CI and CodeQL; real-service evidence; limitations and rollback"
       ],
-      "pr": null,
-      "scopeNote": "R26 execution after verified G1 publication; this start record is not sprint acceptance.",
+      "pr": 174,
+      "scopeNote": "G1 publication and all assigned lane starts remain as owner-merged #172. R26 implementation is in Draft PR #174 under its recorded exact shared-file lease; final checks and external security/hosted evidence remain required. No implementation or release acceptance inferred.",
       "startBarrier": {
         "gate": "G1",
         "decision": "ACCEPTED",
         "publication": "MERGED",
-        "acceptanceRecordCommitSha": "0568739096ceeaf0cfc79034626886e258fe4328"
+        "acceptanceRecordCommitSha": "0568739096ceeaf0cfc79034626886e258fe4328",
+        "verificationRecord": "docs/production-readiness/post-r18/gates/g1/PUBLICATION_VERIFICATION.json"
       },
       "execution": {
         "state": "IN_PROGRESS",
@@ -940,7 +943,7 @@
         "lane": "R27 lane author (repository owner assigns session)",
         "coordinator": "G1 delegated coordinator for baraabd"
       },
-      "status": "PLANNED",
+      "status": "READY_TO_START",
       "frozenBase": "40cdac5c9ce6acaa8dedc0385984a807ae9a84d0",
       "dependencies": ["R20", "R23"],
       "legacyAliases": ["P49-performance  "],
@@ -1011,12 +1014,13 @@
         "Exact final-head CI and CodeQL; real-service evidence; limitations and rollback"
       ],
       "pr": 162,
-      "scopeNote": "Complete requirements are preserved in gates/g1/prompts/R19-R28.md; integration acceptance is not inferred from merge.",
+      "scopeNote": "G1 publication identity verified; exact lane ownership released to the owner-assigned session. READY_TO_START is not implementation or acceptance. Complete requirements remain in gates/g1/prompts/R19-R28.md; preserve frozen source and all policy/external holds.",
       "startBarrier": {
         "gate": "G1",
         "decision": "ACCEPTED",
         "publication": "MERGED",
-        "acceptanceRecordCommitSha": "0568739096ceeaf0cfc79034626886e258fe4328"
+        "acceptanceRecordCommitSha": "0568739096ceeaf0cfc79034626886e258fe4328",
+        "verificationRecord": "docs/production-readiness/post-r18/gates/g1/PUBLICATION_VERIFICATION.json"
       }
     },
     {
@@ -1030,7 +1034,7 @@
         "lane": "R28 lane author (repository owner assigns session)",
         "coordinator": "G1 delegated coordinator for baraabd"
       },
-      "status": "PLANNED",
+      "status": "READY_TO_START",
       "frozenBase": "40cdac5c9ce6acaa8dedc0385984a807ae9a84d0",
       "dependencies": ["R20", "R21", "R22", "R23"],
       "legacyAliases": ["P50-platform", "P49-edge  "],
@@ -1071,12 +1075,13 @@
         "Exact final-head CI and CodeQL; real-service evidence; limitations and rollback"
       ],
       "pr": null,
-      "scopeNote": "Complete requirements are preserved in gates/g1/prompts/R19-R28.md; integration acceptance is not inferred from merge.",
+      "scopeNote": "G1 publication identity verified; exact lane ownership released to the owner-assigned session. READY_TO_START is not implementation or acceptance. Complete requirements remain in gates/g1/prompts/R19-R28.md; preserve frozen source and all policy/external holds.",
       "startBarrier": {
         "gate": "G1",
         "decision": "ACCEPTED",
         "publication": "MERGED",
-        "acceptanceRecordCommitSha": "0568739096ceeaf0cfc79034626886e258fe4328"
+        "acceptanceRecordCommitSha": "0568739096ceeaf0cfc79034626886e258fe4328",
+        "verificationRecord": "docs/production-readiness/post-r18/gates/g1/PUBLICATION_VERIFICATION.json"
       }
     },
     {
@@ -1279,9 +1284,19 @@
       "note": "PR #169 merged; actual post-merge evidence verified. Wave 1 SANDBOX_ACCEPTED. Frozen Wave 2 source assigned, but all lanes held until separate owner-reviewed acceptance publication is merged and verified."
     },
     {
+      "observedAt": "2026-10-16T23:01:54Z",
+      "by": "G1 post-merge publication coordinator",
+      "note": "Owner merged PR #171 at 0568739096ceeaf0cfc79034626886e258fe4328. Subsequent verification proves frozen-source ancestry and identical reviewed/merged record trees. Conditional exact Wave 2 ownership takes effect for assigned sessions; READY_TO_START does not accept implementation or authorize deployment. Evidence: gates/g1/PUBLICATION_VERIFICATION.json."
+    },
+    {
       "observedAt": "2026-10-16T23:08:21.661691+00:00",
       "by": "G1 delegated coordinator / R26 owner",
       "note": "Owner-merged #170/#171 verified. R26 alone authorized with exact shared-file lease and unchanged frozen runtime source. Other lanes retain handoff holds; no release acceptance inferred."
+    },
+    {
+      "observedAt": "2026-10-16T23:43:56.210794+00:00",
+      "by": "R26 delegated owner / serialized coordinator reconciliation",
+      "note": "Owner-merged #172 advanced develop to 07c8e584c684111bfc80995c7efb0144cfb6161b during R26 checks. Preserve its all-lane readiness and immutable publication records; retain only R26 exact ownership/extensions and active PR #174. Runtime and all unmerged R27 source remain unchanged by this integration."
     }
   ],
   "gates": {

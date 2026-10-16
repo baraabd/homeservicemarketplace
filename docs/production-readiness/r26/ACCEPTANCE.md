@@ -70,3 +70,9 @@ CodeQL workflow 38981943362 completed its analysis, but official security-result
 | `js/http-to-file-access`                                   | Medium 6.3; `verify-boundaries.cjs:61–78`       | The artifact persisted HTTP response status after asserting 200. Persist the fixed-schema 200 result only after the equality assertion; no remote-supplied value is written. The real health check still must pass.                              |
 
 No finding was dismissed, query suppressed, scan excluded or severity relabeled. Successor official CodeQL security-result check must pass with zero annotations before technical acceptance; a successful analysis workflow alone is insufficient. Final current-head evidence is recorded in the PR metadata and its source-bound artifacts to avoid a self-referential commit identity.
+
+## Concurrent owner publication reconciliation
+
+The owner merged [PR #172](https://github.com/baraabd/homeservicemarketplace/pull/172), moving develop to `07c8e584c684111bfc80995c7efb0144cfb6161b` during this work. R26 head `8ac646bc876c8df3972d33eb0ff47519ac71aa90` had no workflow runs because its shared governance records conflicted with that new base. This is recorded as **not run**, not a test pass.
+
+The branch integrates the merged records using a normal merge with both parents, preserving all-lane readiness and publication-verification records from #172 plus the existing R26 exact ownership and PR. All differences in #172 are governance documents; runtime/package/CI directories and lockfile are byte-identical to the prior base. R27 PR #173 was inspected for path overlap but not imported. Final PR metadata names the new current base and head; all current-head checks must rerun.

@@ -73,3 +73,9 @@ Only R26 request-boundary/CSP implementation and isolated acceptance wiring. No 
 ## Runtime isolation
 
 Use the manifest's R26-only disposable database, Redis, storage and ports 4326/5326 with separate browser cookie jars. No local Docker/Postgres/Redis executable was available at initial inspection; real-service tests will run in an isolated GitHub job if local provisioning remains unavailable. No user environment file, production secrets, hosted services, live funds or identity/permission grants are authorized.
+
+## Owner-merged coordination update during execution
+
+Develop advanced through owner-merged PR #172 to `07c8e584c684111bfc80995c7efb0144cfb6161b`. Its ten-file change is records-only; `git diff --exit-code 0568739096ceeaf0cfc79034626886e258fe4328 07c8e584c684111bfc80995c7efb0144cfb6161b -- apps packages scripts infra .github package.json pnpm-lock.yaml` passes. Preserve its all-lane READY_TO_START decision and new publication-verification records verbatim. The earlier R26-only reservation narrative is historical and does not override #172.
+
+The current R26 coordinator lease covers reconciliation of the same eight coordinator paths listed above. Only R26 allowlist/lease/execution/PR data is layered onto #172; other lanes retain the owner-merged records. The new PUBLICATION_VERIFICATION files are inherited unchanged, not edited. PR #173 changed paths were inspected and have no overlap with R26 runtime/shared changes. No unmerged R27 code is imported. No rebase, reset, force-push, peer worktree edit or merge to develop occurs.
