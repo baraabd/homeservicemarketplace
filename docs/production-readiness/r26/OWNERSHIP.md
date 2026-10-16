@@ -66,6 +66,7 @@ Mode A: security integration and bug fixes. The owner authorized R26 after G1 an
 - `apps/web/Dockerfile` (lease extended before editing: expose exact public media/upload CSP build arguments only)
 - `apps/web/playwright.config.ts`
 - `apps/web/playwright.r26.config.ts`
+- `apps/web/startup-tests/startup.spec.ts` (lease extended before editing: copy the new CSP build dependency into the existing isolated fixture only)
 - `.github/workflows/r26-security.yml`
 
 Only R26 request-boundary/CSP implementation and isolated acceptance wiring. No deployment, dependency, IAM permission, money-policy, peer-lane or unrelated design change. R26 PR closure, G2 decision or earlier coordinator revocation. Publish final head and scoped evidence; coordinator verifies no concurrent writer before reassignment.

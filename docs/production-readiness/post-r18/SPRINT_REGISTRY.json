@@ -898,7 +898,8 @@
               "apps/web/playwright.config.ts",
               "apps/web/playwright.r26.config.ts",
               ".github/workflows/r26-security.yml",
-              "apps/web/Dockerfile"
+              "apps/web/Dockerfile",
+              "apps/web/startup-tests/startup.spec.ts"
             ],
             "kind": "SERIALIZED_R26_SECURITY_INTEGRATION",
             "grantedBy": "Current delegated G1 coordinator under continuing owner authority; recorded before implementation",
