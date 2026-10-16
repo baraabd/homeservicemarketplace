@@ -1,3 +1,79 @@
+# R27 — current exact ownership and handoff
+
+Coordinator-recorded **before implementation** on 2026-10-16 after owner
+resume instruction and the delegated G1 closeout authority. Mode A; one writer:
+this R27 session, branch `feat/r27-performance-capacity`, fresh worktree
+`/workspace/scratch/6f91e439cab8/hsm-r27-work`. No other session worktree changed.
+
+- Frozen runtime source: `40cdac5c9ce6acaa8dedc0385984a807ae9a84d0`; complete tree
+  `109b514fe9833a9aac3e8caecd7f9b14d4f61b3b`.
+- PR #171 was owner-merged at 2026-10-16T23:01:54Z as
+  `0568739096ceeaf0cfc79034626886e258fe4328`, tree
+  `ceaa111acd43e07a89e49728996933b9204bd73d`. Its final head
+  `578ae9359fb93a46e478b1db0ca043a0c73aca51` has 29 latest successful
+  checks (30 records include one superseded governance failure).
+- Frozen source is an ancestor of merged publication on `develop`. Runtime
+  diff for `apps packages scripts infra .github/workflows` is empty.
+- Previous R27 head `2e8d1dba35f2a36a73d47100d8495f5379bc028c` is an
+  ancestor of the frozen source. New assigned worktree started at frozen source
+  and fast-forwarded only merged metadata to `0568739096ceeaf0cfc79034626886e258fe4328`.
+  No history reset/rebase/force-push or unmerged peer import.
+- Existing pre-G1 results remain historical; rerun current baselines.
+- Current remote open PR inventory is empty. Other four lanes stay held for
+  their own assignment/handoff; their files/leases are not changed.
+
+The machine-readable exact owned files and leases are synchronized in
+`../post-r18/waves/wave-02.plan.json` and `../post-r18/SPRINT_REGISTRY.json`.
+All additions below were checked against other four lane allowlists/leases.
+Lease expiry: R27 PR merge/closure, G2 decision or earlier revocation.
+
+## Exact coordinator leases
+
+### SERIALIZED_G1_PUBLICATION
+
+Verify already-merged PR #171; publish its immutable identity; release only this assigned R27 handoff. No peer runtime writes or gate-validator relaxation.
+
+- `docs/production-readiness/post-r18/gates/g1/SOURCE_MANIFEST.json`
+- `docs/production-readiness/post-r18/gates/g1/DECISION.md`
+- `docs/production-readiness/post-r18/gates/g1/BLOCKERS.md`
+- `docs/production-readiness/post-r18/gates/g1/ACCEPTANCE_PUBLICATION.md`
+- `docs/production-readiness/post-r18/waves/wave-02.plan.json`
+- `docs/production-readiness/post-r18/waves/WAVE_02.md`
+- `docs/production-readiness/post-r18/SPRINT_REGISTRY.json`
+- `docs/production-readiness/post-r18/ACTIVE_STATUS.md`
+
+### MEASURED_UI_REPAIRS
+
+CR-R27-01/02 lazy chart/map boundaries and existing behavior tests only, after current-source baseline. No route table, Root, Vite config, auth or visual redesign.
+
+- `apps/web/src/app/components/admin/AdminRouteContent.tsx`
+- `apps/web/src/app/components/admin/AdminRouteContent.test.tsx`
+- `apps/web/src/app/components/admin/DashboardOverview.test.tsx`
+- `apps/web/src/app/components/profile/SavedAddressesPage.tsx`
+- `apps/web/src/app/components/profile/SavedAddressesPage.test.tsx`
+
+### ISOLATED_MEASUREMENT_CI
+
+Dedicated disposable R27 measurement/browser job. Preserve existing CI, thresholds and assertions. No hosted deployment or external paid resources.
+
+- `.github/workflows/r27-performance.yml`
+- `apps/web/playwright.r27.config.ts`
+
+## Added lane-owned exact files
+
+- `docs/production-readiness/r27/G1_HANDOFF.json`
+- `docs/production-readiness/r27/shared-change-requests/CR-R27-09-harness-isolation/README.md`
+- `docs/performance/post-r18/g1-bundle-baseline.json`
+- `docs/performance/post-r18/g1-bundle-after.json`
+- `scripts/perf/post-r18/lib/runtime.test.mjs`
+- `scripts/perf/post-r18/compare-reports.mjs`
+- `scripts/perf/post-r18/profile-workloads.mjs`
+
+No API runtime/schema lease is granted by this handoff. Further measured repairs
+need an explicit serialized extension before any write.
+
+## Historical pre-G1 record (superseded ownership, retained evidence)
+
 # R27 — exact write allowlist
 
 - **Lane:** Wave 2, lane 4, branch `feat/r27-performance-capacity`, worktree `../HSM-r27`.

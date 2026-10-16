@@ -27,6 +27,7 @@ export function sourceProvenance() {
     commit: git(['rev-parse', 'HEAD']),
     tree: git(['rev-parse', 'HEAD^{tree}']),
     branch: git(['rev-parse', '--abbrev-ref', 'HEAD']),
+    measurementHarnessCommit: process.env.R27_HARNESS_SHA ?? null,
     dirtyPaths: status ? status.split('\n').map((line) => line.slice(3)) : [],
     lockfileSha256: sha256File(resolve(REPO_ROOT, 'pnpm-lock.yaml')),
   };

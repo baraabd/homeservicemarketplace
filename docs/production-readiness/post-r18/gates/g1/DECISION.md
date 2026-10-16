@@ -1,5 +1,12 @@
 # G1 decision — ACCEPTED source, publication pending
 
+> **Post-merge update (R27 handoff):** PR #171 was owner-merged at
+> `0568739096ceeaf0cfc79034626886e258fe4328`. Its frozen runtime source/tree
+> and ancestry were verified; 29 latest publication-head checks succeeded.
+> `SOURCE_MANIFEST.json` now records MERGED. Only assigned R27 is READY_TO_START;
+> other lanes await their own session handoff. The pre-merge account below is
+> retained as history and its publication hold is superseded by this notice.
+
 Decision UTC: 2026-10-16T21:41:51.823662+00:00. Mode A. This is the Wave 1 to Wave 2 engineering gate,
 not the historical R18-G1 branch-protection issue or a production release.
 

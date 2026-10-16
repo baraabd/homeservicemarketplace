@@ -1,3 +1,9 @@
+> **Current G1 continuation:** R27 resumed from frozen source
+> `40cdac5c9ce6acaa8dedc0385984a807ae9a84d0` after verified owner merge of #171.
+> See `ALLOWLIST.md` and `G1_HANDOFF.json`. The earlier report below is historical
+> pre-G1 evidence. Current implementation/integration is IN_PROGRESS and is
+> not accepted. Fresh baseline CI and required browser evidence are pending.
+
 # R27 — Rollback
 
 ## This branch

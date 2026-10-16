@@ -15,6 +15,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 
 import { startApi, stopApi } from './lib/api-process.mjs';
+import { assertLaneService } from './lib/lane-env.mjs';
 import { REPO_ROOT, hostProvenance, sourceProvenance } from './lib/provenance.mjs';
 
 const args = process.argv.slice(2);
@@ -43,6 +44,7 @@ export function areaOf(url) {
 }
 
 async function main() {
+  assertLaneService('redis');
   execFileSync('docker', ['exec', 'hsm-r27-perf-redis', 'redis-cli', 'FLUSHDB'], {
     stdio: 'ignore',
   });

@@ -16,6 +16,7 @@ services:
   postgres:
     image: postgres:16-alpine
     container_name: hsm-r27-perf-postgres
+    labels: { hsm.r27.disposable: 'true' }
     environment:
       POSTGRES_USER: r27
       POSTGRES_PASSWORD: r27-local-only
@@ -51,6 +52,7 @@ services:
   redis:
     image: redis:7-alpine
     container_name: hsm-r27-perf-redis
+    labels: { hsm.r27.disposable: 'true' }
     command: ['redis-server', '--save', '', '--appendonly', 'no']
     ports: ['127.0.0.1:63797:6379']
     healthcheck:
@@ -62,4 +64,5 @@ services:
   mailpit:
     image: axllent/mailpit:v1.31.1
     container_name: hsm-r27-perf-mailpit
+    labels: { hsm.r27.disposable: 'true' }
     ports: ['127.0.0.1:11027:1025', '127.0.0.1:18027:8025']

@@ -20,7 +20,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 
 import { API_MAIN, rssMiB, startApi, stopApi } from './lib/api-process.mjs';
-import { LANE } from './lib/lane-env.mjs';
+import { LANE, assertLaneService } from './lib/lane-env.mjs';
 import { REPO_ROOT, hostProvenance, sha256File, sourceProvenance } from './lib/provenance.mjs';
 import { summarize } from './lib/stats.mjs';
 
@@ -51,6 +51,7 @@ async function timed(path) {
 // unchanged, so its counters are cleared between runs instead. This touches
 // only the lane's own disposable Redis container, never a shared instance.
 function resetLaneRedis() {
+  assertLaneService('redis');
   execFileSync('docker', ['exec', 'hsm-r27-perf-redis', 'redis-cli', 'FLUSHDB'], {
     stdio: 'ignore',
   });

@@ -1,5 +1,12 @@
 # G1 closure and remaining publication condition
 
+> **Post-merge update (R27 handoff):** PR #171 was owner-merged at
+> `0568739096ceeaf0cfc79034626886e258fe4328`. Its frozen runtime source/tree
+> and ancestry were verified; 29 latest publication-head checks succeeded.
+> `SOURCE_MANIFEST.json` now records MERGED. Only assigned R27 is READY_TO_START;
+> other lanes await their own session handoff. The pre-merge account below is
+> retained as history and its publication hold is superseded by this notice.
+
 Certified source: `40cdac5c9ce6acaa8dedc0385984a807ae9a84d0` / `109b514fe9833a9aac3e8caecd7f9b14d4f61b3b`.
 The previous open rows remain in Git history at this source. PR #169 supplies
 the corrective source; [ACCEPTANCE_EVIDENCE.md](ACCEPTANCE_EVIDENCE.md) supplies

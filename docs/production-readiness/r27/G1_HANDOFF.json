@@ -1,0 +1,19 @@
+{
+  "frozenSource": "40cdac5c9ce6acaa8dedc0385984a807ae9a84d0",
+  "frozenTree": "109b514fe9833a9aac3e8caecd7f9b14d4f61b3b",
+  "integrationBase": "0568739096ceeaf0cfc79034626886e258fe4328",
+  "integrationTree": "ceaa111acd43e07a89e49728996933b9204bd73d",
+  "publicationPr": 171,
+  "publicationHead": "578ae9359fb93a46e478b1db0ca043a0c73aca51",
+  "publicationMergedAt": "2026-10-16T23:01:54Z",
+  "previousR27Head": "2e8d1dba35f2a36a73d47100d8495f5379bc028c",
+  "verification": {
+    "frozenAncestorOfPublication": true,
+    "previousR27AncestorOfFrozen": true,
+    "runtimeDiffEmpty": true,
+    "publicationLatestChecksSucceeded": 29,
+    "supersededGovernanceFailures": 1
+  },
+  "method": "Git ancestry and path diff; GitHub PR and check-run API. Publication head evidence, not new R27 measurements.",
+  "state": "R27_START_AUTHORIZED_NOT_ACCEPTED"
+}

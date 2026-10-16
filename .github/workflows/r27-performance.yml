@@ -1,0 +1,98 @@
+name: R27 measured performance
+
+on:
+  pull_request:
+    branches: ['develop']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: r27-performance-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  measure:
+    name: R27 real services (${{ matrix.source }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    strategy:
+      fail-fast: false
+      matrix:
+        source: [baseline, candidate]
+    defaults:
+      run:
+        working-directory: subject
+    env:
+      DATABASE_URL: postgresql://r27:r27-local-only@127.0.0.1:54397/hsm_r27_perf
+      R27_HARNESS_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+      VITE_API_URL: http://127.0.0.1:4327
+    steps:
+      - name: Checkout measurement harness
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          path: harness
+          persist-credentials: false
+      - name: Checkout immutable runtime under test
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ matrix.source == 'baseline' && '40cdac5c9ce6acaa8dedc0385984a807ae9a84d0' || github.event.pull_request.head.sha || github.sha }}
+          path: subject
+          persist-credentials: false
+      - uses: pnpm/action-setup@v6
+        with:
+          package_json_file: subject/package.json
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '24.21.0'
+          cache: pnpm
+          cache-dependency-path: subject/pnpm-lock.yaml
+      - name: Apply the same measurement harness to both immutable runtimes
+        run: |
+          set -euo pipefail
+          cp -R ../harness/scripts/perf/post-r18/. scripts/perf/post-r18/
+          git diff --exit-code -- apps packages infra .github/workflows pnpm-lock.yaml
+          mkdir .r27-evidence
+      - run: pnpm install --frozen-lockfile
+      - name: Harness regressions and source identity
+        run: |
+          set -euo pipefail
+          node --test scripts/perf/post-r18/lib/*.test.mjs
+          git diff --exit-code -- pnpm-lock.yaml
+      - name: Start explicitly disposable services on this job's VM
+        run: |
+          set -euo pipefail
+          for name in hsm-r27-perf-postgres hsm-r27-perf-redis hsm-r27-perf-mailpit; do
+            if docker inspect "$name" >/dev/null 2>&1; then
+              echo 'R27 refuses to reuse an existing container'
+              exit 1
+            fi
+          done
+          echo "R27_SERVICES_OWNED=true" >> "$GITHUB_ENV"
+          docker compose -p hsm-r27-perf -f scripts/perf/post-r18/compose.r27.yml up -d --wait
+      - name: Generate clean API artifacts and initialize only the lane database
+        run: |
+          set -euo pipefail
+          pnpm --filter @homeservicemarketplace/database generate
+          pnpm --filter @homeservicemarketplace/api build
+          bash scripts/perf/post-r18/lane-db-reset.sh
+      - name: Measure bundles, repeated production-policy boot and query hotlists
+        run: |
+          set -euo pipefail
+          node scripts/perf/post-r18/bundle-report.mjs --label '${{ matrix.source }}' --out-json .r27-evidence/bundle.json
+          node scripts/perf/post-r18/api-boot.mjs --runs 5 --requests 30 --profile production --out-json .r27-evidence/boot.json
+          node scripts/perf/post-r18/api-boot-profile.mjs --out-json .r27-evidence/boot-profile.json
+          node scripts/perf/post-r18/query-profile.mjs --copies 300 --out-json .r27-evidence/query.json
+      - name: Retain sanitized measurements only
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: r27-${{ matrix.source }}-${{ github.event.pull_request.head.sha || github.sha }}
+          path: subject/.r27-evidence/*.json
+          if-no-files-found: warn
+          retention-days: 14
+      - name: Remove only this job's disposable services
+        if: always() && env.R27_SERVICES_OWNED == 'true'
+        run: docker compose -p hsm-r27-perf -f scripts/perf/post-r18/compose.r27.yml down -v
