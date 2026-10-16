@@ -15,13 +15,52 @@ const initial = {
   wave: await read('waves/wave-02.plan.json'),
   registry: await read('SPRINT_REGISTRY.json'),
 };
-const copy = () => structuredClone(initial);
+// Negative cases must keep exercising a blocked record after the live source
+// advances to accepted-but-unpublished. These are synthetic fixtures, not
+// evidence or permissions for the repository's real wave.
+const copy = () => {
+  const x = structuredClone(initial);
+  Object.assign(x.gate, {
+    decision: 'BLOCKED',
+    frozenBaseSha: null,
+    frozenTreeSha: null,
+    acceptedSprints: [],
+    blockers: [{ id: 'synthetic-unresolved', state: 'OPEN' }],
+  });
+  Object.assign(x.wave, {
+    baseSha: null,
+    status: 'BLOCKED',
+    startableLanes: [],
+    blockedLanes: x.wave.lanes.map((lane) => lane.id),
+  });
+  for (const lane of x.wave.lanes) {
+    Object.assign(lane, { frozenBaseSha: null, status: 'BLOCKED' });
+    Object.assign(
+      x.registry.sprints.find((sprint) => sprint.id === lane.id),
+      {
+        frozenBase: null,
+        status: 'PLANNED',
+        startBarrier: { gate: 'G1', decision: 'BLOCKED' },
+      },
+    );
+  }
+  return x;
+};
 const problems = ({ gate, wave, registry }) => waveGateProblems(gate, wave, registry);
 
-test('blocked G1 preparation is internally consistent and grants no start', () => {
+test('the committed G1 decision, wave and registry are consistent', () => {
   assert.deepEqual(problems(initial), []);
-  assert.equal(initial.gate.frozenBaseSha, null);
-  assert.deepEqual(initial.wave.startableLanes, []);
+  if (initial.gate.publication.state !== 'MERGED') {
+    assert.equal(initial.wave.status, 'BLOCKED');
+    assert.deepEqual(initial.wave.startableLanes, []);
+  }
+});
+
+test('blocked G1 preparation is internally consistent and grants no start', () => {
+  const x = copy();
+  assert.deepEqual(problems(x), []);
+  assert.equal(x.gate.frozenBaseSha, null);
+  assert.deepEqual(x.wave.startableLanes, []);
 });
 
 for (const [name, mutate, pattern] of [
@@ -173,6 +212,26 @@ test('accepted gate still refuses an unmerged publication', () => {
   const x = acceptedFixture();
   x.gate.publication.state = 'DRAFT_PENDING_OWNER_REVIEW';
   assert.ok(problems(x).some((p) => /separately published merged/u.test(p)));
+});
+test('an accepted source can await publication while every lane stays held', () => {
+  const x = acceptedFixture();
+  x.gate.publication = {
+    state: 'PENDING_OWNER_REVIEW_AND_MERGE',
+    acceptanceRecordCommitSha: null,
+  };
+  x.wave.status = 'BLOCKED';
+  x.wave.startableLanes = [];
+  x.wave.blockedLanes = x.wave.lanes.map((lane) => lane.id);
+  for (const lane of x.wave.lanes) {
+    lane.status = 'BLOCKED';
+    x.registry.sprints.find((sprint) => sprint.id === lane.id).status = 'PLANNED';
+  }
+  assert.deepEqual(problems(x), []);
+  x.wave.status = 'READY_TO_START';
+  x.wave.startableLanes = [x.wave.blockedLanes.shift()];
+  x.wave.lanes[0].status = 'READY_TO_START';
+  x.registry.sprints.find((sprint) => sprint.id === x.wave.lanes[0].id).status = 'READY_TO_START';
+  assert.ok(problems(x).some((problem) => /separately published merged/u.test(problem)));
 });
 test('accepted gate refuses a pending required run', () => {
   const x = acceptedFixture();

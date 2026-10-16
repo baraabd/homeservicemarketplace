@@ -34,7 +34,7 @@
         "lane": "R19 lane author (repository owner assigns session)",
         "coordinator": "G1 delegated coordinator for baraabd"
       },
-      "status": "INTEGRATION_PENDING",
+      "status": "SANDBOX_ACCEPTED",
       "frozenBase": "059c018576a75837d4dfb262ee49168d9217d881",
       "dependencies": [],
       "legacyAliases": ["P36", "P42-foundation  "],
@@ -87,7 +87,7 @@
         "Exact final-head CI and CodeQL; real-service evidence; limitations and rollback"
       ],
       "pr": 159,
-      "scopeNote": "Complete requirements are preserved in gates/g1/prompts/R19-R28.md; integration acceptance is not inferred from merge.",
+      "scopeNote": "Accepted integrated Wave 1 source and disposable-service boundaries on the G1 frozen source; hosted, policy and release controls remain external. Publication of this decision is pending owner review/merge.",
       "changeRequests": [
         {
           "id": "CR-001",
@@ -96,9 +96,10 @@
         },
         {
           "id": "CR-002",
-          "state": "OPEN",
+          "state": "MERGED",
           "owner": "G1 coordinator and R19/R24/R31",
-          "gateDisposition": "Registration handoff must be resolved; no live caller exists."
+          "gateDisposition": "Named event registered with transactional idempotent R17 inbox consumer. No R31 entitlement, verification, work access or payout grant.",
+          "sourceCommit": "40cdac5c9ce6acaa8dedc0385984a807ae9a84d0"
         },
         {
           "id": "CR-003",
@@ -136,10 +137,22 @@
             "mergeCommit": "cbb0ffb4eeb9998eddb1ec2f929d614920a76e15",
             "mergedAt": "2026-10-15T19:12:05Z",
             "author": "baraabd"
+          },
+          {
+            "number": 169,
+            "title": "fix(g1): close Wave 1 source gaps and require missing runtime evidence",
+            "url": "https://github.com/baraabd/homeservicemarketplace/pull/169",
+            "head": "a93bdf6e5f6d403f6395f4c140fe52ff4ed319c4",
+            "branch": "coord/g1-wave1-remediation",
+            "base": "develop",
+            "merged": true,
+            "mergeCommit": "40cdac5c9ce6acaa8dedc0385984a807ae9a84d0",
+            "mergedAt": "2026-10-16T21:20:48Z",
+            "author": "baraabd"
           }
         ],
-        "verifiedCandidateSha": "54a69f78c0227a2f2b94df851a3ebb941348d8aa",
-        "decision": "INTEGRATION_PENDING"
+        "verifiedCandidateSha": "40cdac5c9ce6acaa8dedc0385984a807ae9a84d0",
+        "decision": "SANDBOX_ACCEPTED"
       }
     },
     {
@@ -153,7 +166,7 @@
         "lane": "R20 lane author (repository owner assigns session)",
         "coordinator": "G1 delegated coordinator for baraabd"
       },
-      "status": "INTEGRATION_PENDING",
+      "status": "SANDBOX_ACCEPTED",
       "frozenBase": "059c018576a75837d4dfb262ee49168d9217d881",
       "dependencies": [],
       "legacyAliases": ["P45  "],
@@ -246,7 +259,7 @@
         "Exact final-head CI and CodeQL; real-service evidence; limitations and rollback"
       ],
       "pr": 161,
-      "scopeNote": "Complete requirements are preserved in gates/g1/prompts/R19-R28.md; integration acceptance is not inferred from merge.",
+      "scopeNote": "Accepted integrated Wave 1 source and disposable-service boundaries on the G1 frozen source; hosted, policy and release controls remain external. Publication of this decision is pending owner review/merge.",
       "mergeEvidence": {
         "implementation": {
           "number": 161,
@@ -260,9 +273,22 @@
           "mergedAt": "2026-10-14T07:42:12Z",
           "author": "baraabd"
         },
-        "followUps": [],
-        "verifiedCandidateSha": "54a69f78c0227a2f2b94df851a3ebb941348d8aa",
-        "decision": "INTEGRATION_PENDING"
+        "followUps": [
+          {
+            "number": 169,
+            "title": "fix(g1): close Wave 1 source gaps and require missing runtime evidence",
+            "url": "https://github.com/baraabd/homeservicemarketplace/pull/169",
+            "head": "a93bdf6e5f6d403f6395f4c140fe52ff4ed319c4",
+            "branch": "coord/g1-wave1-remediation",
+            "base": "develop",
+            "merged": true,
+            "mergeCommit": "40cdac5c9ce6acaa8dedc0385984a807ae9a84d0",
+            "mergedAt": "2026-10-16T21:20:48Z",
+            "author": "baraabd"
+          }
+        ],
+        "verifiedCandidateSha": "40cdac5c9ce6acaa8dedc0385984a807ae9a84d0",
+        "decision": "SANDBOX_ACCEPTED"
       }
     },
     {
@@ -276,7 +302,7 @@
         "lane": "R21 lane author (repository owner assigns session)",
         "coordinator": "G1 delegated coordinator for baraabd"
       },
-      "status": "INTEGRATION_PENDING",
+      "status": "SANDBOX_ACCEPTED",
       "frozenBase": "059c018576a75837d4dfb262ee49168d9217d881",
       "dependencies": [],
       "legacyAliases": ["P46  "],
@@ -344,7 +370,7 @@
         "Exact final-head CI and CodeQL; real-service evidence; limitations and rollback"
       ],
       "pr": 160,
-      "scopeNote": "Complete requirements are preserved in gates/g1/prompts/R19-R28.md; integration acceptance is not inferred from merge.",
+      "scopeNote": "Accepted integrated Wave 1 source and disposable-service boundaries on the G1 frozen source; hosted, policy and release controls remain external. Publication of this decision is pending owner review/merge.",
       "mergeEvidence": {
         "implementation": {
           "number": 160,
@@ -370,10 +396,22 @@
             "mergeCommit": "5c82bdc88e15bf4c0a142a846c6565afcacfad66",
             "mergedAt": "2026-10-14T10:22:14Z",
             "author": "baraabd"
+          },
+          {
+            "number": 169,
+            "title": "fix(g1): close Wave 1 source gaps and require missing runtime evidence",
+            "url": "https://github.com/baraabd/homeservicemarketplace/pull/169",
+            "head": "a93bdf6e5f6d403f6395f4c140fe52ff4ed319c4",
+            "branch": "coord/g1-wave1-remediation",
+            "base": "develop",
+            "merged": true,
+            "mergeCommit": "40cdac5c9ce6acaa8dedc0385984a807ae9a84d0",
+            "mergedAt": "2026-10-16T21:20:48Z",
+            "author": "baraabd"
           }
         ],
-        "verifiedCandidateSha": "54a69f78c0227a2f2b94df851a3ebb941348d8aa",
-        "decision": "INTEGRATION_PENDING"
+        "verifiedCandidateSha": "40cdac5c9ce6acaa8dedc0385984a807ae9a84d0",
+        "decision": "SANDBOX_ACCEPTED"
       }
     },
     {
@@ -387,7 +425,7 @@
         "lane": "R22 lane author (repository owner assigns session)",
         "coordinator": "G1 delegated coordinator for baraabd"
       },
-      "status": "INTEGRATION_PENDING",
+      "status": "SANDBOX_ACCEPTED",
       "frozenBase": "059c018576a75837d4dfb262ee49168d9217d881",
       "dependencies": [],
       "legacyAliases": ["P47  "],
@@ -450,7 +488,7 @@
         "Exact final-head CI and CodeQL; real-service evidence; limitations and rollback"
       ],
       "pr": 158,
-      "scopeNote": "Complete requirements are preserved in gates/g1/prompts/R19-R28.md; integration acceptance is not inferred from merge.",
+      "scopeNote": "Accepted integrated Wave 1 source and disposable-service boundaries on the G1 frozen source; hosted, policy and release controls remain external. Publication of this decision is pending owner review/merge.",
       "mergeEvidence": {
         "implementation": {
           "number": 158,
@@ -476,10 +514,22 @@
             "mergeCommit": "ea318aee14a5d39b724da945b492b8dee3ae77e0",
             "mergedAt": "2026-10-15T19:13:53Z",
             "author": "baraabd"
+          },
+          {
+            "number": 169,
+            "title": "fix(g1): close Wave 1 source gaps and require missing runtime evidence",
+            "url": "https://github.com/baraabd/homeservicemarketplace/pull/169",
+            "head": "a93bdf6e5f6d403f6395f4c140fe52ff4ed319c4",
+            "branch": "coord/g1-wave1-remediation",
+            "base": "develop",
+            "merged": true,
+            "mergeCommit": "40cdac5c9ce6acaa8dedc0385984a807ae9a84d0",
+            "mergedAt": "2026-10-16T21:20:48Z",
+            "author": "baraabd"
           }
         ],
-        "verifiedCandidateSha": "54a69f78c0227a2f2b94df851a3ebb941348d8aa",
-        "decision": "INTEGRATION_PENDING"
+        "verifiedCandidateSha": "40cdac5c9ce6acaa8dedc0385984a807ae9a84d0",
+        "decision": "SANDBOX_ACCEPTED"
       }
     },
     {
@@ -493,7 +543,7 @@
         "lane": "R23 lane author (repository owner assigns session)",
         "coordinator": "G1 delegated coordinator for baraabd"
       },
-      "status": "INTEGRATION_PENDING",
+      "status": "SANDBOX_ACCEPTED",
       "frozenBase": "059c018576a75837d4dfb262ee49168d9217d881",
       "dependencies": [],
       "legacyAliases": ["P48  "],
@@ -574,7 +624,7 @@
         "Exact final-head CI and CodeQL; real-service evidence; limitations and rollback"
       ],
       "pr": 163,
-      "scopeNote": "Complete requirements are preserved in gates/g1/prompts/R19-R28.md; integration acceptance is not inferred from merge.",
+      "scopeNote": "Accepted integrated Wave 1 source and disposable-service boundaries on the G1 frozen source; hosted, policy and release controls remain external. Publication of this decision is pending owner review/merge.",
       "mergeEvidence": {
         "implementation": {
           "number": 163,
@@ -600,10 +650,22 @@
             "mergeCommit": "54a69f78c0227a2f2b94df851a3ebb941348d8aa",
             "mergedAt": "2026-10-15T21:13:47Z",
             "author": "baraabd"
+          },
+          {
+            "number": 169,
+            "title": "fix(g1): close Wave 1 source gaps and require missing runtime evidence",
+            "url": "https://github.com/baraabd/homeservicemarketplace/pull/169",
+            "head": "a93bdf6e5f6d403f6395f4c140fe52ff4ed319c4",
+            "branch": "coord/g1-wave1-remediation",
+            "base": "develop",
+            "merged": true,
+            "mergeCommit": "40cdac5c9ce6acaa8dedc0385984a807ae9a84d0",
+            "mergedAt": "2026-10-16T21:20:48Z",
+            "author": "baraabd"
           }
         ],
-        "verifiedCandidateSha": "54a69f78c0227a2f2b94df851a3ebb941348d8aa",
-        "decision": "INTEGRATION_PENDING"
+        "verifiedCandidateSha": "40cdac5c9ce6acaa8dedc0385984a807ae9a84d0",
+        "decision": "SANDBOX_ACCEPTED"
       }
     },
     {
@@ -618,7 +680,7 @@
         "coordinator": "G1 delegated coordinator for baraabd"
       },
       "status": "PLANNED",
-      "frozenBase": null,
+      "frozenBase": "40cdac5c9ce6acaa8dedc0385984a807ae9a84d0",
       "dependencies": ["R19", "R22", "R23"],
       "legacyAliases": ["P37", "P42-foundation  "],
       "ownedPaths": {
@@ -655,7 +717,8 @@
       "scopeNote": "Complete requirements are preserved in gates/g1/prompts/R19-R28.md; integration acceptance is not inferred from merge.",
       "startBarrier": {
         "gate": "G1",
-        "decision": "BLOCKED"
+        "decision": "ACCEPTED",
+        "publication": "PENDING_OWNER_REVIEW_AND_MERGE"
       }
     },
     {
@@ -670,7 +733,7 @@
         "coordinator": "G1 delegated coordinator for baraabd"
       },
       "status": "PLANNED",
-      "frozenBase": null,
+      "frozenBase": "40cdac5c9ce6acaa8dedc0385984a807ae9a84d0",
       "dependencies": ["R22", "R23"],
       "legacyAliases": ["P44  "],
       "ownedPaths": {
@@ -742,7 +805,8 @@
       "scopeNote": "Complete requirements are preserved in gates/g1/prompts/R19-R28.md; integration acceptance is not inferred from merge.",
       "startBarrier": {
         "gate": "G1",
-        "decision": "BLOCKED"
+        "decision": "ACCEPTED",
+        "publication": "PENDING_OWNER_REVIEW_AND_MERGE"
       }
     },
     {
@@ -753,11 +817,11 @@
       "lane": 3,
       "branch": "feat/r26-application-security",
       "owner": {
-        "lane": "R26 lane author (repository owner assigns session)",
+        "lane": "R26 delegated owner session; current G1 coordinator handoff required before implementation",
         "coordinator": "G1 delegated coordinator for baraabd"
       },
       "status": "PLANNED",
-      "frozenBase": null,
+      "frozenBase": "40cdac5c9ce6acaa8dedc0385984a807ae9a84d0",
       "dependencies": ["R20", "R21", "R23"],
       "legacyAliases": ["P49-security  "],
       "ownedPaths": {
@@ -806,7 +870,8 @@
       "scopeNote": "Complete requirements are preserved in gates/g1/prompts/R19-R28.md; integration acceptance is not inferred from merge.",
       "startBarrier": {
         "gate": "G1",
-        "decision": "BLOCKED"
+        "decision": "ACCEPTED",
+        "publication": "PENDING_OWNER_REVIEW_AND_MERGE"
       }
     },
     {
@@ -821,7 +886,7 @@
         "coordinator": "G1 delegated coordinator for baraabd"
       },
       "status": "PLANNED",
-      "frozenBase": null,
+      "frozenBase": "40cdac5c9ce6acaa8dedc0385984a807ae9a84d0",
       "dependencies": ["R20", "R23"],
       "legacyAliases": ["P49-performance  "],
       "ownedPaths": {
@@ -894,7 +959,8 @@
       "scopeNote": "Complete requirements are preserved in gates/g1/prompts/R19-R28.md; integration acceptance is not inferred from merge.",
       "startBarrier": {
         "gate": "G1",
-        "decision": "BLOCKED"
+        "decision": "ACCEPTED",
+        "publication": "PENDING_OWNER_REVIEW_AND_MERGE"
       }
     },
     {
@@ -909,7 +975,7 @@
         "coordinator": "G1 delegated coordinator for baraabd"
       },
       "status": "PLANNED",
-      "frozenBase": null,
+      "frozenBase": "40cdac5c9ce6acaa8dedc0385984a807ae9a84d0",
       "dependencies": ["R20", "R21", "R22", "R23"],
       "legacyAliases": ["P50-platform", "P49-edge  "],
       "ownedPaths": {
@@ -952,7 +1018,8 @@
       "scopeNote": "Complete requirements are preserved in gates/g1/prompts/R19-R28.md; integration acceptance is not inferred from merge.",
       "startBarrier": {
         "gate": "G1",
-        "decision": "BLOCKED"
+        "decision": "ACCEPTED",
+        "publication": "PENDING_OWNER_REVIEW_AND_MERGE"
       }
     },
     {
@@ -1148,6 +1215,11 @@
       "observedAt": "2026-10-16T08:27:22.122Z",
       "by": "G1 delegated coordinator",
       "note": "Complete R19-R28 prompts recovered and verified; every required implementation/corrective PR merged. G1 BLOCKED on remaining source/evidence gaps. Historical G0 records retained; no retroactive approval of simultaneous R19/R21 schema leases."
+    },
+    {
+      "observedAt": "2026-10-16T21:42:17.935Z",
+      "by": "G1 delegated coordinator",
+      "note": "PR #169 owner-merged. Exact post-merge service reports inspected and ZIP digests verified. Wave 1 sandbox source accepted at 40cdac5c9ce6acaa8dedc0385984a807ae9a84d0; all Wave 2 lanes remain held pending owner merge/publication verification of this separate record."
     }
   ],
   "gates": {

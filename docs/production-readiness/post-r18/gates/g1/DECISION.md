@@ -1,43 +1,35 @@
-# G1 decision — BLOCKED
+# G1 source decision — ACCEPTED; publication pending
 
-Decision UTC: 2026-10-16T08:33:09.185443+00:00. Issued by the delegated engineering integration
-coordinator for repository owner `baraabd`, under the supplied G1 prompt.
-Mode A. This is the Wave 1 → Wave 2 gate, not historical R18-G1 and not a
-production-release decision.
+Mode A. The delegated coordinator accepts the integrated Wave 1 source and
+disposable-service boundaries after reviewing the exact post-merge evidence.
+This separate decision is proposed for owner review/merge. It authorizes no
+Wave 2 execution while its publication is pending.
 
-**All required implementation and corrective PRs are merged. G1 is not accepted.**
-The current pipeline omits required scenarios, R19's internal-port freeze is
-incomplete, and R22/R23 integration requests remain unimplemented. A green
-pipeline does not establish these missing requirements.
+- Frozen source: `40cdac5c9ce6acaa8dedc0385984a807ae9a84d0`.
+- Frozen tree: `109b514fe9833a9aac3e8caecd7f9b14d4f61b3b`.
+- Corrective source: owner-merged [PR #169](https://github.com/baraabd/homeservicemarketplace/pull/169).
+- Evidence capture: `2026-10-16T21:42:17.935Z`.
+- Accepted scoped inputs: R19, R20, R21, R22 and R23.
+- Publication: `PENDING_OWNER_REVIEW_AND_MERGE`.
+- Acceptance-record commit: assigned externally in the review PR; no guessed self hash.
+- Startable lanes: none. R24–R28 remain `PLANNED` / held.
 
-- Inspected merged candidate: `54a69f78c0227a2f2b94df851a3ebb941348d8aa`.
-- Exact candidate tree: `6f638f5f3aedbcc5b795b62da11bb3000f7dba4b`.
-- `frozenBaseSha`: **not assigned**; `frozenTreeSha`: **not assigned**.
-- Acceptance-record commit: **not assigned** (no accepted decision exists).
-- Coordination branch: `coord/g1-wave2-freeze`.
-- Publication: Draft PR, owner review/merge pending; final commit/head is
-  bound externally in that PR to avoid a self-referential hash.
-- Startable lanes: **none**. R24–R28 stay blocked with `PLANNED` lifecycle status.
+G1-01 through G1-05 are closed by merged source and executed cases, not by
+aggregate green status alone. G1-06 still requires owner review/merge of this
+record, actual publication-commit verification, and a deliberate coordinator
+start decision. Source acceptance and start authorization are separate facts.
 
-The current candidate is byte-identical to R23 corrective head
-`f3f9ef491ac8d8296c655d0e010d8ad2a39e7cf5`; both have the tree above.
-Git ancestry verifies all nine Wave 1 implementation/corrective merge commits.
-The source repair in this PR is additional and requires its own exact-head
-checks; it does not inherit acceptance from the inspected candidate.
+The complete source tree equals tested PR head `a93bdf6e5f6d403f6395f4c140fe52ff4ed319c4`. Seven push
+workflows were independently inspected on the frozen merged commit. The
+PR/dispatch-only alert and native-recovery workflows were not rerun on push;
+their identical-tree PR evidence is supplemental and is labeled accordingly.
 
-See [MERGE_MATRIX.md](MERGE_MATRIX.md), [REQUIREMENTS.md](REQUIREMENTS.md),
-[CHANGE_REQUESTS.md](CHANGE_REQUESTS.md), [INTEGRATION_EVIDENCE.md](INTEGRATION_EVIDENCE.md)
-and [BLOCKERS.md](BLOCKERS.md). The machine decision is [SOURCE_MANIFEST.json](SOURCE_MANIFEST.json).
-Wave 2's exact conditional allowlists are in [wave-02.plan.json](../../waves/wave-02.plan.json).
-No `wave-02.ready.json` is created.
+See [ACCEPTANCE_PUBLICATION.md](ACCEPTANCE_PUBLICATION.md),
+[ACCEPTANCE_EVIDENCE.json](ACCEPTANCE_EVIDENCE.json),
+[SOURCE_MANIFEST.json](SOURCE_MANIFEST.json) and [BLOCKERS.md](BLOCKERS.md).
+The original blocked observations remain historical evidence in Git and in
+the explicitly labeled earlier reconciliation documents.
 
-Historical G0 records are retained as dated evidence. The recovered complete
-prompts resolve the missing-package inventory; they do not retroactively make
-the competing R19/R21 schema writes compliant. Both schema blocks and ordered
-migrations are present, and the candidate database checks passed.
-
-The owner must first review/merge required corrective source through the
-normal process. The coordinator then tests that exact merged candidate,
-closes every G1 blocker, publishes a separate ACCEPTED record, and obtains
-its required owner review/merge before any Wave 2 start statement is valid.
-This task performs no merge, auto-merge, force push, deployment or live activation.
+This is not R18 release approval, hosted acceptance, a clean repository-wide
+security-alert inventory, permission to spend, or live-money authorization.
+R26 and the other future lanes are not implemented or accepted by this record.
