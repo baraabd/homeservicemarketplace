@@ -12,7 +12,8 @@ const OPERATIONS: Readonly<Record<string, string>> = {
   GetBucketPolicyStatusCommand: 'bucket_privacy',
 };
 
-/** SDK middleware observes the existing request, including its retries. No keys or URLs. */
+/** Observe real SDK request attempts and deserialization errors. Signing a URL
+ * does not call storage and must not manufacture a successful dependency call. */
 export function instrumentStorage(client: S3Client, telemetry?: TelemetryService): void {
   if (!telemetry) return;
   client.middlewareStack.add(
@@ -20,6 +21,6 @@ export function instrumentStorage(client: S3Client, telemetry?: TelemetryService
       telemetry.callDependency('storage', OPERATIONS[context.commandName ?? ''] ?? 'other', () =>
         next(args),
       ),
-    { step: 'initialize', name: 'hsmStorageTelemetry' },
+    { step: 'deserialize', priority: 'high', name: 'hsmStorageTelemetry' },
   );
 }

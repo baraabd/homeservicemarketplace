@@ -1,5 +1,6 @@
 import { Readable } from 'node:stream';
-import { S3Client, HeadObjectCommand } from '@aws-sdk/client-s3';
+import { S3Client, HeadObjectCommand, PutObjectCommand } from '@aws-sdk/client-s3';
+import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import type { AppConfigService } from '../../src/config/app-config.service';
 import { MetricsService } from '../../src/infrastructure/telemetry/metrics.service';
 import { TelemetryService } from '../../src/infrastructure/telemetry/telemetry.service';
@@ -50,16 +51,34 @@ it('S3 middleware keeps requests and errors intact and emits bounded operation l
     requestHandler: { handle },
   });
   instrumentStorage(client, telemetry);
+  await getSignedUrl(
+    client,
+    new PutObjectCommand({ Bucket: 'private-bucket', Key: 'private-key' }),
+  );
+  expect(handle).not.toHaveBeenCalled();
+  expect(await metrics.metrics()).not.toContain('dependency="storage",operation="put_object"');
   await client.send(new HeadObjectCommand({ Bucket: 'private-bucket', Key: 'private-key' }));
   const failure = new Error('private-storage-host');
   handle.mockRejectedValueOnce(failure);
   await expect(
     client.send(new HeadObjectCommand({ Bucket: 'private-bucket', Key: 'private-key' })),
   ).rejects.toBe(failure);
+  handle.mockResolvedValueOnce({
+    response: {
+      statusCode: 403,
+      headers: { 'content-type': 'application/xml' },
+      body: Readable.from([
+        '<Error><Code>AccessDenied</Code><Message>private-denial</Message></Error>',
+      ]),
+    },
+  });
+  await expect(
+    client.send(new HeadObjectCommand({ Bucket: 'private-bucket', Key: 'private-key' })),
+  ).rejects.toMatchObject({ name: 'AccessDenied' });
   const text = await metrics.metrics();
   expect(text).toContain('dependency="storage",operation="head_object",outcome="success"');
   expect(text).toContain('dependency="storage",operation="head_object",outcome="error"');
-  expect(text).not.toMatch(/private-bucket|private-key|private-storage-host/);
+  expect(text).not.toMatch(/private-bucket|private-key|private-storage-host|private-denial/);
   client.destroy();
 });
 it('scanner telemetry retains the fail-closed verdict on an unavailable scanner', async () => {
