@@ -1,5 +1,11 @@
 # Requirement-to-source reconciliation
 
+> Historical assessment below, preserved as recorded before PR #169. Current
+> merged-source closure at `40cdac5c9ce6acaa8dedc0385984a807ae9a84d0` is in
+> [ACCEPTANCE_EVIDENCE.md](ACCEPTANCE_EVIDENCE.md), [DECISION.md](DECISION.md)
+> and [BLOCKERS.md](BLOCKERS.md). Former OPEN/PARTIAL wording below is not the
+> current G1 technical status. Hosted/policy/downstream limitations remain open.
+
 Every numbered requirement from the authoritative Wave 1 prompts is indexed below.
 PRESENT is a source observation, not blanket gate acceptance. Required behavioral tests
 and missing scenarios are separately assessed in INTEGRATION_EVIDENCE.md and BLOCKERS.md.

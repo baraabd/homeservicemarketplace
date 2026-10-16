@@ -1,111 +1,87 @@
 {
   "schemaVersion": 1,
   "gateId": "G1",
-  "decision": "BLOCKED",
-  "decisionAtUtc": "2026-10-16T08:33:09.185443+00:00",
-  "authority": "Repository owner delegated this bounded G1 coordination task in the supplied 2026-10-16 prompt; merge/deploy/live activation excluded.",
-  "candidateSourceSha": "54a69f78c0227a2f2b94df851a3ebb941348d8aa",
-  "candidateTreeSha": "6f638f5f3aedbcc5b795b62da11bb3000f7dba4b",
-  "frozenBaseSha": null,
-  "frozenTreeSha": null,
+  "decision": "ACCEPTED",
+  "decisionAtUtc": "2026-10-16T21:41:51.823662+00:00",
+  "authority": "Successor G1 coordinator under the owner delegation to close all G1 blockers and prepare a review PR without merge/deploy. Acceptance is limited to the integrated Wave 1 source; publication is pending.",
+  "candidateSourceSha": "40cdac5c9ce6acaa8dedc0385984a807ae9a84d0",
+  "candidateTreeSha": "109b514fe9833a9aac3e8caecd7f9b14d4f61b3b",
+  "frozenBaseSha": "40cdac5c9ce6acaa8dedc0385984a807ae9a84d0",
+  "frozenTreeSha": "109b514fe9833a9aac3e8caecd7f9b14d4f61b3b",
   "acceptanceRecordCommitSha": null,
   "coordinationPrHeadSha": null,
-  "identityResolution": "The immutable publication commit and final head are recorded externally in the coordination PR. This file does not embed its own commit SHA. No acceptance record exists for a BLOCKED decision.",
+  "identityResolution": "Frozen source and acceptance-record commits are distinct. The PR binds its final head externally. Once the owner merges this record, a follow-up verifies that immutable record commit and updates publication and lane readiness together; no self-referential SHA or premature start.",
   "publication": {
     "state": "DRAFT_PENDING_OWNER_REVIEW",
-    "branch": "coord/g1-wave2-freeze",
+    "branch": "coord/g1-wave2-acceptance",
     "acceptanceRecordCommitSha": null,
-    "requirement": "A future ACCEPTED record must be owner-reviewed and merged before lanes start."
+    "requirement": "Owner review/merge of this separate acceptance record, then source and publication identity verification before any Wave 2 start."
   },
-  "acceptedSprints": [],
-  "blockers": [
-    {
-      "id": "G1-01",
-      "owner": "R19 domain owner + coordinator",
-      "requirement": "R19 implementation 3/6/7: complete callable internal-port freeze and compensation invariants",
-      "state": "OPEN",
-      "closure": "Publish reviewed lifecycle/receipt/refund/projection/reconciliation ports and consumer fixtures; reproduce/refute refund-link finding with direct SQL negatives; resolve CR-002 registration before accepting combined boundary. No fabricated R31 consumer."
-    },
-    {
-      "id": "G1-02",
-      "owner": "R20 + coordinator",
-      "requirement": "R20 overwrite protection and real storage acceptance",
-      "state": "OPEN",
-      "closure": "Apply CR-R20-03 with frontend-first rollout contract, make avatar presigns write-once, invert the documented-gap case; execute all 40 real S3/authorization/retention/root/IAM cases on the candidate. CR-R20-01 is repaired in this PR but still needs merged-source and real-service proof."
-    },
-    {
-      "id": "G1-03",
-      "owner": "R21 + coordinator CI owner",
-      "requirement": "R21 real SMTP scenarios on the combined source",
-      "state": "MISSING_EVIDENCE",
-      "closure": "Enable R21_MAILPIT_SMTP_PORT and R21_MAILPIT_API_URL in a disposable service job and execute the three currently gated SMTP cases. Preserve signed raw-body route and handler registration."
-    },
-    {
-      "id": "G1-04",
-      "owner": "R22 + coordinator schema/CI owner",
-      "requirement": "R22 audited replay and independent-process crash/SIGTERM proof",
-      "state": "OPEN",
-      "closure": "Integrate CR-01 additive audit enum migration, CR-03 permission definition without role grants, update replay tests to cover migrated execution plus missing-audit refusal without new skips; run two-process kill/recovery test with RUN_R22_WORKER_PROCESS=1 on Linux. Resolve timing validation CR-02."
-    },
-    {
-      "id": "G1-05",
-      "owner": "R23 + coordinator + boundary owners",
-      "requirement": "R23 runtime telemetry/diagnostics producers",
-      "state": "OPEN",
-      "closure": "Integrate CR-02 validated default-off export configuration, CR-03 scheduled protected diagnostics, and CR-04 outbox/SMTP/storage/scanner/worker instrumentation. Prove business outcomes remain unchanged and alerts have real bounded metric producers. Hosted vendor/contact choices stay separate."
-    },
-    {
-      "id": "G1-06",
-      "owner": "coordinator + repository owner",
-      "requirement": "one merged exact candidate and published accepted decision",
-      "state": "PENDING",
-      "closure": "Merge reviewed corrective source only through owner approval, run missing mandatory evidence on that immutable result, issue a new ACCEPTED decision with source/tree SHAs, publish/merge its separate record, then recheck source and authorize Wave 2. This Draft does not open G1."
-    }
-  ],
+  "acceptedSprints": ["R19", "R20", "R21", "R22", "R23"],
+  "blockers": [],
   "mandatoryEvidence": [
     {
       "id": "existing-post-merge-checks",
       "status": "PASS",
-      "sourceSha": "54a69f78c0227a2f2b94df851a3ebb941348d8aa",
-      "reference": "https://github.com/baraabd/homeservicemarketplace/actions/runs/38808254418",
-      "scope": "28/28 named checks on merged source, not proof of skipped scenarios"
+      "sourceSha": "40cdac5c9ce6acaa8dedc0385984a807ae9a84d0",
+      "reference": "https://github.com/baraabd/homeservicemarketplace/actions/runs/38968728679",
+      "scope": "28 latest checks successful; required aggregate CI, CodeQL analysis and governance successful."
     },
     {
       "id": "r20-real-storage",
-      "status": "NOT_RUN",
-      "sourceSha": "54a69f78c0227a2f2b94df851a3ebb941348d8aa",
-      "reference": "CR-R20-04; RUN_R20_STORAGE_INTEGRATION absent from CI"
+      "status": "PASS",
+      "sourceSha": "40cdac5c9ce6acaa8dedc0385984a807ae9a84d0",
+      "reference": "https://github.com/baraabd/homeservicemarketplace/actions/runs/38968728679/artifacts/12076590416",
+      "scope": "40/40 S3, root, authorization and overwrite-protection tests; zero skipped/failed; separately 29/29 retention tests."
     },
     {
       "id": "r21-real-smtp",
-      "status": "NOT_RUN",
-      "sourceSha": "54a69f78c0227a2f2b94df851a3ebb941348d8aa",
-      "reference": "CR-R21-03 F; R21_MAILPIT variables absent from CI"
+      "status": "PASS",
+      "sourceSha": "40cdac5c9ce6acaa8dedc0385984a807ae9a84d0",
+      "reference": "https://github.com/baraabd/homeservicemarketplace/actions/runs/38968728679/artifacts/12075759523",
+      "scope": "13/13 durable-mail tests, including all three real SMTP cases; feedback suite 13/13."
     },
     {
       "id": "r22-process-and-replay",
-      "status": "NOT_RUN",
-      "sourceSha": "54a69f78c0227a2f2b94df851a3ebb941348d8aa",
-      "reference": "CR-01/03/04; real execution branch and process suite gated"
+      "status": "PASS",
+      "sourceSha": "40cdac5c9ce6acaa8dedc0385984a807ae9a84d0",
+      "reference": "https://github.com/baraabd/homeservicemarketplace/actions/runs/38968728679/artifacts/12075759523",
+      "scope": "8/8 replay, 21/21 reliability and 3/3 compiled independent-process cases; zero skipped in dedicated runs."
     },
     {
       "id": "r19-interface-freeze",
-      "status": "INCOMPLETE",
-      "sourceSha": "54a69f78c0227a2f2b94df851a3ebb941348d8aa",
-      "reference": "r19/CONTRACT_CATALOG.md remaining freeze handoff"
+      "status": "PASS",
+      "sourceSha": "40cdac5c9ce6acaa8dedc0385984a807ae9a84d0",
+      "reference": "https://github.com/baraabd/homeservicemarketplace/actions/runs/38968728679/artifacts/12075759523",
+      "scope": "Versioned callable ports and consumer fixture compile in the API verification job; 19/19 SQL compensation, activation, rollback and dedupe tests pass."
     },
     {
       "id": "r23-boundary-instrumentation",
-      "status": "INCOMPLETE",
-      "sourceSha": "54a69f78c0227a2f2b94df851a3ebb941348d8aa",
-      "reference": "r23/shared-change-requests/CR-02 through CR-04"
+      "status": "PASS",
+      "sourceSha": "40cdac5c9ce6acaa8dedc0385984a807ae9a84d0",
+      "reference": "https://github.com/baraabd/homeservicemarketplace/actions/runs/38968728679/artifacts/12075759523",
+      "scope": "4 transport-boundary, 3 exporter-bootstrap and 2 diagnostic-scheduler tests pass; dedicated real retention/dispute-worker suites assert protected metric producers. Alert firing/recovery proof is separately identified as identical-tree pre-merge evidence."
     }
   ],
-  "sourceRepair": "CR-R20-01 on this coordination branch is not in candidateSourceSha. Its exact final head requires new CI and merged-source certification.",
+  "sourceRepair": "PR #168 source fixes and PR #169 complete source remediation are merged into the frozen source. This publication changes records and a governance test fixture only.",
   "nonG1ReleaseLimitations": [
     "R18-G1 branch protection: develop reports protected=false; separate historical release blocker.",
     "Repository-wide CodeQL inventory unavailable through exposed connector; R26/security owner must supply current IDs/dispositions. Historical #2/#13/#16/#20 are not asserted current.",
     "R18-H1 hosting/DNS/registry/secrets, real sender deliverability, hosted storage IAM/KMS/CDN, production alert receivers/region/retention and SLO approval remain owner/R28/R37 work.",
     "R16 money/payout policies, R18 D-2/D-3/D-13/D-19 and R19 commercial policies remain explicit owner decisions. Live rails and payouts stay disabled."
-  ]
+  ],
+  "publicationBlockers": [
+    {
+      "id": "G1-06",
+      "state": "PENDING_OWNER_REVIEW_AND_RECORD_MERGE",
+      "owner": "repository owner + coordinator",
+      "requirement": "The corrective source and merged-source evidence are complete. This separate record must be owner-reviewed/merged and its identity verified before Wave 2 is released."
+    }
+  ],
+  "evidenceRecord": "docs/production-readiness/post-r18/gates/g1/ACCEPTANCE_EVIDENCE.json",
+  "historicalDecision": {
+    "sourceSha": "54a69f78c0227a2f2b94df851a3ebb941348d8aa",
+    "decision": "BLOCKED",
+    "preservedInCommit": "40cdac5c9ce6acaa8dedc0385984a807ae9a84d0"
+  }
 }

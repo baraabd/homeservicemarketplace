@@ -1,5 +1,11 @@
 # G1 integration evidence and limits
 
+> Historical assessment below, preserved as recorded before PR #169. Current
+> merged-source closure at `40cdac5c9ce6acaa8dedc0385984a807ae9a84d0` is in
+> [ACCEPTANCE_EVIDENCE.md](ACCEPTANCE_EVIDENCE.md), [DECISION.md](DECISION.md)
+> and [BLOCKERS.md](BLOCKERS.md). Former OPEN/PARTIAL wording below is not the
+> current G1 technical status. Hosted/policy/downstream limitations remain open.
+
 ## Source identity and workspace
 
 Inspected merged source: `54a69f78c0227a2f2b94df851a3ebb941348d8aa`.

@@ -1,5 +1,17 @@
 # R19–R23 merged-source matrix
 
+## Current certification after corrective integration
+
+Owner-merged #168: `5d3acaf861d74756190854138af485cfbfaa0a43`.
+Owner-merged #169: `40cdac5c9ce6acaa8dedc0385984a807ae9a84d0`, full tree `109b514fe9833a9aac3e8caecd7f9b14d4f61b3b`.
+All nine lane implementation/corrective merge commits listed below remain
+ancestors of this source. #169 closes G1 technical source gaps and enables
+mandatory real-service cases; [ACCEPTANCE_EVIDENCE.md](ACCEPTANCE_EVIDENCE.md)
+certifies their actual merged-source execution. Acceptance publication is still
+pending owner review/merge. No lane merge or source history was rewritten.
+
+## Historical matrix before #168/#169
+
 Observed candidate `54a69f78c0227a2f2b94df851a3ebb941348d8aa` / tree `6f638f5f3aedbcc5b795b62da11bb3000f7dba4b`. All rows below target `develop`.
 PR inventory came from current GitHub searches and individual REST reads, not historical titles alone.
 

@@ -2,13 +2,13 @@
   "schemaVersion": 1,
   "wave": 2,
   "startGate": "G1",
-  "baseSha": null,
+  "baseSha": "40cdac5c9ce6acaa8dedc0385984a807ae9a84d0",
   "status": "BLOCKED",
   "startableLanes": [],
   "blockedLanes": ["R24", "R25", "R26", "R27", "R28"],
   "coordinator": "G1 delegated engineering coordinator for baraabd",
   "decisionRecord": "docs/production-readiness/post-r18/gates/g1/SOURCE_MANIFEST.json",
-  "publicationRequirement": "Owner review/merge of an ACCEPTED G1 record, followed by source verification; this blocked draft grants no start.",
+  "publicationRequirement": "G1 engineering acceptance is recorded; owner review/merge and verification of this separate acceptance-record commit are still required. No lane starts from this unmerged publication.",
   "lanes": [
     {
       "id": "R24",
@@ -18,7 +18,7 @@
       "branch": "feat/r24-money-api-integration",
       "owner": "R24 lane author (repository owner assigns session)",
       "status": "BLOCKED",
-      "frozenBaseSha": null,
+      "frozenBaseSha": "40cdac5c9ce6acaa8dedc0385984a807ae9a84d0",
       "dependencies": ["R19", "R22", "R23"],
       "exactFiles": [
         "apps/api/src/modules/money/api/money.controller.spec.ts",
@@ -48,7 +48,7 @@
         "Exact final-head CI and CodeQL; real-service evidence; limitations and rollback"
       ],
       "ownershipApproval": "CONDITIONAL_ON_G1_PUBLICATION",
-      "blockedBy": ["G1-NOT-ACCEPTED"],
+      "blockedBy": ["G1-PUBLICATION-PENDING"],
       "isolatedRuntime": {
         "composeProject": "hsm-r24-<session>",
         "database": "hsm_r24_<session>",
@@ -68,7 +68,7 @@
       "branch": "feat/r25-realtime-multi-instance",
       "owner": "R25 lane author (repository owner assigns session)",
       "status": "BLOCKED",
-      "frozenBaseSha": null,
+      "frozenBaseSha": "40cdac5c9ce6acaa8dedc0385984a807ae9a84d0",
       "dependencies": ["R22", "R23"],
       "exactFiles": [
         "apps/api/src/modules/realtime/conversation-participant.gate.spec.ts",
@@ -133,7 +133,7 @@
         "Exact final-head CI and CodeQL; real-service evidence; limitations and rollback"
       ],
       "ownershipApproval": "CONDITIONAL_ON_G1_PUBLICATION",
-      "blockedBy": ["G1-NOT-ACCEPTED"],
+      "blockedBy": ["G1-PUBLICATION-PENDING"],
       "isolatedRuntime": {
         "composeProject": "hsm-r25-<session>",
         "database": "hsm_r25_<session>",
@@ -153,7 +153,7 @@
       "branch": "feat/r26-application-security",
       "owner": "R26 lane author (repository owner assigns session)",
       "status": "BLOCKED",
-      "frozenBaseSha": null,
+      "frozenBaseSha": "40cdac5c9ce6acaa8dedc0385984a807ae9a84d0",
       "dependencies": ["R20", "R21", "R23"],
       "exactFiles": [
         "apps/api/src/infrastructure/http/all-exceptions.filter.spec.ts",
@@ -195,7 +195,7 @@
         "Exact final-head CI and CodeQL; real-service evidence; limitations and rollback"
       ],
       "ownershipApproval": "CONDITIONAL_ON_G1_PUBLICATION",
-      "blockedBy": ["G1-NOT-ACCEPTED"],
+      "blockedBy": ["G1-PUBLICATION-PENDING"],
       "isolatedRuntime": {
         "composeProject": "hsm-r26-<session>",
         "database": "hsm_r26_<session>",
@@ -215,7 +215,7 @@
       "branch": "feat/r27-performance-capacity",
       "owner": "R27 lane author (repository owner assigns session)",
       "status": "BLOCKED",
-      "frozenBaseSha": null,
+      "frozenBaseSha": "40cdac5c9ce6acaa8dedc0385984a807ae9a84d0",
       "dependencies": ["R20", "R23"],
       "exactFiles": [
         "apps/api/test/integration/r27-query-bounds.integration.spec.ts",
@@ -281,7 +281,7 @@
         "Exact final-head CI and CodeQL; real-service evidence; limitations and rollback"
       ],
       "ownershipApproval": "CONDITIONAL_ON_G1_PUBLICATION",
-      "blockedBy": ["G1-NOT-ACCEPTED"],
+      "blockedBy": ["G1-PUBLICATION-PENDING"],
       "isolatedRuntime": {
         "composeProject": "hsm-r27-<session>",
         "database": "hsm_r27_<session>",
@@ -308,7 +308,7 @@
       "branch": "feat/r28-hosted-platform",
       "owner": "R28 lane author (repository owner assigns session)",
       "status": "BLOCKED",
-      "frozenBaseSha": null,
+      "frozenBaseSha": "40cdac5c9ce6acaa8dedc0385984a807ae9a84d0",
       "dependencies": ["R20", "R21", "R22", "R23"],
       "exactFiles": [
         "docs/production-readiness/r28/ACCEPTANCE.md",
@@ -344,7 +344,7 @@
         "Exact final-head CI and CodeQL; real-service evidence; limitations and rollback"
       ],
       "ownershipApproval": "CONDITIONAL_ON_G1_PUBLICATION",
-      "blockedBy": ["G1-NOT-ACCEPTED"],
+      "blockedBy": ["G1-PUBLICATION-PENDING"],
       "isolatedRuntime": {
         "composeProject": "hsm-r28-<session>",
         "database": "hsm_r28_<session>",

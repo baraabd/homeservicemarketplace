@@ -34,7 +34,7 @@
         "lane": "R19 lane author (repository owner assigns session)",
         "coordinator": "G1 delegated coordinator for baraabd"
       },
-      "status": "INTEGRATION_PENDING",
+      "status": "SANDBOX_ACCEPTED",
       "frozenBase": "059c018576a75837d4dfb262ee49168d9217d881",
       "dependencies": [],
       "legacyAliases": ["P36", "P42-foundation  "],
@@ -96,9 +96,10 @@
         },
         {
           "id": "CR-002",
-          "state": "OPEN",
+          "state": "MERGED",
           "owner": "G1 coordinator and R19/R24/R31",
-          "gateDisposition": "Registration handoff must be resolved; no live caller exists."
+          "gateDisposition": "PR #169 registers the real R17 inbox consumer; transaction, rollback and durable dedupe pass on the merged source. R31 entitlements and live callers remain later-lane work.",
+          "sourceCommit": "40cdac5c9ce6acaa8dedc0385984a807ae9a84d0"
         },
         {
           "id": "CR-003",
@@ -138,8 +139,15 @@
             "author": "baraabd"
           }
         ],
-        "verifiedCandidateSha": "54a69f78c0227a2f2b94df851a3ebb941348d8aa",
-        "decision": "INTEGRATION_PENDING"
+        "verifiedCandidateSha": "40cdac5c9ce6acaa8dedc0385984a807ae9a84d0",
+        "decision": "SANDBOX_ACCEPTED"
+      },
+      "acceptance": {
+        "gate": "G1",
+        "sourceSha": "40cdac5c9ce6acaa8dedc0385984a807ae9a84d0",
+        "treeSha": "109b514fe9833a9aac3e8caecd7f9b14d4f61b3b",
+        "evidence": "docs/production-readiness/post-r18/gates/g1/ACCEPTANCE_EVIDENCE.json",
+        "scope": "Integrated Wave 1 technical/disposable-service boundaries; not hosted, commercial-policy or release acceptance."
       }
     },
     {
@@ -153,7 +161,7 @@
         "lane": "R20 lane author (repository owner assigns session)",
         "coordinator": "G1 delegated coordinator for baraabd"
       },
-      "status": "INTEGRATION_PENDING",
+      "status": "SANDBOX_ACCEPTED",
       "frozenBase": "059c018576a75837d4dfb262ee49168d9217d881",
       "dependencies": [],
       "legacyAliases": ["P45  "],
@@ -261,8 +269,15 @@
           "author": "baraabd"
         },
         "followUps": [],
-        "verifiedCandidateSha": "54a69f78c0227a2f2b94df851a3ebb941348d8aa",
-        "decision": "INTEGRATION_PENDING"
+        "verifiedCandidateSha": "40cdac5c9ce6acaa8dedc0385984a807ae9a84d0",
+        "decision": "SANDBOX_ACCEPTED"
+      },
+      "acceptance": {
+        "gate": "G1",
+        "sourceSha": "40cdac5c9ce6acaa8dedc0385984a807ae9a84d0",
+        "treeSha": "109b514fe9833a9aac3e8caecd7f9b14d4f61b3b",
+        "evidence": "docs/production-readiness/post-r18/gates/g1/ACCEPTANCE_EVIDENCE.json",
+        "scope": "Integrated Wave 1 technical/disposable-service boundaries; not hosted, commercial-policy or release acceptance."
       }
     },
     {
@@ -276,7 +291,7 @@
         "lane": "R21 lane author (repository owner assigns session)",
         "coordinator": "G1 delegated coordinator for baraabd"
       },
-      "status": "INTEGRATION_PENDING",
+      "status": "SANDBOX_ACCEPTED",
       "frozenBase": "059c018576a75837d4dfb262ee49168d9217d881",
       "dependencies": [],
       "legacyAliases": ["P46  "],
@@ -372,8 +387,15 @@
             "author": "baraabd"
           }
         ],
-        "verifiedCandidateSha": "54a69f78c0227a2f2b94df851a3ebb941348d8aa",
-        "decision": "INTEGRATION_PENDING"
+        "verifiedCandidateSha": "40cdac5c9ce6acaa8dedc0385984a807ae9a84d0",
+        "decision": "SANDBOX_ACCEPTED"
+      },
+      "acceptance": {
+        "gate": "G1",
+        "sourceSha": "40cdac5c9ce6acaa8dedc0385984a807ae9a84d0",
+        "treeSha": "109b514fe9833a9aac3e8caecd7f9b14d4f61b3b",
+        "evidence": "docs/production-readiness/post-r18/gates/g1/ACCEPTANCE_EVIDENCE.json",
+        "scope": "Integrated Wave 1 technical/disposable-service boundaries; not hosted, commercial-policy or release acceptance."
       }
     },
     {
@@ -387,7 +409,7 @@
         "lane": "R22 lane author (repository owner assigns session)",
         "coordinator": "G1 delegated coordinator for baraabd"
       },
-      "status": "INTEGRATION_PENDING",
+      "status": "SANDBOX_ACCEPTED",
       "frozenBase": "059c018576a75837d4dfb262ee49168d9217d881",
       "dependencies": [],
       "legacyAliases": ["P47  "],
@@ -478,8 +500,15 @@
             "author": "baraabd"
           }
         ],
-        "verifiedCandidateSha": "54a69f78c0227a2f2b94df851a3ebb941348d8aa",
-        "decision": "INTEGRATION_PENDING"
+        "verifiedCandidateSha": "40cdac5c9ce6acaa8dedc0385984a807ae9a84d0",
+        "decision": "SANDBOX_ACCEPTED"
+      },
+      "acceptance": {
+        "gate": "G1",
+        "sourceSha": "40cdac5c9ce6acaa8dedc0385984a807ae9a84d0",
+        "treeSha": "109b514fe9833a9aac3e8caecd7f9b14d4f61b3b",
+        "evidence": "docs/production-readiness/post-r18/gates/g1/ACCEPTANCE_EVIDENCE.json",
+        "scope": "Integrated Wave 1 technical/disposable-service boundaries; not hosted, commercial-policy or release acceptance."
       }
     },
     {
@@ -493,7 +522,7 @@
         "lane": "R23 lane author (repository owner assigns session)",
         "coordinator": "G1 delegated coordinator for baraabd"
       },
-      "status": "INTEGRATION_PENDING",
+      "status": "SANDBOX_ACCEPTED",
       "frozenBase": "059c018576a75837d4dfb262ee49168d9217d881",
       "dependencies": [],
       "legacyAliases": ["P48  "],
@@ -602,8 +631,15 @@
             "author": "baraabd"
           }
         ],
-        "verifiedCandidateSha": "54a69f78c0227a2f2b94df851a3ebb941348d8aa",
-        "decision": "INTEGRATION_PENDING"
+        "verifiedCandidateSha": "40cdac5c9ce6acaa8dedc0385984a807ae9a84d0",
+        "decision": "SANDBOX_ACCEPTED"
+      },
+      "acceptance": {
+        "gate": "G1",
+        "sourceSha": "40cdac5c9ce6acaa8dedc0385984a807ae9a84d0",
+        "treeSha": "109b514fe9833a9aac3e8caecd7f9b14d4f61b3b",
+        "evidence": "docs/production-readiness/post-r18/gates/g1/ACCEPTANCE_EVIDENCE.json",
+        "scope": "Integrated Wave 1 technical/disposable-service boundaries; not hosted, commercial-policy or release acceptance."
       }
     },
     {
@@ -618,7 +654,7 @@
         "coordinator": "G1 delegated coordinator for baraabd"
       },
       "status": "PLANNED",
-      "frozenBase": null,
+      "frozenBase": "40cdac5c9ce6acaa8dedc0385984a807ae9a84d0",
       "dependencies": ["R19", "R22", "R23"],
       "legacyAliases": ["P37", "P42-foundation  "],
       "ownedPaths": {
@@ -655,7 +691,8 @@
       "scopeNote": "Complete requirements are preserved in gates/g1/prompts/R19-R28.md; integration acceptance is not inferred from merge.",
       "startBarrier": {
         "gate": "G1",
-        "decision": "BLOCKED"
+        "decision": "ACCEPTED",
+        "publication": "PENDING_OWNER_REVIEW_AND_RECORD_MERGE"
       }
     },
     {
@@ -670,7 +707,7 @@
         "coordinator": "G1 delegated coordinator for baraabd"
       },
       "status": "PLANNED",
-      "frozenBase": null,
+      "frozenBase": "40cdac5c9ce6acaa8dedc0385984a807ae9a84d0",
       "dependencies": ["R22", "R23"],
       "legacyAliases": ["P44  "],
       "ownedPaths": {
@@ -742,7 +779,8 @@
       "scopeNote": "Complete requirements are preserved in gates/g1/prompts/R19-R28.md; integration acceptance is not inferred from merge.",
       "startBarrier": {
         "gate": "G1",
-        "decision": "BLOCKED"
+        "decision": "ACCEPTED",
+        "publication": "PENDING_OWNER_REVIEW_AND_RECORD_MERGE"
       }
     },
     {
@@ -757,7 +795,7 @@
         "coordinator": "G1 delegated coordinator for baraabd"
       },
       "status": "PLANNED",
-      "frozenBase": null,
+      "frozenBase": "40cdac5c9ce6acaa8dedc0385984a807ae9a84d0",
       "dependencies": ["R20", "R21", "R23"],
       "legacyAliases": ["P49-security  "],
       "ownedPaths": {
@@ -806,7 +844,8 @@
       "scopeNote": "Complete requirements are preserved in gates/g1/prompts/R19-R28.md; integration acceptance is not inferred from merge.",
       "startBarrier": {
         "gate": "G1",
-        "decision": "BLOCKED"
+        "decision": "ACCEPTED",
+        "publication": "PENDING_OWNER_REVIEW_AND_RECORD_MERGE"
       }
     },
     {
@@ -821,7 +860,7 @@
         "coordinator": "G1 delegated coordinator for baraabd"
       },
       "status": "PLANNED",
-      "frozenBase": null,
+      "frozenBase": "40cdac5c9ce6acaa8dedc0385984a807ae9a84d0",
       "dependencies": ["R20", "R23"],
       "legacyAliases": ["P49-performance  "],
       "ownedPaths": {
@@ -894,7 +933,8 @@
       "scopeNote": "Complete requirements are preserved in gates/g1/prompts/R19-R28.md; integration acceptance is not inferred from merge.",
       "startBarrier": {
         "gate": "G1",
-        "decision": "BLOCKED"
+        "decision": "ACCEPTED",
+        "publication": "PENDING_OWNER_REVIEW_AND_RECORD_MERGE"
       }
     },
     {
@@ -909,7 +949,7 @@
         "coordinator": "G1 delegated coordinator for baraabd"
       },
       "status": "PLANNED",
-      "frozenBase": null,
+      "frozenBase": "40cdac5c9ce6acaa8dedc0385984a807ae9a84d0",
       "dependencies": ["R20", "R21", "R22", "R23"],
       "legacyAliases": ["P50-platform", "P49-edge  "],
       "ownedPaths": {
@@ -952,7 +992,8 @@
       "scopeNote": "Complete requirements are preserved in gates/g1/prompts/R19-R28.md; integration acceptance is not inferred from merge.",
       "startBarrier": {
         "gate": "G1",
-        "decision": "BLOCKED"
+        "decision": "ACCEPTED",
+        "publication": "PENDING_OWNER_REVIEW_AND_RECORD_MERGE"
       }
     },
     {
@@ -1148,6 +1189,11 @@
       "observedAt": "2026-10-16T08:27:22.122Z",
       "by": "G1 delegated coordinator",
       "note": "Complete R19-R28 prompts recovered and verified; every required implementation/corrective PR merged. G1 BLOCKED on remaining source/evidence gaps. Historical G0 records retained; no retroactive approval of simultaneous R19/R21 schema leases."
+    },
+    {
+      "observedAt": "2026-10-16T21:41:51.823662+00:00",
+      "by": "G1 acceptance-publication coordinator",
+      "note": "PR #169 merged; actual post-merge evidence verified. Wave 1 SANDBOX_ACCEPTED. Frozen Wave 2 source assigned, but all lanes held until separate owner-reviewed acceptance publication is merged and verified."
     }
   ],
   "gates": {

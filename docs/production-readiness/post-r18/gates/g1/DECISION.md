@@ -1,43 +1,48 @@
-# G1 decision — BLOCKED
+# G1 decision — ACCEPTED source, publication pending
 
-Decision UTC: 2026-10-16T08:33:09.185443+00:00. Issued by the delegated engineering integration
-coordinator for repository owner `baraabd`, under the supplied G1 prompt.
-Mode A. This is the Wave 1 → Wave 2 gate, not historical R18-G1 and not a
-production-release decision.
+Decision UTC: 2026-10-16T21:41:51.823662+00:00. Mode A. This is the Wave 1 to Wave 2 engineering gate,
+not the historical R18-G1 branch-protection issue or a production release.
 
-**All required implementation and corrective PRs are merged. G1 is not accepted.**
-The current pipeline omits required scenarios, R19's internal-port freeze is
-incomplete, and R22/R23 integration requests remain unimplemented. A green
-pipeline does not establish these missing requirements.
+The integrated Wave 1 boundaries are accepted on the merged source below.
+**No Wave 2 lane may start until the owner reviews and merges this separate
+record and the coordinator verifies its publication identity.**
 
-- Inspected merged candidate: `54a69f78c0227a2f2b94df851a3ebb941348d8aa`.
-- Exact candidate tree: `6f638f5f3aedbcc5b795b62da11bb3000f7dba4b`.
-- `frozenBaseSha`: **not assigned**; `frozenTreeSha`: **not assigned**.
-- Acceptance-record commit: **not assigned** (no accepted decision exists).
-- Coordination branch: `coord/g1-wave2-freeze`.
-- Publication: Draft PR, owner review/merge pending; final commit/head is
-  bound externally in that PR to avoid a self-referential hash.
-- Startable lanes: **none**. R24–R28 stay blocked with `PLANNED` lifecycle status.
+- Frozen source: `40cdac5c9ce6acaa8dedc0385984a807ae9a84d0`.
+- Frozen complete tree: `109b514fe9833a9aac3e8caecd7f9b14d4f61b3b`.
+- Corrective source: owner-merged PR #169, following #168.
+- Publication branch: `coord/g1-wave2-acceptance`.
+- Acceptance-record commit: not assigned here; the PR binds its immutable
+  final head externally. It is distinct from the frozen source.
+- Wave 1 status: `SANDBOX_ACCEPTED` for R19 through R23.
+- Wave 2 status: `BLOCKED` solely on acceptance publication; startable lanes: none.
 
-The current candidate is byte-identical to R23 corrective head
-`f3f9ef491ac8d8296c655d0e010d8ad2a39e7cf5`; both have the tree above.
-Git ancestry verifies all nine Wave 1 implementation/corrective merge commits.
-The source repair in this PR is additional and requires its own exact-head
-checks; it does not inherit acceptance from the inspected candidate.
+## Basis
 
-See [MERGE_MATRIX.md](MERGE_MATRIX.md), [REQUIREMENTS.md](REQUIREMENTS.md),
-[CHANGE_REQUESTS.md](CHANGE_REQUESTS.md), [INTEGRATION_EVIDENCE.md](INTEGRATION_EVIDENCE.md)
-and [BLOCKERS.md](BLOCKERS.md). The machine decision is [SOURCE_MANIFEST.json](SOURCE_MANIFEST.json).
-Wave 2's exact conditional allowlists are in [wave-02.plan.json](../../waves/wave-02.plan.json).
-No `wave-02.ready.json` is created.
+[ACCEPTANCE_EVIDENCE.md](ACCEPTANCE_EVIDENCE.md) and its machine-readable JSON
+record actual case results, artifact IDs/digests, source identity and limits.
+The merged source ran the previously omitted real-service scenarios. All
+81 cases skipped in the general API invocation were matched by exact test
+name to passing dedicated reports from the same merged-source workflow.
+The PR-only synthetic alert run is explicitly earlier evidence on an identical
+complete source tree; it is not described as a merge-commit run.
 
-Historical G0 records are retained as dated evidence. The recovered complete
-prompts resolve the missing-package inventory; they do not retroactively make
-the competing R19/R21 schema writes compliant. Both schema blocks and ordered
-migrations are present, and the candidate database checks passed.
+R19 freezes callable interfaces for later consumers, not their future live
+implementations. R20 acceptance uses disposable S3, not a production account.
+R21 uses disposable SMTP, not production sender deliverability. R23 producers
+are active under their existing boundaries; hosted collection and approved
+SLO values remain later work.
 
-The owner must first review/merge required corrective source through the
-normal process. The coordinator then tests that exact merged candidate,
-closes every G1 blocker, publishes a separate ACCEPTED record, and obtains
-its required owner review/merge before any Wave 2 start statement is valid.
-This task performs no merge, auto-merge, force push, deployment or live activation.
+## Publication and handoff
+
+1. Owner reviews and merges this acceptance record; this task does not merge it.
+2. Coordinator verifies the immutable record commit is on `develop`, its
+   frozen source/tree and current ownership, then updates publication identity,
+   Wave 2 manifest and registry together. Never set `MERGED` in anticipation.
+3. Each lane starts from the full frozen source with its exact file ownership.
+   R27 preserves #162 and obtains its branch/worktree handoff; no automatic
+   rebase, reset, peer import or force-push.
+
+Live money/payouts, production verification flags, commercial decisions,
+hosted infrastructure, branch protection and repository-wide security inventory
+remain independent. Rollback of this publication is a reviewed revert of its
+records/test-fixture change; retain corrective source and financial constraints.
