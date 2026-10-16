@@ -1,3 +1,5 @@
+> Historical preparation record. PR #171 has since been owner-merged and verified. Current identity and lane readiness are in [PUBLICATION_VERIFICATION.md](PUBLICATION_VERIFICATION.md), SOURCE_MANIFEST.json and wave-02.plan.json. The preparation narrative below remains historical.
+
 # G1 acceptance publication and R26 handoff
 
 Mode A. **Integrated source accepted; owner publication pending.** This is

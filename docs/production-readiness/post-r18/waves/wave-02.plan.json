@@ -3,12 +3,12 @@
   "wave": 2,
   "startGate": "G1",
   "baseSha": "40cdac5c9ce6acaa8dedc0385984a807ae9a84d0",
-  "status": "BLOCKED",
-  "startableLanes": [],
-  "blockedLanes": ["R24", "R25", "R26", "R27", "R28"],
+  "status": "READY_TO_START",
+  "startableLanes": ["R24", "R25", "R26", "R27", "R28"],
+  "blockedLanes": [],
   "coordinator": "G1 delegated engineering coordinator for baraabd",
   "decisionRecord": "docs/production-readiness/post-r18/gates/g1/SOURCE_MANIFEST.json",
-  "publicationRequirement": "G1 engineering acceptance is recorded; owner review/merge and verification of this separate acceptance-record commit are still required. No lane starts from this unmerged publication.",
+  "publicationRequirement": "Satisfied: owner-merged PR #171 verified at 0568739096ceeaf0cfc79034626886e258fe4328. READY_TO_START releases the G1 prerequisite for existing owner-assigned lane sessions; no implementation or release acceptance is implied.",
   "lanes": [
     {
       "id": "R24",
@@ -17,7 +17,7 @@
       "lane": 1,
       "branch": "feat/r24-money-api-integration",
       "owner": "R24 lane author (repository owner assigns session)",
-      "status": "BLOCKED",
+      "status": "READY_TO_START",
       "frozenBaseSha": "40cdac5c9ce6acaa8dedc0385984a807ae9a84d0",
       "dependencies": ["R19", "R22", "R23"],
       "exactFiles": [
@@ -47,8 +47,8 @@
         "All behavioral, negative and integration tests in the complete authoritative prompt",
         "Exact final-head CI and CodeQL; real-service evidence; limitations and rollback"
       ],
-      "ownershipApproval": "CONDITIONAL_ON_G1_PUBLICATION",
-      "blockedBy": ["G1-PUBLICATION-PENDING"],
+      "ownershipApproval": "APPROVED_AFTER_VERIFIED_G1_PUBLICATION",
+      "blockedBy": [],
       "isolatedRuntime": {
         "composeProject": "hsm-r24-<session>",
         "database": "hsm_r24_<session>",
@@ -58,7 +58,8 @@
         "webPort": 5324,
         "browser": "fresh isolated context and cookie jar; never share userDataDir",
         "secrets": "generated disposable credentials only; no copied .env; inspect fixed container/volume names before boot"
-      }
+      },
+      "handoffRecord": "docs/production-readiness/post-r18/gates/g1/PUBLICATION_VERIFICATION.md"
     },
     {
       "id": "R25",
@@ -67,7 +68,7 @@
       "lane": 2,
       "branch": "feat/r25-realtime-multi-instance",
       "owner": "R25 lane author (repository owner assigns session)",
-      "status": "BLOCKED",
+      "status": "READY_TO_START",
       "frozenBaseSha": "40cdac5c9ce6acaa8dedc0385984a807ae9a84d0",
       "dependencies": ["R22", "R23"],
       "exactFiles": [
@@ -132,8 +133,8 @@
         "All behavioral, negative and integration tests in the complete authoritative prompt",
         "Exact final-head CI and CodeQL; real-service evidence; limitations and rollback"
       ],
-      "ownershipApproval": "CONDITIONAL_ON_G1_PUBLICATION",
-      "blockedBy": ["G1-PUBLICATION-PENDING"],
+      "ownershipApproval": "APPROVED_AFTER_VERIFIED_G1_PUBLICATION",
+      "blockedBy": [],
       "isolatedRuntime": {
         "composeProject": "hsm-r25-<session>",
         "database": "hsm_r25_<session>",
@@ -143,7 +144,8 @@
         "webPort": 5325,
         "browser": "fresh isolated context and cookie jar; never share userDataDir",
         "secrets": "generated disposable credentials only; no copied .env; inspect fixed container/volume names before boot"
-      }
+      },
+      "handoffRecord": "docs/production-readiness/post-r18/gates/g1/PUBLICATION_VERIFICATION.md"
     },
     {
       "id": "R26",
@@ -151,8 +153,8 @@
       "wave": 2,
       "lane": 3,
       "branch": "feat/r26-application-security",
-      "owner": "R26 delegated owner session; current G1 coordinator handoff required before implementation",
-      "status": "BLOCKED",
+      "owner": "R26 delegated owner session; G1 ownership handoff recorded in PUBLICATION_VERIFICATION.md",
+      "status": "READY_TO_START",
       "frozenBaseSha": "40cdac5c9ce6acaa8dedc0385984a807ae9a84d0",
       "dependencies": ["R20", "R21", "R23"],
       "exactFiles": [
@@ -194,8 +196,8 @@
         "All behavioral, negative and integration tests in the complete authoritative prompt",
         "Exact final-head CI and CodeQL; real-service evidence; limitations and rollback"
       ],
-      "ownershipApproval": "CONDITIONAL_ON_G1_PUBLICATION",
-      "blockedBy": ["G1-PUBLICATION-PENDING"],
+      "ownershipApproval": "APPROVED_AFTER_VERIFIED_G1_PUBLICATION",
+      "blockedBy": [],
       "isolatedRuntime": {
         "composeProject": "hsm-r26-<session>",
         "database": "hsm_r26_<session>",
@@ -205,7 +207,8 @@
         "webPort": 5326,
         "browser": "fresh isolated context and cookie jar; never share userDataDir",
         "secrets": "generated disposable credentials only; no copied .env; inspect fixed container/volume names before boot"
-      }
+      },
+      "handoffRecord": "docs/production-readiness/post-r18/gates/g1/PUBLICATION_VERIFICATION.md"
     },
     {
       "id": "R27",
@@ -214,7 +217,7 @@
       "lane": 4,
       "branch": "feat/r27-performance-capacity",
       "owner": "R27 lane author (repository owner assigns session)",
-      "status": "BLOCKED",
+      "status": "READY_TO_START",
       "frozenBaseSha": "40cdac5c9ce6acaa8dedc0385984a807ae9a84d0",
       "dependencies": ["R20", "R23"],
       "exactFiles": [
@@ -280,8 +283,8 @@
         "All behavioral, negative and integration tests in the complete authoritative prompt",
         "Exact final-head CI and CodeQL; real-service evidence; limitations and rollback"
       ],
-      "ownershipApproval": "CONDITIONAL_ON_G1_PUBLICATION",
-      "blockedBy": ["G1-PUBLICATION-PENDING"],
+      "ownershipApproval": "APPROVED_AFTER_VERIFIED_G1_PUBLICATION",
+      "blockedBy": [],
       "isolatedRuntime": {
         "composeProject": "hsm-r27-<session>",
         "database": "hsm_r27_<session>",
@@ -297,8 +300,9 @@
         "mergedAs": "f52d7b0aeac8ae9e16152fb26b3bdbe21d7dadf0",
         "originalBase": "059c018576a75837d4dfb262ee49168d9217d881",
         "state": "PRE_G1_MERGED_NOT_ACCEPTED",
-        "reconciliation": "Preserve merged harness; after G1, create a fresh worktree at the certified base, compare existing branch, obtain an explicit handoff, rerun baselines. No automatic reset/rebase/force push."
-      }
+        "reconciliation": "Explicit coordinator handoff is in PUBLICATION_VERIFICATION.md. Preserve #162 and its branch lineage; the original head is an ancestor of the frozen source. Use an isolated frozen-source checkout and rerun baselines. Inspect any newer head before a safe fast-forward; no automatic reset, rebase or force-push."
+      },
+      "handoffRecord": "docs/production-readiness/post-r18/gates/g1/PUBLICATION_VERIFICATION.md"
     },
     {
       "id": "R28",
@@ -307,7 +311,7 @@
       "lane": 5,
       "branch": "feat/r28-hosted-platform",
       "owner": "R28 lane author (repository owner assigns session)",
-      "status": "BLOCKED",
+      "status": "READY_TO_START",
       "frozenBaseSha": "40cdac5c9ce6acaa8dedc0385984a807ae9a84d0",
       "dependencies": ["R20", "R21", "R22", "R23"],
       "exactFiles": [
@@ -343,8 +347,8 @@
         "All behavioral, negative and integration tests in the complete authoritative prompt",
         "Exact final-head CI and CodeQL; real-service evidence; limitations and rollback"
       ],
-      "ownershipApproval": "CONDITIONAL_ON_G1_PUBLICATION",
-      "blockedBy": ["G1-PUBLICATION-PENDING"],
+      "ownershipApproval": "APPROVED_AFTER_VERIFIED_G1_PUBLICATION",
+      "blockedBy": [],
       "isolatedRuntime": {
         "composeProject": "hsm-r28-<session>",
         "database": "hsm_r28_<session>",
@@ -354,7 +358,8 @@
         "webPort": 5328,
         "browser": "fresh isolated context and cookie jar; never share userDataDir",
         "secrets": "generated disposable credentials only; no copied .env; inspect fixed container/volume names before boot"
-      }
+      },
+      "handoffRecord": "docs/production-readiness/post-r18/gates/g1/PUBLICATION_VERIFICATION.md"
     }
   ],
   "sharedReservations": [
@@ -381,5 +386,6 @@
     "R25 owns realtime implementation; R26 owns shared/security-events. Neither consumes unmerged same-wave source; cross-cutting revocation events require coordinator integration.",
     "R24 consumes frozen R19 money interfaces; missing interfaces block startup. Global barrels/schema/registration stay coordinator-owned.",
     "R27 owns measurements and proposals; R28 owns only the explicitly leased platform/edge plan files. Vite/routes/Docker/Compose/staging remain coordinator-owned."
-  ]
+  ],
+  "publicationVerification": "docs/production-readiness/post-r18/gates/g1/PUBLICATION_VERIFICATION.json"
 }

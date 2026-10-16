@@ -3,19 +3,24 @@
   "gateId": "G1",
   "decision": "ACCEPTED",
   "decisionAtUtc": "2026-10-16T21:41:51.823662+00:00",
-  "authority": "Successor G1 coordinator under the owner delegation to close all G1 blockers and prepare a review PR without merge/deploy. Acceptance is limited to the integrated Wave 1 source; publication is pending.",
+  "authority": "Successor G1 coordinator under the continuing owner delegation; records owner-merged PR #171 and verifies publication identity. No merge, deployment or Wave 2 implementation acceptance by this task.",
   "candidateSourceSha": "40cdac5c9ce6acaa8dedc0385984a807ae9a84d0",
   "candidateTreeSha": "109b514fe9833a9aac3e8caecd7f9b14d4f61b3b",
   "frozenBaseSha": "40cdac5c9ce6acaa8dedc0385984a807ae9a84d0",
   "frozenTreeSha": "109b514fe9833a9aac3e8caecd7f9b14d4f61b3b",
-  "acceptanceRecordCommitSha": null,
-  "coordinationPrHeadSha": null,
-  "identityResolution": "Frozen source and acceptance-record commits are distinct. The PR binds its final head externally. Once the owner merges this record, a follow-up verifies that immutable record commit and updates publication and lane readiness together; no self-referential SHA or premature start.",
+  "acceptanceRecordCommitSha": "0568739096ceeaf0cfc79034626886e258fe4328",
+  "coordinationPrHeadSha": "578ae9359fb93a46e478b1db0ca043a0c73aca51",
+  "identityResolution": "Frozen runtime source remains distinct from the already merged acceptance record. PR #171 and local Git establish its merge commit, source ancestry and identical reviewed/merged trees; PUBLICATION_VERIFICATION.json records the evidence.",
   "publication": {
-    "state": "DRAFT_PENDING_OWNER_REVIEW",
+    "state": "MERGED",
     "branch": "coord/g1-wave2-acceptance",
-    "acceptanceRecordCommitSha": null,
-    "requirement": "Owner review/merge of this separate acceptance record, then source and publication identity verification before any Wave 2 start."
+    "acceptanceRecordCommitSha": "0568739096ceeaf0cfc79034626886e258fe4328",
+    "requirement": "Satisfied by the owner merge of #171 and verified immutable publication identity. Lane starts retain exact ownership, frozen-source and isolated-runtime requirements.",
+    "pr": 171,
+    "mergedAtUtc": "2026-10-16T23:01:54Z",
+    "reviewedHeadSha": "578ae9359fb93a46e478b1db0ca043a0c73aca51",
+    "treeSha": "ceaa111acd43e07a89e49728996933b9204bd73d",
+    "verificationRecord": "docs/production-readiness/post-r18/gates/g1/PUBLICATION_VERIFICATION.json"
   },
   "acceptedSprints": ["R19", "R20", "R21", "R22", "R23"],
   "blockers": [],
@@ -70,14 +75,7 @@
     "R18-H1 hosting/DNS/registry/secrets, real sender deliverability, hosted storage IAM/KMS/CDN, production alert receivers/region/retention and SLO approval remain owner/R28/R37 work.",
     "R16 money/payout policies, R18 D-2/D-3/D-13/D-19 and R19 commercial policies remain explicit owner decisions. Live rails and payouts stay disabled."
   ],
-  "publicationBlockers": [
-    {
-      "id": "G1-06",
-      "state": "PENDING_OWNER_REVIEW_AND_RECORD_MERGE",
-      "owner": "repository owner + coordinator",
-      "requirement": "The corrective source and merged-source evidence are complete. This separate record must be owner-reviewed/merged and its identity verified before Wave 2 is released."
-    }
-  ],
+  "publicationBlockers": [],
   "evidenceRecord": "docs/production-readiness/post-r18/gates/g1/ACCEPTANCE_EVIDENCE.json",
   "historicalDecision": {
     "sourceSha": "54a69f78c0227a2f2b94df851a3ebb941348d8aa",

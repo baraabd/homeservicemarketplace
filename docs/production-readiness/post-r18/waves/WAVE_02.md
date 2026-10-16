@@ -1,42 +1,52 @@
-# Wave 2 — source frozen, acceptance publication pending
+# Wave 2 — verified G1 publication, ready to start
 
-Frozen source: `40cdac5c9ce6acaa8dedc0385984a807ae9a84d0`.
-Frozen complete tree: `109b514fe9833a9aac3e8caecd7f9b14d4f61b3b`.
-Machine manifest: `wave-02.plan.json`; decision: `../gates/g1/SOURCE_MANIFEST.json`.
-G1 technical source acceptance is complete. **No lane may start until this
-separate acceptance record is owner-reviewed, merged and verified.**
+Frozen runtime source: `40cdac5c9ce6acaa8dedc0385984a807ae9a84d0`.
+Frozen runtime tree: `109b514fe9833a9aac3e8caecd7f9b14d4f61b3b`.
+Owner-merged acceptance record: `0568739096ceeaf0cfc79034626886e258fe4328` (PR #171).
+Reviewed/merged record tree: `ceaa111acd43e07a89e49728996933b9204bd73d`.
 
-| Lane | Branch                           | Earlier-wave inputs | Current hold                                   |
-| ---- | -------------------------------- | ------------------- | ---------------------------------------------- |
-| R24  | feat/r24-money-api-integration   | R19, R22, R23       | G1 publication                                 |
-| R25  | feat/r25-realtime-multi-instance | R22, R23            | G1 publication                                 |
-| R26  | feat/r26-application-security    | R20, R21, R23       | G1 publication                                 |
-| R27  | feat/r27-performance-capacity    | R20, R23            | G1 publication and branch handoff              |
-| R28  | feat/r28-hosted-platform         | R20, R21, R22, R23  | G1 publication; hosted choices remain external |
+G1 source and publication conditions are satisfied. The exact pre-reviewed
+allowlists and leases in `wave-02.plan.json` take effect for owner-assigned
+lane sessions. READY_TO_START releases the bounded engineering lane; it is
+not implementation, sandbox/hosted acceptance or a production release.
+This coordinator task starts no runtime stack.
 
-The exact file allowlists and individual leases are unchanged. Their approval
-is effective only after accepted G1 publication. Unlisted files and all shared
-runtime/config/schema/CI paths require serialized coordinator ownership.
-No lane consumes an unmerged peer or treats an interface as implemented runtime.
+| Lane | Assigned branch                  | Accepted earlier-wave inputs | State          |
+| ---- | -------------------------------- | ---------------------------- | -------------- |
+| R24  | feat/r24-money-api-integration   | R19, R22, R23                | READY_TO_START |
+| R25  | feat/r25-realtime-multi-instance | R22, R23                     | READY_TO_START |
+| R26  | feat/r26-application-security    | R20, R21, R23                | READY_TO_START |
+| R27  | feat/r27-performance-capacity    | R20, R23                     | READY_TO_START |
+| R28  | feat/r28-hosted-platform         | R20, R21, R22, R23           | READY_TO_START |
 
-Use the manifest's isolated disposable database, Redis, storage, ports and
-browser context. Inspect fixed container and volume names before starting
-services; never copy the user's environment or reuse a working database.
+## Ownership and isolation
 
-## R27 handoff
+Handoff and immutable evidence are in `../gates/g1/PUBLICATION_VERIFICATION.md`
+and its JSON companion. Verify the current branch/worktree/head before edits,
+preserve unrelated changes and stashes, and use the exact frozen source.
+Report any later record-only overlay explicitly. No lane consumes an unmerged
+same-wave peer. Unlisted and shared runtime/config/schema/CI paths remain
+coordinator-owned.
 
-Preserve merged PR #162 and branch head
-`2e8d1dba35f2a36a73d47100d8495f5379bc028c`. Its measurements are pre-G1 evidence.
-After publication, create a fresh worktree at the frozen source, compare the
-existing branch/harness, record the explicit branch handoff and rerun baselines.
-No automatic reset, rebase, cherry-pick of peer work or force-push is authorized.
-The 17 existing pure harness tests passed in this certification session; they
-are not new performance measurements or R27 acceptance.
+Use separate disposable databases, Redis, storage, ports and fresh browser
+contexts from the manifest. Inspect fixed container/volume names before boot.
+Never copy the user's environment or reuse their working database.
 
-## Release of the hold
+## R27 lineage and explicit handoff
 
-After owner merge, the coordinator records the already-existing immutable
-acceptance-record commit under `publication.acceptanceRecordCommitSha`, proves
-its ancestry on `develop`, rechecks the frozen source/tree and ownership, then
-updates `publication.state`, lane statuses and registry together. This record
-does not anticipate that merge, and no `wave-02.ready.json` is fabricated.
+Preserve PR #162, original head `2e8d1dba35f2a36a73d47100d8495f5379bc028c`
+and merge `f52d7b0aeac8ae9e16152fb26b3bdbe21d7dadf0`. Git ancestry was verified
+against the frozen source. The coordinator releases exact R27 ownership to
+its owner-assigned session. Use a fresh isolated checkout of the frozen source,
+compare the preserved harness and rerun baselines. A fast-forward from the
+observed original branch is possible; this task moves no lane branch.
+Inspect any newer head before updating it. No reset, rebase, force-push or
+other-session worktree overwrite is authorized. Owner approval of budgets
+remains required; old measurements are not new acceptance evidence.
+
+## Limits and revocation
+
+G1 covers Wave 1 engineering/disposable-service acceptance. R18 NO-GO, hosted
+resource inputs, repository security-policy acceptance, commercial decisions,
+live funds and payouts remain independent holds. A reviewed revocation must
+reconcile gate, wave manifest and registry, preserving publication history.
