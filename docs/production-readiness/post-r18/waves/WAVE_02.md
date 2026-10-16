@@ -1,43 +1,35 @@
-# Wave 2 — prepared, BLOCKED at G1
+# Wave 2 — frozen source, awaiting G1 publication
 
-The canonical machine manifest is `wave-02.plan.json`. No frozen base exists;
-no lane may start. The exact titles, branches, dependencies, new files, tests,
-evidence paths, conditional leases and isolated resources are listed there.
-The full prompts are in `../gates/g1/prompts/R19-R28.md`.
+The canonical manifest is `wave-02.plan.json`. Frozen runtime source:
+`40cdac5c9ce6acaa8dedc0385984a807ae9a84d0`; tree `109b514fe9833a9aac3e8caecd7f9b14d4f61b3b`.
+G1 source is accepted on post-merge evidence, but its separate record is
+`PENDING_OWNER_REVIEW_AND_MERGE`. No lane may start yet.
 
-| Lane | Branch                           | Earlier-wave inputs | Readiness                                                 |
-| ---- | -------------------------------- | ------------------- | --------------------------------------------------------- |
-| R24  | feat/r24-money-api-integration   | R19, R22, R23       | BLOCKED: G1 and internal-port freeze                      |
-| R25  | feat/r25-realtime-multi-instance | R22, R23            | BLOCKED: worker recovery and telemetry inputs             |
-| R26  | feat/r26-application-security    | R20, R21, R23       | BLOCKED: G1; inventory evidence remains required          |
-| R27  | feat/r27-performance-capacity    | R20, R23            | BLOCKED: G1; provisional pre-G1 #162 needs reconciliation |
-| R28  | feat/r28-hosted-platform         | R20, R21, R22, R23  | BLOCKED: G1; target account/region/spend remain external  |
+| Lane | Branch                           | Earlier-wave inputs | Current hold                                                                  |
+| ---- | -------------------------------- | ------------------- | ----------------------------------------------------------------------------- |
+| R24  | feat/r24-money-api-integration   | R19, R22, R23       | G1 publication and assigned-owner start decision                              |
+| R25  | feat/r25-realtime-multi-instance | R22, R23            | G1 publication and assigned-owner start decision                              |
+| R26  | feat/r26-application-security    | R20, R21, R23       | Owner-merged G1 publication verification; this owner session is assigned next |
+| R27  | feat/r27-performance-capacity    | R20, R23            | G1 publication and provisional #162 reconciliation/handoff                    |
+| R28  | feat/r28-hosted-platform         | R20, R21, R22, R23  | G1 publication; hosted account/region/spend decisions remain external         |
 
-Allowlist approval covers **only** each enumerated path, conditional on accepted
-G1 publication. It does not approve directory-wide edits. New unlisted files
-require a coordinator amendment before writing. Shared integration paths stay
-with the coordinator; infra leases name individual files and expire at G2 or
-earlier revocation. One writer per path, including leases, is mechanically checked.
-No production topology/permission/spending decision is inferred from a code lease.
+The exact existing file lists and isolated runtime resources are preserved.
+R26's exact allowlist is coordinator-approved conditional on verified G1
+publication. This grants no directory-wide edit, shared configuration change,
+IAM mutation, dependency upgrade, deployment or external spend. Additional
+files require an exact coordinator lease before editing.
 
-R25 owns realtime code; R26 owns security-event definitions. Cross-boundary
-revocation/session events require a coordinator-owned frozen interface; neither
-lane imports an unmerged same-wave implementation. R24 cannot substitute wire
-DTOs for missing callable ports. R27 owns measurements and proposals; R28's
-platform/edge plan leases do not include Vite/routes/global Docker/Compose edits.
+After owner merge, inspect the actual acceptance-record commit and its Git
+ancestry, recheck the frozen source/tree and active ownership, record the
+publication identity, and change the manifest and registry together before
+starting an assigned lane. Never invent a self-referential publication hash.
+Do not infer READY_TO_START from the word ACCEPTED alone.
 
-Each lane uses its own disposable database, Redis instance, buckets/roots,
-Compose project, host ports, and browser cookie jar. Inspect fixed container and
-volume names before boot; project naming alone is insufficient. Heavy service
-tests may be serialized for resources, but worker concurrency is not reduced to
-hide data races. Never copy the user's .env or use their database.
+R25 owns realtime implementation; R26 must preserve the frozen security-event
+payload contracts. R24 consumes the accepted V1 money ports. R27's pre-G1
+merged harness is retained and needs explicit handoff/new measurements; do not
+reset, rebase or force-push a peer branch. R28 topology is not authorized spend.
 
-R27 PR #162 is already merged from `059c018576a75837d4dfb262ee49168d9217d881`.
-Keep it. Once G1 is accepted, create a fresh worktree at the approved source,
-compare its existing branch and harness, agree the handoff, and rerun measurements.
-Do not reset, automatically rebase, cherry-pick peers or force-push it.
-
-Start condition: close every G1 blocker, certify one full source/tree pair,
-publish and owner-merge a separate ACCEPTED record, verify its publication and
-source, then deliberately change the manifest and registry together. A green
-coordination PR or a merged BLOCKED report does not satisfy this condition.
+Every lane uses an isolated worktree, dependencies/generated outputs, database,
+Redis instance, storage namespace, Compose resources, ports and cookie jar.
+No user's working database or copied environment is used. All live rails stay off.
