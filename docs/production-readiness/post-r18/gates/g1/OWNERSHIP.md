@@ -45,3 +45,25 @@ All other shared runtime files remain reserved for a serialized follow-up.
 Historical R19/R21 schema writers are recorded as a process violation with
 merged-content verification, not retroactively granted simultaneous leases.
 Wave 2 ownership is conditional preparation; it is not a start authorization.
+
+## CI remediation follow-up — 2026-10-16
+
+Authority: the repository owner's request to repair PR #168 / CI run #489
+for later owner merge. Mode A; successor coordinator for this bounded repair.
+Starting head: `8c730d9a73099d64b6d3fe6175da2601ee3efc35`.
+
+Exact additional scope, recorded before changing the historical baseline:
+
+- `.gitleaksignore`: only the two individually reviewed historical prose
+  fingerprints from commit `9c5b3f36e2bd37558a2d0c7ef5873f5e6484ce0e`.
+- `docs/security/gitleaks-historical-baseline.md`: provenance, classification,
+  scanner reproduction and negative controls for those two findings.
+- `docs/production-readiness/post-r18/gates/g1/OWNERSHIP.md`: this scope record.
+- `docs/production-readiness/post-r18/gates/g1/INTEGRATION_EVIDENCE.md`:
+  bounded CI remediation evidence, separate from G1 acceptance.
+
+The current request authorizes the scoped fix; this is not retroactive approval
+of the earlier failed head. Existing source changes, scanner rules/ranges,
+workflows, dependencies and gate decisions are preserved. Publish a normal
+fast-forward commit; no force-push, history rewrite, merge or deployment.
+This scope neither closes G1-01 through G1-06 nor authorizes Wave 2 or G2.

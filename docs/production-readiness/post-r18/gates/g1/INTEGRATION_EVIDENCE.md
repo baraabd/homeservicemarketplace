@@ -129,3 +129,49 @@ Wave 1 scenarios and source handoffs above are closed on a merged candidate.
 
 No authorized vendor sandbox, hosted target, external delivery, production
 incident readiness, deployment, live payment or payout acceptance is claimed.
+
+## Historical scanner repair — 2026-10-16 follow-up
+
+Scope: PR #168, CI run number 489 (`38876680432`), based on
+`8c730d9a73099d64b6d3fe6175da2601ee3efc35`. Mode A; see the bounded
+follow-up in OWNERSHIP.md. The earlier failures above remain historical facts.
+
+The failed security job `116895556319` scans the two PR commits, including
+the first version of the requirement prose. Rewording the latest tree alone
+cannot fix that history scan. The two lines are individually classified in
+`docs/security/gitleaks-historical-baseline.md`, section 12. Only their exact
+historical fingerprints are added; scanner rules/ranges and all CI gates stay
+intact. R18 and CI gate need no change: both correctly fail when security fails.
+
+Executed locally with Gitleaks 8.24.3, Node 24.21.0 and pnpm 10.32.1:
+
+| Verification                                                 | Observed result                                                                                                                                                            |
+| ------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Original CI history range, before the baseline delta         | Exit 2; exactly the two reported fingerprints, 2 commits / 725,289 bytes scanned                                                                                           |
+| Identical history range, after the baseline delta            | Exit 0; 0 findings, same 2 commits / 725,289 bytes scanned                                                                                                                 |
+| Isolated temporary repository with the proposed fingerprints | Exit 2; all 4 negative controls detected: new generic and GitHub-PAT synthetic values, plus both original prose lines at their original paths/line numbers in a new commit |
+| `node --test scripts/security/*.test.cjs`                    | 46 passed, 0 failed, 0 skipped                                                                                                                                             |
+| `node --test .github/scripts/*.test.mjs`                     | 156 passed, 0 failed, 0 skipped                                                                                                                                            |
+| `node .github/scripts/production-governance.mjs`             | PASS; GitHub protection not verified by this local check                                                                                                                   |
+| `node .github/scripts/release-baseline.mjs`                  | PASS; does not imply sprint completion                                                                                                                                     |
+
+The reproduced history command is `gitleaks detect --redact --exit-code=2
+--report-format=json --log-opts="--no-merges --first-parent
+9c5b3f36e2bd37558a2d0c7ef5873f5e6484ce0e^..8c730d9a73099d64b6d3fe6175da2601ee3efc35"`.
+The canary repository was removed; no synthetic secret value was printed or
+committed to this project. Its detections prove that the two historical
+fingerprints do not suppress new occurrences at the same location.
+
+The final committed-tree/history scans, formatting and remote checks are
+reported against the published SHA in the PR metadata, avoiding a self-SHA
+commit loop. Prior-head application test counts are not claimed as new runs.
+No application, schema, contract, dependency, workflow or feature flag changes
+are part of this follow-up. Remote CI still has to execute the previously
+blocked image/SBOM/container steps and the dependent aggregate gates.
+
+G1 remains BLOCKED: G1-01 through G1-06 are unchanged. Technical acceptance
+of this repair is not acceptance of Wave 1. G2 follows accepted G1, authorized
+R24–R28 implementation/integration and the Wave 2 acceptance decision; it
+cannot be obtained by marking this scanner repair green. Rollback is a normal
+reviewed revert of this follow-up; it restores the two known history findings
+without changing the underlying source or data.

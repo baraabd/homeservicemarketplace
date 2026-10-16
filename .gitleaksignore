@@ -1,4 +1,4 @@
-# Gitleaks baseline — historical test fixtures ONLY.
+# Gitleaks baseline — individually reviewed historical non-secret findings ONLY.
 #
 # docs/security/gitleaks-historical-baseline.md carries the review, the
 # classification and the removal procedure. Read it before touching this file.
@@ -67,3 +67,8 @@ d316a2f46270024b301c78bfa86d15e94e2350c9:.github/workflows/r13-validation.yml:ge
 4c438f05f262cd05eef9746027e34dbefa58d6e6:apps/api/src/infrastructure/logger/logger.privacy.spec.ts:generic-api-key:46
 4c438f05f262cd05eef9746027e34dbefa58d6e6:apps/api/src/infrastructure/logger/logger.privacy.spec.ts:generic-api-key:50
 4c438f05f262cd05eef9746027e34dbefa58d6e6:apps/api/src/infrastructure/logger/logger.privacy.spec.ts:jwt:59
+
+# G1 — two ordinary requirements-prose false positives, individually reviewed
+# in docs/security/gitleaks-historical-baseline.md, section 12.
+9c5b3f36e2bd37558a2d0c7ef5873f5e6484ce0e:docs/production-readiness/post-r18/gates/g1/REQUIREMENTS.md:generic-api-key:12
+9c5b3f36e2bd37558a2d0c7ef5873f5e6484ce0e:docs/production-readiness/post-r18/gates/g1/prompts/R19-R28.md:generic-api-key:78
