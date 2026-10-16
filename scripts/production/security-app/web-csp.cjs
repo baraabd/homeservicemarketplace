@@ -98,7 +98,7 @@ function injectWebCsp(html, policy) {
     .replaceAll('>', '&gt;');
   return html.replace(
     prefix,
-    `$1\n    <meta http-equiv="Content-Security-Policy" content="${escaped}" />`,
+    (head) => `${head}\n    <meta http-equiv="Content-Security-Policy" content="${escaped}" />`,
   );
 }
 

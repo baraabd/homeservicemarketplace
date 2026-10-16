@@ -94,3 +94,12 @@ test('enforced metadata precedes resource loading and cannot be duplicated', () 
   assert.throws(() => injectWebCsp(result, 'anything'));
   assert.throws(() => injectWebCsp('<head><script src="/early.js"></script>', 'anything'));
 });
+
+test('HTML insertion treats replacement tokens as literal policy text', () => {
+  const result = injectWebCsp(
+    '<head><meta charset="UTF-8" /></head>',
+    'connect-src https://api$&.test',
+  );
+  assert.equal((result.match(/<head>/gu) ?? []).length, 1);
+  assert.ok(result.includes('https://api$&amp;.test'));
+});

@@ -89,7 +89,20 @@ test('built document enforces scripts and connections while real API boundaries 
   });
   expect(allowed.headers()['access-control-allow-origin']).toBe('http://127.0.0.1:5326');
   expect(allowed.headers()['access-control-allow-credentials']).toBe('true');
-  expect((await request.get(`${REAL_API}/metrics`)).status()).not.toBe(200);
+  expect(process.env.METRICS_TOKEN).toBeTruthy();
+  expect((await request.get(`${REAL_API}/metrics`)).status()).toBe(404);
+  expect(
+    (
+      await request.get(`${REAL_API}/metrics`, {
+        headers: { Authorization: 'Bearer invalid-r26-metrics-token' },
+      })
+    ).status(),
+  ).toBe(404);
+  const metrics = await request.get(`${REAL_API}/metrics`, {
+    headers: { Authorization: `Bearer ${process.env.METRICS_TOKEN}` },
+  });
+  expect(metrics.status()).toBe(200);
+  expect(metrics.headers()['cache-control']).toBe('no-store');
 });
 
 // A self-contained one-page PDF with an actual painted rectangle. No identities,

@@ -74,11 +74,14 @@ jobs:
         with:
           node-version: '24.21.0'
           cache: pnpm
-      - name: Generate ephemeral authentication secret
+      - name: Generate ephemeral authentication and metrics secrets
         run: |
           secret="$(openssl rand -hex 48)"
           echo "::add-mask::$secret"
           echo "JWT_ACCESS_SECRET=$secret" >> "$GITHUB_ENV"
+          metrics_secret="$(openssl rand -hex 32)"
+          echo "::add-mask::$metrics_secret"
+          echo "METRICS_TOKEN=$metrics_secret" >> "$GITHUB_ENV"
       - run: pnpm install --frozen-lockfile
       - name: Generate, migrate and seed disposable reference and test data
         run: |
