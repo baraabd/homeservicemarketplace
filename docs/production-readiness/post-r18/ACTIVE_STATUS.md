@@ -1,28 +1,21 @@
 # Post-R18 active status index
 
-Generated from `SPRINT_REGISTRY.json` (the only authority) on 2026-10-13 at
-frozen base `059c018576a75837d4dfb262ee49168d9217d881`.
-`.github/scripts/sprint-registry.mjs` fails CI if this table and the
-registry disagree on a title or status. A status here is coordination state,
-not acceptance evidence.
-
-Last numbered milestone: **R18** (PR #155, merged as `059c018`). That
-number says the R18 work merged; the R18 release decision is still
-**NO-GO / `R18_BLOCKED`** (`../r18/GO_NO_GO.md`). PR #156 is an
-unnumbered native-development hotfix, open and not merged.
+Authority: `SPRINT_REGISTRY.json`. Reconciled by G1 on 2026-10-16.
+G1 is **BLOCKED**; Wave 2 has no assigned frozen base and no startable lane.
+Historical R18 release NO-GO remains separate. Unnumbered PR #156 is merged.
 
 | ID  | Title                                                                              | Wave | Status                   | Branch                             | PR   |
 | --- | ---------------------------------------------------------------------------------- | ---- | ------------------------ | ---------------------------------- | ---- |
 | R19 | Extend and certify the existing money authority; freeze shared financial contracts | 1    | INTEGRATION_PENDING      | feat/r19-money-authority-contracts | #159 |
-| R20 | (pending package)                                                                  | 1    | RESERVED_PENDING_PACKAGE | —                                  | —    |
-| R21 | (pending package)                                                                  | 1    | RESERVED_PENDING_PACKAGE | —                                  | —    |
-| R22 | (pending package)                                                                  | 1    | RESERVED_PENDING_PACKAGE | —                                  | —    |
-| R23 | (pending package)                                                                  | 1    | RESERVED_PENDING_PACKAGE | —                                  | —    |
-| R24 | (pending package)                                                                  | 2    | RESERVED_PENDING_PACKAGE | —                                  | —    |
-| R25 | (pending package)                                                                  | 2    | RESERVED_PENDING_PACKAGE | —                                  | —    |
-| R26 | (pending package)                                                                  | 2    | RESERVED_PENDING_PACKAGE | —                                  | —    |
-| R27 | (pending package)                                                                  | 2    | RESERVED_PENDING_PACKAGE | —                                  | —    |
-| R28 | (pending package)                                                                  | 2    | RESERVED_PENDING_PACKAGE | —                                  | —    |
+| R20 | Production storage, private media authorization and persistence                    | 1    | INTEGRATION_PENDING      | feat/r20-storage-production        | #161 |
+| R21 | Production email delivery and durable feedback                                     | 1    | INTEGRATION_PENDING      | feat/r21-email-production          | #160 |
+| R22 | Outbox and worker execution reliability                                            | 1    | INTEGRATION_PENDING      | feat/r22-worker-outbox-reliability | #158 |
+| R23 | Observability, privacy-safe diagnostics and incident detection                     | 1    | INTEGRATION_PENDING      | feat/r23-observability-incidents   | #163 |
+| R24 | Money application API and module wiring; freeze adapter integration boundaries     | 2    | PLANNED                  | feat/r24-money-api-integration     | —    |
+| R25 | Realtime multi-instance activation and reconnect recovery                          | 2    | PLANNED                  | feat/r25-realtime-multi-instance   | —    |
+| R26 | Application security and effective authorization hardening                         | 2    | PLANNED                  | feat/r26-application-security      | —    |
+| R27 | Measured startup, bundle and database performance                                  | 2    | PLANNED                  | feat/r27-performance-capacity      | #162 |
+| R28 | Authorized hosted topology, infrastructure and release inputs                      | 2    | PLANNED                  | feat/r28-hosted-platform           | —    |
 | R29 | (pending package)                                                                  | 3    | RESERVED_PENDING_PACKAGE | —                                  | —    |
 | R30 | (pending package)                                                                  | 3    | RESERVED_PENDING_PACKAGE | —                                  | —    |
 | R31 | (pending package)                                                                  | 3    | RESERVED_PENDING_PACKAGE | —                                  | —    |
@@ -34,7 +27,6 @@ unnumbered native-development hotfix, open and not merged.
 | R37 | (pending package)                                                                  | 4    | RESERVED_PENDING_PACKAGE | —                                  | —    |
 | R38 | (pending package)                                                                  | 4    | RESERVED_PENDING_PACKAGE | —                                  | —    |
 
-`RESERVED_PENDING_PACKAGE`: the ID and its wave are fixed, but the
-package's `SPRINT_PLAN.json` and lane prompt were not provided, so no
-title, branch, ownership or dependency is recorded. Nothing is invented to
-fill them.
+Wave 1 `INTEGRATION_PENDING` describes incomplete combined acceptance despite merged source.
+Wave 2 `PLANNED` describes reviewed preparation only. R27 provisional PR #162 was merged before G1; it is not accepted Wave 2 delivery.
+R29–R38 remain reserved in this bounded G1 task. See `gates/g1/DECISION.md` and `waves/WAVE_02.md`.

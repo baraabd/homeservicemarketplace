@@ -1,4 +1,4 @@
-# Gitleaks historical baseline — synthetic test fixtures
+# Gitleaks historical baseline — reviewed non-secret findings
 
 **Date** 2026-09-06
 **Sprint** 9B.28 (CI remediation)
@@ -341,3 +341,48 @@ file, a runtime-generated `generic-api-key` canary was committed and detected
 (exit 1, one leak). The canary value was neither printed nor committed.
 Maintain these entries only while `4c438f0` remains reachable, and review them
 with §5's procedure at release review.
+
+## 12. G1 delta — ordinary requirements prose (2026-10-16)
+
+CI run `38876680432` (run number 489), security job `116895556319`,
+failed on PR #168 head `8c730d9a73099d64b6d3fe6175da2601ee3efc35`.
+The history step reports two `generic-api-key` findings from its first commit,
+`9c5b3f36e2bd37558a2d0c7ef5873f5e6484ce0e`. The current-tree scan succeeds;
+the later prose correction did not remove the earlier commit from history.
+R18 acceptance and CI gate fail because they depend on that security job.
+
+| Historical path                                                  | Line | Classification                                         |
+| ---------------------------------------------------------------- | ---- | ------------------------------------------------------ |
+| `docs/production-readiness/post-r18/gates/g1/REQUIREMENTS.md`    | 12   | Non-secret requirements prose                          |
+| `docs/production-readiness/post-r18/gates/g1/prompts/R19-R28.md` | 78   | The same non-secret requirement in the retained prompt |
+
+Review performed by the Codex agent under the owner's explicit CI-repair
+request; this records the performed classification, not an independent human
+security approval. Both full lines were read at the exact originating commit.
+The scanner interpreted wording after the noun "keys" as an assigned value.
+That wording describes refund and reservation persistence records in R19
+implementation item 4. It is ordinary English business terminology, not a
+credential, token, environment value, signed payload or provider-issued key.
+
+The identical phrase was searched with `git grep -l -F` in the tracked source
+and `git log --all -S` in all locally available refs. It occurs only in the two
+G1 records and their editorial provenance note. The fresh checkout contains
+only the tracked `.env.example`; no external environment or secret store was
+accessed. This provenance establishes that these two matches are non-secret;
+it is not a repository-wide credential inventory or production security audit.
+
+**Verdict: two false positives in ordinary documentation. No credential
+rotation applies to these prose matches.** The source wording was already
+clarified in `8c730d9a`; the requirements remain unchanged.
+
+Only the two exact `commit:path:rule:line` fingerprints from the failed job
+are added to `.gitleaksignore`. Existing fingerprints remain unchanged. There
+is no path/extension exclusion, regex allowance, disabled rule, changed scan
+range, tolerated failure or history rewrite. A new occurrence, including the
+same prose at the same path and line in a new commit, still fails the scan.
+The current-tree scanner has no matching historical fingerprint for new data.
+
+Review/remove these two entries using §5 when the originating commit is no
+longer reachable, and at every release review. Scanner verification is
+recorded in the G1 `INTEGRATION_EVIDENCE.md` follow-up. Final-head remote CI
+must succeed before technical acceptance; G1's independent blockers remain.

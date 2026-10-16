@@ -88,12 +88,10 @@ d('R20 restricted evidence read route — real S3-compatible storage + real Post
     return res.body;
   }
 
-  /** DOCUMENTED GAP (CR-R20-01): the controller sets the document headers
-   *  before opening the object, so a storage-side 404 carries
-   *  `application/pdf` + `attachment` around a JSON error body. Only an
-   *  already-authorized caller reaches this branch. Flips when CR-R20-01 lands. */
-  function expectStorageSide404HeadersGap(res: { headers: Record<string, string> }): void {
-    expect(res.headers['content-type']).toContain('application/pdf');
+  /** Storage failures preserve a JSON denial with no downloadable document. */
+  function expectStorageSide404Headers(res: { headers: Record<string, string> }): void {
+    expect(res.headers['content-type']).toContain('application/json');
+    expect(res.headers['content-disposition']).toBeUndefined();
     expect(res.headers['cache-control']).toContain('no-store');
   }
 
@@ -342,7 +340,7 @@ d('R20 restricted evidence read route — real S3-compatible storage + real Post
     expect(missing.status).toBe(unknown.status);
     expect(errorJson(missing)).toEqual(unknown.body);
     expect(JSON.stringify(errorJson(missing))).not.toContain(KEY);
-    expectStorageSide404HeadersGap(missing);
+    expectStorageSide404Headers(missing);
   });
 
   it('UNAVAILABLE storage answers exactly like an unknown document and names nothing', async () => {
@@ -354,18 +352,18 @@ d('R20 restricted evidence read route — real S3-compatible storage + real Post
     const unknown = await readUnknown();
     expect(down.status).toBe(404);
     expect(errorJson(down)).toEqual(unknown.body);
-    expectStorageSide404HeadersGap(down);
+    expectStorageSide404Headers(down);
     const text = JSON.stringify(errorJson(down)) + JSON.stringify(down.headers);
     for (const s of [KEY, RESTR, '127.0.0.1:9', 'ECONNREFUSED']) expect(text).not.toContain(s);
   });
 
-  it('DOCUMENTED GAP (CR-R20-01): the route does not yet pass the recorded size, so a substituted object is streamed', async () => {
-    // The adapter refuses a size mismatch when told the expected size
-    // (r20-s3-storage suite). The controller is outside this lane and does not
-    // pass it yet. This flips when CR-R20-01 lands, forcing the test to change.
+  it('refuses a substituted object with the same denial as an unknown document', async () => {
     await putRaw(admin, RESTR, KEY, Buffer.concat([BYTES, Buffer.from('substituted')]));
     const res = await readDoc();
-    expect(res.status).toBe(200);
+    const unknown = await readUnknown();
+    expect(res.status).toBe(404);
+    expect(errorJson(res)).toEqual(unknown.body);
+    expectStorageSide404Headers(res);
   });
 
   it('audits allowed AND denied reads, without raw IP or user agent', async () => {
