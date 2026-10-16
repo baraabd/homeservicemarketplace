@@ -1,3 +1,20 @@
+# Current-source reconciliation notice
+
+The dated observations below describe the earlier `g1` candidate
+`54a69f78c0227a2f2b94df851a3ebb941348d8aa`; they are retained as history.
+Their OPEN/INCOMPLETE/BLOCKED assessments are superseded for the current source
+by [ACCEPTANCE_PUBLICATION.md](ACCEPTANCE_PUBLICATION.md),
+[ACCEPTANCE_EVIDENCE.json](ACCEPTANCE_EVIDENCE.json) and the canonical
+[SOURCE_MANIFEST.json](SOURCE_MANIFEST.json).
+
+PR #168 merged CR-R20-01 at `5d3acaf861d74756190854138af485cfbfaa0a43`;
+PR #169 merged the remaining source/CI repairs at `40cdac5c9ce6acaa8dedc0385984a807ae9a84d0`.
+All nine original Wave 1 implementation/corrective merge commits are ancestors
+of that source. G1-01–G1-05 now have executed merged-source evidence. The separate
+G1-06 owner-publication hold remains; no Wave 2 start is implied.
+
+---
+
 # Shared-change request disposition ledger
 
 > Historical assessment below, preserved as recorded before PR #169. Current

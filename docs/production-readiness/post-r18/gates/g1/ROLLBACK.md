@@ -1,19 +1,18 @@
-# Rollback and revocation
+# Acceptance rollback and revocation
 
-This BLOCKED record authorizes no deployment and grants no Wave 2 start.
-If a published claim becomes stale, mark G1 BLOCKED through a reviewed successor
-record, clear all startable lanes/frozen authorization, preserve the old record
-and immutable evidence, and notify lane owners through the approved process.
-No message to another person is sent by this task.
+This publication PR changes governance records and their regression fixtures;
+it changes no application, database, runtime configuration or deployment.
+Revert this PR as one coherent reviewed change to restore the previous held
+gate without undoing the source repairs already merged in #168/#169.
 
-For the CR-R20-01 source repair, a reviewed revert restores the previous
-controller behavior without a migration. It also restores the size-check gap
-and incorrect PDF error headers, so prefer a forward repair. Do not remove
-restricted-read authorization, auditing or no-store headers as a workaround.
+If evidence becomes stale or a required boundary regresses, issue a reviewed
+successor BLOCKED decision, clear the wave's frozen authorization/startable
+lanes, and reconcile the registry/index together. Preserve prior immutable
+source/evidence and record the revocation reason. Do not disable the validator
+or remove tests to make an unsupported record pass.
 
-The registry/validator changes can be reverted as one coherent reviewed change;
-never revert only the validator to permit an unsupported acceptance claim.
-Existing G0 and historical lane evidence are preserved. No database reset,
-ledger rewrite, object deletion, schema rollback, role grant or live-money flag
-change is part of this procedure. After any application/config/schema/dependency
-change, repeat affected evidence on the new exact source before certifying it.
+Application rollback remains governed by REMEDIATION_ROLLBACK.md: frontend
+first/API second on rollout, API first on rollback; preserve additive financial
+guards and audit/dedupe persistence. No database reset, ledger rewrite, object
+deletion, schema downgrade, role grant or live-money activation is authorized.
+No merge, auto-merge or deployment is performed by this publication task.

@@ -16,10 +16,7 @@ the independently inspected merged-source evidence.
 
 ## Independent release limitations retained
 
-- R18-G1 branch protection: develop reports protected=false; separate historical release blocker.
-- Repository-wide CodeQL inventory unavailable through exposed connector; R26/security owner must supply current IDs/dispositions. Historical #2/#13/#16/#20 are not asserted current.
-- R18-H1 hosting/DNS/registry/secrets, real sender deliverability, hosted storage IAM/KMS/CDN, production alert receivers/region/retention and SLO approval remain owner/R28/R37 work.
-- R16 money/payout policies, R18 D-2/D-3/D-13/D-19 and R19 commercial policies remain explicit owner decisions. Live rails and payouts stay disabled.
+## Separate release and external limitations
 
 No hosted, policy or production condition is silently closed. No account/role
 permission or production setting changes in this publication.
