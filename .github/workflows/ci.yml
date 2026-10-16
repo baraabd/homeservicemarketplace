@@ -198,8 +198,13 @@ jobs:
       - name: Run the API suite with the DB- and Redis-gated specs ENABLED
         run: pnpm --filter @homeservicemarketplace/api test --json --outputFile=g1-api-report.json
       - name: Build API for independent worker evidence
+        id: g1-worker-build
+        # Keep independent evidence running after an API assertion fails.
+        # The original failure still fails this job; no continue-on-error.
+        if: ${{ !cancelled() }}
         run: pnpm --filter @homeservicemarketplace/api build
       - name: R22 independent worker crash and SIGTERM recovery
+        if: ${{ !cancelled() && steps.g1-worker-build.outcome == 'success' }}
         env:
           RUN_R22_WORKER_PROCESS: '1'
         run: pnpm --filter @homeservicemarketplace/api exec jest --runInBand --testPathPatterns=r22-outbox-process --json --outputFile=r22-process-report.json

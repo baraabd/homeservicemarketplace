@@ -11,6 +11,7 @@ import { Test } from '@nestjs/testing';
 
 import { acquireAdvisoryLocks, fixturePrefix, type HeldLock } from '../support/db-isolation';
 import { makeTestSecret } from '../support/test-secrets';
+import { makeConfig } from './r22-support/outbox-harness';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // R19 — subscription money foundation against real PostgreSQL.
@@ -381,7 +382,7 @@ d('R19 - subscription confirmation, ledger posting and periods (real Postgres)',
         throw new Error('synthetic rollback after notice');
       },
     };
-    const config = { get: () => undefined };
+    const config = makeConfig();
     const metrics = new MetricsService();
     const failedWorker = new OutboxWorker(outbox, prismaSvc, config, metrics, [notice, failing]);
     const worker = new OutboxWorker(outbox, prismaSvc, config, metrics, [notice]);

@@ -217,7 +217,17 @@ d('R22 outbox dead-letter replay (real Postgres)', () => {
       const handler = effectHandler('r22.replay.handler', 'r22.replay', effectUser);
       await svc.replay(request({ dryRun: false, scope: { eventIds: [e.id] } }));
       const metrics = makeMetrics();
-      await new OutboxWorker(repo, { client: prisma }, makeConfig(), metrics, [handler]).runOnce();
+      const worker = new OutboxWorker(repo, { client: prisma }, makeConfig(), metrics, [handler]);
+      // Exercise the real lease-fenced delivery on this replayed fixture only.
+      // Other suites can leave pending events after releasing the queue lock;
+      // this test must neither claim them nor count their unrelated outcomes.
+      const lease = await prisma.outboxEvent.updateMany({
+        where: { id: e.id, status: 'PENDING' },
+        data: { status: 'PROCESSING', claimedBy: worker.id, claimedAt: new Date() },
+      });
+      expect(lease.count).toBe(1);
+      const claimed = await prisma.outboxEvent.findUniqueOrThrow({ where: { id: e.id } });
+      await worker.processEvent(claimed);
       expect((await prisma.outboxEvent.findUnique({ where: { id: e.id } })).status).toBe(
         'PROCESSED',
       );
