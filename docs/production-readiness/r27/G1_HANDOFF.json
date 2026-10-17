@@ -145,7 +145,7 @@
   },
   "continuation": {
     "date": "2026-10-17",
-    "mode": "A — integration and bug fix",
+    "mode": "A \u2014 integration and bug fix",
     "requestedBy": "baraabd; execute attached R27 sprint prompt",
     "observedHead": "5fe27fdbfc63437d7315d2b3820c4345e6aed27f",
     "observedTree": "9c1663bc42de4d5387091df7bedaeff307748e84",
@@ -171,7 +171,10 @@
       "docs/production-readiness/r27/IMPLEMENTATION.md",
       "docs/production-readiness/r27/ACCEPTANCE.md",
       "docs/production-readiness/r27/RISKS.md",
-      "docs/production-readiness/r27/ROLLBACK.md"
+      "docs/production-readiness/r27/ROLLBACK.md",
+      "docs/production-readiness/r27/shared-change-requests/CR-001-integration.md",
+      "docs/production-readiness/r27/shared-change-requests/README.md",
+      "docs/production-readiness/r27/shared-change-requests/CR-R27-04-private-no-store-default/README.md"
     ],
     "writers": {
       "browserHarness": "r27_code_review subagent, performance.real-api.spec.ts only",
@@ -188,13 +191,42 @@
       "Reset only the verified disposable browser fixture throttle buckets before project setup, never during measurements or production-policy overload recovery.",
       "Observe both response and action promises immediately so failed actions do not orphan response waiters.",
       "Preserve leading status columns in git porcelain provenance.",
-      "Reconcile retained baseline/after reports with their real source and harness identities."
+      "Reconcile retained baseline/after reports with their real source and harness identities.",
+      "Warn explicitly when declared core/browser CPU models differ; retain source validity and small-sample limits."
     ],
     "constraints": [
       "No merge, rebase, force push, deployment or peer import.",
       "Production login/default security limits stay unchanged.",
       "Performance budgets remain proposals until owner approval.",
       "Current final-head CI and real-browser evidence remain required."
-    ]
+    ],
+    "measuredEvidence": {
+      "source": "afec37ae717fbdca91a8e23dd5fc76a1cbd2a703",
+      "tree": "be63469144228f3a450ba04c453ecd5b99c2b1ba",
+      "workflowRun": 39032727959,
+      "baselineArtifact": {
+        "id": 12100808613,
+        "sha256": "32a0694c909fb6758402d51acfd7166ec444fa8b43cb8dfd8e70723859503b4b"
+      },
+      "candidateArtifact": {
+        "id": 12100659350,
+        "sha256": "eeed7e50d0cbc0badaeba6647af31959170288ce2c3bdded7215b5b24f21bd04"
+      },
+      "browserTests": {
+        "baseline": 16,
+        "candidate": 24,
+        "failed": 0,
+        "skipped": 0
+      },
+      "browserMatrix": "48 paired groups, each n=3 per side; 0 missing groups; seeker/admin only",
+      "timingLimitation": "Baseline Intel Xeon Platinum 8573C versus candidate AMD EPYC 7763; time deltas are hardware-confounded.",
+      "proposedBudgets": {
+        "passed": 47,
+        "failed": 4,
+        "approved": false
+      },
+      "sharedIntegrationRequest": "docs/production-readiness/r27/shared-change-requests/CR-001-integration.md",
+      "finalHeadEvidence": "PR #173 metadata and current-head CI/artifacts; this measured source is not relabeled as a later commit."
+    }
   }
 }

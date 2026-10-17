@@ -396,6 +396,28 @@ test('comparison refuses changed datasets, schemas and workload concurrency', ()
   }
 });
 
+test('CPU mismatches in core or browser reports warn without invalidating source evidence', () => {
+  const baseline = comparisonFixture();
+  for (const report of baseline)
+    report.host = report.kind === 'r27-real-browser' ? { cpu: 'CPU A' } : { cpuModel: 'CPU A' };
+  for (const changedReport of [0, 1, 2, 3]) {
+    const candidate = comparisonFixture('b');
+    for (const report of candidate)
+      report.host = report.kind === 'r27-real-browser' ? { cpu: 'CPU A' } : { cpuModel: 'CPU A' };
+    candidate[changedReport].host = changedReport === 3 ? { cpu: 'CPU B' } : { cpuModel: 'CPU B' };
+    const result = compareReports(baseline, candidate);
+    assert.equal(result.comparabilityWarnings.length, 1);
+    assert.match(result.comparabilityWarnings[0], /CPU A.*CPU B.*hardware-confounded/);
+    assert.deepEqual(result.provenanceWarnings, []);
+    assert.equal(result.status, 'MEASURED_NOT_RELEASE_ACCEPTED');
+    assert.equal(result.source.candidate.commit, 'b'.repeat(40));
+    assert.equal(result.boot.readyMs.candidate.n, 3);
+  }
+  const matching = compareReports(baseline, structuredClone(baseline));
+  assert.deepEqual(matching.comparabilityWarnings, []);
+  assert.match(matching.limits[0], /shared-VM.*even when CPU models match/);
+});
+
 test('partial locale/mode evidence remains pending and small samples have no tail percentiles', () => {
   const result = compareReports(comparisonFixture(), comparisonFixture('b'));
   assert.equal(result.browser.status, 'PENDING_INCOMPLETE_MATRIX');

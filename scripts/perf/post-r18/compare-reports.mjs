@@ -86,6 +86,14 @@ function validate(reports) {
     query: indexed[KINDS[2]],
     browsers,
     source,
+    cpuModels: [
+      ...new Set(
+        reports
+          .flatMap((report) => [report.host?.cpuModel, report.host?.cpu])
+          .filter((model) => typeof model === 'string' && model.trim())
+          .map((model) => model.trim()),
+      ),
+    ].sort(),
   };
 }
 
@@ -274,6 +282,12 @@ export function compareReports(baselineReports, candidateReports) {
     kind: 'r27-comparison',
     status: 'MEASURED_NOT_RELEASE_ACCEPTED',
     source: { baseline: a.source, candidate: b.source },
+    comparabilityWarnings:
+      new Set([...a.cpuModels, ...b.cpuModels]).size > 1
+        ? [
+            `CPU model mismatch among declared core/browser hosts (baseline: ${a.cpuModels.join(', ') || 'unreported'}; candidate: ${b.cpuModels.join(', ') || 'unreported'}). Source identities were validated separately. All boot, browser, query and workload timing deltas are hardware-confounded; do not interpret them as causal implementation effects.`,
+          ]
+        : [],
     provenanceWarnings: [a, b].flatMap((side, index) =>
       side.source.dirtyPaths?.some((path) => path.startsWith('cripts/perf/post-r18/'))
         ? [
@@ -296,7 +310,7 @@ export function compareReports(baselineReports, candidateReports) {
     workloads,
     browser: browserComparison(a, b),
     limits: [
-      'Same harness and declared dataset; separate hosts and run times remain potential confounders. No production capacity or release acceptance claim.',
+      'Same harness and declared dataset; separate hosts, shared-VM contention and run times remain potential confounders even when CPU models match. No production capacity or release acceptance claim.',
       'Boot/browser statistics use recorded observations only. Query/workload statistics are retained summaries, not reconstructed raw samples.',
       'p95 omitted below 20 observations; p99 omitted below 100. Reportable tails are empirical, not production SLO confidence.',
       'Missing browser locale, viewport, mode or repetitions remain pending; screenshots alone do not complete a measurement cell.',

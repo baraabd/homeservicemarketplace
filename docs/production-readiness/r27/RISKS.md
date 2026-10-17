@@ -1,58 +1,77 @@
 # R27 current risks — 2026-10-17
 
 This section supersedes historical pre-G1 readiness statements below. G1 is
-READY_TO_START; this R27 continuation does not certify G2 or a release.
+accepted and READY_TO_START. R27 source and the complete afec37ae disposable
+measurement/browser run are verified; budget, combined-wave and release
+acceptance remain separate.
 
-1. The diagnostic browser matrix failed on an incorrect Arabic label and
-   cumulative loopback login counters. Both root causes and orphan response
-   promises are repaired; only new real CI can establish the complete matrix.
-2. The guarded fixture cleanup is setup-only and limited to R27 throttler
-   counters. It must remain serial and must never be moved into a measured
-   flow or overload recovery. It preserves session/custom registration/cache
-   state, refuses other runners/containers/key shapes and propagates failures.
-3. **Performance is mixed.** Retained bundle bytes and query work improve;
-   readiness RSS rises 196.5 to 203.0 MiB and workload peak RSS rises up to
-   537.8 MiB. The small completed desktop-English cold-UI sample is slower
-   (seeker 344 to 386 ms; admin 334 to 339 ms), and dashboard transition
-   median rises 61 to 104 ms. Deferred loading moves work; no universal speed
-   or memory improvement is asserted. Re-evaluate the complete new matrix.
-4. Proposed budgets remain unapproved and four checks fail (47 pass): seeker
-   requests6/5, provider available13/10, provider bookings12/7, and the
-   admin financial-bookings large scan. Do not remove guard reads or raise
-   limits solely for a green report. Provider ceilings were originally measured
-   on empty pages; current populated pages use unchanged runtime code. The
-   migration lane owns index work.
-5. Authenticated responses still lack an explicit private no-store header.
-   Existing cross-user/role/ETag/revocation negatives pass, but that does not
-   substitute for CR-R27-04's security-lane policy decision and integration.
-6. Amplification contains 10836 requests, 43344 bids and 5418 bookings but
-   only15 users and12 provider profiles. Financial-booking results were empty.
-   These fixtures cannot establish production capacity, broad admin scaling,
-   completed-booking pagination under mutation, or upload/realtime capacity.
-7. Baseline and candidate use the same harness/lock/configuration and hardware
-   class on separate shared GitHub VMs. OS/database caches are warm. Browser
-   observations number three per role/cache/project; boot five. Their tail
-   percentiles remain unreported. CPU/compile event categories may overlap.
-8. Artifacts have 14-day retention; download before expiry or rerun the exact
-   harness on its immutable source. Historical diagnostic ZIP digests are in
-   ACCEPTANCE. The comparator flags incomplete or mismatched evidence.
-9. The branch does not import the merged coordinator record solely to update
-   its documents, and does not consume unmerged peers. Its frozen base and
-   existing exact-file leases remain authoritative. The coordinator must
-   transcribe the R27 extension and resolve central integration separately.
-10. Merge, production deployment, real funds, verification decisions and
-    owner-approved performance budgets remain separate actions. R16/R18
-    decisions were neither inferred nor modified.
+1. **Timing comparability:** run 39032727959 used an Intel Xeon Platinum 8573C
+   baseline and an AMD EPYC 7763 candidate. Both have 4 logical CPUs / 15.6 GiB,
+   but elapsed-time differences are hardware-confounded. The comparator now
+   emits this advisory separately from source-identity checks. Shared-VM and
+   time effects remain even when CPU models match.
+2. **Mixed performance:** bundle/query structure improves, but production warm
+   UI and transitions have higher medians in several groups. Desktop EN admin
+   warm UI is 154.36 / 211.84 ms and transition 82.57 / 126.08 ms; readiness is
+   1051 / 1200 ms. Workload peak RSS rises from 500.0–503.2 to 523.3–539.5 MiB.
+   Ready RSS moves in the opposite direction from the earlier diagnostic run.
+   These are qualified observations, not proven causal regressions or universal
+   speed/memory improvement. The complete tables retain all observations.
+3. **Unapproved budgets:** the unchanged checker records 47 PASS / 4 FAIL:
+   seeker requests 6/5, provider feed 13/10, provider bookings 12/7 and the
+   financial Booking scan. Provider costs use unchanged populated-page source;
+   historical ceilings came from empty pages. CR-001 has concrete proposed
+   edits for owner review and unmeasured projection directions. Do not remove
+   guards, simplify fixtures or raise limits merely to obtain green.
+4. **Unrepresentative financial/users data:** amplification contains 10836
+   requests, 43344 bids and 5418 bookings, but only 15 users / 12 profiles and
+   zero completed-booking results. Full populated nonfinancial cursor walks
+   pass; financial hydration, stable/mutating pagination and index benefit
+   remain unproved. The three-query financial ceiling also needs populated
+   validation. The migration owner must choose/test an index and forward path.
+5. **Private HTTP cache policy:** 15/17 sampled private reads lack an explicit
+   directive. Ten asserted API negatives and same-context browser account
+   switching pass; three ETag observations are informational. These do not
+   establish cross-tab sign-out, live role/grant revocation or a global no-store
+   policy. CR04/CR001 require the HTTP/security owner's early default and
+   success/error/private-media/public-exception tests.
+6. **Measured sample limits:** each browser group has n=3 and boot n=5, so no
+   tail estimates are claimed. The 192 UI observations cannot be pooled across
+   different roles/modes/projects. Warm closed-loop workloads have n=200 and
+   empirical tails only. CDP tracing adds overhead; compile categories overlap.
+   OS caches were not purged. No realtime/upload or hosted-capacity claim follows.
+7. **Fixture reset boundary:** browser setup clears only validated default
+   throttle keys in the identity-verified disposable Redis container, before
+   each serial project. Keep it outside timings/account-switch assertions and
+   overload recovery. Sessions/custom registration/cache keys remain; wrong
+   runners, containers, keys and command failures are rejected. Real login
+   throttles are unchanged, and overload recovery observes natural expiry.
+8. **Final CI:** the afec R27 matrix and CodeQL passed, but one separate main-CI
+   admin-review case timed out retrieving an OTP after a 200 login. Its root
+   cause is unproven; 14 other cases passed. The existing shared test, helper
+   and timeout are unchanged. Required final-successor CI must be inspected,
+   and any recurrence belongs to its owner with concrete logs. It is not
+   dismissed as a flake or resolved by the independent R27 PASS.
+9. **Evidence retention and ownership:** fresh ZIPs expire 2026-10-31; digests,
+   source identities, inspected screenshot paths and summary data are in Git.
+   Reproduce or download full artifacts before expiry. No merged coordinator
+   records or unmerged peers were imported; current develop/active ownership
+   must be reconciled in serialized coordinator integration.
+10. **Acceptance boundaries:** the complete isolated run does not mark G2,
+    SANDBOX_ACCEPTED for the whole product, HOSTED_ACCEPTED or RELEASE_ACCEPTED.
+    Merge, deployment, real funds, verification decisions and budget approval
+    remain owner actions. R16/R18 policy holds and all financial contracts are
+    unchanged. R37 owns representative hosted load and capacity evidence.
 
 ---
 
 ## Historical records retained for audit
 
-> **Current G1 continuation:** R27 resumed from frozen source
+> **Historical continuation note:** R27 resumed from frozen source
 > `40cdac5c9ce6acaa8dedc0385984a807ae9a84d0` after verified owner merge of #171.
 > See `ALLOWLIST.md` and `G1_HANDOFF.json`. The earlier report below is historical
-> pre-G1 evidence. Current implementation/integration is IN_PROGRESS and is
-> not accepted. Fresh baseline CI and required browser evidence are pending.
+> pre-G1 evidence. Its pending statements describe the earlier snapshot;
+> the current measurement and acceptance state are recorded above.
 
 # R27 — Risks, deviations and blockers
 

@@ -21,6 +21,10 @@ unsupported schemas. It summarizes observed bundle, boot/RSS, query, page-size,
 workload and browser metrics. Missing browser projects/modes/repetitions remain
 pending, including when some screenshots exist. Build duration is never used
 as a page runtime metric, and n<20/n<100 cannot produce p95/p99 respectively.
+Declared CPU models are checked across core and browser reports; differing
+models produce a separate `comparabilityWarnings` advisory without invalidating
+source evidence. All affected timing deltas remain hardware-confounded. Matching
+CPU names do not remove shared-VM contention or run-time effects.
 
 `check-budgets.mjs` separately evaluates unchanged **proposed** budgets.
 A nonzero result must remain a recorded finding until its owner resolves or

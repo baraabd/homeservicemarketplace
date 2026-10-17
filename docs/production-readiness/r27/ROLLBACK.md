@@ -1,7 +1,10 @@
 # R27 continuation rollback — 2026-10-17
 
 The continuation changes only the dedicated browser/performance harness and
-its evidence. Revert its repair commit through a reviewed PR if needed; this
+its evidence. The measured repair is remote commit
+`afec37ae717fbdca91a8e23dd5fc76a1cbd2a703`; the later comparison advisory and
+evidence publication are identified in PR #173. Revert the selected continuation
+commit through a reviewed PR if needed; this
 restores the former test behavior and may restore the Arabic/throttle failure.
 Do not reset the assigned branch or undo another lane's work.
 
@@ -21,11 +24,11 @@ these tests. Preserve G1's accepted source and independent R16/R18 holds.
 
 ## Historical records retained for audit
 
-> **Current G1 continuation:** R27 resumed from frozen source
+> **Historical continuation note:** R27 resumed from frozen source
 > `40cdac5c9ce6acaa8dedc0385984a807ae9a84d0` after verified owner merge of #171.
 > See `ALLOWLIST.md` and `G1_HANDOFF.json`. The earlier report below is historical
-> pre-G1 evidence. Current implementation/integration is IN_PROGRESS and is
-> not accepted. Fresh baseline CI and required browser evidence are pending.
+> pre-G1 evidence. Its pending statements describe the earlier snapshot;
+> the current measurement and acceptance state are recorded above.
 
 # R27 — Rollback
 

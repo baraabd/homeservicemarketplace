@@ -51,6 +51,11 @@ matrix. Its development browser step consequently did not run.
    source/tree/harness/lock identities and comparable dataset/configuration.
    It reports incomplete browser matrices and omits unsupported tail estimates.
    The historical truncated first dirty path is retained and flagged.
+6. The complete repaired run exposed a real host difference: Intel baseline
+   versus AMD candidate. The comparator now checks CPU declarations in core
+   and browser reports and emits a separate comparability warning. Source
+   validity is preserved; time deltas are explicitly hardware-confounded.
+   Even matching CPU models do not remove shared-VM/time confounding.
 
 ## Local verification in the isolated checkout
 
@@ -70,9 +75,10 @@ repository pins. No global runtime or package manager was changed.
 - `pnpm --filter @homeservicemarketplace/web exec tsc -p r27-tests/tsconfig.json --noEmit`:
   PASS.
 - `node --test .github/scripts/*.test.mjs`: 160 passed, 0 failed, 0 skipped.
-- `node --test scripts/perf/post-r18/lib/*.test.mjs`: 36 passed, 0 failed,
-  0 skipped. Includes 13 added controls: six guarded Redis-reset contracts,
-  two provenance cases and five comparison cases. Docker/Redis doubles in
+- `node --test scripts/perf/post-r18/lib/*.test.mjs`: 37 passed, 0 failed,
+  0 skipped. Includes 14 added controls: six guarded Redis-reset contracts,
+  two provenance cases, five initial comparison cases and one CPU-comparability
+  regression. Docker/Redis doubles in
   unit tests are explicitly distinguished from required real CI execution.
 - Focused API Jest invocation: 62 passed in five files, 0 failed/skipped:
   `mongo.disabled-load.spec.ts`, `mongo.service.spec.ts`,
@@ -82,14 +88,59 @@ repository pins. No global runtime or package manager was changed.
   `AdminRouteContent.test.tsx`, `DashboardOverview.test.tsx`,
   `SavedAddressesPage.test.tsx`.
 - Scoped ESLint, Prettier and `git diff --check`: PASS before publication.
-- Real retained-report comparison: PASS as a comparison, explicitly
-  `PENDING_INCOMPLETE_MATRIX` for the diagnostic browser artifacts.
+- Real retained-report comparison: PASS. The old diagnostic artifacts remain
+  `PENDING_INCOMPLETE_MATRIX`; repaired run 39032727959 is
+  `OBSERVED_COMPLETE_MATRIX` with zero missing groups and an explicit CPU warning.
 - Proposed budget evaluation: **47 passed, 4 failed**, exit 1; see ACCEPTANCE.
   Limits and security assertions were not raised or suppressed.
 
-The exact commands and machine-readable test reports were captured during
-execution. Final CI, hook and secret-scan results belong to the published PR
-head and must be checked after the triggering publication.
+Current local tests total **277** across the four distinct listed suites.
+Normal pre-commit hooks passed on the initial repair commit. A nonempty staged
+Gitleaks scan read 58455 bytes; the exact afec-equivalent tracked-tree scan
+read 2518 files / 21220825 bytes, and branch history read three commits /
+302849 bytes, all without leaks. These scans identify that measured source;
+subsequent publication has its own staged scan, normal hooks and exact-head CI.
+The CPU advisory changes report interpretation only; no API/web runtime changed
+after the recorded builds. Final publication results are recorded in PR #173.
+
+## Complete repaired-source execution
+
+[R27 run 39032727959](https://github.com/baraabd/homeservicemarketplace/actions/runs/39032727959)
+measured source/harness `afec37ae717fbdca91a8e23dd5fc76a1cbd2a703`, tree
+`be63469144228f3a450ba04c453ecd5b99c2b1ba`. This equals the locally tested
+b58fd57 tree. Both baseline and candidate executed the same harness over their
+immutable runtime sources; the baseline overlay touches only declared harness
+and browser-test paths. The candidate reports a clean tree.
+
+Both real-service jobs passed: baseline 36 harness + 8 production + 8 development
+browser tests, candidate 36 harness + 16 production + 8 development browser
+tests. The later CPU-advisory regression brings the local harness to 37; it
+is not retroactively counted in the earlier 36-test CI run. Forty browser
+cases passed without failures/skips. Source/configuration validation covers
+all 24 JSON reports, 48 paired n=3 groups and 40 retained screenshots. Eighteen
+screenshots were directly inspected; exact paths are in ACCEPTANCE.
+
+The new measurements reproduce initial gzip reductions and bounded query
+changes, while recording mixed timings/RSS and the baseline/candidate CPU
+mismatch. The unchanged proposed checker remains 47 PASS / 4 FAIL. There are
+ten asserted API cache/authority negatives plus three informational same-user
+conditional observations, not thirteen independent negative tests. Fifteen
+of seventeen private sampled reads omit Cache-Control. Same-context browser
+account switching passed; cross-tab and live role/grant revocation are still
+security integration work.
+
+CodeQL run 39032727973 passed. On this same source, main CI's real API job passed
+6093 tests with 81 skipped, its unit profile passed 4541 with 1633 skipped,
+and web verify passed 2478 tests. These profiles overlap. One separate admin
+review evidence case failed retrieving its fixture OTP after a successful
+login response; that failure and the final successor check are documented in
+ACCEPTANCE. It is not assumed to be a product regression or dismissed as a flake.
+
+CR-001-integration records exact budget edits for owner review, provider
+projection candidates, completed-booking fixtures/index decision and private
+HTTP cache acceptance. CR04 and the shared request index now distinguish current
+implemented repairs from historical proposals. No proposed threshold or shared
+runtime/schema/HTTP policy was changed in this evidence update.
 
 ## Configuration and build provenance
 
@@ -100,15 +151,18 @@ reused. Real browser tests require their existing disposable GitHub runner.
 - Lockfile SHA-256: `724b826ea09da6e070f4721a30f5dd9145a333606fac124e0249b5ef7fe18222`.
 - Prisma schema SHA-256: `3391c6bd897e812b1c520f51569931756a39cb4bc54312b15fdc629c262ce8a4`.
 - Local compiled main.js SHA-256: `395f3bd924c5dd6aab0016bdd2c3bb7efdb1a0371d5ef588550b3a4e64a36460`.
-- Diagnostic bundle safe buildFlags fingerprint:
+- Measured bundle safe buildFlags fingerprint (both sources):
   `adfd35798eef30025f055d37dcb43f7a58571f50b9d81eefb8d63730465e77c7`.
-- Diagnostic boot safe environment fingerprint:
+- Measured boot safe environment fingerprint (both sources):
   `4f7635fe6e636ea20a9158e1baaea574c1c5b7865596ea920e98d62bbc41b248`.
-- Diagnostic query safe environment fingerprint:
+- Measured query safe environment fingerprint (both sources):
   `4983f9290f754766907bee8d5c1d8a50ef5f027c8d0d06f93465254ed011aa59`.
 
 Fingerprints use canonical sorted JSON of the already sanitized report fields,
-not raw environment variables. Schema, migration, contract and feature flags
+not raw environment variables. The compiled main.js checksum identifies only
+the API entry file, which is identical in both builds; it is not a checksum of
+all separately compiled modules. Clean builds plus source trees establish the
+complete source provenance. Schema, migration, contract and feature flags
 are unchanged; the accepted `hsm.money.v1` boundary remains as frozen.
 
 ## Failed attempts and warnings
@@ -119,6 +173,16 @@ approved execution context with child-process/loopback support. The first
 production web build correctly refused a missing `VITE_API_URL`; specifying
 the documented R27 URL resolved it. No guard was bypassed.
 
+The first afec PR governance run raced the Final SHA body update; its replacement
+passed. The afec main-CI admin review evidence job had one OTP retrieval timeout
+(14 passed / 1 failed) after a 200 login response and visible OTP input. The
+underlying cause is unproven; the final successor's normal complete CI remains
+required. No timeout was raised, test skipped or shared authentication test edited.
+
+A staged secret scan initially classified the documented compiled-file checksum
+as a generic credential. The checksum was verified from the local artifact
+and its label clarified; scanner rules and exclusions were unchanged.
+
 Existing ignored dependency build-script notices, the ts-jest isolatedModules
 deprecation and the Vite >500 kB chunk warning remain visible. No dependencies,
 lockfile, security budgets or global timeout were changed to suppress them.
@@ -127,11 +191,11 @@ lockfile, security budgets or global timeout were changed to suppress them.
 
 ## Historical records retained for audit
 
-> **Current G1 continuation:** R27 resumed from frozen source
+> **Historical continuation note:** R27 resumed from frozen source
 > `40cdac5c9ce6acaa8dedc0385984a807ae9a84d0` after verified owner merge of #171.
 > See `ALLOWLIST.md` and `G1_HANDOFF.json`. The earlier report below is historical
-> pre-G1 evidence. Current implementation/integration is IN_PROGRESS and is
-> not accepted. Fresh baseline CI and required browser evidence are pending.
+> pre-G1 evidence. Its pending statements describe the earlier snapshot;
+> the current measurement and acceptance state are recorded above.
 
 # R27 — Implementation
 
@@ -216,7 +280,3 @@ These come from the PR's CI.
   loopback-only throwaway, fixed in `compose.r27.yml`.
 - **API child environment:** limited to the keys in `lib/lane-env.mjs`.
 - **Build flags:** `VITE_API_URL=http://127.0.0.1:4010`; no other `VITE_*`.
-
-A staged secret scan initially classified the documented compiled-file checksum
-as a generic credential. The checksum was verified from the local artifact
-and its label clarified; scanner rules and exclusions were unchanged.

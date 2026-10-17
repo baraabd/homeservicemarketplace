@@ -8,15 +8,21 @@ The frozen runtime base remains `40cdac5c9ce6acaa8dedc0385984a807ae9a84d0`.
 
 Before implementation, every repair/evidence path was checked against the
 existing exact-file authority and recorded in `G1_HANDOFF.json.continuation`.
-The browser subagent alone writes `apps/web/r27-tests/performance.real-api.spec.ts`;
-root alone writes the other listed files. No new shared runtime or CI lease
+The browser subagent writes `apps/web/r27-tests/performance.real-api.spec.ts`
+and, under the recorded later delegation, `scripts/perf/post-r18/compare-reports.mjs`
+and `scripts/perf/post-r18/lib/lib.test.mjs`. Root writes the remaining listed
+files. The final evidence update adds only the already-owned CR-001 integration
+request, shared-request index and CR04 README to the continuation list before
+editing them; the comparison CPU advisory uses the existing two-file delegation. No new shared runtime or CI lease
 is required for this repair. The earlier ownership record below is historical
 where it refers to the previous session/worktree or pending publication.
 
-The current failure is in the measurement harness: an incorrect Arabic
+The reproduced failures were in the measurement harness: an incorrect Arabic
 accessible-name assertion, shared fixture login-throttle counters, and
 unobserved response promises. Fixture isolation changes happen before setup
 and outside page timing; real default-policy overload/recovery stays intact.
+The repaired afec37ae run passes the full matrix. The final comparison/evidence
+update changes no application runtime, route, shared workflow, schema or policy.
 
 ---
 
