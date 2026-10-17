@@ -1,0 +1,798 @@
+{
+  "schemaVersion": 1,
+  "gateId": "G1",
+  "observedAtUtc": "2026-10-16T21:41:51.823662+00:00",
+  "sourceSha": "40cdac5c9ce6acaa8dedc0385984a807ae9a84d0",
+  "sourceTreeSha": "109b514fe9833a9aac3e8caecd7f9b14d4f61b3b",
+  "remediationPr": 169,
+  "ciRunId": 38968728679,
+  "ciUrl": "https://github.com/baraabd/homeservicemarketplace/actions/runs/38968728679",
+  "checks": [
+    {
+      "id": 117209193052,
+      "name": "CI gate",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/38968728679/job/117209193052",
+      "app": "github-actions"
+    },
+    {
+      "id": 117209141646,
+      "name": "R18 functional completion acceptance",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/38968728679/job/117209141646",
+      "app": "github-actions"
+    },
+    {
+      "id": 117204694731,
+      "name": "Phase 5 real-route and persistence evidence",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/38968728679/job/117204694731",
+      "app": "github-actions"
+    },
+    {
+      "id": 117203388168,
+      "name": "Compose stack smoke (migrate / boot / readiness / media / OTP)",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/38968728679/job/117203388168",
+      "app": "github-actions"
+    },
+    {
+      "id": 117203388003,
+      "name": "Evidence retention / real Postgres, S3 versions and ClamAV",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/38968728679/job/117203388003",
+      "app": "github-actions"
+    },
+    {
+      "id": 117203387996,
+      "name": "Integration & E2E (real Postgres / Redis)",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/38968728679/job/117203387996",
+      "app": "github-actions"
+    },
+    {
+      "id": 117203387965,
+      "name": "Dispute journey / real HTTP, browser, Postgres and ClamAV",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/38968728679/job/117203387965",
+      "app": "github-actions"
+    },
+    {
+      "id": 117203387938,
+      "name": "Dependency, secret, and container scans",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/38968728679/job/117203387938",
+      "app": "github-actions"
+    },
+    {
+      "id": 117203387928,
+      "name": "Auth cookie contract (real browser + real API)",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/38968728679/job/117203387928",
+      "app": "github-actions"
+    },
+    {
+      "id": 117203387910,
+      "name": "Docker cold build + production boot",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/38968728679/job/117203387910",
+      "app": "github-actions"
+    },
+    {
+      "id": 117203387882,
+      "name": "Admin review real-route and persistence evidence",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/38968728679/job/117203387882",
+      "app": "github-actions"
+    },
+    {
+      "id": 117203387871,
+      "name": "Browser E2E (Playwright / Chromium)",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/38968728679/job/117203387871",
+      "app": "github-actions"
+    },
+    {
+      "id": 117203387849,
+      "name": "Phase 5 visual, responsive and accessibility gate",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/38968728679/job/117203387849",
+      "app": "github-actions"
+    },
+    {
+      "id": 117202738681,
+      "name": "Staging boundary gate",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/38968728535/job/117202738681",
+      "app": "github-actions"
+    },
+    {
+      "id": 117202150504,
+      "name": "Verify / Verify API (lint / typecheck / unit / build)",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/38968728679/job/117202150504",
+      "app": "github-actions"
+    },
+    {
+      "id": 117201910565,
+      "name": "Verify / Verify Web (lint / typecheck / unit / build)",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/38968728679/job/117201910565",
+      "app": "github-actions"
+    },
+    {
+      "id": 117201910405,
+      "name": "Verify / Verify Database",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/38968728679/job/117201910405",
+      "app": "github-actions"
+    },
+    {
+      "id": 117201724065,
+      "name": "Verify / Verify Contracts",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/38968728679/job/117201724065",
+      "app": "github-actions"
+    },
+    {
+      "id": 117201562933,
+      "name": "Verify / Install & lockfile integrity",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/38968728679/job/117201562933",
+      "app": "github-actions"
+    },
+    {
+      "id": 117201562339,
+      "name": "Staging image boundaries",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/38968728535/job/117201562339",
+      "app": "github-actions"
+    },
+    {
+      "id": 117201562331,
+      "name": "R04 real browser, SMTP and Postgres",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/38968728537/job/117201562331",
+      "app": "github-actions"
+    },
+    {
+      "id": 117201562273,
+      "name": "Staging release controls (ubuntu-latest)",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/38968728535/job/117201562273",
+      "app": "github-actions"
+    },
+    {
+      "id": 117201562127,
+      "name": "Production governance",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/38968728501/job/117201562127",
+      "app": "github-actions"
+    },
+    {
+      "id": 117201562090,
+      "name": "Dev browser startup (windows-latest)",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/38968728472/job/117201562090",
+      "app": "github-actions"
+    },
+    {
+      "id": 117201562017,
+      "name": "Analyze JavaScript/TypeScript",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/38968728491/job/117201562017",
+      "app": "github-actions"
+    },
+    {
+      "id": 117201561812,
+      "name": "Real Seeker Provider Admin startup",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/38968728434/job/117201561812",
+      "app": "github-actions"
+    },
+    {
+      "id": 117201561781,
+      "name": "Staging release controls (windows-latest)",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/38968728535/job/117201561781",
+      "app": "github-actions"
+    },
+    {
+      "id": 117201561479,
+      "name": "Dev browser startup (ubuntu-latest)",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/38968728472/job/117201561479",
+      "app": "github-actions"
+    }
+  ],
+  "artifacts": [
+    {
+      "id": 12075759523,
+      "name": "g1-worker-process-evidence",
+      "digest": "sha256:805e378de5eface4a1c11e4d043f12788c9a491f7489a88b8d78b985ce8ddaec",
+      "runId": 38968728679,
+      "sourceSha": "40cdac5c9ce6acaa8dedc0385984a807ae9a84d0",
+      "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/38968728679/artifacts/12075759523",
+      "digestVerified": true
+    },
+    {
+      "id": 12076590416,
+      "name": "g1-storage-evidence",
+      "digest": "sha256:2d35a325867f50c57aae6b260ba1afedbc19aeafa9f657a42763001ec245983b",
+      "runId": 38968728679,
+      "sourceSha": "40cdac5c9ce6acaa8dedc0385984a807ae9a84d0",
+      "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/38968728679/artifacts/12076590416",
+      "digestVerified": true
+    },
+    {
+      "id": 12076347055,
+      "name": "retention-real-services-evidence",
+      "digest": "sha256:b2c30a82ece06dc6fcc19acf889047cb8ecf90ec4e55ea2919ad1154a283cc5a",
+      "runId": 38968728679,
+      "sourceSha": "40cdac5c9ce6acaa8dedc0385984a807ae9a84d0",
+      "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/38968728679/artifacts/12076347055",
+      "digestVerified": true
+    },
+    {
+      "id": 12076113603,
+      "name": "dispute-workspace-real-evidence",
+      "digest": "sha256:c12b260586286d645bcaa32cbe59ebe70c4da91ed4142d7e777b98138e0356a7",
+      "runId": 38968728679,
+      "sourceSha": "40cdac5c9ce6acaa8dedc0385984a807ae9a84d0",
+      "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/38968728679/artifacts/12076113603",
+      "digestVerified": true
+    },
+    {
+      "id": 12077075202,
+      "name": "r17e-provider-real-evidence",
+      "digest": "sha256:6306e005671c560b59f260b03058a2d4f28c65792d37026d73bfb9a446232bea",
+      "runId": 38968728679,
+      "sourceSha": "40cdac5c9ce6acaa8dedc0385984a807ae9a84d0",
+      "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/38968728679/artifacts/12077075202",
+      "digestVerified": true
+    },
+    {
+      "id": 12075764331,
+      "name": "r17d-admin-real-evidence",
+      "digest": "sha256:9b9d0a9025bf0e782e15a6d6c98e57e3bd8707473a62cff5fa4072f996e1d12d",
+      "runId": 38968728679,
+      "sourceSha": "40cdac5c9ce6acaa8dedc0385984a807ae9a84d0",
+      "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/38968728679/artifacts/12075764331",
+      "digestVerified": true
+    },
+    {
+      "id": 12076485876,
+      "name": "r17c-dispute-real-evidence",
+      "digest": "sha256:449d7f3d58ba8e4ad5b240c0dc37d9a373783181262910e2ffa998f7d24dbfe5",
+      "runId": 38968728679,
+      "sourceSha": "40cdac5c9ce6acaa8dedc0385984a807ae9a84d0",
+      "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/38968728679/artifacts/12076485876",
+      "digestVerified": true
+    },
+    {
+      "id": 12076462462,
+      "name": "e18-my-bids-real-evidence",
+      "digest": "sha256:3eaf504d86716ae48d29edcf414dd07772f6fb9f8e0aa4a6c01e24f894bfecb6",
+      "runId": 38968728679,
+      "sourceSha": "40cdac5c9ce6acaa8dedc0385984a807ae9a84d0",
+      "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/38968728679/artifacts/12076462462",
+      "digestVerified": true
+    }
+  ],
+  "reports": [
+    {
+      "artifactId": 12075759523,
+      "report": "r22-process-report.json",
+      "passed": 3,
+      "failed": 0,
+      "skipped": 0,
+      "total": 3,
+      "passedSuites": 1,
+      "suites": [
+        {
+          "path": "test/integration/r22-outbox-process.integration.spec.ts",
+          "counts": {
+            "passed": 3
+          }
+        }
+      ]
+    },
+    {
+      "artifactId": 12075759523,
+      "report": "g1-api-report.json",
+      "passed": 6086,
+      "failed": 0,
+      "skipped": 81,
+      "total": 6167,
+      "passedSuites": 331,
+      "suites": [
+        {
+          "path": "test/integration/r19-subscription-money.integration.spec.ts",
+          "counts": {
+            "passed": 19
+          }
+        },
+        {
+          "path": "test/integration/r22-outbox-reliability.integration.spec.ts",
+          "counts": {
+            "passed": 21
+          }
+        },
+        {
+          "path": "test/integration/r21-durable-mail.integration.spec.ts",
+          "counts": {
+            "passed": 13
+          }
+        },
+        {
+          "path": "test/integration/r21-mail-feedback.integration.spec.ts",
+          "counts": {
+            "passed": 13
+          }
+        },
+        {
+          "path": "test/integration/r22-outbox-replay.integration.spec.ts",
+          "counts": {
+            "passed": 8
+          }
+        },
+        {
+          "path": "src/infrastructure/telemetry/span-pipeline.spec.ts",
+          "counts": {
+            "passed": 13
+          }
+        },
+        {
+          "path": "test/integration/r22-outbox-process.integration.spec.ts",
+          "counts": {
+            "pending": 3
+          }
+        },
+        {
+          "path": "src/infrastructure/telemetry/telemetry.service.spec.ts",
+          "counts": {
+            "passed": 12
+          }
+        },
+        {
+          "path": "test/unit/r19-money-contract-fixtures.spec.ts",
+          "counts": {
+            "passed": 13
+          }
+        },
+        {
+          "path": "src/infrastructure/telemetry/trace-context.spec.ts",
+          "counts": {
+            "passed": 21
+          }
+        },
+        {
+          "path": "test/unit/g1-telemetry-boundaries.spec.ts",
+          "counts": {
+            "passed": 4
+          }
+        },
+        {
+          "path": "test/unit/r19-money-wire.spec.ts",
+          "counts": {
+            "passed": 10
+          }
+        },
+        {
+          "path": "src/infrastructure/telemetry/metrics-access.guard.spec.ts",
+          "counts": {
+            "passed": 9
+          }
+        },
+        {
+          "path": "src/infrastructure/telemetry/domain-metrics.spec.ts",
+          "counts": {
+            "passed": 11
+          }
+        },
+        {
+          "path": "src/infrastructure/telemetry/dependency-diagnostics.spec.ts",
+          "counts": {
+            "passed": 5
+          }
+        },
+        {
+          "path": "test/unit/r19-canonical-json-regression.spec.ts",
+          "counts": {
+            "passed": 15
+          }
+        },
+        {
+          "path": "src/infrastructure/telemetry/telemetry-bootstrap.service.spec.ts",
+          "counts": {
+            "passed": 3
+          }
+        },
+        {
+          "path": "src/modules/notifications/subscription-activated.handler.spec.ts",
+          "counts": {
+            "passed": 7
+          }
+        },
+        {
+          "path": "src/infrastructure/telemetry/label-bounds.spec.ts",
+          "counts": {
+            "passed": 7
+          }
+        },
+        {
+          "path": "src/infrastructure/health/diagnostics.scheduler.spec.ts",
+          "counts": {
+            "passed": 2
+          }
+        },
+        {
+          "path": "src/infrastructure/telemetry/metrics.service.spec.ts",
+          "counts": {
+            "passed": 4
+          }
+        }
+      ]
+    },
+    {
+      "artifactId": 12076590416,
+      "report": "r20-storage-report.json",
+      "passed": 40,
+      "failed": 0,
+      "skipped": 0,
+      "total": 40,
+      "passedSuites": 3,
+      "suites": [
+        {
+          "path": "test/integration/r20-storage/r20-s3-storage.integration.spec.ts",
+          "counts": {
+            "passed": 29
+          }
+        },
+        {
+          "path": "test/integration/r20-storage/r20-mediated-read-s3.integration.spec.ts",
+          "counts": {
+            "passed": 9
+          }
+        },
+        {
+          "path": "test/integration/r20-storage/r20-orphan-cleanup-s3.integration.spec.ts",
+          "counts": {
+            "passed": 2
+          }
+        }
+      ]
+    },
+    {
+      "artifactId": 12076347055,
+      "report": "retention-ci-report.json",
+      "passed": 29,
+      "failed": 0,
+      "skipped": 0,
+      "total": 29,
+      "passedSuites": 2,
+      "suites": [
+        {
+          "path": "test/integration/evidence-retention.integration.spec.ts",
+          "counts": {
+            "passed": 28
+          }
+        },
+        {
+          "path": "test/integration/manifest-evidence-retention.integration.spec.ts",
+          "counts": {
+            "passed": 1
+          }
+        }
+      ]
+    },
+    {
+      "artifactId": 12076113603,
+      "report": "api/dispute-workspace-ci.json",
+      "passed": 31,
+      "failed": 0,
+      "skipped": 0,
+      "total": 31,
+      "passedSuites": 6,
+      "suites": [
+        {
+          "path": "test/integration/dispute-workspace.integration.spec.ts",
+          "counts": {
+            "passed": 13
+          }
+        },
+        {
+          "path": "test/integration/dispute-worker-process.integration.spec.ts",
+          "counts": {
+            "passed": 3
+          }
+        },
+        {
+          "path": "test/integration/dispute-private-lifecycle.integration.spec.ts",
+          "counts": {
+            "passed": 8
+          }
+        },
+        {
+          "path": "test/integration/dispute-decision-boundaries.integration.spec.ts",
+          "counts": {
+            "passed": 5
+          }
+        },
+        {
+          "path": "test/integration/dispute-workspace-browser.integration.spec.ts",
+          "counts": {
+            "passed": 1
+          }
+        },
+        {
+          "path": "test/integration/dispute-workspace-http.integration.spec.ts",
+          "counts": {
+            "passed": 1
+          }
+        }
+      ]
+    },
+    {
+      "artifactId": 12077075202,
+      "report": "api/r17e-provider-browser-ci.json",
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "total": 1,
+      "passedSuites": 1,
+      "suites": [
+        {
+          "path": "test/integration/r17-provider-surfaces-browser.integration.spec.ts",
+          "counts": {
+            "passed": 1
+          }
+        }
+      ]
+    },
+    {
+      "artifactId": 12077075202,
+      "report": "api/r17e-provider-ci.json",
+      "passed": 30,
+      "failed": 0,
+      "skipped": 0,
+      "total": 30,
+      "passedSuites": 1,
+      "suites": [
+        {
+          "path": "test/integration/r17-provider-surfaces.integration.spec.ts",
+          "counts": {
+            "passed": 30
+          }
+        }
+      ]
+    },
+    {
+      "artifactId": 12077075202,
+      "report": "api/r17e-closure-browser-ci.json",
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "total": 1,
+      "passedSuites": 1,
+      "suites": [
+        {
+          "path": "test/integration/r17-e-closure-browser.integration.spec.ts",
+          "counts": {
+            "passed": 1
+          }
+        }
+      ]
+    },
+    {
+      "artifactId": 12077075202,
+      "report": "api/r17e-closure-ci.json",
+      "passed": 12,
+      "failed": 0,
+      "skipped": 0,
+      "total": 12,
+      "passedSuites": 1,
+      "suites": [
+        {
+          "path": "test/integration/r17-e-closure.integration.spec.ts",
+          "counts": {
+            "passed": 12
+          }
+        }
+      ]
+    },
+    {
+      "artifactId": 12075764331,
+      "report": "api/r17d-admin-browser-ci.json",
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "total": 1,
+      "passedSuites": 1,
+      "suites": [
+        {
+          "path": "test/integration/r17-admin-operations-browser.integration.spec.ts",
+          "counts": {
+            "passed": 1
+          }
+        }
+      ]
+    },
+    {
+      "artifactId": 12075764331,
+      "report": "api/r17d-admin-ci.json",
+      "passed": 13,
+      "failed": 0,
+      "skipped": 0,
+      "total": 13,
+      "passedSuites": 1,
+      "suites": [
+        {
+          "path": "test/integration/r17-admin-operations.integration.spec.ts",
+          "counts": {
+            "passed": 13
+          }
+        }
+      ]
+    },
+    {
+      "artifactId": 12076485876,
+      "report": "api/r17c-disputes-browser-ci.json",
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "total": 1,
+      "passedSuites": 1,
+      "suites": [
+        {
+          "path": "test/integration/r17-dispute-legacy-browser.integration.spec.ts",
+          "counts": {
+            "passed": 1
+          }
+        }
+      ]
+    },
+    {
+      "artifactId": 12076485876,
+      "report": "api/r17c-disputes-ci.json",
+      "passed": 22,
+      "failed": 0,
+      "skipped": 0,
+      "total": 22,
+      "passedSuites": 2,
+      "suites": [
+        {
+          "path": "test/integration/r17-disputes.integration.spec.ts",
+          "counts": {
+            "passed": 15
+          }
+        },
+        {
+          "path": "test/integration/r17-dispute-legacy-http.integration.spec.ts",
+          "counts": {
+            "passed": 7
+          }
+        }
+      ]
+    },
+    {
+      "artifactId": 12076462462,
+      "report": "api/e18-my-bids-browser-ci.json",
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "total": 1,
+      "passedSuites": 1,
+      "suites": [
+        {
+          "path": "test/integration/provider-my-bids-browser.integration.spec.ts",
+          "counts": {
+            "passed": 1
+          }
+        }
+      ]
+    },
+    {
+      "artifactId": 12076462462,
+      "report": "api/e18-my-bids-ci.json",
+      "passed": 6,
+      "failed": 0,
+      "skipped": 0,
+      "total": 6,
+      "passedSuites": 1,
+      "suites": [
+        {
+          "path": "test/integration/provider-my-bids.integration.spec.ts",
+          "counts": {
+            "passed": 6
+          }
+        }
+      ]
+    }
+  ],
+  "skippedCaseAccounting": {
+    "generalApiInvocationSkipped": 81,
+    "exactNamesPassedInDedicatedReports": 81,
+    "remainingUnproved": [],
+    "method": "Compare every skipped assertion fullName with a passed assertion fullName in downloaded dedicated reports from the same merged-source workflow. Skips are not counted as passes."
+  },
+  "alertEvidence": {
+    "runId": 38964502500,
+    "artifactId": 12074741275,
+    "sourceSha": "a93bdf6e5f6d403f6395f4c140fe52ff4ed319c4",
+    "treeSha": "109b514fe9833a9aac3e8caecd7f9b14d4f61b3b",
+    "digest": "62791a4b047bb6ef36d20080ed00e594375082e4ecf87edb4a981d28f128a34a",
+    "evidenceClass": "PRE_MERGE_IDENTICAL_FULL_TREE",
+    "qualification": "This workflow is PR/path-filtered. It did not rerun on the merge commit. Both complete Git trees are identical; producer and protected-worker-metric tests reran on the merge commit.",
+    "passed": true,
+    "alertRules": 16,
+    "dashboardQueries": 27,
+    "notificationStates": ["firing", "resolved"]
+  },
+  "codeql": {
+    "mergedSourceAnalysis": "success",
+    "identicalTreePrSecurityCheckId": 117188663161,
+    "identicalTreePrSecuritySource": "a93bdf6e5f6d403f6395f4c140fe52ff4ed319c4",
+    "conclusion": "success",
+    "annotations": 0,
+    "scope": "No new alerts in changed code; not a claim of an empty repository-wide alert inventory."
+  },
+  "environment": {
+    "node": "24.21.0",
+    "pnpm": "10.32.1",
+    "runtime": "GitHub Actions disposable Linux PostgreSQL/Redis/Mailpit/S3/ClamAV jobs, configured by the immutable workflow",
+    "ciWorkflowSha256": "5211d77afcd1b38c3115fd833dbd5bbb651defd030456c83dc57145906818a56",
+    "lockfileSha256": "724b826ea09da6e070f4721a30f5dd9145a333606fac124e0249b5ef7fe18222",
+    "secrets": "No credentials, raw environment, traces or private media copied into this record."
+  },
+  "localVerification": {
+    "frozenInstall": "pnpm install --frozen-lockfile: exit 0; normal prepare and Husky setup ran",
+    "baselineGovernance": {
+      "command": "node --test .github/scripts/*.test.mjs",
+      "passed": 158,
+      "failed": 0,
+      "skipped": 0
+    },
+    "existingR27Harness": {
+      "command": "node --test scripts/perf/post-r18/lib/lib.test.mjs",
+      "passed": 17,
+      "failed": 0,
+      "skipped": 0,
+      "scope": "Verification of existing pure utilities only; no R27 performance or integration acceptance."
+    },
+    "finalPublicationChecks": "Exact final local and PR-head results are recorded in the review PR; no self-referential final SHA is embedded here."
+  },
+  "limits": [
+    "No new manual screenshot inspection, hosted measurement, production load or release acceptance.",
+    "The existing general Playwright invocation has separately documented flag-gated skips; no new skips were introduced.",
+    "Owner merge of this separate record and publication identity verification remain required before starting Wave 2."
+  ]
+}

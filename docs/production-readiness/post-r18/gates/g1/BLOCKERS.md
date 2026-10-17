@@ -1,21 +1,22 @@
-# G1 actionable blockers
+# G1 closure and verified publication
 
-No blocker below is waived by green aggregate CI. Missing evidence is not PASS.
+Certified source: `40cdac5c9ce6acaa8dedc0385984a807ae9a84d0` / `109b514fe9833a9aac3e8caecd7f9b14d4f61b3b`.
+The previous open rows remain in Git history at this source. PR #169 supplies
+the corrective source; [ACCEPTANCE_EVIDENCE.md](ACCEPTANCE_EVIDENCE.md) supplies
+the independently inspected merged-source evidence.
 
-| ID    | Owner                               | State            | Requirement and closure                                                                                                                                                                                                                                                                                                                                                   |
-| ----- | ----------------------------------- | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| G1-01 | R19 domain owner + coordinator      | OPEN             | R19 implementation 3/6/7: complete callable internal-port freeze and compensation invariants. Publish reviewed lifecycle/receipt/refund/projection/reconciliation ports and consumer fixtures; reproduce/refute refund-link finding with direct SQL negatives; resolve CR-002 registration before accepting combined boundary. No fabricated R31 consumer.                |
-| G1-02 | R20 + coordinator                   | OPEN             | R20 overwrite protection and real storage acceptance. Apply CR-R20-03 with frontend-first rollout contract, make avatar presigns write-once, invert the documented-gap case; execute all 40 real S3/authorization/retention/root/IAM cases on the candidate. CR-R20-01 is repaired in this PR but still needs merged-source and real-service proof.                       |
-| G1-03 | R21 + coordinator CI owner          | MISSING_EVIDENCE | R21 real SMTP scenarios on the combined source. Enable R21_MAILPIT_SMTP_PORT and R21_MAILPIT_API_URL in a disposable service job and execute the three currently gated SMTP cases. Preserve signed raw-body route and handler registration.                                                                                                                               |
-| G1-04 | R22 + coordinator schema/CI owner   | OPEN             | R22 audited replay and independent-process crash/SIGTERM proof. Integrate CR-01 additive audit enum migration, CR-03 permission definition without role grants, update replay tests to cover migrated execution plus missing-audit refusal without new skips; run two-process kill/recovery test with RUN_R22_WORKER_PROCESS=1 on Linux. Resolve timing validation CR-02. |
-| G1-05 | R23 + coordinator + boundary owners | OPEN             | R23 runtime telemetry/diagnostics producers. Integrate CR-02 validated default-off export configuration, CR-03 scheduled protected diagnostics, and CR-04 outbox/SMTP/storage/scanner/worker instrumentation. Prove business outcomes remain unchanged and alerts have real bounded metric producers. Hosted vendor/contact choices stay separate.                        |
-| G1-06 | coordinator + repository owner      | PENDING          | one merged exact candidate and published accepted decision. Merge reviewed corrective source only through owner approval, run missing mandatory evidence on that immutable result, issue a new ACCEPTED decision with source/tree SHAs, publish/merge its separate record, then recheck source and authorize Wave 2. This Draft does not open G1.                         |
+| ID    | Current state      | Closure / remaining action                                                                                                                                 |
+| ----- | ------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| G1-01 | CLOSED_TECHNICAL   | Callable `hsm.money.v1` ports and consumers compile; 19 R19 real PostgreSQL cases prove compensation, rollback and one activation notice.                  |
+| G1-02 | CLOSED_TECHNICAL   | Signed write-once avatar upload and frontend precondition; 40 real S3/access cases pass, plus 29 retention cases.                                          |
+| G1-03 | CLOSED_TECHNICAL   | All three real SMTP scenarios execute within 13 passing durable-mail tests. Production delivery remains separate.                                          |
+| G1-04 | CLOSED_TECHNICAL   | Replay audit/permission definition without grants, validated timing, 8 replay + 21 reliability + 3 process cases pass.                                     |
+| G1-05 | CLOSED_TECHNICAL   | Default-off exporter, protected bounded diagnostics and real dependency/worker producers verified; identical-tree alert evidence is separately identified. |
+| G1-06 | CLOSED_PUBLICATION | Owner merged #171 at `0568739096ceeaf0cfc79034626886e258fe4328`; ancestry and identical reviewed/merged trees are verified in PUBLICATION_VERIFICATION.md. |
 
-## Release and external limitations, carried separately
+## Independent release limitations retained
 
-- R18-G1 branch protection: develop reports protected=false; separate historical release blocker.
-- Repository-wide CodeQL inventory unavailable through exposed connector; R26/security owner must supply current IDs/dispositions. Historical #2/#13/#16/#20 are not asserted current.
-- R18-H1 hosting/DNS/registry/secrets, real sender deliverability, hosted storage IAM/KMS/CDN, production alert receivers/region/retention and SLO approval remain owner/R28/R37 work.
-- R16 money/payout policies, R18 D-2/D-3/D-13/D-19 and R19 commercial policies remain explicit owner decisions. Live rails and payouts stay disabled.
+## Separate release and external limitations
 
-No requirement is added that all R24–R38 work or hosted release controls must already exist. The blockers above concern Wave 1 interfaces, implemented boundaries, their mandatory evidence, or publication.
+No hosted, policy or production condition is silently closed. No account/role
+permission or production setting changes in this publication.

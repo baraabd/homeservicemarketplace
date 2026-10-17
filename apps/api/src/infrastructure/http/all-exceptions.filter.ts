@@ -11,6 +11,7 @@ import type { Request, Response } from 'express';
 import { AppConfigService } from '../../config/app-config.service';
 import { AppError, type AppErrorCode } from '../../shared/errors/app-error';
 import { pathOnly } from '../logger/redaction';
+import { isSafeCorrelationId } from '../telemetry/trace-context';
 import { REQUEST_ID_HEADER } from './request-id.middleware';
 
 interface ErrorBody {
@@ -54,7 +55,13 @@ export class AllExceptionsFilter implements ExceptionFilter {
 
     const { status, code, message, details, detailsAreAuthored } = this.normalize(exception);
     const headerId = req.header(REQUEST_ID_HEADER);
-    const requestId = req.id != null ? String(req.id) : (headerId ?? undefined);
+    // Parser errors can arrive before RequestIdMiddleware; never reflect an
+    // unbounded/unvalidated header just because that middleware did not run.
+    const requestId = isSafeCorrelationId(req.id)
+      ? req.id
+      : isSafeCorrelationId(headerId)
+        ? headerId
+        : undefined;
 
     const body: ErrorBody = {
       success: false,
