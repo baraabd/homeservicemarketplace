@@ -7,7 +7,7 @@ Status: **INTEGRATION_PENDING**. Requester: R25. Implementer/approver: Wave 2 co
 R25 tightens the socket's original-credential and transport contract and adds an opt-in real-service browser acceptance suite. Its broad real-service verification also exposed a pre-existing outbox fixture cleanup omission. Five existing shared files require small integration changes:
 
 1. `apps/api/test/integration/r12-booking-communication.integration.spec.ts` — construct a valid authorized socket/transport double; retain every existing participant/standing assertion.
-2. `apps/web/e2e/r17-notifications.real-api.spec.ts` — the synthetic cookie-authenticated Node client must send the already configured allowed browser origin.
+2. `apps/web/e2e/r17-notifications.real-api.spec.ts` — the synthetic cookie-authenticated Node client must send the already configured allowed browser origin; the Arabic viewport case needs an independent real notification and first-visit browser context at each width.
 3. `apps/web/playwright.config.ts` — route the new R25 browser spec only into its explicitly isolated suite.
 4. `.github/workflows/ci.yml` — run the owned verifier against its own disposable stack, preserve safe evidence and make the job a required CI gate dependency.
 5. `apps/api/test/support/dispute-workspace-fixture.ts` — remove the fixture's own Notification aggregate outbox rows before deleting their notifications; preserve the R22 post-commit assertion and unrelated queue entries.
@@ -96,6 +96,116 @@ In the committed-notification Socket.IO test, preserve the real cookie and all a
 ```
 
 `WEB_B` is already supplied to `CORS_ORIGINS` for C/D. Cookie authentication with an absent or foreign browser Origin is refused; native clients with an explicit JWT retain their separate supported path. Do not broaden production origins to accommodate the test.
+
+## 2b. Existing R17 Arabic viewport fixture
+
+The first published head's completed Phase 5 run (`39032705025`, job `117397977318`) reported R17-B **two passed / one failed / two did not run**, with zero retries/flaky. The observed failure was the second viewport's missing repeated toast, not Origin: the cookie-only socket case was serially unrun. Artifact `12101631628` contains a passing 360 px Arabic capture with the first aggregate hint and a 390 px failure capture with the same unread notification but no replayed toast after another `page.goto()`.
+
+The unchanged test creates one real notification outside its width loop and asks for the same arrival toast after each full reload. R25 deliberately persists the initial baseline and presentation claim across reloads. Keep both requirements: a visible first-arrival hint at every Arabic viewport, and no repeated presentation of an already-seen notification. Use a fresh real seeker/provider/booking and a fresh browser context per width; retain the category lookup once and close each context in `finally`.
+
+The following proposed diff preserves every original unread-count, Arabic/RTL, keyboard, drawer, toast-visibility, geometry and screenshot assertion. It does not clear presentation storage, change timeouts, weaken assertions or alter production behavior. It creates three account pairs/bookings instead of one (four additional registrations); rate-limit and service configuration are unchanged.
+
+```diff
+diff --git a/apps/web/e2e/r17-notifications.real-api.spec.ts b/apps/web/e2e/r17-notifications.real-api.spec.ts
+--- a/apps/web/e2e/r17-notifications.real-api.spec.ts
++++ b/apps/web/e2e/r17-notifications.real-api.spec.ts
+@@ -340,49 +340,54 @@
+     await expect(drawer.getByText(row.body)).toBeVisible();
+   });
+
+-  test('Arabic, right-to-left, at 360, 390 and 430, by keyboard', async ({
+-    page,
+-    context,
+-  }, testInfo) => {
++  test('Arabic, right-to-left, at 360, 390 and 430, by keyboard', async ({ browser }, testInfo) => {
+     const categoryId = await leafCategoryId();
+-    const seeker = await registerSeeker('r17ba');
+-    const provider = await workingProvider(categoryId, 'r17ba');
+-    await scheduledBooking(seeker, provider, categoryId);
+-
+-    await applySession(context, seeker.jar);
+-    await seedLanguage(page, 'ar');
+     for (const width of [360, 390, 430]) {
+-      await page.setViewportSize({ width, height: 844 });
+-      await page.goto(`${WEB_A}/home`);
+-      await expect(page.locator('html')).toHaveAttribute('dir', 'rtl');
+-      await expect(page.getByTestId('seeker-notifications-bell')).toHaveAccessibleName(
+-        'فتح الإشعارات، 1 غير مقروءة',
+-      );
+-      await openSeekerBell(page);
+-      const drawer = page.getByTestId('notification-drawer');
+-      await expect(drawer.getByText('الإشعارات', { exact: true })).toBeInViewport();
+-      await expect(drawer.getByRole('button', { name: 'تعليم الكل كمقروء' })).toBeVisible();
+-      await expect(drawer.getByRole('button', { name: 'إغلاق' })).toBeVisible();
+-      const overflow = await page.evaluate(
+-        () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+-      );
+-      expect(overflow).toBeLessThanOrEqual(0);
+-      // The arrival toast (Arabic copy) must sit wholly on screen.
+-      const toasts = page.locator('[data-sonner-toast]');
+-      await expect(toasts.first()).toBeVisible();
+-      for (const box of await toasts.evaluateAll((els) =>
+-        els.map((el) => {
+-          const r = el.getBoundingClientRect();
+-          return { left: r.left, right: r.right };
+-        }),
+-      )) {
+-        expect(box.left, `toast left edge at ${width}px`).toBeGreaterThanOrEqual(0);
+-        expect(box.right, `toast right edge at ${width}px`).toBeLessThanOrEqual(width);
++      // Each viewport observes its own new notification on a first visit.
++      // Reloading one account must not replay its already-presented toast.
++      const seeker = await registerSeeker('r17ba');
++      const provider = await workingProvider(categoryId, 'r17ba');
++      await scheduledBooking(seeker, provider, categoryId);
++
++      const context = await browser.newContext();
++      try {
++        const page = await context.newPage();
++        await applySession(context, seeker.jar);
++        await seedLanguage(page, 'ar');
++        await page.setViewportSize({ width, height: 844 });
++        await page.goto(`${WEB_A}/home`);
++        await expect(page.locator('html')).toHaveAttribute('dir', 'rtl');
++        await expect(page.getByTestId('seeker-notifications-bell')).toHaveAccessibleName(
++          'فتح الإشعارات، 1 غير مقروءة',
++        );
++        await openSeekerBell(page);
++        const drawer = page.getByTestId('notification-drawer');
++        await expect(drawer.getByText('الإشعارات', { exact: true })).toBeInViewport();
++        await expect(drawer.getByRole('button', { name: 'تعليم الكل كمقروء' })).toBeVisible();
++        await expect(drawer.getByRole('button', { name: 'إغلاق' })).toBeVisible();
++        const overflow = await page.evaluate(
++          () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
++        );
++        expect(overflow).toBeLessThanOrEqual(0);
++        // The arrival toast (Arabic copy) must sit wholly on screen.
++        const toasts = page.locator('[data-sonner-toast]');
++        await expect(toasts.first()).toBeVisible();
++        for (const box of await toasts.evaluateAll((els) =>
++          els.map((el) => {
++            const r = el.getBoundingClientRect();
++            return { left: r.left, right: r.right };
++          }),
++        )) {
++          expect(box.left, `toast left edge at ${width}px`).toBeGreaterThanOrEqual(0);
++          expect(box.right, `toast right edge at ${width}px`).toBeLessThanOrEqual(width);
++        }
++        await testInfo.attach(`r17b-drawer-ar-${width}.png`, {
++          body: await page.screenshot(),
++          contentType: 'image/png',
++        });
++      } finally {
++        await context.close();
+       }
+-      await testInfo.attach(`r17b-drawer-ar-${width}.png`, {
+-        body: await page.screenshot(),
+-        contentType: 'image/png',
+-      });
+     }
+   });
+```
+
+The private proposal passed `git apply --check --whitespace=error` against unchanged R17 source on `5496a887c88808db193718169137ae4f8ce29159`. Its candidate text was formatted in memory with the repository's configuration and parsed by TypeScript 5.9.3 under pinned Node 24.21.0, with zero syntax diagnostics. Structural comparison confirmed the assertion/action block was preserved apart from indentation. These are applicability/syntax checks only: the shared patch was not applied and the combined R17 suite was not executed by this lane. Apply this supplement together with the Origin line above before the required real-service regression.
 
 ## 3. Explicit Playwright routing
 
@@ -221,7 +331,7 @@ pnpm --filter @homeservicemarketplace/api exec jest test/integration/r22-outbox-
 - Run affected formatting, lint, application and E2E type checks with normal hooks.
 - Run the complete API tests with real PostgreSQL/Redis enabled, including unchanged R12 participant/standing assertions and the new R25 suite.
 - Run the ordered R17-then-R22 cleanup regression above without a queue reset, then rerun the complete integration suite.
-- Run the existing R17 real notification suite with explicit allowed Origin; preserve rollback/once-only assertions.
+- Run the existing R17 real notification suite with explicit allowed Origin and independent first-visit Arabic fixtures at 360, 390 and 430 px; require all original unread, keyboard, RTL, toast-visibility and geometry assertions. Preserve the R25 same-account reload/once-only presentation assertions.
 - Verify default Playwright discovery excludes R25 and explicit `HSM_R25_REALTIME=isolated-ci` discovery includes exactly its real spec.
 - Execute `verify-replicas.cjs --run` on the exact combined source; require positive API/browser counts, no skips/retries, same compiled API identity across A/B and a clean final source check.
 - Review the declared load and auth failure evidence, synthetic EN/AR/RTL screenshots and keyboard/viewport assertions.
