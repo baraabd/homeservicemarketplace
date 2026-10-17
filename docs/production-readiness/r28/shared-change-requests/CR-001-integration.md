@@ -8,6 +8,38 @@ IMPLEMENTATION.md. It grants no write authority for the global files below.
 Resolve these proposals against the accepted integration candidate, without
 importing an unmerged peer branch or overwriting the current coordinator work.
 
+## 0. Authorize current-base integration into the R28 branch
+
+The first published R28 head follows the required frozen G1 source. Current
+`develop` (`4e87bf03663fb3c72ffee983fdb70c2863e1ce8a`) also contains the later
+owner-merged R24/R25/R26/R27 work. GitHub runs the current R26/R27 workflows for
+PR #179, but those workflows deliberately check out the R28 head as their harness.
+That frozen head does not contain their post-G1 test files:
+
+- R26 requires `scripts/production/security-app/verify-boundaries.test.cjs` and
+  `verify-boundaries.cjs`.
+- R27 requires `apps/web/playwright.r27.config.ts` and its accompanying real-route
+  browser harness. Both baseline and candidate measurements use that newer harness.
+
+This caused actual missing-file failures before the R26/R27 acceptance scenarios
+could run. The precise run/job IDs and final source identity belong in the PR
+ledger. These files are outside R28's exact authoring allowance; copying a few
+files or disabling the workflows would not produce valid acceptance.
+
+Requested coordinator/owner authorization: **normally merge the exact already
+owner-merged develop revision into `feat/r28-hosted-platform`**, preserving the G1
+source as provenance and all accepted peer work. This does not merge R28 into
+develop. CLAUDE.md requires explicit merge authorization, and the inspected G1
+handoff grants no general R28 integration lease. The R24-specific integration
+permission cannot be reused for this lane.
+
+A non-applied `git merge-tree` review found no conflicts; the resulting diff
+against current develop contains only R28's 12 files. Recompute its candidate
+tree after any R28 corrective commit and publish that concrete identity for review.
+No integration commit or ref update to that candidate is performed without the
+requested authority. Afterwards, retain the exact final head/tree and rerun all
+affected checks; prior green runs do not validate the integrated source.
+
 ## 1. Run and retain the R28 controls in the existing staging workflow
 
 Exact shared path: `.github/workflows/staging-boundary.yml`.

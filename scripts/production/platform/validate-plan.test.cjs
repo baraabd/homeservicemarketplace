@@ -1102,6 +1102,80 @@ test('CLI rejects a symlink input before reading its target', (t) => {
   cliReport(cli(['--check', link]), 1);
 });
 
+for (const [name, symlinkFallback] of [
+  ['a replaced regular file', false],
+  ['a symlink when O_NOFOLLOW is unavailable', true],
+]) {
+  test(`post-open identity rejects ${name} before reading any bytes`, (t) => {
+    const { directory, file } = fixture(t);
+    const input = symlinkFallback ? path.join(directory, 'linked-plan.json') : file;
+    const replacement = path.join(directory, 'replacement.json');
+    if (symlinkFallback) fs.symlinkSync(file, input);
+    else fs.writeFileSync(replacement, fs.readFileSync(file), { mode: 0o600 });
+    const script = `
+      'use strict';
+      const fs = require('node:fs');
+      const { readJsonFile } = require(${JSON.stringify(CLI)});
+      const input = ${JSON.stringify(input)};
+      const replacement = ${JSON.stringify(replacement)};
+      const symlinkFallback = ${JSON.stringify(symlinkFallback)};
+      const open = fs.openSync;
+      const read = fs.readSync;
+      const close = fs.closeSync;
+      const result = { code: null, opened: 0, reads: 0, closes: 0, replaced: false };
+      let inputDescriptor;
+      fs.openSync = function (file, flags, ...rest) {
+        // Simulate only this input's platform fallback; leave fs.constants intact.
+        if (file === input && symlinkFallback) flags &= ~(fs.constants.O_NOFOLLOW || 0);
+        const descriptor = open.call(this, file, flags, ...rest);
+        if (file === input) {
+          inputDescriptor = descriptor;
+          result.opened += 1;
+          if (!symlinkFallback) {
+            // Both files contain valid JSON; only their inode identities differ.
+            fs.renameSync(replacement, input);
+            result.replaced = true;
+          }
+        }
+        return descriptor;
+      };
+      fs.readSync = function (descriptor, ...rest) {
+        if (descriptor === inputDescriptor) {
+          result.reads += 1;
+          throw new Error('R28_TEST_UNEXPECTED_INPUT_READ');
+        }
+        return read.call(this, descriptor, ...rest);
+      };
+      fs.closeSync = function (descriptor, ...rest) {
+        if (descriptor === inputDescriptor) result.closes += 1;
+        return close.call(this, descriptor, ...rest);
+      };
+      try { readJsonFile(input); }
+      catch (error) { result.code = error.code; }
+      result.descriptorClosed = false;
+      try { fs.fstatSync(inputDescriptor); }
+      catch (error) { result.descriptorClosed = error.code === 'EBADF'; }
+      process.stdout.write(JSON.stringify(result));
+    `;
+    const result = spawnSync(process.execPath, ['--eval', script], {
+      cwd: ROOT,
+      encoding: 'utf8',
+      timeout: 15_000,
+    });
+    assert.equal(result.error, undefined);
+    assert.equal(result.status, 0);
+    assert.equal(result.stderr, '');
+    assert.deepEqual(JSON.parse(result.stdout), {
+      code: 'R28_INPUT_FILE_INVALID',
+      opened: 1,
+      reads: 0,
+      closes: 1,
+      replaced: !symlinkFallback,
+      descriptorClosed: true,
+    });
+  });
+}
+
 test('a plan changed during its descriptor read is rejected, not partially validated', (t) => {
   const { file } = fixture(t);
   const script = `

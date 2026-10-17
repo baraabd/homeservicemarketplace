@@ -54,7 +54,7 @@ was weakened to obtain these results.
 | `node --check scripts/production/platform/validate-plan.cjs` and the same for `validate-plan.test.cjs`                                                                                                                                      | PASS both CommonJS syntax checks                                                                     |
 | `node scripts/production/platform/validate-plan.cjs --check`                                                                                                                                                                                | PASS; CONFIGURATION_ONLY, HOSTED_ENVIRONMENT_BLOCKED, 9 blocker groups                               |
 | `node scripts/production/platform/validate-plan.cjs --check --require-target`                                                                                                                                                               | Expected exit 2; missing target declarations are not accepted                                        |
-| `node --test scripts/production/platform/validate-plan.test.cjs infra/production/check-runtime.test.cjs infra/production/staging.test.cjs scripts/production/storage/storage-plan.test.cjs scripts/production/storage/storage-cli.test.cjs` | **455 passed**, 0 failed/cancelled/skipped/todo; 342 R28 + 95 existing staging + 18 existing storage |
+| `node --test scripts/production/platform/validate-plan.test.cjs infra/production/check-runtime.test.cjs infra/production/staging.test.cjs scripts/production/storage/storage-plan.test.cjs scripts/production/storage/storage-cli.test.cjs` | **457 passed**, 0 failed/cancelled/skipped/todo; 344 R28 + 95 existing staging + 18 existing storage |
 | `node --test .github/scripts/*.test.mjs scripts/security/dependency-audit.test.cjs scripts/security/secret-scan-tree.test.cjs`                                                                                                              | **204 passed**, 0 failed/cancelled/skipped/todo                                                      |
 | `node scripts/production/storage/storage-plan.cjs --check`                                                                                                                                                                                  | PASS, STORAGE_PLAN_OK; offline R20 policy check                                                      |
 | `node .github/scripts/production-governance.mjs`                                                                                                                                                                                            | PASS repository governance; does not verify GitHub protection                                        |
@@ -150,6 +150,14 @@ creating a new source SHA merely by documenting the run that checked the old SHA
   falsey-edge fallback, schema-snapshot and DNS validation defects. Corrected
   behavior is covered by the final passing regression suite.
 - One ESLint control-regex error was corrected without relaxing the lint rule.
+- First publication CodeQL found one file-system-race alert in the R28 JSON reader.
+  The correction opens the descriptor before checking path metadata, verifies
+  non-symlink identity before reading, and adds replacement/no-follow-fallback
+  regressions. Only a later observed official CodeQL result can close this alert;
+  successful execution of the CodeQL Actions job alone is insufficient.
+- The first R26/R27 publication workflows fail on missing post-G1 harness files,
+  outside the R28 allowance. CR-001 records the explicit current-base integration
+  request. No missing test result is converted to PASS, and no check is disabled.
 - Frozen install reported ignored build scripts for `@parcel/watcher@2.6.0` and
   `unrs-resolver@1.12.2`; no package/build approval or dependency change was made.
 - Optional Python meta-schema tooling was unavailable (`jsonschema` absent);

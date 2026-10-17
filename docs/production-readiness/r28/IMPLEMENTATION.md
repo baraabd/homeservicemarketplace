@@ -116,8 +116,9 @@ subset and rejects unsupported keywords/references. It never retrieves a schema.
 The existing staging manifest stays `schemaVersion: 1`; there is no database
 schema, Prisma, dependency or public application-contract change.
 
-`--check` reads bounded regular JSON files, rejects symlinks and detects changes
-during descriptor reads. It never reads declared secret files or contacts a
+`--check` opens a bounded regular JSON input once, then validates the path entry
+against the opened descriptor before reading. It rejects symlinks/entry replacement
+and detects changes during descriptor reads. It never reads declared secret files or contacts a
 target. The module has no provisioning, network, subprocess, grant, secret-write
 or deployment operation. Its `--apply` argument is rejected. Opaque evidence
 identifiers and resource values are omitted from error reports.
@@ -143,6 +144,12 @@ The concrete integration request names the existing staging workflow and Compose
 overlay. It also identifies applied edge/CSP and secret-rotation evidence still
 needed. Repository-wide CI success alone does not run the new R28 tests until the
 coordinator integrates that request. No unmerged R25/R26 implementation is consumed.
+
+The first published PR run exposed missing post-G1 R26/R27 harness files and a
+CodeQL file-race finding in the R28 reader. The reader correction is scoped here;
+the missing harnesses require explicit current-base integration authority under
+CLAUDE.md and the wave handoff. CR-001 records the concrete normal-merge request.
+The branch remains on its prescribed lineage pending that authorization.
 
 ## Source identity convention
 

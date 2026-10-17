@@ -30,6 +30,12 @@ Infrastructure readiness would not independently close those policy gates.
 
 ## Validation limits
 
+The initial final-head CI attempt also exposed an integration blocker: current
+R26/R27 workflows require files that postdate the assigned G1 source. Their
+missing-file failures cannot be fixed inside the 12-file R28 allowance. CR-001
+requests explicit normal-merge authority for the already owner-merged current
+develop revision, followed by all final-head checks; no checks are disabled.
+
 The validator checks declared relationships and a documented closed schema subset.
 It is not a cloud plan engine, generic JSON Schema library, certificate verifier,
 IAM evaluator or provenance verifier. It does not dereference an approval-looking
@@ -42,5 +48,10 @@ The operator must recheck the reviewed fingerprint and use the existing deployme
 lock plus immutable secret versions at the separately authorized rollout boundary.
 
 Independent review fixed the schema-snapshot fingerprint race, invalid falsey edge
-fallback and malformed DNS-label acceptance. Passing tests provide bounded source
+fallback and malformed DNS-label acceptance. CodeQL then identified the pre-open
+path check in JSON reading; the correction opens once, binds the descriptor to the
+non-symlink path entry and checks identity before reading. Platforms without
+O_NOFOLLOW/O_NONBLOCK do not acquire kernel-atomic no-follow/nonblocking guarantees;
+the descriptor/entry validation still rejects an opened symlink without reading
+its bytes. Passing tests provide bounded source
 evidence; they do not establish absence of all defects or a conflict-free G2 merge.

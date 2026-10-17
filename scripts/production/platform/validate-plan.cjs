@@ -57,12 +57,22 @@ function readJsonFile(file) {
   let fd;
   try {
     requireCondition(typeof file === 'string' && file.length > 0, 'R28_INPUT_FILE_INVALID');
-    requireCondition(!fs.lstatSync(file).isSymbolicLink(), 'R28_INPUT_FILE_INVALID');
     fd = fs.openSync(
       file,
       fs.constants.O_RDONLY | (fs.constants.O_NOFOLLOW || 0) | (fs.constants.O_NONBLOCK || 0),
     );
     const before = fs.fstatSync(fd, { bigint: true });
+    // Open once, then bind the path entry to that descriptor before reading.
+    // O_NOFOLLOW is not exposed on every platform, so the entry/identity check
+    // also rejects symlinks and replacement races without trusting a precheck.
+    const entry = fs.lstatSync(file, { bigint: true });
+    requireCondition(
+      entry.isFile() &&
+        !entry.isSymbolicLink() &&
+        entry.dev === before.dev &&
+        entry.ino === before.ino,
+      'R28_INPUT_FILE_INVALID',
+    );
     requireCondition(
       before.isFile() && before.size > 0n && before.size <= BigInt(MAX_INPUT_BYTES),
       'R28_INPUT_FILE_INVALID',
