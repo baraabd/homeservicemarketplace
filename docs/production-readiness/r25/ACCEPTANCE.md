@@ -4,6 +4,8 @@
 
 The owner-requested follow-up has applied the five CR-001 shared-test/CI changes. The dedicated **R25 real replicas and recovery** job is now required by both aggregate gates, with exact-head checkout, disposable services, authenticated TCP readiness, positive test counts and fixed-schema evidence. The changed shared fixtures preserve the original domain, credential and browser assertions. See [CR-001](shared-change-requests/CR-001-integration.md) for the applied scope and observed local checks.
 
+The first correction was published as `77f7a732b9573561abf37577680f0cded5de2883`. Newly merged R26/R27 workflows then selected that literal PR head, which lacked their implementation and acceptance files. The R26 policy step and R27 harness-copy step failed before those acceptance tests executed. This follow-up integrates already-merged `develop` commit `21089a5065169b78bea5e711a4839e1a467531dc` (PRs #174 and #173) into the R25 feature branch while preserving both histories and the five CR-001 repairs. The frozen G1 start source remains `40cdac5c9ce6acaa8dedc0385984a807ae9a84d0`; it is an ancestor of the combined candidate, not a claim that the runtime still equals the original lane baseline. No unmerged peer implementation is consumed.
+
 **Final combined-source verification is pending in this source record.** The PR body records the actual final commit, exact-source runner result and final GitHub checks after they execute. Earlier source identities and failed aggregate results below remain historical evidence and are not relabeled as results for this correction. Hosted operation and production activation remain separate acceptance steps.
 
 ## Prior lane acceptance record
