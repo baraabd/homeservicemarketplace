@@ -102,3 +102,4 @@ export interface LedgerEntryContract {
 // it may import the types.
 export * from './wire';
 export * from './financial-contracts';
+export * from './api-contracts';

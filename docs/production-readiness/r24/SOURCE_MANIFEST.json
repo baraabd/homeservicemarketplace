@@ -1,0 +1,484 @@
+{
+  "schemaVersion": 1,
+  "sprint": "R24",
+  "title": "Money application API and module wiring; freeze adapter integration boundaries",
+  "repository": "baraabd/homeservicemarketplace",
+  "branch": "feat/r24-money-api-integration",
+  "contractVersion": "hsm.money.v1",
+  "scope": "Provider subscription money API, orchestration and downstream adapter boundaries; no live rail or policy activation.",
+  "source": {
+    "frozenG1CommitSha": "40cdac5c9ce6acaa8dedc0385984a807ae9a84d0",
+    "frozenG1TreeSha": "109b514fe9833a9aac3e8caecd7f9b14d4f61b3b",
+    "acceptedG1PublicationSha": "0568739096ceeaf0cfc79034626886e258fe4328",
+    "branchStartSha": "07c8e584c684111bfc80995c7efb0144cfb6161b",
+    "branchStartTreeSha": "2a7146657a0c89874329768c7e3141fbe07dd0c7",
+    "localOwnershipCheckpointSha": "60df8018ea9c76b1cda1c322fb279c7b9d7fde93",
+    "integratedDevelopSha": "21089a5065169b78bea5e711a4839e1a467531dc",
+    "integratedDevelopTreeSha": "b834a5868304600863b08ab629b6ad34012e0f06",
+    "localIntegrationCommitSha": "65b2a0e59604931a4b8b87acb971c71afaaf9a74",
+    "localIntegrationTreeSha": "bf13f28e3c7c21aa6b9f5d418ad2e0ea92a0fb09",
+    "currentBaseMergeSha": "21089a5065169b78bea5e711a4839e1a467531dc",
+    "integrationMethod": "Normal merge into the assigned R24 feature branch after the normal-hook ownership checkpoint. Both parents preserved; no unmerged R25 source imported.",
+    "fileDigestMethod": "SHA-256 of exact repository bytes. Runtime, contract, schema and test files are listed below; evidence documents are excluded to avoid a self-referential manifest.",
+    "files": [
+      {
+        "path": ".github/scripts/merge-integrity.test.mjs",
+        "sha256": "c1b3156313ae377eab31c3d630980f44ddec9d6d5092f8786aedb69bca9427c7"
+      },
+      {
+        "path": "apps/api/src/app.module.spec.ts",
+        "sha256": "df8fefac284340327647fc7947b6f153ecd0de316b857c46fd629d5bfa6ea897"
+      },
+      {
+        "path": "apps/api/src/app.module.ts",
+        "sha256": "b2590d2ac194e23402c305f9b481584c165df5c34d022c28227298cc716c9644"
+      },
+      {
+        "path": "apps/api/src/modules/iam/audit/audit.service.spec.ts",
+        "sha256": "0e4f8ceaa31547033bee39afc84931a36ec1352958d4a27646b9956173a826dd"
+      },
+      {
+        "path": "apps/api/src/modules/iam/audit/audit.service.ts",
+        "sha256": "a79e4b0fe42f263ea5f175a6b78cf6e4234ee68f3cbca1cbc7424fed481be2a9"
+      },
+      {
+        "path": "apps/api/src/modules/iam/authorization/guards/permissions.guard.spec.ts",
+        "sha256": "fc8a70aaf5c0737192cc7c51439f6f0df13e28c008c4d1c292d5dc2f1762ef1b"
+      },
+      {
+        "path": "apps/api/src/modules/iam/authorization/guards/permissions.guard.ts",
+        "sha256": "aea370591a23af226199778314995732c30d438d45241d3a48294638bf1c66b2"
+      },
+      {
+        "path": "apps/api/src/modules/money/api/money.controller.spec.ts",
+        "sha256": "b32b70b98989aacd3dab87f137fae5719daa666853dd02c774f4ea86b6f2b029"
+      },
+      {
+        "path": "apps/api/src/modules/money/api/money.controller.ts",
+        "sha256": "041d6014572ca3420a67fb9f99c83a0a6f55615021fe3999394e86fbf1506e92"
+      },
+      {
+        "path": "apps/api/src/modules/money/application/money-command.service.spec.ts",
+        "sha256": "e95c6f99a14846d8877c8f3cf93f001d27fe97d8e9993e70da0863704468fae6"
+      },
+      {
+        "path": "apps/api/src/modules/money/application/money-command.service.ts",
+        "sha256": "c49c31e7b5ded89b1b18d09bd4f3a6c29116f0610093faecb31822afca88846e"
+      },
+      {
+        "path": "apps/api/src/modules/money/application/money-query.service.spec.ts",
+        "sha256": "20d83b431c7de0f5f2779f799a5a94775414c33c0899468c01a52d3ed1d0a4be"
+      },
+      {
+        "path": "apps/api/src/modules/money/application/money-query.service.ts",
+        "sha256": "ceea02bbeb2066e5f704836b44bf4c9df8e6b197438cbcc532f5d776b862b7ff"
+      },
+      {
+        "path": "apps/api/src/modules/money/money.module.spec.ts",
+        "sha256": "09871fb2bcaec45d6e53e516513b71a54b4ce90e22a273126c6faa2928c4fd24"
+      },
+      {
+        "path": "apps/api/src/modules/money/money.module.ts",
+        "sha256": "33ca0079fe5fe67a280dc149d0efb225d88d0f8d7ebd80cf04df45e9f799b15b"
+      },
+      {
+        "path": "apps/api/src/modules/money/ports/activation.port.ts",
+        "sha256": "5f9737d2204f0fffd5345a59b180b15043a28200d34536ba72c9cf7accbb921e"
+      },
+      {
+        "path": "apps/api/src/modules/money/ports/collection.port.ts",
+        "sha256": "e96d707809410056356b50ff5086be7d8bc71693445fb752fcf090ac7b6e23d3"
+      },
+      {
+        "path": "apps/api/src/modules/money/ports/finance-read.port.ts",
+        "sha256": "daa60c7398fa4b164375c0b7e294efa593d3f4217d4279220dcd3fb252c4bf80"
+      },
+      {
+        "path": "apps/api/src/modules/money/ports/refund.port.ts",
+        "sha256": "8a4dbea61fc5c9d695ff166c5125d819d8f3acd974b8551e0343a53c8561be39"
+      },
+      {
+        "path": "apps/api/test/integration/r19-subscription-money.integration.spec.ts",
+        "sha256": "52e3f13c7150ac6bd9f08f4cfe41bf6c4392f5086ee0e8f09a23ea39a4b8b616"
+      },
+      {
+        "path": "apps/api/test/integration/r24-money-api.integration.spec.ts",
+        "sha256": "e6a6843ae19043ae06f0935470ad12c6abf82b923da433f780bc9ec879ac1d34"
+      },
+      {
+        "path": "apps/api/test/support/r24-money-http.fixture.ts",
+        "sha256": "692800c39741791f62ed5259310fbec3bd2383c93373bc20810a411c84e8db2d"
+      },
+      {
+        "path": "apps/api/test/unit/seed-with-tx.spec.ts",
+        "sha256": "732609ba689f4bfee5c003fdd0e5314c8448179881fd8630e3af74844115fc91"
+      },
+      {
+        "path": "packages/contracts/src/money/api-contracts.ts",
+        "sha256": "e22fc5ec3b361fca2edb99977f8c5f29ab037e2684d118309b1007c0eb2a2ec0"
+      },
+      {
+        "path": "packages/contracts/src/money/index.ts",
+        "sha256": "cfe70940024e1dc4eae695d706507048ecad66aefe8b5736f1e6777b4bf19915"
+      },
+      {
+        "path": "packages/database/prisma/migrations/20261017163000_r24_money_api_orchestration/migration.sql",
+        "sha256": "0e1df768f525607252ed4b9293078745a92be07d59fd47bf0bf0700458af5deb"
+      },
+      {
+        "path": "packages/database/prisma/schema.prisma",
+        "sha256": "3daddcff30a1bfe353e128649c8f07bac89f5da9c99da0a74a37751d32328b08"
+      },
+      {
+        "path": "packages/database/src/seed.ts",
+        "sha256": "591d3bdb22431a035aede8012723254f66ba3718c920656015c8c9fa5268beb9"
+      }
+    ]
+  },
+  "ownership": {
+    "ownedCount": 22,
+    "sharedCount": 15,
+    "coordinationCount": 2,
+    "totalChangedPaths": 39,
+    "owned": [
+      "apps/api/src/modules/money/api/money.controller.spec.ts",
+      "apps/api/src/modules/money/api/money.controller.ts",
+      "apps/api/src/modules/money/application/money-command.service.spec.ts",
+      "apps/api/src/modules/money/application/money-command.service.ts",
+      "apps/api/src/modules/money/money.module.spec.ts",
+      "apps/api/src/modules/money/money.module.ts",
+      "apps/api/src/modules/money/ports/activation.port.ts",
+      "apps/api/src/modules/money/ports/collection.port.ts",
+      "apps/api/src/modules/money/ports/finance-read.port.ts",
+      "apps/api/src/modules/money/ports/refund.port.ts",
+      "apps/api/test/integration/r24-money-api.integration.spec.ts",
+      "docs/production-readiness/r24/ACCEPTANCE.md",
+      "docs/production-readiness/r24/IMPLEMENTATION.md",
+      "docs/production-readiness/r24/RISKS.md",
+      "docs/production-readiness/r24/ROLLBACK.md",
+      "docs/production-readiness/r24/shared-change-requests/CR-001-integration.md",
+      "apps/api/src/modules/money/application/money-query.service.ts",
+      "apps/api/src/modules/money/application/money-query.service.spec.ts",
+      "apps/api/test/support/r24-money-http.fixture.ts",
+      "docs/production-readiness/r24/OWNERSHIP.md",
+      "docs/production-readiness/r24/fixtures/api-v1.json",
+      "docs/production-readiness/r24/SOURCE_MANIFEST.json"
+    ],
+    "shared": [
+      "packages/database/prisma/schema.prisma",
+      "packages/database/prisma/migrations/20261017163000_r24_money_api_orchestration/migration.sql",
+      "packages/database/src/seed.ts",
+      "packages/contracts/src/money/api-contracts.ts",
+      "packages/contracts/src/money/index.ts",
+      "apps/api/src/app.module.ts",
+      "apps/api/src/modules/iam/audit/audit.service.ts",
+      "apps/api/src/modules/iam/audit/audit.service.spec.ts",
+      "apps/api/test/integration/r19-subscription-money.integration.spec.ts",
+      "apps/api/src/app.module.spec.ts",
+      ".github/scripts/merge-integrity.test.mjs",
+      "docs/production-readiness/baseline/MODEL_MIGRATION_INDEX.json",
+      "apps/api/src/modules/iam/authorization/guards/permissions.guard.ts",
+      "apps/api/src/modules/iam/authorization/guards/permissions.guard.spec.ts",
+      "apps/api/test/unit/seed-with-tx.spec.ts"
+    ],
+    "coordination": [
+      "docs/production-readiness/post-r18/SPRINT_REGISTRY.json",
+      "docs/production-readiness/post-r18/waves/wave-02.plan.json"
+    ],
+    "record": "OWNERSHIP.md",
+    "changeRequest": "shared-change-requests/CR-001-integration.md",
+    "secondLeaseRecordedAtUtc": "2026-10-17T16:36:36Z",
+    "thirdLeaseRecordedAtUtc": "2026-10-17T16:48:10Z"
+  },
+  "runtime": {
+    "node": "24.21.0",
+    "pnpm": "10.32.1",
+    "prisma": "6.12.0",
+    "postgres": "16.15",
+    "postgresTimeZone": "UTC",
+    "postgresHost": "127.0.0.1",
+    "postgresPort": 54324,
+    "mainDatabase": "hsm_r24_o1eb57hk_final_31a393a9",
+    "shadowDatabase": "hsm_r24_o1eb57hk_shadow_31a393a9",
+    "httpFixtureDatabase": "A fresh hsm_it_r24_money_<random> database per fixture, migrated and then disposed independently.",
+    "redis": "7.0.15",
+    "redisPort": 56324,
+    "httpFixtureRedisDatabase": 12,
+    "mailpit": "1.31.6",
+    "mailpitSmtpPort": 51124,
+    "mailpitHttpPort": 58124,
+    "secrets": "Disposable runtime credentials are excluded from source and evidence."
+  },
+  "validation": {
+    "workingDirectory": "/workspace/scratch/3c602a5e36ee/homeservicemarketplace-r24",
+    "frozenInstall": {
+      "status": "PASS",
+      "command": "pnpm install --frozen-lockfile --store-dir /tmp/hsm-r26-store",
+      "dependencyOrLockfileChanges": false
+    },
+    "focusedUnits": {
+      "status": "PASS",
+      "suites": 7,
+      "passed": 223,
+      "failed": 0,
+      "skipped": 0,
+      "command": "pnpm --filter @homeservicemarketplace/api test --runInBand --runTestsByPath src/modules/money/api/money.controller.spec.ts src/modules/money/application/money-command.service.spec.ts src/modules/money/application/money-query.service.spec.ts src/modules/money/money.module.spec.ts src/modules/iam/authorization/guards/permissions.guard.spec.ts src/modules/iam/audit/audit.service.spec.ts src/app.module.spec.ts --json --outputFile=<private>/r24-unit-final.json"
+    },
+    "realR24HttpPostgresRedis": {
+      "status": "PASS",
+      "suites": 1,
+      "passed": 56,
+      "failed": 0,
+      "skipped": 0,
+      "seconds": 8.211,
+      "command": "pnpm --filter @homeservicemarketplace/api test --runTestsByPath test/integration/r24-money-api.integration.spec.ts",
+      "flags": {
+        "RUN_DB_INTEGRATION": "1",
+        "RUN_REDIS_INTEGRATION": "1"
+      },
+      "adapterEvidence": "Six explicit contract components only; no real provider rail, signature, scanner or downstream policy acceptance."
+    },
+    "migration": {
+      "status": "PASS",
+      "applied": 71,
+      "schemaDrift": "EMPTY",
+      "command": "pnpm --filter @homeservicemarketplace/database exec prisma migrate diff --from-migrations <repo>/packages/database/prisma/migrations --to-schema-datamodel <repo>/packages/database/prisma/schema.prisma --shadow-database-url \"$R24_SHADOW_DATABASE_URL\" --script --exit-code",
+      "deployCommand": "pnpm --filter @homeservicemarketplace/database migrate:deploy",
+      "constraintCommand": "pnpm --filter @homeservicemarketplace/database verify:migrations",
+      "constraintScenarios": [
+        "A: empty",
+        "B: upgrade/remediation without deletion",
+        "C: refuse email collision without partial changes",
+        "D: refuse duplicate active bids without partial changes"
+      ],
+      "seedCommand": "pnpm --filter @homeservicemarketplace/database seed",
+      "seedExecutions": 2,
+      "registeredMoneyCapabilities": 6,
+      "automaticMoneyRoleGrants": 0,
+      "financialBackfillRows": 0,
+      "priorDisposableDatabase": "Preserved after draft migration refinement; final evidence uses fresh databases, with no migration-history repair/reset."
+    },
+    "static": {
+      "status": "PASS",
+      "commands": [
+        "pnpm --filter @homeservicemarketplace/database prisma:validate",
+        "pnpm --filter @homeservicemarketplace/database generate",
+        "pnpm --filter @homeservicemarketplace/database typecheck",
+        "pnpm --filter @homeservicemarketplace/contracts typecheck",
+        "pnpm --filter @homeservicemarketplace/api lint",
+        "pnpm --filter @homeservicemarketplace/api typecheck",
+        "pnpm --filter @homeservicemarketplace/api build"
+      ],
+      "notes": "API typecheck/build invoke database and contracts builds. Prisma uses the existing guarded generator and validates the pinned engine. Explicit fixture/spec ESLint also passed because ordinary API lint excludes test/."
+    },
+    "governance": {
+      "status": "PASS",
+      "tests": 161,
+      "failed": 0,
+      "skipped": 0,
+      "commands": [
+        "node --test --test-reporter=tap .github/scripts/*.test.mjs",
+        "node .github/scripts/sprint-registry.mjs",
+        "node .github/scripts/release-baseline.mjs",
+        "node .github/scripts/production-governance.mjs"
+      ],
+      "limit": "Registry consistency and source fences do not certify deployment or branch protection."
+    },
+    "dependencyAudit": {
+      "status": "PASS",
+      "fullTree": {
+        "info": 0,
+        "low": 0,
+        "moderate": 0,
+        "high": 0,
+        "critical": 0
+      },
+      "production": {
+        "info": 0,
+        "low": 0,
+        "moderate": 0,
+        "high": 0,
+        "critical": 0
+      },
+      "commands": [
+        "node scripts/security/dependency-audit.cjs --output <private>/dependency-audit-all.json",
+        "node scripts/security/dependency-audit.cjs --prod --output <private>/dependency-audit-production.json"
+      ]
+    },
+    "fullApiRegression": {
+      "status": "FAIL_CORRECTED_BY_FOCUSED_RERUN",
+      "command": "pnpm --filter @homeservicemarketplace/api test --maxWorkers=2 --json --outputFile=<private>/full-api-final.json",
+      "services": "Real R24 PostgreSQL, Redis and separate Mailpit. Local worker concurrency is bounded; explicit concurrent-command tests remain enabled.",
+      "initialRunStatus": "FAIL",
+      "passed": 6394,
+      "failed": 1,
+      "pending": 81,
+      "passedSuites": 340,
+      "failedSuites": 1,
+      "pendingSuites": 13,
+      "seconds": 277.04,
+      "exitCode": 1,
+      "soleFailure": "Existing seed unit expected every catalog entry except outbox:replay to be automatically granted to admin. The six registered, intentionally ungranted money capabilities invalidated that old count.",
+      "correction": "The third exact lease was recorded before the test edit. The test now requires the six published capabilities to be registered with zero role grants and preserves ordinary role mappings. The complete focused seed suite passed 10/10; the original full run remains recorded as FAIL. Final-head GitHub CI provides the subsequent complete-source result.",
+      "existingConditionalTests": "81 pre-existing tests require dedicated S3, retention, browser or process gates. No R24 test was skipped. Three R22 standalone-process tests were executed separately and passed.",
+      "selectedExecutedSuites": [
+        {
+          "name": "R19 subscription money",
+          "passed": 19
+        },
+        {
+          "name": "R15 ledger",
+          "passed": 37
+        },
+        {
+          "name": "R22 reliability",
+          "passed": 21
+        },
+        {
+          "name": "R22 replay",
+          "passed": 8
+        },
+        {
+          "name": "R21 durable email with real Mailpit",
+          "passed": 13
+        },
+        {
+          "name": "R24 real HTTP/PostgreSQL/Redis",
+          "passed": 56
+        }
+      ]
+    },
+    "localArtifacts": [
+      {
+        "name": "r24-unit-final.json",
+        "sha256": "6a3bc7bb79b48cefacc293b3ea67bff0a752e7bbdee6518ed97c1f49aa6eebed",
+        "retention": "Local private execution log; final published-head GitHub run/artifact references are maintained in the PR body."
+      },
+      {
+        "name": "r24-unit-final.log",
+        "sha256": "1f5910f7a81558806d308bbc60f62089e9c2c1c70ae6fd1efcc4c7690960075a",
+        "retention": "Local private execution log; final published-head GitHub run/artifact references are maintained in the PR body."
+      },
+      {
+        "name": "r24-integration-seventh.log",
+        "sha256": "eebd3083ef654fb04e696d8007f8130c5b4e2b7bae6c1747dea5da95a6f49b9e",
+        "retention": "Local private execution log; final published-head GitHub run/artifact references are maintained in the PR body."
+      },
+      {
+        "name": "final-schema-drift.log",
+        "sha256": "e69c9f21be2b53770b13ea52bf6c4f304a9fc86b41f1e932729ec2de45574341",
+        "retention": "Local private execution log; final published-head GitHub run/artifact references are maintained in the PR body."
+      },
+      {
+        "name": "final-migrate-deploy.log",
+        "sha256": "a622a06419297b80b97dc5106932a0345cf5e1b4ccee5ef1144f20cb8c688075",
+        "retention": "Local private execution log; final published-head GitHub run/artifact references are maintained in the PR body."
+      },
+      {
+        "name": "final-seed-first.log",
+        "sha256": "9573258880e2f28ee41856299359316721dfc59ad2bf100ab36a11095c8442da",
+        "retention": "Local private execution log; final published-head GitHub run/artifact references are maintained in the PR body."
+      },
+      {
+        "name": "final-seed-second.log",
+        "sha256": "2554ae05b7f5a7c23f25082c9293e667b852072436a7b585eb69e478cbc9cf77",
+        "retention": "Local private execution log; final published-head GitHub run/artifact references are maintained in the PR body."
+      },
+      {
+        "name": "final-migration-verifier.log",
+        "sha256": "ba9e132c8d06c3b375ca5eec196459e4aacf8e1f3dd671613577c0dc2326a3f2",
+        "retention": "Local private execution log; final published-head GitHub run/artifact references are maintained in the PR body."
+      },
+      {
+        "name": "dependency-audit-all.json",
+        "sha256": "137406d6a7203e02dc822cb20f033959391ab4c13765f8c13203faf09193c198",
+        "retention": "Local private execution log; final published-head GitHub run/artifact references are maintained in the PR body."
+      },
+      {
+        "name": "dependency-audit-production.json",
+        "sha256": "1880b619f39c3c9cadaba46553ae80b5e4acf05999f2e0fb8a64e47bc5b798dd",
+        "retention": "Local private execution log; final published-head GitHub run/artifact references are maintained in the PR body."
+      },
+      {
+        "name": "governance-tests-executed.log",
+        "sha256": "7de3d7b043876dd3d91067f4b2ff7e9c07dcebb401716d9b4b5710137b2560cf",
+        "retention": "Local private execution log; final published-head GitHub run/artifact references are maintained in the PR body."
+      },
+      {
+        "name": "full-api-final.json",
+        "sha256": "dab8b1f58b540218ed7ce26ffcd30987ae53572ccce4183d51f8d63ddc49018a",
+        "retention": "Local private execution log; final published-head GitHub run/artifact references are maintained in the PR body."
+      },
+      {
+        "name": "full-api-final.log",
+        "sha256": "de1d16d672214c0f5b55898a21dece28f8d7a45562dbf74a4e673852d94efd96",
+        "retention": "Local private execution log; final published-head GitHub run/artifact references are maintained in the PR body."
+      },
+      {
+        "name": "seed-unit-final.json",
+        "sha256": "40cbe8f36ef67c45508633aea0559afb1075be443bd700335482e43097765237",
+        "retention": "Local private execution log; final published-head GitHub run/artifact references are maintained in the PR body."
+      },
+      {
+        "name": "seed-unit-final.log",
+        "sha256": "830951d08048205c90659d7ab8448f5a0d444aa5e818407c9d153a64cd745d8e",
+        "retention": "Local private execution log; final published-head GitHub run/artifact references are maintained in the PR body."
+      },
+      {
+        "name": "r22-process-final.json",
+        "sha256": "e793a0b62234a96b6f40991c24160b902b2d1e80806617c55f96ba77ce7757cc",
+        "retention": "Local private execution log; final published-head GitHub run/artifact references are maintained in the PR body."
+      },
+      {
+        "name": "r22-process-final.log",
+        "sha256": "4113d1dc1758ff4e6d1e0612aba340e2ec2eb4fcc62850034d885432d4d0ade2",
+        "retention": "Local private execution log; final published-head GitHub run/artifact references are maintained in the PR body."
+      }
+    ],
+    "seedUnitCorrection": {
+      "status": "PASS",
+      "suites": 1,
+      "passed": 10,
+      "failed": 0,
+      "skipped": 0,
+      "seconds": 1.703,
+      "command": "pnpm --filter @homeservicemarketplace/api exec jest --runInBand --runTestsByPath test/unit/seed-with-tx.spec.ts --json --outputFile=<private>/seed-unit-final.json",
+      "explicitEslint": "PASS",
+      "productionSourceChangedAfterInitialFullRun": false
+    },
+    "r22StandaloneProcess": {
+      "status": "PASS",
+      "suites": 1,
+      "passed": 3,
+      "failed": 0,
+      "skipped": 0,
+      "seconds": 6.149,
+      "command": "RUN_R22_WORKER_PROCESS=1 pnpm --filter @homeservicemarketplace/api exec jest --runInBand --runTestsByPath test/integration/r22-outbox-process.integration.spec.ts --json --outputFile=<private>/r22-process-final.json",
+      "prerequisite": "Compiled API and isolated real R24 PostgreSQL/Redis; existing worker executable used."
+    }
+  },
+  "publication": {
+    "status": "PENDING",
+    "baseBranch": "develop",
+    "draftRequired": true,
+    "finalHeadAndTree": "Set and verified in the PR body after publication; never insert this file's containing commit SHA into itself.",
+    "finalCiAndCodeQl": "Required on the actual final PR head. Missing, queued, cancelled or failed is not PASS.",
+    "mergeOrDeploymentPerformed": false
+  },
+  "acceptance": {
+    "sourceImplementation": "Implemented and locally verified by focused units, real HTTP/PostgreSQL/Redis, migration, lint/type/build, governance and dependency checks. The sole obsolete seed assertion in the full enabled API run was corrected and its complete focused suite passed. Published-head CI and CodeQL results are maintained in the PR body; this manifest does not pre-claim them.",
+    "realRailSandbox": "NOT_ACCEPTED",
+    "hosted": "NOT_RUN",
+    "release": "NOT_ACCEPTED",
+    "blockingOwners": [
+      "R29: real collection/refund adapter and external verification",
+      "R30: real manual receipt acceptance/scanning journey",
+      "R31: actual activation/entitlement participant acceptance",
+      "R32: approved refund policy and consequences",
+      "G2/integrated-wave coordinator: combined-source journey",
+      "Existing R16/R18/live-money policy owners: production financial decisions"
+    ],
+    "liveMode": "DENIED",
+    "permissionGrants": "No production or automatic role grants."
+  }
+}

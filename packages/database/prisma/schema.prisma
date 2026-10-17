@@ -73,6 +73,9 @@ model User {
 
   // R19 — subscription money foundation (back-relations only; no column change).
   moneyConfirmationsReviewed MoneyPaymentConfirmation[] @relation("MoneyConfirmationReviewer")
+  moneyCommands              MoneyCommand[]             @relation("MoneyCommandActor")
+  moneyRefundRequests        MoneyRefundRequest[]       @relation("MoneyRefundRequester")
+  moneyEventsReviewed        MoneyExternalEvent[]       @relation("MoneyExternalEventReviewer")
 
   @@index([deletedAt])
   @@index([status])
@@ -681,6 +684,7 @@ model ProviderProfile {
   moneyPaymentIntents    MoneyPaymentIntent[]
   providerSubscriptions  ProviderSubscription[]
   moneyCouponRedemptions MoneyCouponRedemption[]
+  moneyRefundRequests    MoneyRefundRequest[]
 
   @@index([primaryServiceCategoryId])
   @@index([serviceAreaCountryCode])
@@ -1036,6 +1040,9 @@ enum AuditEventType {
   OUTBOX_DEAD_LETTER_REPLAYED
   MONEY_LEDGER_POSTED
   MONEY_LEDGER_REVERSED
+  MONEY_COMMAND_ACCEPTED
+  MONEY_EXTERNAL_EVENT_PROCESSED
+  MONEY_REFUND_RESULT_RECORDED
   DISPUTE_PRIVATE_RETENTION
   DISPUTE_EVIDENCE_READ
   USER_REGISTERED
@@ -2144,6 +2151,7 @@ model MediaAsset {
 
   // R19 — subscription money foundation (back-relations only; no column change).
   moneyReceiptConfirmations MoneyPaymentConfirmation[] @relation("MoneyConfirmationReceipt")
+  moneyReceiptEvents        MoneyExternalEvent[]       @relation("MoneyExternalEventReceipt")
 
   @@unique([serviceRequestId, requestAttachmentPosition])
   /// The retention sweep: what is due for deletion and not yet deleted.
@@ -2837,6 +2845,8 @@ model LedgerAccount {
 
   owner   User?         @relation("LedgerAccountOwner", fields: [ownerUserId], references: [id], onDelete: Restrict)
   entries LedgerEntry[]
+  moneyDebitBindings  MoneyIntentBinding[] @relation("MoneyBindingDebit")
+  moneyCreditBindings MoneyIntentBinding[] @relation("MoneyBindingCredit")
 
   // Target of LedgerEntry's (accountId, currency) foreign key: an entry can
   // only reference an account in its own currency.
@@ -3015,6 +3025,8 @@ model MoneyPaymentIntent {
   attempts        MoneyPaymentAttempt[]
   confirmation    MoneyPaymentConfirmation?
   redemption      MoneyCouponRedemption?
+  binding         MoneyIntentBinding?
+  externalEvents  MoneyExternalEvent[]
 
   @@unique([id, currency])
   @@index([providerProfileId, createdAt])
@@ -3031,6 +3043,8 @@ model MoneyPaymentAttempt {
   updatedAt         DateTime                  @updatedAt
 
   paymentIntent MoneyPaymentIntent @relation(fields: [paymentIntentId], references: [id], onDelete: Restrict)
+  dispatch      MoneyDispatch?
+  externalEvents MoneyExternalEvent[]
 
   @@unique([paymentIntentId, attemptNo])
 }
@@ -3058,6 +3072,7 @@ model MoneyPaymentConfirmation {
   reviewer          User?               @relation("MoneyConfirmationReviewer", fields: [reviewerUserId], references: [id], onDelete: Restrict)
   period            SubscriptionPeriod?
   refunds           MoneyRefund[]
+  refundRequests    MoneyRefundRequest[]
 
   @@unique([source, externalConfirmationId])
   @@unique([id, currency])
@@ -3117,6 +3132,8 @@ model MoneyRefund {
 
   paymentConfirmation   MoneyPaymentConfirmation @relation(fields: [paymentConfirmationId, currency], references: [id, currency], onDelete: Restrict)
   compensatingLedgerTxn LedgerTransaction?       @relation(fields: [compensatingLedgerTransactionId], references: [id], onDelete: Restrict)
+  request               MoneyRefundRequest?
+  dispatch              MoneyDispatch?
 
   @@index([paymentConfirmationId, status])
 }
@@ -3178,6 +3195,169 @@ model MoneyReconciliationException {
 
   @@unique([kind, subjectType, subjectId])
   @@index([resolvedAt, detectedAt])
+}
+
+// R24 — durable provider-subscription orchestration. These companions do not
+// change the frozen R19 financial states. Migration creates no financial rows
+// or grants. Private command responses retain the accepted request/authority
+// fingerprint envelope and must never be exposed by a read API.
+enum MoneyAdapterMode {
+  SANDBOX
+  LIVE
+}
+
+enum MoneyExternalEventStatus {
+  RECEIVED
+  PROCESSED
+}
+
+enum MoneyRefundRequestStatus {
+  PENDING_POLICY
+  AUTHORIZED
+  REJECTED
+}
+
+enum MoneyDispatchKind {
+  COLLECTION
+  REFUND
+}
+
+enum MoneyDispatchStatus {
+  NOT_DISPATCHED
+  PENDING
+  UNKNOWN
+  SUCCEEDED
+  FAILED
+}
+
+/// One globally unique key across all actors/actions. The command and its
+/// original response are immutable and commit with the business action.
+model MoneyCommand {
+  id              String   @id @default(cuid())
+  idempotencyKey  String   @unique
+  actorUserId     String?
+  actorSystem     String?
+  action          String
+  contractVersion String
+  requestDigest   String   @db.Char(64)
+  response        Json
+  createdAt       DateTime @default(now())
+
+  actor         User?               @relation("MoneyCommandActor", fields: [actorUserId], references: [id], onDelete: Restrict)
+  refundRequest MoneyRefundRequest?
+  dispatch      MoneyDispatch?
+
+  @@index([actorUserId, createdAt, id])
+}
+
+/// Immutable server-selected binding for one paid obligation. No HTTP DTO
+/// accepts the adapter, mode, external account or ledger account identities.
+model MoneyIntentBinding {
+  paymentIntentId String @id
+  adapterId        String
+  mode             MoneyAdapterMode
+  accountReference String
+  debitAccountId   String
+  creditAccountId  String
+  configVersion    String
+  currency         String @db.Char(3)
+  createdAt        DateTime @default(now())
+
+  paymentIntent MoneyPaymentIntent @relation(fields: [paymentIntentId, currency], references: [id, currency], onDelete: Restrict)
+  debitAccount LedgerAccount @relation("MoneyBindingDebit", fields: [debitAccountId, currency], references: [id, currency], onDelete: Restrict)
+  creditAccount LedgerAccount @relation("MoneyBindingCredit", fields: [creditAccountId, currency], references: [id, currency], onDelete: Restrict)
+  dispatches MoneyDispatch[]
+
+  @@unique([paymentIntentId, currency])
+}
+
+/// Authenticated, normalized evidence only. Raw webhook bodies, signatures
+/// and credentials never enter this row. RECEIVED remains retryable after a
+/// failed activation transaction; PROCESSED freezes the committed response.
+model MoneyExternalEvent {
+  id                     String @id @default(cuid())
+  adapterId              String
+  mode                   MoneyAdapterMode
+  accountReference       String
+  externalEventId        String
+  externalConfirmationId String
+  paymentIntentId        String
+  externalOperationId    String?
+  paymentAttemptId       String?
+  source                 MoneyConfirmationSource
+  amountMinor            BigInt
+  currency               String @db.Char(3)
+  confirmedAt            DateTime
+  receiptMediaAssetId     String?
+  reviewerUserId         String?
+  requestDigest          String @db.Char(64)
+  status                 MoneyExternalEventStatus @default(RECEIVED)
+  response               Json?
+  createdAt              DateTime @default(now())
+  processedAt            DateTime?
+
+  paymentIntent MoneyPaymentIntent @relation(fields: [paymentIntentId, currency], references: [id, currency], onDelete: Restrict)
+  paymentAttempt MoneyPaymentAttempt? @relation(fields: [paymentAttemptId], references: [id], onDelete: Restrict)
+  receiptMediaAsset MediaAsset? @relation("MoneyExternalEventReceipt", fields: [receiptMediaAssetId], references: [id], onDelete: Restrict)
+  reviewer User? @relation("MoneyExternalEventReviewer", fields: [reviewerUserId], references: [id], onDelete: Restrict)
+
+  @@unique([adapterId, mode, accountReference, externalEventId], map: "MoneyExternalEvent_scoped_identity_key")
+  @@index([status, createdAt, id])
+  @@index([paymentIntentId, createdAt, id])
+}
+
+/// A provider request is not a reservation or completed refund. Only the
+/// configured R32 policy may authorize its link to an R19 MoneyRefund.
+model MoneyRefundRequest {
+  id                    String @id @default(cuid())
+  commandId             String @unique
+  providerProfileId     String
+  requestedByUserId     String
+  paymentConfirmationId String
+  amountMinor           BigInt
+  currency              String @db.Char(3)
+  reasonCode            String
+  status                MoneyRefundRequestStatus @default(PENDING_POLICY)
+  policyVersion         String?
+  decisionCode          String?
+  refundId              String? @unique
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  command MoneyCommand @relation(fields: [commandId], references: [id], onDelete: Restrict)
+  providerProfile ProviderProfile @relation(fields: [providerProfileId], references: [id], onDelete: Restrict)
+  requester User @relation("MoneyRefundRequester", fields: [requestedByUserId], references: [id], onDelete: Restrict)
+  paymentConfirmation MoneyPaymentConfirmation @relation(fields: [paymentConfirmationId, currency], references: [id, currency], onDelete: Restrict)
+  refund MoneyRefund? @relation(fields: [refundId], references: [id], onDelete: Restrict)
+
+  @@index([providerProfileId, createdAt, id])
+  @@index([status, createdAt, id])
+}
+
+/// Network work is claimed/recorded independently of financial transaction
+/// locks. A timeout preserves UNKNOWN and the same provider idempotency key.
+model MoneyDispatch {
+  id                     String @id @default(cuid())
+  kind                   MoneyDispatchKind
+  commandId              String @unique
+  paymentAttemptId       String? @unique
+  refundId               String? @unique
+  paymentIntentId        String
+  providerIdempotencyKey  String @unique
+  status                 MoneyDispatchStatus @default(NOT_DISPATCHED)
+  claimId                String?
+  leaseUntil             DateTime?
+  externalOperationId    String?
+  observation            Json?
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
+
+  command MoneyCommand @relation(fields: [commandId], references: [id], onDelete: Restrict)
+  paymentAttempt MoneyPaymentAttempt? @relation(fields: [paymentAttemptId], references: [id], onDelete: Restrict)
+  refund MoneyRefund? @relation(fields: [refundId], references: [id], onDelete: Restrict)
+  binding MoneyIntentBinding @relation(fields: [paymentIntentId], references: [paymentIntentId], onDelete: Restrict)
+
+  @@index([status, leaseUntil, id])
 }
 
 // R21 — durable outbound email.
