@@ -26,6 +26,8 @@ export class PermissionsGuard implements CanActivate {
         key.startsWith('verification:') ||
         key.startsWith('portfolio:') ||
         key.startsWith('support:') ||
+        // R24: money revocation and regrant must reach current user authority.
+        key.startsWith('money:') ||
         key === 'user:read:any' ||
         // R17-D: a revoked user-write grant must stop status changes at once.
         key === 'user:write:any',

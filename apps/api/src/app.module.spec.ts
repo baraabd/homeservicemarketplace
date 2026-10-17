@@ -4,6 +4,7 @@ import { MODULE_METADATA } from '@nestjs/common/constants';
 
 import { AppModule } from './app.module';
 import { LedgerModule } from './modules/money/ledger/ledger.module';
+import { MoneyModule } from './modules/money/money.module';
 import { SupportModule } from './modules/support/support.module';
 import { AdminSupportController, SupportController } from './modules/support/support.controller';
 
@@ -23,7 +24,12 @@ describe('AppModule feature registration', () => {
     ) as unknown[];
 
     expect(imports.filter((entry) => entry === SupportModule)).toHaveLength(1);
-    expect(imports.filter((entry) => entry === LedgerModule)).toHaveLength(1);
+    expect(imports.filter((entry) => entry === MoneyModule)).toHaveLength(1);
+    expect(imports.filter((entry) => entry === LedgerModule)).toHaveLength(0);
+    const moneyImports = Reflect.getMetadata(MODULE_METADATA.IMPORTS, MoneyModule) as unknown[];
+    expect(moneyImports.filter((entry) => entry === LedgerModule)).toHaveLength(1);
+    const moneyExports = Reflect.getMetadata(MODULE_METADATA.EXPORTS, MoneyModule) as unknown[];
+    expect(moneyExports.filter((entry) => entry === LedgerModule)).toHaveLength(1);
     expect(supportControllers).toEqual(
       expect.arrayContaining([SupportController, AdminSupportController]),
     );

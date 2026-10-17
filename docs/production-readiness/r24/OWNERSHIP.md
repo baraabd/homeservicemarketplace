@@ -19,7 +19,7 @@ Recorded at 2026-10-17T15:55:11Z, before runtime edits, by the current delegated
 
 The accepted gate identity is defined by [the G1 source manifest](../post-r18/gates/g1/SOURCE_MANIFEST.json) and [publication verification](../post-r18/gates/g1/PUBLICATION_VERIFICATION.json). The start commit adds published coordination evidence to the frozen runtime source. It does not refreeze G1. R19, R22 and R23 remain the hard dependencies.
 
-After the ownership commit, the coordinator plans a normal merge of already owner-merged develop into this R24 branch. That source contains owner-merged [R26 #174](https://github.com/baraabd/homeservicemarketplace/pull/174) and [R27 #173](https://github.com/baraabd/homeservicemarketplace/pull/173). Preserve the original frozen/start identities and incoming peer records while resolving the R24 ownership additions. No unmerged R25 source is authorized; [R25 #175](https://github.com/baraabd/homeservicemarketplace/pull/175) was observed open at `47aaec8afdf095cc1d6b2c7368bfdb10eba9906c`. This plan is not a claim that integration already occurred.
+The coordinator recorded ownership in normal-hook commit `60df8018ea9c76b1cda1c322fb279c7b9d7fde93`, then completed a normal merge of already owner-merged develop into this R24 branch at `65b2a0e59604931a4b8b87acb971c71afaaf9a74` (tree `bf13f28e3c7c21aa6b9f5d418ad2e0ea92a0fb09`). The merge preserved both parents and completed without conflicts. The incoming source contains owner-merged [R26 #174](https://github.com/baraabd/homeservicemarketplace/pull/174) and [R27 #173](https://github.com/baraabd/homeservicemarketplace/pull/173). Preserve the original frozen/start identities and incoming peer records while resolving the R24 ownership additions. No unmerged R25 source is authorized; [R25 #175](https://github.com/baraabd/homeservicemarketplace/pull/175) was observed open at `47aaec8afdf095cc1d6b2c7368bfdb10eba9906c`. This is an integration into the assigned feature branch only; develop was not modified by R24.
 
 ## Exact lane ownership
 
@@ -32,13 +32,13 @@ The canonical exact lists are synchronized in [wave-02.plan.json](../post-r18/wa
 - `docs/production-readiness/r24/fixtures/api-v1.json`
 - `docs/production-readiness/r24/SOURCE_MANIFEST.json`
 
-There are no prefix grants. The coordinator's 12-path shared lease is specified in [CR-001-integration.md](shared-change-requests/CR-001-integration.md) and mirrored exactly in both canonical records. It is the only Wave 2 R24 schema lease and expires at the earliest of R24 PR closure, the G2 decision, or coordinator revocation.
+There are no prefix grants. The coordinator's 15 shared paths under three exact leases is specified in [CR-001-integration.md](shared-change-requests/CR-001-integration.md) and mirrored exactly in both canonical records. It is the only Wave 2 R24 schema lease and expires at the earliest of R24 PR closure, the G2 decision, or coordinator revocation.
 
 ## Single-writer assignments
 
 | Writer                                                    | Exact responsibility                                                                                                                                                                                      |
 | --------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| R24 coordinating writer (`root`)                          | Money controller and controller tests; MoneyModule and module tests; all 12 shared lease paths; API fixture JSON and final source manifest.                                                               |
+| R24 coordinating writer (`root`)                          | Money controller and controller tests; MoneyModule and module tests; all 15 shared lease paths; API fixture JSON and final source manifest.                                                               |
 | `security_review`                                         | Money command service and its adjacent spec; the four exact activation, collection, finance-read and refund port files.                                                                                   |
 | `ci_diagnosis`                                            | `apps/api/test/support/r24-money-http.fixture.ts` and `apps/api/test/integration/r24-money-api.integration.spec.ts`.                                                                                      |
 | `gate_audit`, current serialized delegation               | Only this ownership record, CR-001, the R24 object in wave-02.plan.json, and the R24 object in SPRINT_REGISTRY.json; stop after validation so the coordinator can commit ownership.                       |
@@ -69,3 +69,11 @@ The migration reference index must identify the five actual new model tokens and
 Use a separate disposable R24 database and fixture identities. R24 HTTP fixtures must not populate the database used for R19's global immutable-history assertions. Any Redis, storage, process, queue or browser resource used must be independently scoped according to the frozen wave manifest; no shared data reset or process termination is authorized.
 
 Use repository-pinned Node 24.21.0 and pnpm 10.32.1, independent worktree outputs, existing scripts and exact final-source evidence. Required runtime, negative, concurrency, rollback, CI and CodeQL evidence belongs in the final R24 deliverables. Only actual results may be recorded. The ownership validation proves record consistency, not runtime acceptance.
+
+## Bounded freshness extension recorded before shared edits
+
+At 2026-10-17T16:36:36Z the continuing delegated coordinator added only `apps/api/src/modules/iam/authorization/guards/permissions.guard.ts` and its adjacent `.spec.ts` to a second exact lease. A real HTTP/PostgreSQL run passed 51 of 55 cases and exposed stale money-permission cache behavior alongside stale token role claims. The existing guard will classify `money:` as sensitive and use its existing fresh-user permission resolver; owned command/read services will require the current provider/admin base role. Root is the only shared writer. The expiry and no-grant/no-live/no-bypass boundaries remain unchanged. This extension records authorization before those two shared files are modified.
+
+## Seed regression extension recorded before test edit
+
+At 2026-10-17T16:48:10Z the continuing coordinator granted only `apps/api/test/unit/seed-with-tx.spec.ts` in a third exact lease. The full enabled API run exposed its obsolete assumption that only `outbox:replay` was registered without automatic grants. The correction must explicitly prove that the six money capabilities exist and remain ungranted alongside outbox replay, while preserving ordinary admin grants and exactly two self capabilities for customer/provider. This is an assertion strengthened for the approved catalog change; seed behavior is unchanged. Root remains the single writer. Total shared scope is 15 exact paths, recorded before this edit.

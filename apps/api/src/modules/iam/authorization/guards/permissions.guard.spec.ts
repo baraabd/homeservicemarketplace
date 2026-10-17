@@ -1,5 +1,6 @@
 import { ExecutionContext, ForbiddenException } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
+import { MONEY_API_CAPABILITIES } from '@homeservicemarketplace/contracts';
 
 import type { AuthenticatedUser } from '../../authentication/types/authenticated-user';
 import { PERMISSIONS_KEY } from '../decorators/permissions.decorator';
@@ -77,6 +78,7 @@ describe('PermissionsGuard', () => {
     'support:read',
     'support:respond',
     'user:read:any',
+    ...MONEY_API_CAPABILITIES,
   ])('denies revoked %s even when the token and cached role still grant it', async (permission) => {
     const resolver = resolverReturning([permission]);
     jest.spyOn(resolver, 'resolveFreshForUser').mockResolvedValue(new Set());
@@ -87,4 +89,18 @@ describe('PermissionsGuard', () => {
     expect(resolver.resolveFreshForUser).toHaveBeenCalledWith('revoked');
     expect(resolver.resolveForRoles).not.toHaveBeenCalled();
   });
+
+  it.each(MONEY_API_CAPABILITIES)(
+    'observes regranted %s even when a role cache still denies it',
+    async (permission) => {
+      const resolver = resolverReturning([]);
+      jest.spyOn(resolver, 'resolveFreshForUser').mockResolvedValue(new Set([permission]));
+      const guard = new PermissionsGuard(reflectorWith([permission]), resolver);
+      await expect(
+        guard.canActivate(ctxWith({ id: 'regranted', sessionId: 's', jti: 'j', roles: ['admin'] })),
+      ).resolves.toBe(true);
+      expect(resolver.resolveFreshForUser).toHaveBeenCalledWith('regranted');
+      expect(resolver.resolveForRoles).not.toHaveBeenCalled();
+    },
+  );
 });

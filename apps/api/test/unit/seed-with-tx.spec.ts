@@ -4,6 +4,7 @@
 // test/integration/seed-idempotency.spec.ts which exercises the real DB.
 
 import { seedWithTx } from '@homeservicemarketplace/database';
+import { MONEY_API_CAPABILITIES } from '@homeservicemarketplace/contracts';
 
 interface UpsertCall {
   where: Record<string, unknown>;
@@ -175,7 +176,7 @@ describe('seedWithTx (unit)', () => {
     expect(keys.length).toBeGreaterThanOrEqual(8);
   });
 
-  it('wires admin to ordinary permissions, leaves replay ungranted, and end-users self-only', async () => {
+  it('wires admin to ordinary permissions, leaves replay and money ungranted, and end-users self-only', async () => {
     const tx = makeFakeTx();
     await seedWithTx(tx as never);
     const adminId = tx._rolesByName.get('admin')!.id;
@@ -190,12 +191,18 @@ describe('seedWithTx (unit)', () => {
       p.includes(`"roleId":"${providerId}"`),
     );
 
-    const replayId = tx._permsByKey.get('outbox:replay')!.id;
-    expect(replayId).toBeDefined();
-    expect(
-      [...tx._rolePermPairs].some((pair) => pair.includes(`"permissionId":"${replayId}"`)),
-    ).toBe(false);
-    expect(adminPairs.length).toBe(tx._permsByKey.size - 1);
+    const ungrantedKeys = ['outbox:replay', ...MONEY_API_CAPABILITIES];
+    expect([...tx._permsByKey.keys()].filter((key) => key.startsWith('money:')).sort()).toEqual(
+      [...MONEY_API_CAPABILITIES].sort(),
+    );
+    for (const key of ungrantedKeys) {
+      const permissionId = tx._permsByKey.get(key)!.id;
+      expect(permissionId).toBeDefined();
+      expect(
+        [...tx._rolePermPairs].some((pair) => pair.includes(`"permissionId":"${permissionId}"`)),
+      ).toBe(false);
+    }
+    expect(adminPairs.length).toBe(tx._permsByKey.size - ungrantedKeys.length);
     expect(customerPairs.length).toBe(2);
     expect(providerPairs.length).toBe(2);
   });

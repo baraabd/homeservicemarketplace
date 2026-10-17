@@ -16,6 +16,18 @@ const ALLOWED_METADATA_KEYS = new Set<string>([
   'ledgerTransactionId',
   'reversesTransactionId',
   'actorSystem',
+  // R24 — private authority envelopes, external account references, money
+  // amounts and receipt contents are never copied to the audit stream.
+  'moneyCommandId',
+  'moneyAction',
+  'paymentIntentId',
+  'paymentAttemptId',
+  'moneyExternalEventId',
+  'paymentConfirmationId',
+  'refundRequestId',
+  'refundId',
+  'subscriptionId',
+  'subscriptionPeriodId',
   // R13 — support identifiers only. Message bodies and subjects are never
   // duplicated into the audit log.
   'supportTicketId',

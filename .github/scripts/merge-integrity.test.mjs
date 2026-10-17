@@ -52,12 +52,57 @@ for (const [field, type, relation] of inverseFields) {
   });
 }
 
-test('SupportModule and LedgerModule are both in the root module imports', () => {
-  const imports = app.match(/imports:\s*\[([\s\S]*?)\n {2}\],/);
+function assertMoneyComposition(rootSource, moneySource) {
+  const imports = rootSource.match(/imports:\s*\[([\s\S]*?)\n {2}\],/);
   assert.ok(imports, 'Root module imports must be identifiable');
-  for (const name of ['SupportModule', 'LedgerModule']) {
-    assert.match(imports[1], new RegExp(`^\\s*${name},`, 'm'));
+  for (const name of ['SupportModule', 'MoneyModule']) {
+    assert.equal(
+      [...imports[1].matchAll(new RegExp(`^\\s*${name},`, 'gm'))].length,
+      1,
+      `${name} must be mounted once`,
+    );
   }
+  assert.doesNotMatch(imports[1], /^\s*LedgerModule,/m, 'Ledger belongs to one money composition');
+  const moneyImports = moneySource.match(/imports:\s*\[([^\]]+)\]/);
+  assert.ok(moneyImports, 'MoneyModule imports must be identifiable');
+  assert.equal(
+    [...moneyImports[1].matchAll(/\bLedgerModule\b/g)].length,
+    1,
+    'Existing ledger must be mounted once',
+  );
+  const moneyExports = moneySource.match(/exports:\s*\[([^\]]+)\]/);
+  assert.ok(moneyExports, 'MoneyModule exports must be identifiable');
+  assert.equal(
+    [...moneyExports[1].matchAll(/\bLedgerModule\b/g)].length,
+    1,
+    'Existing ledger must remain exported',
+  );
+}
+
+test('SupportModule coexists with one AppModule to MoneyModule to LedgerModule composition', () => {
+  assertMoneyComposition(app, read('apps/api/src/modules/money/money.module.ts'));
+});
+
+test('the money composition fence rejects missing or duplicate mounts and lost exports', () => {
+  const money = read('apps/api/src/modules/money/money.module.ts');
+  assert.throws(() => assertMoneyComposition(app.replace(/^\s*MoneyModule,/m, ''), money));
+  assert.throws(() =>
+    assertMoneyComposition(
+      app.replace('    MoneyModule,', '    MoneyModule,\n    MoneyModule,'),
+      money,
+    ),
+  );
+  assert.throws(() => assertMoneyComposition(app.replace(/^\s*SupportModule,/m, ''), money));
+  assert.throws(() =>
+    assertMoneyComposition(app, money.replace('AuditModule, LedgerModule', 'AuditModule')),
+  );
+  assert.throws(() =>
+    assertMoneyComposition(
+      app,
+      money.replace('AuditModule, LedgerModule', 'AuditModule, LedgerModule, LedgerModule'),
+    ),
+  );
+  assert.throws(() => assertMoneyComposition(app, money.replace('    LedgerModule,', '')));
 });
 
 test('support and ledger audit identifiers both remain allowlisted', () => {
@@ -76,6 +121,16 @@ test('migration inventory preserves both support and ledger ownership', () => {
   for (const [migration, names] of [
     ['20261004120000_r13_support_tickets', ['SupportTicket', 'SupportMessage']],
     ['20261004150000_r15_ledger_foundation', ['LedgerAccount', 'LedgerTransaction', 'LedgerEntry']],
+    [
+      '20261017163000_r24_money_api_orchestration',
+      [
+        'MoneyCommand',
+        'MoneyIntentBinding',
+        'MoneyExternalEvent',
+        'MoneyRefundRequest',
+        'MoneyDispatch',
+      ],
+    ],
   ]) {
     for (const name of names) {
       model(schema, name);

@@ -65,6 +65,25 @@
           "scope": "One additive R24 migration and five orchestration tables; six registered money capability definitions with zero automatic grants; published money API contracts; one AppModule-to-MoneyModule-to-existing-LedgerModule composition; bounded money audit identifiers; stronger topology, permission and migration-inventory regression assertions. No money backfill, account grants, live rails, environment, dependencies or workflow edits. Exact minimal patches and preserved invariants are recorded in r24/shared-change-requests/CR-001-integration.md.",
           "expires": "The earliest of R24 PR closure, the G2 decision, or coordinator revocation",
           "handoff": "Root is the single writer for these shared paths. Preserve accepted R19/R22/R23 authorities and prior support/ledger checks; integrate only owner-merged develop into the R24 branch by normal merge, preserve frozen G1 identity and peer records, then publish exact source evidence and release the lease before reassignment."
+        },
+        {
+          "paths": [
+            "apps/api/src/modules/iam/authorization/guards/permissions.guard.ts",
+            "apps/api/src/modules/iam/authorization/guards/permissions.guard.spec.ts"
+          ],
+          "kind": "SERIALIZED_R24_FRESH_PERMISSION_INTEGRATION",
+          "grantedBy": "baraabd's delegated coordinator; continuing owner authority and explicit request to complete R24 with green checks; bounded extension recorded 2026-10-17T16:36:36Z before these shared edits",
+          "scope": "Add money: to the existing PermissionsGuard sensitive-permission classification so both revocation and regrant use resolveFreshForUser. Add regression assertions for all six capabilities and stale denied/granted role cache states. Preserve existing guards, non-money cache policy, role grants and all prior sensitive classifications.",
+          "expires": "The earliest of R24 PR closure, the G2 decision, or coordinator revocation",
+          "handoff": "Root is the single writer. Real HTTP tests exposed four failures caused by stale token base roles and cached money grants; required current base roles are checked inside the owned Money services, while this exact shared patch fixes the existing guard's fresh permission boundary. No cache flush, replacement guard, global RolesGuard change or security relaxation."
+        },
+        {
+          "paths": ["apps/api/test/unit/seed-with-tx.spec.ts"],
+          "kind": "SERIALIZED_R24_SEED_REGRESSION_ALIGNMENT",
+          "grantedBy": "baraabd's delegated coordinator; continuing owner authority and explicit R24 green-check request; recorded 2026-10-17T16:48:10Z before the shared test edit",
+          "scope": "Update the obsolete count that assumed outbox:replay was the only ungranted catalog entry. Explicitly require all six published money capabilities to exist and to have zero role grants, retain outbox replay refusal and exact ordinary admin/customer/provider mappings. No seed behavior or security assertion is weakened.",
+          "expires": "The earliest of R24 PR closure, the G2 decision, or coordinator revocation",
+          "handoff": "Root is the single writer. The complete enabled API run exposed the old count (expected24,actual18 admin grants) after legitimate six-definition/no-grant registration. Align this test to the approved dark capability catalog and preserve the earlier assertions."
         }
       ],
       "execution": {
@@ -77,8 +96,11 @@
         "observedDevelopSha": "21089a5065169b78bea5e711a4839e1a467531dc",
         "ownershipRecord": "docs/production-readiness/r24/OWNERSHIP.md",
         "changeRequest": "docs/production-readiness/r24/shared-change-requests/CR-001-integration.md",
-        "integrationPolicy": "After the ownership commit, a normal merge of already owner-merged develop into this R24 branch is planned; preserve the frozen G1 base and all incoming peer records. No unmerged R25 import, rebase, force-push, merge to develop or deployment is authorized.",
-        "acceptance": "NOT_ASSERTED"
+        "integrationPolicy": "After the normal-hook ownership checkpoint, owner-merged develop was integrated into this R24 branch by normal merge, preserving frozen G1 source and incoming peer records. No unmerged R25 import, rebase, force-push, merge to develop or deployment.",
+        "acceptance": "NOT_ASSERTED",
+        "ownershipCommitSha": "60df8018ea9c76b1cda1c322fb279c7b9d7fde93",
+        "integratedDevelopSha": "21089a5065169b78bea5e711a4839e1a467531dc",
+        "integrationCommitSha": "65b2a0e59604931a4b8b87acb971c71afaaf9a74"
       },
       "requiredEvidence": [
         "docs/production-readiness/r24/IMPLEMENTATION.md",
