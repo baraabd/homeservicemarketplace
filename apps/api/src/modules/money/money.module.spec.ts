@@ -15,7 +15,11 @@ import {
   MONEY_RECEIPT_ACCEPTANCE,
 } from './ports/collection.port';
 import { MONEY_FINANCE_READ } from './ports/finance-read.port';
-import { MONEY_REFUND_ADAPTER, MONEY_REFUND_POLICY } from './ports/refund.port';
+import {
+  MONEY_REFUND_ADAPTER,
+  MONEY_REFUND_CONFIRMATION_PARTICIPANT,
+  MONEY_REFUND_POLICY,
+} from './ports/refund.port';
 
 // This unit suite checks composition metadata and unavailable providers. The
 // dedicated HTTP suite boots the real AppModule with its actual validation.
@@ -98,6 +102,21 @@ describe('R24 MoneyModule composition and unavailable defaults', () => {
     await expect(
       configuredProvider(MONEY_REFUND_POLICY).authorizeReservation(),
     ).rejects.toMatchObject({
+      code: 'DEPENDENCY_UNAVAILABLE',
+      status: 503,
+      details: { reason: 'MONEY_REFUND_POLICY_UNAVAILABLE' },
+    });
+  });
+
+  it('exports one unavailable G2 confirmed-refund participant without applying a consequence', async () => {
+    expect(
+      (Reflect.getMetadata(MODULE_METADATA.EXPORTS, MoneyModule) as unknown[]).filter(
+        (entry) => entry === MONEY_REFUND_CONFIRMATION_PARTICIPANT,
+      ),
+    ).toHaveLength(1);
+    const participant = configuredProvider(MONEY_REFUND_CONFIRMATION_PARTICIPANT);
+    expect(participant.isConfigured()).toBe(false);
+    await expect(participant.applyConfirmedRefund()).rejects.toMatchObject({
       code: 'DEPENDENCY_UNAVAILABLE',
       status: 503,
       details: { reason: 'MONEY_REFUND_POLICY_UNAVAILABLE' },

@@ -1,0 +1,20 @@
+# G2 — Requirements and evidence map
+
+Complete R24–R28 requirements remain in the retained G1 `prompts/R19-R28.md`. The owner's attached R32 prompt is retained under `prompts/R32.md`; its original attachment identity is recorded in `ACCEPTANCE_EVIDENCE.json`. This map narrows no requirement or test.
+
+| Mandatory gate category        | Required evidence on the candidate                                                                                                                                                                                                                                    |
+| ------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `combined-wave2-checks`        | Full candidate SHA/tree and latest required PR workflow/check results, CodeQL result, formatting/lint/type/build/unit, real migrations/DB/Redis, source provenance and known skips. Individual premerge greens cannot transfer.                                       |
+| `r24-interface-freeze`         | One MoneyModule/LedgerModule composition, actual current port consumers, required transaction boundaries, unavailable defaults, real R24 HTTP/permission/currency/idempotency/concurrency/rollback tests; captured model and wire versions.                           |
+| `r25-real-replicas-recovery`   | Original disposable harness: independent replicas, real routes/committed state, restart/reconnect, repeated frames, fallback, durable read state, suspension/logout, bilingual mobile/desktop/keyboard behavior; no failing/skipped/flaky browser case.               |
+| `r26-money-interface-security` | Current guards/CSRF/role/permission/IDOR, restricted evidence and no privilege escalation through money composition; actual denied requests and CodeQL/secret/dependency evidence.                                                                                    |
+| `r27-measured-performance`     | Same harness on frozen/candidate runtimes, representative populated reads, query counts/plans/pages/ownership, private response policy, real logout/revocation, original performance proposals plus explicit measured owner decisions; no unsupported capacity claim. |
+| `r28-checked-platform-plan`    | Checked existing-topology plan, input/edge schema, exact source references and fingerprint, negative tests and additive CI; nine owner-input groups and six remaining hosted-check descriptions remain explicit in the selected #179 report. No fictional deployment. |
+
+## R32 start boundary
+
+The supplied package is Wave 3 lane 4, branch `feat/r32-refund-recovery`, hard dependencies R24/R22/R23. Its owned implementation roots are refunds, recovery, production refund-recovery scripts and its evidence directory. The exact planned file list and dedicated integration test are in `wave-03.plan.json`; no source edit is authorized while G2 is blocked.
+
+Later shared changes require a recorded single-writer lease for MoneyCommandService, module composition and actual outbox registration. A speculative migration, replacement money table, standalone ledger or same-wave source dependency is not preapproved. R29/R30/R31/R33 remain reserved in this intake. Parallel #178 contains a separate conditional R29 assignment; its full prompt/provenance and coordinator schema require reconciliation before any executable reassignment.
+
+R32 must prove ownership/currency/unpaid/already-refunded negatives, concurrent partial bounds, crashes before/after transport, provider success with lost response, unchanged-key retries, query-first unknown recovery, duplicate/out-of-order observations, approved expiry behavior, audit failure and entitlement rollback on real PostgreSQL. Real adapter-backed refunds occur at the assembled Wave 3 gate; R34 later provides cross-rail acceptance. Policy absence blocks live execution and does not excuse unfinished source or available tests.

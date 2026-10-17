@@ -67,6 +67,143 @@ describe('R25 multi-tab presentation coordination (Web Locks contract doubles)',
     expect(present).toHaveBeenCalledTimes(1);
   });
 
+  it('pairs sources without collapsing distinct fully identified events and stores only opaque claims', async () => {
+    withLocks();
+    const present = vi.fn();
+    for (const actor of ['actor-a', 'actor-b']) {
+      await presentNotificationOnce({
+        userId: 'private-user',
+        keys: [`transition:${actor}`],
+        pairedSource: {
+          counterpartKey: 'private-unattributed',
+          claimKey: 'private-attributed',
+        },
+        present,
+      });
+    }
+    expect(present).toHaveBeenCalledTimes(2);
+    await presentNotificationOnce({
+      userId: 'private-user',
+      keys: ['immutable:notification:private-id'],
+      pairedSource: {
+        counterpartKey: 'private-attributed',
+        claimKey: 'private-unattributed',
+      },
+      present,
+    });
+    await presentNotificationOnce({
+      userId: 'private-user',
+      keys: ['immutable:notification:private-id'],
+      present,
+    });
+    expect(present).toHaveBeenCalledTimes(2);
+    const raw = localStorage.getItem(
+      `hsm:notif-presentation:v1:${notificationFingerprint('private-user')}`,
+    )!;
+    expect(raw).not.toContain('private');
+    expect(raw).not.toContain('actor');
+    expect(JSON.parse(raw)).toHaveLength(3);
+  });
+
+  it('bounds paired markers and lets their original five-minute claims expire', async () => {
+    withLocks();
+    let now = Date.now();
+    vi.spyOn(Date, 'now').mockImplementation(() => now);
+    const present = vi.fn();
+    for (let i = 0; i < PRESENTATION_CAPACITY; i += 1) {
+      await presentNotificationOnce({
+        userId: 'u-1',
+        keys: [`original-${i}`],
+        pairedSource: { claimKey: `pair-${i}`, counterpartKey: `counterpart-${i}` },
+        present,
+      });
+    }
+    const key = `hsm:notif-presentation:v1:${notificationFingerprint('u-1')}`;
+    expect(JSON.parse(localStorage.getItem(key)!)).toHaveLength(PRESENTATION_CAPACITY);
+    now += PRESENTATION_WINDOW_MS - 1;
+    await presentNotificationOnce({
+      userId: 'u-1',
+      keys: ['paired-before-expiry'],
+      pairedSource: { claimKey: 'counterpart-199', counterpartKey: 'pair-199' },
+      present,
+    });
+    expect(present).toHaveBeenCalledTimes(PRESENTATION_CAPACITY);
+    now += 1;
+    await presentNotificationOnce({
+      userId: 'u-1',
+      keys: ['paired-after-expiry'],
+      pairedSource: { claimKey: 'counterpart-198', counterpartKey: 'pair-198' },
+      present,
+    });
+    expect(present).toHaveBeenCalledTimes(PRESENTATION_CAPACITY + 1);
+  });
+
+  it('does not let a duplicate consume the next event awaiting its counterpart', async () => {
+    withLocks();
+    const present = vi.fn();
+    const attributed = { claimKey: 'attributed', counterpartKey: 'unattributed' };
+    const unattributed = { claimKey: 'unattributed', counterpartKey: 'attributed' };
+    for (const [id, pairedSource] of [
+      ['actor-a', attributed],
+      ['rest-a', unattributed],
+      ['actor-b', attributed],
+      ['rest-a', unattributed],
+      ['actor-a', attributed],
+      ['rest-b', unattributed],
+    ] as const) {
+      await presentNotificationOnce({ userId: 'u-1', keys: [id], pairedSource, present });
+    }
+    expect(present).toHaveBeenCalledTimes(2);
+  });
+
+  it('retires only the duplicate counterpart with the same opaque durable identity', async () => {
+    withLocks();
+    const present = vi.fn();
+    const attributed = { claimKey: 'attributed', counterpartKey: 'unattributed' };
+    const unattributed = { claimKey: 'unattributed', counterpartKey: 'attributed' };
+    await presentNotificationOnce({
+      userId: 'u-1',
+      keys: ['notification-a'],
+      pairedSource: { ...unattributed, identityKey: 'private-notification-a' },
+      present,
+    });
+    await presentNotificationOnce({
+      userId: 'u-1',
+      keys: ['notification-b'],
+      pairedSource: { ...unattributed, identityKey: 'private-notification-b' },
+      present,
+    });
+    // The B replay is unrelated to the retained A marker and cannot retire it.
+    await presentNotificationOnce({
+      userId: 'u-1',
+      keys: ['notification-b', 'actor-b'],
+      pairedSource: { ...attributed, identityKey: 'private-notification-b' },
+      present,
+    });
+    const storageKey = `hsm:notif-presentation:v1:${notificationFingerprint('u-1')}`;
+    expect(JSON.parse(localStorage.getItem(storageKey)!)).toContainEqual({
+      key: notificationFingerprint('unattributed'),
+      at: expect.any(Number),
+      identity: notificationFingerprint('private-notification-a'),
+    });
+    await presentNotificationOnce({
+      userId: 'u-1',
+      keys: ['notification-a', 'actor-a'],
+      pairedSource: { ...attributed, identityKey: 'private-notification-a' },
+      present,
+    });
+    await presentNotificationOnce({
+      userId: 'u-1',
+      keys: ['actor-c'],
+      pairedSource: attributed,
+      present,
+    });
+    expect(present).toHaveBeenCalledTimes(3);
+    const raw = localStorage.getItem(storageKey)!;
+    expect(raw).not.toContain('private');
+    expect(raw).not.toContain('notification');
+  });
+
   it('leaves a hidden tab claim available to a visible tab', async () => {
     withLocks();
     const visible = vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('hidden');

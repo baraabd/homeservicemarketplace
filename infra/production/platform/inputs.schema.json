@@ -1,0 +1,1258 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "HSM R28 operator-managed staging inputs and edge policy",
+  "description": "Closed configuration-only contracts. Validate platformInput at the root and edgePolicy through #/$defs/edgePolicy. No schema retrieval, executable templates, grants or deployment are authorized.",
+  "$ref": "#/$defs/platformInput",
+  "$defs": {
+    "nullableIdentifier": {
+      "type": ["string", "null"],
+      "minLength": 1,
+      "maxLength": 255,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/#-]*$",
+      "description": "Opaque non-secret resource or evidence reference; never dereferenced or treated as proof of approval."
+    },
+    "nullableHost": {
+      "type": ["string", "null"],
+      "minLength": 1,
+      "maxLength": 253,
+      "pattern": "^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)*$",
+      "description": "DNS hostname only; no scheme, credentials, port, path or query. Null means unselected."
+    },
+    "nullableRegistryHost": {
+      "type": ["string", "null"],
+      "minLength": 1,
+      "maxLength": 253,
+      "pattern": "^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)*(?::[0-9]{1,5})?$"
+    },
+    "nullableRepository": {
+      "type": ["string", "null"],
+      "minLength": 1,
+      "maxLength": 255,
+      "pattern": "^[a-z0-9][a-z0-9./:_-]*$",
+      "description": "Exact approved registry/repository reference before @sha256; reference alone grants no publishing or pull authority."
+    },
+    "nullableDatabaseIdentifier": {
+      "type": ["string", "null"],
+      "minLength": 1,
+      "maxLength": 63,
+      "pattern": "^[a-z_][a-z0-9_]*$"
+    },
+    "nullableBucket": {
+      "type": ["string", "null"],
+      "minLength": 3,
+      "maxLength": 63,
+      "pattern": "^[a-z0-9][a-z0-9.-]*[a-z0-9]$"
+    },
+    "httpsOrigin": {
+      "type": "string",
+      "minLength": 9,
+      "maxLength": 2048,
+      "pattern": "^https://[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)*(?::[0-9]{1,5})?$",
+      "description": "Additionally checked as an exact canonical HTTPS origin by the validator and staging authority."
+    },
+    "stagingRelease": {
+      "type": "object",
+      "properties": {
+        "schemaVersion": {
+          "const": 1
+        },
+        "sourceSha": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{40}$"
+        },
+        "dockerContext": {
+          "type": "string",
+          "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,79}$"
+        },
+        "projectName": {
+          "type": "string",
+          "pattern": "^hsm-staging-[a-z0-9-]{1,48}$"
+        },
+        "externalNetwork": {
+          "type": "string",
+          "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,79}$"
+        },
+        "images": {
+          "type": "object",
+          "properties": {
+            "api": {
+              "type": "string",
+              "maxLength": 512,
+              "pattern": "^[a-z0-9][a-z0-9./:_-]*@sha256:[a-f0-9]{64}$"
+            },
+            "migrator": {
+              "type": "string",
+              "maxLength": 512,
+              "pattern": "^[a-z0-9][a-z0-9./:_-]*@sha256:[a-f0-9]{64}$"
+            },
+            "web": {
+              "type": "string",
+              "maxLength": 512,
+              "pattern": "^[a-z0-9][a-z0-9./:_-]*@sha256:[a-f0-9]{64}$"
+            }
+          },
+          "required": ["api", "migrator", "web"],
+          "additionalProperties": false
+        },
+        "secretFiles": {
+          "type": "object",
+          "properties": {
+            "api": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 4096,
+              "description": "Absolute external immutable snapshot path; check-only plan validation never opens it. staging.cjs owns real file checks."
+            },
+            "migration": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 4096,
+              "description": "Absolute external immutable snapshot path; check-only plan validation never opens it. staging.cjs owns real file checks."
+            }
+          },
+          "required": ["api", "migration"],
+          "additionalProperties": false
+        },
+        "ports": {
+          "type": "object",
+          "properties": {
+            "api": {
+              "type": "integer",
+              "minimum": 1024,
+              "maximum": 65535
+            },
+            "web": {
+              "type": "integer",
+              "minimum": 1024,
+              "maximum": 65535
+            }
+          },
+          "required": ["api", "web"],
+          "additionalProperties": false
+        },
+        "webOrigin": {
+          "$ref": "#/$defs/httpsOrigin"
+        },
+        "apiOrigin": {
+          "$ref": "#/$defs/httpsOrigin"
+        },
+        "onboardingV2": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "schemaVersion",
+        "sourceSha",
+        "dockerContext",
+        "projectName",
+        "externalNetwork",
+        "images",
+        "secretFiles",
+        "ports",
+        "webOrigin",
+        "apiOrigin",
+        "onboardingV2"
+      ],
+      "additionalProperties": false,
+      "description": "Existing staging.cjs version-1 manifest, not a new deployment interface. Its sourceSha is the selected accepted release revision, not necessarily frozenBaseSha."
+    },
+    "platformInput": {
+      "type": "object",
+      "properties": {
+        "schema": {
+          "const": "hsm.platform-inputs/v1"
+        },
+        "status": {
+          "const": "CONFIGURATION_ONLY"
+        },
+        "frozenBaseSha": {
+          "const": "40cdac5c9ce6acaa8dedc0385984a807ae9a84d0",
+          "description": "G1 source inspected for R28. Never confuse it with a future release.sourceSha."
+        },
+        "environment": {
+          "const": "staging",
+          "description": "The existing launcher has staging authority only; no production apply is added."
+        },
+        "target": {
+          "type": "object",
+          "properties": {
+            "provider": {
+              "$ref": "#/$defs/nullableIdentifier"
+            },
+            "accountId": {
+              "$ref": "#/$defs/nullableIdentifier"
+            },
+            "region": {
+              "$ref": "#/$defs/nullableIdentifier"
+            },
+            "hostId": {
+              "$ref": "#/$defs/nullableIdentifier"
+            },
+            "dnsZoneId": {
+              "$ref": "#/$defs/nullableIdentifier"
+            },
+            "registryHost": {
+              "$ref": "#/$defs/nullableRegistryHost"
+            },
+            "registryRepositories": {
+              "type": "object",
+              "properties": {
+                "api": {
+                  "$ref": "#/$defs/nullableRepository"
+                },
+                "migrator": {
+                  "$ref": "#/$defs/nullableRepository"
+                },
+                "web": {
+                  "$ref": "#/$defs/nullableRepository"
+                }
+              },
+              "required": ["api", "migrator", "web"],
+              "additionalProperties": false
+            },
+            "secretStoreId": {
+              "$ref": "#/$defs/nullableIdentifier"
+            },
+            "operatorApprovalRef": {
+              "$ref": "#/$defs/nullableIdentifier"
+            },
+            "spendApprovalRef": {
+              "$ref": "#/$defs/nullableIdentifier"
+            },
+            "monthlyCostCeiling": {
+              "type": "object",
+              "properties": {
+                "amount": {
+                  "type": ["number", "null"],
+                  "minimum": 0,
+                  "maximum": 1000000000
+                },
+                "currency": {
+                  "type": ["string", "null"],
+                  "pattern": "^[A-Z]{3}$"
+                }
+              },
+              "required": ["amount", "currency"],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "provider",
+            "accountId",
+            "region",
+            "hostId",
+            "dnsZoneId",
+            "registryHost",
+            "registryRepositories",
+            "secretStoreId",
+            "operatorApprovalRef",
+            "spendApprovalRef",
+            "monthlyCostCeiling"
+          ],
+          "additionalProperties": false,
+          "description": "All owner selections remain null in the prepared template. Filled metadata is still not verified authorization."
+        },
+        "release": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/stagingRelease"
+            }
+          ]
+        },
+        "services": {
+          "type": "object",
+          "properties": {
+            "postgres": {
+              "type": "object",
+              "properties": {
+                "majorVersion": {
+                  "const": 16
+                },
+                "resourceId": {
+                  "$ref": "#/$defs/nullableIdentifier"
+                },
+                "host": {
+                  "$ref": "#/$defs/nullableHost"
+                },
+                "database": {
+                  "$ref": "#/$defs/nullableDatabaseIdentifier"
+                },
+                "schema": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 63,
+                  "pattern": "^[a-z_][a-z0-9_]*$"
+                },
+                "tls": {
+                  "const": "require-strict"
+                },
+                "apiRole": {
+                  "$ref": "#/$defs/nullableDatabaseIdentifier"
+                },
+                "migratorRole": {
+                  "$ref": "#/$defs/nullableDatabaseIdentifier"
+                },
+                "apiPrivileges": {
+                  "type": "object",
+                  "properties": {
+                    "superuser": {
+                      "const": false
+                    },
+                    "createDatabase": {
+                      "const": false
+                    },
+                    "createRole": {
+                      "const": false
+                    },
+                    "replication": {
+                      "const": false
+                    },
+                    "bypassRls": {
+                      "const": false
+                    },
+                    "schemaOwner": {
+                      "const": false
+                    },
+                    "relationOwner": {
+                      "const": false
+                    },
+                    "schemaCreate": {
+                      "const": false
+                    },
+                    "migratorMembership": {
+                      "const": false
+                    },
+                    "migrationHistoryWrite": {
+                      "const": false
+                    },
+                    "truncate": {
+                      "const": false
+                    }
+                  },
+                  "required": [
+                    "superuser",
+                    "createDatabase",
+                    "createRole",
+                    "replication",
+                    "bypassRls",
+                    "schemaOwner",
+                    "relationOwner",
+                    "schemaCreate",
+                    "migratorMembership",
+                    "migrationHistoryWrite",
+                    "truncate"
+                  ],
+                  "additionalProperties": false
+                },
+                "migratorPrivileges": {
+                  "type": "object",
+                  "properties": {
+                    "superuser": {
+                      "const": false
+                    },
+                    "createDatabase": {
+                      "const": false
+                    },
+                    "createRole": {
+                      "const": false
+                    },
+                    "replication": {
+                      "const": false
+                    },
+                    "bypassRls": {
+                      "const": false
+                    },
+                    "ddlOnlyInApplicationSchema": {
+                      "const": true
+                    }
+                  },
+                  "required": [
+                    "superuser",
+                    "createDatabase",
+                    "createRole",
+                    "replication",
+                    "bypassRls",
+                    "ddlOnlyInApplicationSchema"
+                  ],
+                  "additionalProperties": false
+                },
+                "privilegeEvidenceRef": {
+                  "$ref": "#/$defs/nullableIdentifier"
+                }
+              },
+              "required": [
+                "majorVersion",
+                "resourceId",
+                "host",
+                "database",
+                "schema",
+                "tls",
+                "apiRole",
+                "migratorRole",
+                "apiPrivileges",
+                "migratorPrivileges",
+                "privilegeEvidenceRef"
+              ],
+              "additionalProperties": false,
+              "description": "Requested role policy only. Target-specific catalogue and denied-operation checks remain required; names or references cannot certify grants."
+            },
+            "redis": {
+              "type": "object",
+              "properties": {
+                "majorVersion": {
+                  "const": 7
+                },
+                "resourceId": {
+                  "$ref": "#/$defs/nullableIdentifier"
+                },
+                "host": {
+                  "$ref": "#/$defs/nullableHost"
+                },
+                "dedicated": {
+                  "const": true
+                },
+                "tls": {
+                  "const": true
+                },
+                "auth": {
+                  "const": "password-default-user"
+                },
+                "aclEvidenceRef": {
+                  "$ref": "#/$defs/nullableIdentifier"
+                }
+              },
+              "required": [
+                "majorVersion",
+                "resourceId",
+                "host",
+                "dedicated",
+                "tls",
+                "auth",
+                "aclEvidenceRef"
+              ],
+              "additionalProperties": false,
+              "description": "Current frozen clients expose a password, not an ACL username. Pub/Sub isolation requires a dedicated environment instance at this base."
+            },
+            "storage": {
+              "type": "object",
+              "properties": {
+                "authority": {
+                  "const": "infra/production/storage/storage-plan.json"
+                },
+                "publicBucket": {
+                  "$ref": "#/$defs/nullableBucket"
+                },
+                "portfolioStagingBucket": {
+                  "$ref": "#/$defs/nullableBucket"
+                },
+                "restrictedBucket": {
+                  "$ref": "#/$defs/nullableBucket"
+                },
+                "accessEvidenceRef": {
+                  "$ref": "#/$defs/nullableIdentifier"
+                }
+              },
+              "required": [
+                "authority",
+                "publicBucket",
+                "portfolioStagingBucket",
+                "restrictedBucket",
+                "accessEvidenceRef"
+              ],
+              "additionalProperties": false
+            },
+            "smtp": {
+              "type": "object",
+              "properties": {
+                "provider": {
+                  "$ref": "#/$defs/nullableIdentifier"
+                },
+                "host": {
+                  "$ref": "#/$defs/nullableHost"
+                },
+                "port": {
+                  "type": "integer",
+                  "enum": [465, 587]
+                },
+                "tlsMode": {
+                  "type": "string",
+                  "enum": ["implicit-tls", "starttls-required"]
+                },
+                "senderDomain": {
+                  "$ref": "#/$defs/nullableHost"
+                },
+                "deliveryEvidenceRef": {
+                  "$ref": "#/$defs/nullableIdentifier"
+                }
+              },
+              "required": [
+                "provider",
+                "host",
+                "port",
+                "tlsMode",
+                "senderDomain",
+                "deliveryEvidenceRef"
+              ],
+              "additionalProperties": false,
+              "description": "Semantics require 465 with implicit-tls, or 587 with starttls-required. A delivery reference alone does not prove external delivery."
+            },
+            "clamav": {
+              "type": "object",
+              "properties": {
+                "resourceId": {
+                  "$ref": "#/$defs/nullableIdentifier"
+                },
+                "host": {
+                  "$ref": "#/$defs/nullableHost"
+                },
+                "port": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 65535
+                },
+                "exposure": {
+                  "const": "private"
+                },
+                "verdictEvidenceRef": {
+                  "$ref": "#/$defs/nullableIdentifier"
+                }
+              },
+              "required": ["resourceId", "host", "port", "exposure", "verdictEvidenceRef"],
+              "additionalProperties": false
+            },
+            "mongo": {
+              "type": "object",
+              "properties": {
+                "enabled": {
+                  "const": false
+                }
+              },
+              "required": ["enabled"],
+              "additionalProperties": false
+            }
+          },
+          "required": ["postgres", "redis", "storage", "smtp", "clamav", "mongo"],
+          "additionalProperties": false
+        },
+        "runtime": {
+          "type": "object",
+          "properties": {
+            "apiReplicas": {
+              "const": 1
+            },
+            "workerPlacement": {
+              "type": "object",
+              "properties": {
+                "outbox": {
+                  "const": "api"
+                },
+                "outboxCleanup": {
+                  "const": "api"
+                },
+                "evidenceScan": {
+                  "const": "api"
+                },
+                "verificationExpiry": {
+                  "const": "api"
+                },
+                "publicMediaCleanup": {
+                  "const": "api"
+                },
+                "evidenceRetention": {
+                  "const": "dist/evidence-retention.worker.js"
+                },
+                "disputeMaintenance": {
+                  "const": "dist/dispute-maintenance.worker.js"
+                }
+              },
+              "required": [
+                "outbox",
+                "outboxCleanup",
+                "evidenceScan",
+                "verificationExpiry",
+                "publicMediaCleanup",
+                "evidenceRetention",
+                "disputeMaintenance"
+              ],
+              "additionalProperties": false
+            },
+            "containerStopGraceSeconds": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 300
+            },
+            "outboxShutdownGraceMs": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 120000
+            }
+          },
+          "required": [
+            "apiReplicas",
+            "workerPlacement",
+            "containerStopGraceSeconds",
+            "outboxShutdownGraceMs"
+          ],
+          "additionalProperties": false,
+          "description": "Container stop grace must strictly exceed the declared effective outbox shutdown grace; live configuration still needs protected preflight verification."
+        },
+        "network": {
+          "type": "object",
+          "properties": {
+            "externalNetwork": {
+              "$ref": "#/$defs/nullableIdentifier"
+            },
+            "publicListeners": {
+              "const": ["https-edge:443"]
+            },
+            "apiBind": {
+              "const": "127.0.0.1"
+            },
+            "webBind": {
+              "const": "127.0.0.1"
+            },
+            "databasePublicAccess": {
+              "const": false
+            },
+            "redisPublicAccess": {
+              "const": false
+            },
+            "managementPublicAccess": {
+              "const": false
+            },
+            "trustProxyHops": {
+              "const": 1
+            },
+            "boundaryEvidenceRef": {
+              "$ref": "#/$defs/nullableIdentifier"
+            }
+          },
+          "required": [
+            "externalNetwork",
+            "publicListeners",
+            "apiBind",
+            "webBind",
+            "databasePublicAccess",
+            "redisPublicAccess",
+            "managementPublicAccess",
+            "trustProxyHops",
+            "boundaryEvidenceRef"
+          ],
+          "additionalProperties": false,
+          "description": "One approved host-local HTTPS edge. Every extra proxy hop or public listener requires reviewed coordinator integration."
+        },
+        "secrets": {
+          "type": "object",
+          "properties": {
+            "delivery": {
+              "const": "external-immutable-files"
+            },
+            "apiSnapshotId": {
+              "$ref": "#/$defs/nullableIdentifier"
+            },
+            "migrationSnapshotId": {
+              "$ref": "#/$defs/nullableIdentifier"
+            },
+            "serializedRotation": {
+              "const": true
+            },
+            "rotationLockEvidenceRef": {
+              "$ref": "#/$defs/nullableIdentifier"
+            }
+          },
+          "required": [
+            "delivery",
+            "apiSnapshotId",
+            "migrationSnapshotId",
+            "serializedRotation",
+            "rotationLockEvidenceRef"
+          ],
+          "additionalProperties": false,
+          "description": "Snapshot identifiers contain no secret bytes. File mounts do not certify encryption, a secret manager, ACLs or serialization."
+        },
+        "provenance": {
+          "type": "object",
+          "properties": {
+            "registryEvidenceRef": {
+              "$ref": "#/$defs/nullableIdentifier"
+            },
+            "apiAttestationRef": {
+              "$ref": "#/$defs/nullableIdentifier"
+            },
+            "migratorAttestationRef": {
+              "$ref": "#/$defs/nullableIdentifier"
+            },
+            "webAttestationRef": {
+              "$ref": "#/$defs/nullableIdentifier"
+            }
+          },
+          "required": [
+            "registryEvidenceRef",
+            "apiAttestationRef",
+            "migratorAttestationRef",
+            "webAttestationRef"
+          ],
+          "additionalProperties": false,
+          "description": "Trusted registry/build evidence is reviewed separately; OCI labels and strings are not signed provenance."
+        },
+        "isolation": {
+          "type": "object",
+          "properties": {
+            "production": {
+              "type": "object",
+              "properties": {
+                "databaseResourceId": {
+                  "$ref": "#/$defs/nullableIdentifier"
+                },
+                "redisResourceId": {
+                  "$ref": "#/$defs/nullableIdentifier"
+                },
+                "storageBuckets": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "minLength": 3,
+                    "maxLength": 63,
+                    "pattern": "^[a-z0-9][a-z0-9.-]*[a-z0-9]$"
+                  },
+                  "minItems": 0,
+                  "maxItems": 3,
+                  "uniqueItems": true
+                }
+              },
+              "required": ["databaseResourceId", "redisResourceId", "storageBuckets"],
+              "additionalProperties": false
+            },
+            "restore": {
+              "type": "object",
+              "properties": {
+                "targetRef": {
+                  "$ref": "#/$defs/nullableIdentifier"
+                },
+                "databaseResourceId": {
+                  "$ref": "#/$defs/nullableIdentifier"
+                },
+                "redisResourceId": {
+                  "$ref": "#/$defs/nullableIdentifier"
+                },
+                "storageBuckets": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "minLength": 3,
+                    "maxLength": 63,
+                    "pattern": "^[a-z0-9][a-z0-9.-]*[a-z0-9]$"
+                  },
+                  "minItems": 0,
+                  "maxItems": 3,
+                  "uniqueItems": true
+                },
+                "networkId": {
+                  "$ref": "#/$defs/nullableIdentifier"
+                },
+                "approvalRef": {
+                  "$ref": "#/$defs/nullableIdentifier"
+                },
+                "outboundDelivery": {
+                  "const": "disabled"
+                }
+              },
+              "required": [
+                "targetRef",
+                "databaseResourceId",
+                "redisResourceId",
+                "storageBuckets",
+                "networkId",
+                "approvalRef",
+                "outboundDelivery"
+              ],
+              "additionalProperties": false
+            },
+            "hostedTests": {
+              "type": "object",
+              "properties": {
+                "targetRef": {
+                  "$ref": "#/$defs/nullableIdentifier"
+                },
+                "approvalRef": {
+                  "$ref": "#/$defs/nullableIdentifier"
+                },
+                "sprints": {
+                  "const": ["R35", "R37"]
+                }
+              },
+              "required": ["targetRef", "approvalRef", "sprints"],
+              "additionalProperties": false
+            }
+          },
+          "required": ["production", "restore", "hostedTests"],
+          "additionalProperties": false,
+          "description": "Production, staging and restore resources must be distinct. Unknown comparison identifiers retain a blocker; a Redis database number alone cannot prove separation."
+        },
+        "recovery": {
+          "type": "object",
+          "properties": {
+            "decision": {
+              "const": "PROPOSED"
+            },
+            "postgres": {
+              "type": "object",
+              "properties": {
+                "method": {
+                  "const": "base-backup-and-continuous-wal"
+                },
+                "retentionDays": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 3650
+                },
+                "rpoSeconds": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 86400
+                },
+                "rtoSeconds": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 604800
+                }
+              },
+              "required": ["method", "retentionDays", "rpoSeconds", "rtoSeconds"],
+              "additionalProperties": false
+            },
+            "storage": {
+              "type": "object",
+              "properties": {
+                "versioning": {
+                  "const": "Enabled"
+                },
+                "retentionAuthority": {
+                  "const": "infra/production/storage/storage-plan.json"
+                }
+              },
+              "required": ["versioning", "retentionAuthority"],
+              "additionalProperties": false
+            },
+            "ownerApprovalRef": {
+              "$ref": "#/$defs/nullableIdentifier"
+            },
+            "restoreEvidenceRef": {
+              "$ref": "#/$defs/nullableIdentifier"
+            }
+          },
+          "required": ["decision", "postgres", "storage", "ownerApprovalRef", "restoreEvidenceRef"],
+          "additionalProperties": false,
+          "description": "Numbers are explicit proposals for owner acceptance; CONFIGURATION_ONLY never reports a backup or restore as verified."
+        },
+        "policy": {
+          "type": "object",
+          "properties": {
+            "liveMoneyEnabled": {
+              "const": false
+            },
+            "verification": {
+              "const": "preserve"
+            },
+            "workAccess": {
+              "const": "preserve"
+            },
+            "demoProviders": {
+              "const": false
+            },
+            "adminGrants": {
+              "const": false
+            },
+            "disputeMode": {
+              "const": "off"
+            },
+            "evidenceRetentionMode": {
+              "const": "off"
+            }
+          },
+          "required": [
+            "liveMoneyEnabled",
+            "verification",
+            "workAccess",
+            "demoProviders",
+            "adminGrants",
+            "disputeMode",
+            "evidenceRetentionMode"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "schema",
+        "status",
+        "frozenBaseSha",
+        "environment",
+        "target",
+        "release",
+        "services",
+        "runtime",
+        "network",
+        "secrets",
+        "provenance",
+        "isolation",
+        "recovery",
+        "policy"
+      ],
+      "additionalProperties": false
+    },
+    "edgePolicy": {
+      "type": "object",
+      "properties": {
+        "schema": {
+          "const": "hsm.edge-policy/v1"
+        },
+        "status": {
+          "const": "CONFIGURATION_ONLY"
+        },
+        "topology": {
+          "const": "same-origin"
+        },
+        "origin": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/httpsOrigin"
+            }
+          ]
+        },
+        "tls": {
+          "type": "object",
+          "properties": {
+            "minimumVersion": {
+              "const": "TLSv1.2"
+            },
+            "certificateVerification": {
+              "const": true
+            },
+            "certificateRef": {
+              "$ref": "#/$defs/nullableIdentifier"
+            },
+            "hstsMaxAgeSeconds": {
+              "const": 300
+            },
+            "includeSubDomains": {
+              "const": false
+            },
+            "preload": {
+              "const": false
+            }
+          },
+          "required": [
+            "minimumVersion",
+            "certificateVerification",
+            "certificateRef",
+            "hstsMaxAgeSeconds",
+            "includeSubDomains",
+            "preload"
+          ],
+          "additionalProperties": false
+        },
+        "cookies": {
+          "type": "object",
+          "properties": {
+            "secure": {
+              "const": true
+            },
+            "domain": {
+              "const": null
+            },
+            "refreshPath": {
+              "const": "/v1/auth/refresh"
+            },
+            "refreshSameSite": {
+              "const": "strict"
+            },
+            "csrfSameSite": {
+              "const": "strict"
+            },
+            "accessHttpOnly": {
+              "const": true
+            },
+            "csrfHttpOnly": {
+              "const": false
+            },
+            "preserveSetCookie": {
+              "const": true
+            }
+          },
+          "required": [
+            "secure",
+            "domain",
+            "refreshPath",
+            "refreshSameSite",
+            "csrfSameSite",
+            "accessHttpOnly",
+            "csrfHttpOnly",
+            "preserveSetCookie"
+          ],
+          "additionalProperties": false
+        },
+        "cors": {
+          "type": "object",
+          "properties": {
+            "mode": {
+              "const": "exact-origin"
+            },
+            "allowCredentials": {
+              "const": true
+            },
+            "rejectNullOrigin": {
+              "const": true
+            },
+            "reflectOrigin": {
+              "const": false
+            },
+            "forwardToApi": {
+              "const": true
+            },
+            "missingOrigin": {
+              "const": "allow-non-upgrade-only"
+            }
+          },
+          "required": [
+            "mode",
+            "allowCredentials",
+            "rejectNullOrigin",
+            "reflectOrigin",
+            "forwardToApi",
+            "missingOrigin"
+          ],
+          "additionalProperties": false
+        },
+        "csp": {
+          "type": "object",
+          "properties": {
+            "webMode": {
+              "const": "enforce"
+            },
+            "apiMode": {
+              "const": "enforce"
+            },
+            "apiAuthority": {
+              "const": "apps/api/src/infrastructure/http/security-headers.ts"
+            },
+            "allowUnsafeEval": {
+              "const": false
+            },
+            "scriptSources": {
+              "const": ["'self'"]
+            },
+            "styleSources": {
+              "const": ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"]
+            },
+            "fontSources": {
+              "const": ["'self'", "https://fonts.gstatic.com"]
+            },
+            "connectSources": {
+              "const": ["approved-https-origin", "approved-wss-origin"]
+            },
+            "extraAssetOrigins": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/httpsOrigin"
+              },
+              "minItems": 0,
+              "maxItems": 16,
+              "uniqueItems": true
+            },
+            "integrationEvidenceRef": {
+              "$ref": "#/$defs/nullableIdentifier"
+            }
+          },
+          "required": [
+            "webMode",
+            "apiMode",
+            "apiAuthority",
+            "allowUnsafeEval",
+            "scriptSources",
+            "styleSources",
+            "fontSources",
+            "connectSources",
+            "extraAssetOrigins",
+            "integrationEvidenceRef"
+          ],
+          "additionalProperties": false,
+          "description": "Approved origin markers require a future reviewed adapter; do not emit them verbatim as CSP. No wildcard HTTPS or WSS sources are permitted."
+        },
+        "routes": {
+          "const": [
+            {
+              "path": "/v1/me/events",
+              "match": "exact",
+              "upstream": "api",
+              "cache": "off"
+            },
+            {
+              "path": "/socket.io/",
+              "match": "prefix",
+              "upstream": "api",
+              "cache": "off"
+            },
+            {
+              "path": "/v1/",
+              "match": "prefix",
+              "upstream": "api",
+              "cache": "off"
+            },
+            {
+              "path": "/health/live",
+              "match": "exact",
+              "upstream": "api",
+              "cache": "off"
+            },
+            {
+              "path": "/health/ready",
+              "match": "exact",
+              "upstream": "api",
+              "cache": "off"
+            },
+            {
+              "path": "/metrics",
+              "match": "prefix",
+              "upstream": "deny",
+              "cache": "off"
+            },
+            {
+              "path": "/build-info.json",
+              "match": "exact",
+              "upstream": "web",
+              "cache": "off"
+            },
+            {
+              "path": "/",
+              "match": "prefix",
+              "upstream": "web",
+              "cache": "web-authority"
+            }
+          ],
+          "description": "Ordered reference routes; preserve API/version prefixes, expose both realtime transports and deny management paths."
+        },
+        "realtime": {
+          "type": "object",
+          "properties": {
+            "socketIoPath": {
+              "const": "/socket.io/"
+            },
+            "transports": {
+              "const": ["websocket", "polling"]
+            },
+            "forwardUpgrade": {
+              "const": true
+            },
+            "requireAllowedOrigin": {
+              "const": true
+            },
+            "proxyReadTimeoutSeconds": {
+              "const": 75
+            },
+            "ssePath": {
+              "const": "/v1/me/events"
+            },
+            "sseBuffering": {
+              "const": false
+            },
+            "sseCache": {
+              "const": false
+            },
+            "sseCompression": {
+              "const": false
+            },
+            "multiInstanceStatus": {
+              "const": "R25_INTEGRATION_PENDING"
+            }
+          },
+          "required": [
+            "socketIoPath",
+            "transports",
+            "forwardUpgrade",
+            "requireAllowedOrigin",
+            "proxyReadTimeoutSeconds",
+            "ssePath",
+            "sseBuffering",
+            "sseCache",
+            "sseCompression",
+            "multiInstanceStatus"
+          ],
+          "additionalProperties": false
+        },
+        "privateMedia": {
+          "type": "object",
+          "properties": {
+            "cacheAuthenticatedResponses": {
+              "const": false
+            },
+            "cdnPrefixes": {
+              "const": ["requests/", "avatars/"]
+            },
+            "neverCdnPrefixes": {
+              "const": ["verification/", "portfolio-staging/", "portfolio/"]
+            },
+            "stripAuthHeaders": {
+              "const": false
+            }
+          },
+          "required": [
+            "cacheAuthenticatedResponses",
+            "cdnPrefixes",
+            "neverCdnPrefixes",
+            "stripAuthHeaders"
+          ],
+          "additionalProperties": false
+        },
+        "proxy": {
+          "type": "object",
+          "properties": {
+            "trustProxyHops": {
+              "const": 1
+            },
+            "overwriteForwardedHeaders": {
+              "const": true
+            },
+            "allowDirectApiAccess": {
+              "const": false
+            },
+            "managementExposure": {
+              "const": "private"
+            }
+          },
+          "required": [
+            "trustProxyHops",
+            "overwriteForwardedHeaders",
+            "allowDirectApiAccess",
+            "managementExposure"
+          ],
+          "additionalProperties": false
+        },
+        "applicationEvidenceRef": {
+          "$ref": "#/$defs/nullableIdentifier"
+        }
+      },
+      "required": [
+        "schema",
+        "status",
+        "topology",
+        "origin",
+        "tls",
+        "cookies",
+        "cors",
+        "csp",
+        "routes",
+        "realtime",
+        "privateMedia",
+        "proxy",
+        "applicationEvidenceRef"
+      ],
+      "additionalProperties": false,
+      "description": "Prepared policy data for an owner-selected HTTPS edge, not an applied or generated edge configuration."
+    }
+  }
+}

@@ -1,8 +1,11 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { readFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { registryProblems, verifyRegistry, STATUS_INDEX } from './sprint-registry.mjs';
+import { G2_REQUIRED_EVIDENCE } from './wave-gate.mjs';
 
 const root = fileURLToPath(new URL('../../', import.meta.url));
 const registry = JSON.parse(
@@ -122,4 +125,286 @@ test('a status index that names a sprint differently is rejected', async () => {
     'Something else',
   );
   assert.ok(registryProblems(registry, changed).some((p) => /names R19 differently/u.test(p)));
+});
+
+const G2_PATH = 'docs/production-readiness/post-r18/gates/g2/SOURCE_MANIFEST.json';
+const WAVE3_PATH = 'docs/production-readiness/post-r18/waves/wave-03.plan.json';
+
+// These are synthetic, temporary record inputs. They grant no actual ownership
+// or acceptance and do not overwrite any repository evidence.
+function g2RegistryFixture() {
+  const r = clone();
+  r.gates = { ...r.gates, G2: G2_PATH };
+  r.waveManifests = { ...r.waveManifests, 3: WAVE3_PATH };
+  const lanes = ['R29', 'R30', 'R31', 'R32', 'R33'].map((id, index) => ({
+    id,
+    lane: index + 1,
+    title: null,
+    branch: null,
+    owner: null,
+    status: 'RESERVED_PENDING_PACKAGE',
+    frozenBaseSha: null,
+    dependencies: null,
+    exactFiles: [],
+    leases: [],
+  }));
+  for (const lane of lanes) {
+    Object.assign(
+      r.sprints.find((sprint) => sprint.id === lane.id),
+      {
+        title: null,
+        branch: null,
+        owner: null,
+        status: 'RESERVED_PENDING_PACKAGE',
+        frozenBase: null,
+        dependencies: null,
+        ownedPaths: null,
+        requiredEvidence: null,
+        pr: null,
+      },
+    );
+  }
+  const r32 = r.sprints.find((sprint) => sprint.id === 'R32');
+  Object.assign(r32, {
+    title: 'Synthetic R32 package',
+    branch: 'feat/r32-refund-recovery',
+    owner: 'fixture writer',
+    status: 'PLANNED',
+    dependencies: ['R24', 'R22', 'R23'],
+    ownedPaths: {
+      exact: ['apps/api/src/modules/money/refunds/fixture-only.spec.ts'],
+      prefixes: [],
+      leases: [],
+    },
+    requiredEvidence: ['synthetic evidence only'],
+    startBarrier: { gate: 'G2', decision: 'BLOCKED' },
+  });
+  Object.assign(lanes[3], {
+    title: r32.title,
+    branch: r32.branch,
+    owner: r32.owner,
+    status: 'BLOCKED',
+    dependencies: structuredClone(r32.dependencies),
+    exactFiles: structuredClone(r32.ownedPaths.exact),
+  });
+  const gate = {
+    schemaVersion: 1,
+    gateId: 'G2',
+    decision: 'BLOCKED',
+    candidateSourceSha: 'a'.repeat(40),
+    candidateTreeSha: 'b'.repeat(40),
+    frozenBaseSha: null,
+    frozenTreeSha: null,
+    acceptedSprints: [],
+    blockers: [{ id: 'SYNTHETIC', state: 'OPEN' }],
+    mandatoryEvidence: G2_REQUIRED_EVIDENCE.map((id) => ({
+      id,
+      status: 'NOT_RUN',
+      sourceSha: 'a'.repeat(40),
+      treeSha: 'b'.repeat(40),
+      reference: 'synthetic fixture evidence only',
+      ...(id === 'r28-checked-platform-plan' ? { scope: 'CONFIGURATION_ONLY' } : {}),
+    })),
+    externalBlockers: [
+      {
+        id: 'SYNTHETIC-R28-HOSTED',
+        sprint: 'R28',
+        state: 'HOSTED_ENVIRONMENT_BLOCKED',
+        owner: 'fixture deployment owner',
+        reference: 'synthetic external evidence',
+      },
+    ],
+    publication: { state: 'DRAFT_PENDING_OWNER_REVIEW', acceptanceRecordCommitSha: null },
+  };
+  const wave = {
+    schemaVersion: 1,
+    wave: 3,
+    startGate: 'G2',
+    status: 'BLOCKED',
+    baseSha: null,
+    startableLanes: [],
+    blockedLanes: lanes.map((lane) => lane.id),
+    lanes,
+  };
+  return { registry: r, gate, wave };
+}
+
+function acceptG2Records(x) {
+  Object.assign(x.gate, {
+    decision: 'ACCEPTED',
+    frozenBaseSha: x.gate.candidateSourceSha,
+    frozenTreeSha: x.gate.candidateTreeSha,
+    blockers: [],
+    acceptedSprints: x.registry.sprints
+      .filter((sprint) => sprint.wave < 3)
+      .map((sprint) => sprint.id),
+  });
+  for (const entry of x.gate.mandatoryEvidence) entry.status = 'PASS';
+  x.wave.baseSha = x.gate.frozenBaseSha;
+  x.wave.lanes[3].frozenBaseSha = x.wave.baseSha;
+  Object.assign(
+    x.registry.sprints.find((sprint) => sprint.id === 'R32'),
+    {
+      frozenBase: x.wave.baseSha,
+      startBarrier: { gate: 'G2', decision: 'ACCEPTED' },
+    },
+  );
+}
+
+async function withG2Records(mutate, assertion) {
+  const x = g2RegistryFixture();
+  const g1Path = 'docs/production-readiness/post-r18/gates/g1/SOURCE_MANIFEST.json';
+  const wave2Path = 'docs/production-readiness/post-r18/waves/wave-02.plan.json';
+  x.g1 = JSON.parse(await readFile(path.join(root, g1Path), 'utf8'));
+  x.wave2 = JSON.parse(await readFile(path.join(root, wave2Path), 'utf8'));
+  mutate(x);
+  const fixtureRoot = await mkdtemp(path.join(tmpdir(), 'hsm-g2-registry-fixture-'));
+  try {
+    const index = x.registry.sprints
+      .map(
+        (sprint) =>
+          `| ${sprint.id} | ${sprint.title ?? '(pending package)'} | ${sprint.wave} | ${sprint.status} |`,
+      )
+      .join('\n');
+    const files = [
+      [g1Path, JSON.stringify(x.g1)],
+      [wave2Path, JSON.stringify(x.wave2)],
+      ['docs/production-readiness/post-r18/SPRINT_REGISTRY.json', JSON.stringify(x.registry)],
+      [STATUS_INDEX, index],
+      [G2_PATH, JSON.stringify(x.gate)],
+      [WAVE3_PATH, JSON.stringify(x.wave)],
+    ];
+    for (const [file, content] of files) {
+      await mkdir(path.dirname(path.join(fixtureRoot, file)), { recursive: true });
+      await writeFile(path.join(fixtureRoot, file), content);
+    }
+    await assertion(fixtureRoot, x);
+  } finally {
+    await rm(fixtureRoot, { recursive: true, force: true });
+  }
+}
+
+test('a supplied Wave 3 package can be planned with no base only behind canonical blocked G2', () => {
+  assert.deepEqual(registryProblems(g2RegistryFixture().registry), []);
+});
+
+test('a Wave 3 null base is not permitted by the earlier G1 barrier', () => {
+  const x = g2RegistryFixture();
+  x.registry.sprints.find((sprint) => sprint.id === 'R32').startBarrier.gate = 'G1';
+  assert.ok(
+    registryProblems(x.registry).some((problem) => /R32 needs a full frozen base/u.test(problem)),
+  );
+});
+
+test('a blocked-gate exception does not grant a ready Wave 3 status', () => {
+  const x = g2RegistryFixture();
+  x.registry.sprints.find((sprint) => sprint.id === 'R32').status = 'READY_TO_START';
+  assert.ok(
+    registryProblems(x.registry).some((problem) => /R32 needs a full frozen base/u.test(problem)),
+  );
+});
+
+test('Wave 3 ownership still rejects two writers before the gate is accepted', () => {
+  const x = g2RegistryFixture();
+  const r32 = x.registry.sprints.find((sprint) => sprint.id === 'R32');
+  Object.assign(
+    x.registry.sprints.find((sprint) => sprint.id === 'R33'),
+    structuredClone(r32),
+    {
+      id: 'R33',
+      lane: 5,
+      branch: 'feat/synthetic-r33',
+      title: 'Synthetic peer',
+    },
+  );
+  assert.ok(registryProblems(x.registry).some((problem) => /R32 and R33 both own/u.test(problem)));
+});
+
+test('the registry reader validates G2 and Wave 3 alongside the unchanged G1 records', async () => {
+  await withG2Records(
+    () => {},
+    async (fixtureRoot) => {
+      assert.deepEqual(await verifyRegistry(fixtureRoot), []);
+    },
+  );
+});
+
+for (const [name, mutate] of [
+  [
+    'missing gate path',
+    (x) => {
+      delete x.registry.gates.G2;
+    },
+  ],
+  [
+    'missing wave path',
+    (x) => {
+      delete x.registry.waveManifests['3'];
+    },
+  ],
+  [
+    'substituted gate path',
+    (x) => {
+      x.registry.gates.G2 = '../untrusted-gate.json';
+    },
+  ],
+  [
+    'substituted wave path',
+    (x) => {
+      x.registry.waveManifests['3'] = 'another-wave.json';
+    },
+  ],
+  [
+    'known package without G2 registration',
+    (x) => {
+      delete x.registry.gates.G2;
+      delete x.registry.waveManifests['3'];
+      x.registry.sprints.find((sprint) => sprint.id === 'R32').frozenBase = 'a'.repeat(40);
+    },
+  ],
+]) {
+  test(`the registry reader rejects ${name}`, async () => {
+    await withG2Records(mutate, async (fixtureRoot) => {
+      assert.ok(
+        (await verifyRegistry(fixtureRoot)).includes('G2 records must use the canonical paths'),
+      );
+    });
+  });
+}
+
+test('the registry reader does not ignore a ready lane behind a blocked G2 file', async () => {
+  await withG2Records(
+    (x) => {
+      x.wave.startableLanes = ['R32'];
+    },
+    async (fixtureRoot) => {
+      assert.ok(
+        (await verifyRegistry(fixtureRoot)).some((problem) =>
+          /blocked G2 cannot authorize/u.test(problem),
+        ),
+      );
+    },
+  );
+});
+
+test('the registry reader permits complete G2 evidence held for owner publication', async () => {
+  await withG2Records(acceptG2Records, async (fixtureRoot) => {
+    assert.deepEqual(await verifyRegistry(fixtureRoot), []);
+  });
+});
+
+test('an accepted G2 file cannot bypass an unmerged G1 prerequisite', async () => {
+  await withG2Records(
+    (x) => {
+      acceptG2Records(x);
+      x.g1.publication.state = 'DRAFT_PENDING_OWNER_REVIEW';
+    },
+    async (fixtureRoot) => {
+      assert.ok(
+        (await verifyRegistry(fixtureRoot)).includes(
+          'G2 acceptance requires the verified merged G1 prerequisite',
+        ),
+      );
+    },
+  );
 });

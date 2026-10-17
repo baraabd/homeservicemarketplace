@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
-import { waveGateProblems } from './wave-gate.mjs';
+import { G2_REQUIRED_EVIDENCE, waveGateProblems } from './wave-gate.mjs';
 
 const read = async (file) =>
   JSON.parse(
@@ -255,4 +255,514 @@ test('rejects startable lanes under a blocked wave even with accepted G1', () =>
   const x = acceptedFixture();
   x.wave.status = 'BLOCKED';
   assert.ok(problems(x).some((p) => /blocked wave cannot/u.test(p)));
+});
+
+// All G2 examples below are synthetic record-validation inputs. They are not
+// source evidence, ownership grants, coordinator decisions or published gates.
+function g2Fixture() {
+  const registry = structuredClone(initial.registry);
+  const candidateSourceSha = 'a'.repeat(40);
+  const candidateTreeSha = 'b'.repeat(40);
+  const lanes = ['R29', 'R30', 'R31', 'R32', 'R33'].map((id, index) => ({
+    id,
+    lane: index + 1,
+    title: null,
+    branch: null,
+    owner: null,
+    status: 'RESERVED_PENDING_PACKAGE',
+    frozenBaseSha: null,
+    dependencies: null,
+    exactFiles: [],
+    leases: [],
+  }));
+  for (const lane of lanes) {
+    Object.assign(
+      registry.sprints.find((sprint) => sprint.id === lane.id),
+      {
+        title: null,
+        branch: null,
+        owner: null,
+        status: 'RESERVED_PENDING_PACKAGE',
+        frozenBase: null,
+        dependencies: null,
+        ownedPaths: null,
+        requiredEvidence: null,
+        pr: null,
+      },
+    );
+  }
+  const r32 = lanes[3];
+  Object.assign(r32, {
+    title: 'Synthetic R32 package',
+    branch: 'feat/r32-refund-recovery',
+    owner: 'synthetic fixture writer',
+    status: 'BLOCKED',
+    dependencies: ['R24', 'R22', 'R23'],
+    exactFiles: ['apps/api/src/modules/money/refunds/fixture-only.spec.ts'],
+  });
+  Object.assign(
+    registry.sprints.find((sprint) => sprint.id === 'R32'),
+    {
+      title: r32.title,
+      branch: r32.branch,
+      owner: r32.owner,
+      status: 'PLANNED',
+      dependencies: structuredClone(r32.dependencies),
+      ownedPaths: { exact: structuredClone(r32.exactFiles), prefixes: [], leases: [] },
+      requiredEvidence: ['synthetic fixture evidence'],
+      startBarrier: { gate: 'G2', decision: 'BLOCKED' },
+    },
+  );
+  return {
+    registry,
+    gate: {
+      schemaVersion: 1,
+      gateId: 'G2',
+      decision: 'BLOCKED',
+      candidateSourceSha,
+      candidateTreeSha,
+      frozenBaseSha: null,
+      frozenTreeSha: null,
+      acceptedSprints: [],
+      blockers: [{ id: 'SYNTHETIC', state: 'OPEN' }],
+      mandatoryEvidence: G2_REQUIRED_EVIDENCE.map((id) => ({
+        id,
+        status: 'NOT_RUN',
+        sourceSha: candidateSourceSha,
+        treeSha: candidateTreeSha,
+        reference: 'synthetic fixture evidence only',
+        ...(id === 'r28-checked-platform-plan' ? { scope: 'CONFIGURATION_ONLY' } : {}),
+      })),
+      externalBlockers: [
+        {
+          id: 'R28-SYNTHETIC-HOSTED',
+          sprint: 'R28',
+          state: 'HOSTED_ENVIRONMENT_BLOCKED',
+          owner: 'synthetic deployment owner',
+          reference: 'synthetic external blocker evidence',
+        },
+      ],
+      publication: { state: 'DRAFT_PENDING_OWNER_REVIEW', acceptanceRecordCommitSha: null },
+    },
+    wave: {
+      schemaVersion: 1,
+      wave: 3,
+      startGate: 'G2',
+      status: 'BLOCKED',
+      baseSha: null,
+      startableLanes: [],
+      blockedLanes: lanes.map((lane) => lane.id),
+      lanes,
+    },
+  };
+}
+
+function acceptedG2Fixture(published = true) {
+  const x = g2Fixture();
+  Object.assign(x.gate, {
+    decision: 'ACCEPTED',
+    frozenBaseSha: x.gate.candidateSourceSha,
+    frozenTreeSha: x.gate.candidateTreeSha,
+    blockers: [],
+    acceptedSprints: x.registry.sprints
+      .filter((sprint) => sprint.wave < 3)
+      .map((sprint) => sprint.id),
+  });
+  for (const entry of x.gate.mandatoryEvidence) entry.status = 'PASS';
+  x.wave.baseSha = x.gate.frozenBaseSha;
+  x.wave.lanes[3].frozenBaseSha = x.wave.baseSha;
+  Object.assign(
+    x.registry.sprints.find((sprint) => sprint.id === 'R32'),
+    {
+      frozenBase: x.wave.baseSha,
+      startBarrier: { gate: 'G2', decision: 'ACCEPTED' },
+    },
+  );
+  if (published) {
+    x.gate.publication = { state: 'MERGED', acceptanceRecordCommitSha: 'c'.repeat(40) };
+    x.wave.status = 'READY_TO_START';
+    x.wave.startableLanes = ['R32'];
+    x.wave.blockedLanes = ['R29', 'R30', 'R31', 'R33'];
+    x.wave.lanes[3].status = 'READY_TO_START';
+    x.registry.sprints.find((sprint) => sprint.id === 'R32').status = 'READY_TO_START';
+  }
+  return x;
+}
+
+test('G2 preparation holds a supplied R32 package and leaves missing peers reserved', () => {
+  const x = g2Fixture();
+  assert.deepEqual(problems(x), []);
+  assert.equal(x.gate.frozenBaseSha, null);
+  assert.deepEqual(x.wave.startableLanes, []);
+});
+
+test('G2 technical evidence can await publication without releasing any lane', () => {
+  const x = acceptedG2Fixture(false);
+  assert.deepEqual(problems(x), []);
+  assert.equal(x.wave.status, 'BLOCKED');
+  assert.deepEqual(x.wave.startableLanes, []);
+});
+
+test('published G2 starts only a complete package and retains the R28 hosted hold', () => {
+  const x = acceptedG2Fixture();
+  assert.deepEqual(problems(x), []);
+  assert.deepEqual(x.wave.startableLanes, ['R32']);
+  assert.equal(x.gate.externalBlockers[0].state, 'HOSTED_ENVIRONMENT_BLOCKED');
+});
+
+for (const [name, make, mutate, pattern] of [
+  [
+    'abbreviated candidate',
+    g2Fixture,
+    (x) => {
+      x.gate.candidateSourceSha = '1234567';
+    },
+    /full source/u,
+  ],
+  [
+    'mismatched gate identity',
+    g2Fixture,
+    (x) => {
+      x.gate.gateId = 'G1';
+    },
+    /invalid G2/u,
+  ],
+  [
+    'mismatched wave identity',
+    g2Fixture,
+    (x) => {
+      x.wave.wave = 2;
+    },
+    /invalid Wave 3/u,
+  ],
+  [
+    'unsupported gate decision',
+    g2Fixture,
+    (x) => {
+      x.gate.decision = 'GREEN';
+    },
+    /unsupported G2/u,
+  ],
+  [
+    'frozen source while blocked',
+    g2Fixture,
+    (x) => {
+      x.gate.frozenBaseSha = x.gate.candidateSourceSha;
+    },
+    /cannot freeze/u,
+  ],
+  [
+    'accepted sprint while blocked',
+    g2Fixture,
+    (x) => {
+      x.gate.acceptedSprints = ['R24'];
+    },
+    /cannot claim accepted/u,
+  ],
+  [
+    'missing blocker array',
+    g2Fixture,
+    (x) => {
+      delete x.gate.blockers;
+    },
+    /explicit array/u,
+  ],
+  [
+    'no reason for blocked state',
+    g2Fixture,
+    (x) => {
+      x.gate.blockers = [];
+    },
+    /cannot authorize/u,
+  ],
+  [
+    'reserved peer attempting a start',
+    acceptedG2Fixture,
+    (x) => {
+      x.wave.startableLanes.push(x.wave.blockedLanes.shift());
+    },
+    /must remain reserved/u,
+  ],
+  [
+    'blank package owner',
+    g2Fixture,
+    (x) => {
+      x.wave.lanes[3].owner = ' ';
+    },
+    /missing Wave 3 package or ownership/u,
+  ],
+  [
+    'different owner in the registry',
+    g2Fixture,
+    (x) => {
+      x.registry.sprints.find((sprint) => sprint.id === 'R32').owner = 'another fixture writer';
+    },
+    /registry differs from Wave 3 manifest/u,
+  ],
+  [
+    'invented reserved peer owner',
+    g2Fixture,
+    (x) => {
+      x.wave.lanes[0].owner = 'invented';
+    },
+    /must remain reserved/u,
+  ],
+  [
+    'invented reserved dependency',
+    g2Fixture,
+    (x) => {
+      x.wave.lanes[0].dependencies = 'R24';
+    },
+    /must remain reserved/u,
+  ],
+  [
+    'reserved peer claiming a base',
+    acceptedG2Fixture,
+    (x) => {
+      x.wave.lanes[0].frozenBaseSha = x.wave.baseSha;
+    },
+    /must remain reserved/u,
+  ],
+  [
+    'missing lane',
+    g2Fixture,
+    (x) => {
+      x.wave.lanes.pop();
+    },
+    /five unique lanes/u,
+  ],
+  [
+    'same-wave dependency',
+    g2Fixture,
+    (x) => {
+      x.wave.lanes[3].dependencies = ['R29'];
+      x.registry.sprints.find((sprint) => sprint.id === 'R32').dependencies = ['R29'];
+    },
+    /invalid dependency R29/u,
+  ],
+  [
+    'missing prior-wave acceptance',
+    acceptedG2Fixture,
+    (x) => {
+      x.gate.acceptedSprints = x.gate.acceptedSprints.filter((id) => id !== 'R22');
+    },
+    /unresolved dependency R22/u,
+  ],
+  [
+    'unaccepted Wave 2 member',
+    acceptedG2Fixture,
+    (x) => {
+      x.gate.acceptedSprints = x.gate.acceptedSprints.filter((id) => id !== 'R27');
+    },
+    /unresolved dependency R27/u,
+  ],
+  [
+    'same-wave accepted ID',
+    acceptedG2Fixture,
+    (x) => {
+      x.gate.acceptedSprints.push('R32');
+    },
+    /earlier-wave sprint IDs/u,
+  ],
+  [
+    'duplicate accepted ID',
+    acceptedG2Fixture,
+    (x) => {
+      x.gate.acceptedSprints.push('R24');
+    },
+    /unique earlier-wave/u,
+  ],
+  [
+    'missing mandatory evidence',
+    acceptedG2Fixture,
+    (x) => {
+      x.gate.mandatoryEvidence.pop();
+    },
+    /evidence categories/u,
+  ],
+  [
+    'duplicated evidence category',
+    acceptedG2Fixture,
+    (x) => {
+      x.gate.mandatoryEvidence.push(x.gate.mandatoryEvidence[0]);
+    },
+    /evidence categories/u,
+  ],
+  [
+    'pending integration evidence',
+    acceptedG2Fixture,
+    (x) => {
+      x.gate.mandatoryEvidence[0].status = 'PENDING';
+    },
+    /mandatory candidate evidence/u,
+  ],
+  [
+    'evidence from another source',
+    acceptedG2Fixture,
+    (x) => {
+      x.gate.mandatoryEvidence[0].sourceSha = 'd'.repeat(40);
+    },
+    /mandatory candidate evidence/u,
+  ],
+  [
+    'evidence from another tree',
+    acceptedG2Fixture,
+    (x) => {
+      x.gate.mandatoryEvidence[0].treeSha = 'd'.repeat(40);
+    },
+    /mandatory candidate evidence/u,
+  ],
+  [
+    'blank evidence reference',
+    acceptedG2Fixture,
+    (x) => {
+      x.gate.mandatoryEvidence[0].reference = ' ';
+    },
+    /mandatory candidate evidence/u,
+  ],
+  [
+    'missing R28 hosted blocker',
+    acceptedG2Fixture,
+    (x) => {
+      x.gate.externalBlockers = [];
+    },
+    /explicit hosted environment blocker/u,
+  ],
+  [
+    'R28 config recast as deployment',
+    acceptedG2Fixture,
+    (x) => {
+      x.gate.mandatoryEvidence.find((entry) => entry.id === 'r28-checked-platform-plan').scope =
+        'HOSTED_ACCEPTED';
+    },
+    /checked R28 configuration/u,
+  ],
+  [
+    'external block substituting for checked plan',
+    acceptedG2Fixture,
+    (x) => {
+      x.gate.mandatoryEvidence.find((entry) => entry.id === 'r28-checked-platform-plan').status =
+        'EXTERNAL_BLOCKED';
+    },
+    /mandatory candidate evidence/u,
+  ],
+  [
+    'ownerless external blocker',
+    acceptedG2Fixture,
+    (x) => {
+      delete x.gate.externalBlockers[0].owner;
+    },
+    /scope, owner and evidence/u,
+  ],
+  [
+    'unmerged acceptance publication',
+    acceptedG2Fixture,
+    (x) => {
+      x.gate.publication.state = 'DRAFT_PENDING_OWNER_REVIEW';
+    },
+    /separately published merged/u,
+  ],
+  [
+    'abbreviated publication identity',
+    acceptedG2Fixture,
+    (x) => {
+      x.gate.publication.acceptanceRecordCommitSha = 'abcdef0';
+    },
+    /separately published merged/u,
+  ],
+  [
+    'substituted frozen tree',
+    acceptedG2Fixture,
+    (x) => {
+      x.gate.frozenTreeSha = 'd'.repeat(40);
+    },
+    /inconsistent G2 frozen/u,
+  ],
+  [
+    'blocked wave with startable lane',
+    acceptedG2Fixture,
+    (x) => {
+      x.wave.status = 'BLOCKED';
+    },
+    /blocked Wave 3 cannot/u,
+  ],
+  [
+    'held lane with ready registry status',
+    () => acceptedG2Fixture(false),
+    (x) => {
+      x.registry.sprints.find((sprint) => sprint.id === 'R32').status = 'READY_TO_START';
+    },
+    /held Wave 3 lane cannot/u,
+  ],
+  [
+    'control character in an owned path',
+    g2Fixture,
+    (x) => {
+      x.wave.lanes[3].exactFiles.push('shared/fixture\u0000.ts');
+    },
+    /unsafe or non-exact/u,
+  ],
+  [
+    'path alias concealing ownership',
+    g2Fixture,
+    (x) => {
+      x.wave.lanes[3].exactFiles.push('./shared/file.ts');
+    },
+    /unsafe or non-exact/u,
+  ],
+  [
+    'prefix claimed as an exact file',
+    g2Fixture,
+    (x) => {
+      x.wave.lanes[3].exactFiles.push('apps/api/src/modules/money/');
+    },
+    /unsafe or non-exact/u,
+  ],
+  [
+    'lease overlapping normal ownership',
+    g2Fixture,
+    (x) => {
+      x.wave.lanes[3].leases.push({
+        paths: [x.wave.lanes[3].exactFiles[0]],
+        grantedBy: 'synthetic fixture',
+        expires: 'end of fixture',
+        scope: 'fixture',
+        handoff: 'fixture',
+      });
+    },
+    /conflicting Wave 3 ownership/u,
+  ],
+  [
+    'lease without handoff',
+    g2Fixture,
+    (x) => {
+      x.wave.lanes[3].leases.push({
+        paths: ['shared/fixture.ts'],
+        grantedBy: 'fixture',
+        expires: 'fixture',
+        scope: 'fixture',
+      });
+    },
+    /incomplete Wave 3 lease/u,
+  ],
+]) {
+  test(`G2 rejects ${name}`, () => {
+    const x = make();
+    mutate(x);
+    assert.ok(
+      problems(x).some((problem) => pattern.test(problem)),
+      problems(x).join('\n'),
+    );
+  });
+}
+
+test('G2 malformed records fail closed without throwing', () => {
+  assert.deepEqual(waveGateProblems(null, { wave: 3 }, null), [
+    'invalid G2 record',
+    'invalid Wave 3 manifest',
+  ]);
+  const x = g2Fixture();
+  x.wave.lanes[3] = null;
+  x.gate.mandatoryEvidence[0] = null;
+  assert.ok(problems(x).includes('invalid Wave 3 lane record'));
 });

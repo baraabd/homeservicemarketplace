@@ -14,6 +14,7 @@ import { Logger } from 'nestjs-pino';
 
 import { AppModule } from './app.module';
 import { AppConfigService } from './config/app-config.service';
+import { privateApiCacheControl } from './infrastructure/http/cache-control';
 import { configuredCorsOrigins } from './infrastructure/http/cors-policy';
 import { buildRequestBodyParser } from './infrastructure/http/request-body';
 import { PERMISSIONS_POLICY, buildHelmetOptions } from './infrastructure/http/security-headers';
@@ -90,6 +91,9 @@ async function bootstrap(): Promise<void> {
         `${config.get('HSTS_PRELOAD') ? ' +preload' : ''}, Permissions-Policy=deny-all`,
     );
 
+    // R27: private successes and early parser/guard errors share a no-store
+    // default. Explicit public immutable media may replace it in its route.
+    app.use(privateApiCacheControl);
     app.use(cookieParser());
     // R21 — signed delivery feedback is verified over the exact provider
     // bytes, so the JSON parser must not touch this route first.

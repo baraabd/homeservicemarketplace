@@ -64,6 +64,15 @@ describe('validateKey (pure)', () => {
     expect(() => validateKey('a/./b')).toThrow();
   });
 
+  it.each([
+    'portfolio-staging//ref/photo.jpg',
+    'portfolio//ref/photo.jpg',
+    'requests/ref//photo.jpg',
+    'avatars/ref/photo.jpg/',
+  ])('rejects an empty path segment before filesystem normalization: %s', (key) => {
+    expect(() => validateKey(key)).toThrow('invalid-key');
+  });
+
   it('rejects absolute / null-byte / out-of-charset keys', () => {
     expect(() => validateKey('/etc/passwd')).toThrow();
     expect(() => validateKey('\\windows\\system32')).toThrow();

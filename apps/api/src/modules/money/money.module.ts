@@ -24,8 +24,10 @@ import {
 import { MONEY_FINANCE_READ } from './ports/finance-read.port';
 import {
   MONEY_REFUND_ADAPTER,
+  MONEY_REFUND_CONFIRMATION_PARTICIPANT,
   MONEY_REFUND_POLICY,
   UnavailableMoneyRefundAdapter,
+  UnavailableMoneyRefundConfirmationParticipant,
   UnavailableMoneyRefundPolicy,
 } from './ports/refund.port';
 
@@ -45,6 +47,10 @@ import {
     { provide: MONEY_ACTIVATION_PARTICIPANT, useClass: UnavailableMoneyActivationParticipant },
     { provide: MONEY_REFUND_POLICY, useClass: UnavailableMoneyRefundPolicy },
     { provide: MONEY_REFUND_ADAPTER, useClass: UnavailableMoneyRefundAdapter },
+    {
+      provide: MONEY_REFUND_CONFIRMATION_PARTICIPANT,
+      useClass: UnavailableMoneyRefundConfirmationParticipant,
+    },
     { provide: MONEY_FINANCE_READ, useExisting: MoneyQueryService },
   ],
   exports: [
@@ -58,6 +64,7 @@ import {
     MONEY_ACTIVATION_PARTICIPANT,
     MONEY_REFUND_POLICY,
     MONEY_REFUND_ADAPTER,
+    MONEY_REFUND_CONFIRMATION_PARTICIPANT,
     MONEY_FINANCE_READ,
   ],
 })

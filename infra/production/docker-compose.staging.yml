@@ -33,18 +33,32 @@ services:
     secrets: [migration_env]
     networks: [runtime]
     restart: 'no'
-    command: ['node', '--env-file=/run/secrets/migration_env', 'node_modules/prisma/build/index.js', 'migrate', 'deploy']
+    command:
+      [
+        'node',
+        '--env-file=/run/secrets/migration_env',
+        'node_modules/prisma/build/index.js',
+        'migrate',
+        'deploy',
+      ]
 
   api:
     <<: *api
     command: ['node', '--env-file=/run/secrets/api_env', 'deploy/start-api.cjs', '/app']
+    stop_grace_period: 30s
     networks: [runtime]
     restart: unless-stopped
     ports:
       - '127.0.0.1:${HSM_API_PORT:?Explicit loopback port required}:4000'
     healthcheck:
       # Readiness governs rollout; the image retains a distinct liveness probe.
-      test: ['CMD', 'node', '-e', "fetch('http://127.0.0.1:4000/health/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "fetch('http://127.0.0.1:4000/health/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
       interval: 5s
       timeout: 4s
       start_period: 20s

@@ -1,0 +1,489 @@
+{
+  "schemaVersion": 1,
+  "gateId": "G2",
+  "state": "INTEGRATION_PENDING",
+  "candidateSourceSha": "4e87bf03663fb3c72ffee983fdb70c2863e1ce8a",
+  "candidateTreeSha": "eaca9cdeab15e719570f7997c4fc3bbeb64e562e",
+  "sourceIdentityNote": "Initial observed baseline only. Scoped uncommitted source checks below are not attributed to this SHA. Actual committed-source and final PR results will be appended separately.",
+  "prompt": {
+    "sprint": "R32",
+    "originalFilename": "Pasted markdown(20261017-193931).md",
+    "originalBytes": 11987,
+    "originalSha256": "059836303d709cbf554192d002821f02ebce0f62662f19e2ad5e4caee7545626",
+    "retainedPath": "docs/production-readiness/post-r18/gates/g2/prompts/R32.md",
+    "authority": "Full user-provided prompt; latest delegation permits G2 coordination and a review PR, no merge/deploy, R32 only after approval.",
+    "retainedBytes": 11988,
+    "retainedSha256": "fcb56be2fb14e6253ae5d8899c27c78798daea0effde79b5d4d6b3d6fdd3373f",
+    "normalization": "One final newline added by repository Prettier; all original text and requirements retained."
+  },
+  "historicalCombinedRun": {
+    "sourceSha": "4e87bf03663fb3c72ffee983fdb70c2863e1ce8a",
+    "treeSha": "eaca9cdeab15e719570f7997c4fc3bbeb64e562e",
+    "runId": 39062646647,
+    "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39062646647",
+    "successfulChecks": 27,
+    "failedChecks": [
+      "R25 real replicas and recovery",
+      "R18 functional completion acceptance",
+      "CI gate"
+    ],
+    "r25JobId": 117484531044,
+    "r25ArtifactId": 12111448781,
+    "r25ArtifactSha256": "1ce6534f4377fad0e3c6a8177b05ff09389a30693bc402be634b1843f84798a6",
+    "r25Api": {
+      "passed": 13,
+      "failed": 0,
+      "skipped": 0
+    },
+    "r25BrowserExitCode": 1,
+    "preciseRemoteBrowserCause": "NOT_PUBLISHED"
+  },
+  "localBaselineReproduction": {
+    "sourceSha": "4e87bf03663fb3c72ffee983fdb70c2863e1ce8a",
+    "treeSha": "eaca9cdeab15e719570f7997c4fc3bbeb64e562e",
+    "cleanSource": true,
+    "attempt": "20261017202439731-066c4539",
+    "command": "node scripts/production/realtime/verify-replicas.cjs --run",
+    "exitCode": 1,
+    "harnessTests": {
+      "passed": 29,
+      "failed": 0,
+      "skipped": 0
+    },
+    "apiTests": {
+      "passed": 13,
+      "failed": 0,
+      "skipped": 0
+    },
+    "browserTests": {
+      "passed": 0,
+      "failed": 1,
+      "skipped": 0,
+      "flaky": 0
+    },
+    "failurePhase": "real fixtures",
+    "redactedFailure": "seeker OTP should verify: expected HTTP 200, received HTTP 400",
+    "runtime": {
+      "node": "24.21.0",
+      "pnpm": "10.32.1",
+      "postgresql": "16.15",
+      "redis": "7.0.15",
+      "mailpit": "1.31.6",
+      "chromium": "151.0.7922.34"
+    },
+    "scope": "Independent local failure, not an assertion of identical remote root cause.",
+    "confirmedCause": {
+      "scope": "local failure only",
+      "httpError": "AUTH_OTP_INVALID",
+      "databaseTimezone": "Asia/Riyadh",
+      "deliveredCodeMatchesStoredHmac": true,
+      "existingSqlPredicate": false,
+      "utcNormalizedPredicate": true,
+      "repair": "Six database-clock expressions and the raw rotation Date binding explicitly normalized to UTC; original TTL and attempt limits retained."
+    }
+  },
+  "uncommittedScopedChecks": [
+    {
+      "scope": "four governance scripts",
+      "command": "node --test .github/scripts/*.test.mjs",
+      "passed": 218,
+      "failed": 0,
+      "skipped": 0,
+      "exitCode": 0
+    },
+    {
+      "scope": "Historical provisional R28 source plus unchanged staging/runtime controls, superseded by exact peer #179 import",
+      "command": "node --test scripts/production/platform/validate-plan.test.cjs infra/production/staging.test.cjs infra/production/check-runtime.test.cjs",
+      "passed": 186,
+      "failed": 0,
+      "skipped": 0,
+      "exitCode": 0
+    },
+    {
+      "scope": "MoneyModule including unavailable confirmed-refund participant",
+      "passed": 9,
+      "failed": 0,
+      "skipped": 0,
+      "exitCode": 0
+    },
+    {
+      "scope": "actual API TypeScript plus money port consumer negative controls",
+      "command": "pnpm --filter @homeservicemarketplace/api typecheck",
+      "exitCode": 0
+    },
+    {
+      "scope": "R27 cache policy plus unchanged request-body suite",
+      "command": "pnpm --filter @homeservicemarketplace/api test --runTestsByPath src/infrastructure/http/cache-control.spec.ts src/infrastructure/http/request-body.spec.ts",
+      "passed": 24,
+      "failed": 0,
+      "skipped": 0,
+      "exitCode": 0
+    },
+    {
+      "scope": "R27 browser harness compile only",
+      "command": "pnpm --filter @homeservicemarketplace/web exec tsc -p r27-tests/tsconfig.json --noEmit",
+      "exitCode": 0,
+      "runtimeTests": "NOT_RUN"
+    },
+    {
+      "scope": "Historical e91c peer R28 plus existing staging/runtime/storage controls before the descriptor-reader correction",
+      "command": "node --test --test-reporter=tap scripts/production/platform/validate-plan.test.cjs infra/production/check-runtime.test.cjs infra/production/staging.test.cjs scripts/production/storage/storage-plan.test.cjs scripts/production/storage/storage-cli.test.cjs",
+      "passed": 455,
+      "failed": 0,
+      "skipped": 0,
+      "exitCode": 0,
+      "sourceQualification": "All twelve imported Git blobs equal e91c6c596e3154d24f4aa8637ddc901adfa15d64; integration checkout was uncommitted."
+    },
+    {
+      "scope": "R27 existing helpers, financial regressions and exact candidate index/plan evidence controls",
+      "command": "node --test scripts/perf/post-r18/lib/*.test.mjs",
+      "passed": 106,
+      "failed": 0,
+      "skipped": 0,
+      "exitCode": 0
+    },
+    {
+      "scope": "Historical first notification repair, full web unit/component suite before peer-review marker correction",
+      "command": "pnpm --filter @homeservicemarketplace/web exec vitest run",
+      "passed": 2519,
+      "failed": 0,
+      "skipped": 0,
+      "exitCode": 0,
+      "qualification": "Not final source acceptance; the later full2525 and focused69 cases include corrected interleaving behavior."
+    },
+    {
+      "scope": "Final reviewed notification source across complete web unit/component suite",
+      "command": "pnpm --filter @homeservicemarketplace/web exec vitest run",
+      "passed": 2525,
+      "failed": 0,
+      "skipped": 0,
+      "exitCode": 0,
+      "sourceQualification": "Uncommitted assembled source, after all notification corrections."
+    },
+    {
+      "scope": "Selected exact60b64cd R28 descriptor correction plus existing staging/runtime/storage controls",
+      "command": "node --test --test-reporter=tap scripts/production/platform/validate-plan.test.cjs infra/production/check-runtime.test.cjs infra/production/staging.test.cjs scripts/production/storage/storage-plan.test.cjs scripts/production/storage/storage-cli.test.cjs",
+      "passed": 457,
+      "failed": 0,
+      "skipped": 0,
+      "exitCode": 0,
+      "sourceQualification": "All twelve imported R28 Git blobs equal60b64cd8216294d7476a7a22607ee56feb18dec4 before and after verification; assembled G2 evidence records were not yet committed.",
+      "privateProofSha256": "5d12e894df08108c08427b6d36b8c6a5f20456ddb5f34573a61e6968a1ffb3b1"
+    }
+  ],
+  "r28": {
+    "scope": "CONFIGURATION_ONLY",
+    "hostedState": "HOSTED_ENVIRONMENT_BLOCKED",
+    "authorizationVerified": false,
+    "deploymentStarted": false,
+    "missingOwnerInputGroups": 9,
+    "remainingHostedCheckDescriptions": 6,
+    "planFingerprint": "00930548859d95781434fcd8727ce38775be9bdfe2d123f089639d150afdf8e3",
+    "deliveryPr": 179,
+    "importedSourceSha": "60b64cd8216294d7476a7a22607ee56feb18dec4",
+    "importedSourceTreeSha": "a89d8cdf69f7fa368dc9ffb91fc1b241bdcc49b5",
+    "exactImportedFiles": 12,
+    "defaultCheckExitCode": 0,
+    "requireTargetExpectedExitCode": 2,
+    "coordinatorIntegration": [
+      "Production governance additionally runs R28 checks",
+      "Existing Linux/Windows staging controls retain R28 TAP and configuration JSON with exact source SHA",
+      "API-only prepared stop grace30seconds for default outbox20seconds; actual protected target settings and shutdown evidence remain unverified"
+    ],
+    "previousImportedSourceSha": "e91c6c596e3154d24f4aa8637ddc901adfa15d64",
+    "previousImportedSourceTreeSha": "854a2763ce2e00f9235e4c15fb5540a77358ed54",
+    "readerCorrection": {
+      "changedPeerFiles": 6,
+      "localCheckpointBeforeCorrection": "f93ddb5509a33c471a4f3758889643e581727aa9",
+      "scope": "Opened-descriptor/path identity checked before byte reads; two behavioral replacement/symlink regressions. Plan inputs unchanged.",
+      "sourceIdentityQualification": "Plan fingerprint does not identify validator source bytes. Official final-head CodeQL remains required.",
+      "executedTests": {
+        "r28": 344,
+        "existingStagingAndRuntime": 95,
+        "existingStorage": 18,
+        "totalPassed": 457,
+        "failed": 0,
+        "skipped": 0
+      }
+    }
+  },
+  "finalPr": null,
+  "sourceBoundChecks": [],
+  "publication": {
+    "state": "DRAFT_PENDING_OWNER_REVIEW",
+    "merged": false,
+    "deployed": false
+  },
+  "r32": {
+    "state": "NOT_STARTED",
+    "startGate": "G2",
+    "startable": false
+  },
+  "localUtcBaselineReproduction": {
+    "sourceSha": "4e87bf03663fb3c72ffee983fdb70c2863e1ce8a",
+    "treeSha": "eaca9cdeab15e719570f7997c4fc3bbeb64e562e",
+    "cleanSource": true,
+    "attempt": "20261017203254887-89acd119",
+    "command": "node scripts/production/realtime/verify-replicas.cjs --run",
+    "databaseTimezone": "UTC",
+    "exitCode": 1,
+    "apiTests": {
+      "passed": 13,
+      "failed": 0,
+      "skipped": 0
+    },
+    "browserTests": {
+      "passed": 0,
+      "failed": 1,
+      "skipped": 0,
+      "flaky": 0
+    },
+    "browserDurationMs": 32424,
+    "failurePhase": "multi-tab notifications and durable read state",
+    "redactedFailure": "One booking start produced two combined toast presentations; original assertion expected beforeToast + 1.",
+    "sourceAssertion": "apps/web/e2e/r25-realtime-recovery.real-api.spec.ts:368",
+    "scope": "Exact clean combined source, local CI-timezone parity. No claim that unpublished remote diagnostics identify the identical assertion."
+  },
+  "regressionCorrections": [
+    {
+      "scope": "UTC token repository, real PostgreSQL R04",
+      "before": {
+        "passed": 16,
+        "failed": 5,
+        "skipped": 0
+      },
+      "clockOnlyIntermediate": {
+        "passed": 20,
+        "failed": 1
+      },
+      "after": {
+        "passed": 21,
+        "failed": 0,
+        "skipped": 0
+      },
+      "zones": ["UTC", "Asia/Riyadh", "America/New_York"],
+      "realDateBindingVerified": true,
+      "policyChanges": false
+    },
+    {
+      "scope": "REST/socket cross-tab notification pairing",
+      "before": {
+        "passed": 49,
+        "failed": 12
+      },
+      "peerReviewInterleavingBefore": {
+        "passed": 49,
+        "failed": 2
+      },
+      "after": {
+        "passed": 69,
+        "failed": 0,
+        "skipped": 0
+      },
+      "mechanism": "Atomically consume unmatched attributed/unattributed booking markers. Durable aliases and opaque origin identity correlate a matching bridge; unrelated old duplicates neither consume nor recreate newer markers.",
+      "originalBrowserAssertionModified": false,
+      "durableBridgeBefore": {
+        "passed": 51,
+        "failed": 1
+      }
+    },
+    {
+      "scope": "Media canonical path and moderation boundary",
+      "before": {
+        "passed": 42,
+        "failed": 13
+      },
+      "after": {
+        "passed": 94,
+        "failed": 0,
+        "skipped": 0
+      },
+      "scopeLimit": "Real local HTTP boundary and storage/service suites; no hosted private object access or new scanner proof inferred."
+    }
+  ],
+  "concurrentWork": [
+    {
+      "pr": 178,
+      "sourceSha": "14a3cec598a0731879986736adeb792058ae1aa9",
+      "treeSha": "70425658b76408d68671dd3de129d4d216730abc",
+      "relationship": "Earlier blocked closeout observation; incompatible alternative canonical schema and separate R29 intake. Preserve remote branch/PR; reconcile historical facts into one G2 schema and retain supplied R32 package."
+    },
+    {
+      "pr": 179,
+      "sourceSha": "60b64cd8216294d7476a7a22607ee56feb18dec4",
+      "treeSha": "a89d8cdf69f7fa368dc9ffb91fc1b241bdcc49b5",
+      "relationship": "Single selected R28 delivery: exact twelve blobs imported for coordinator review, no remote branch/PR mutation or merge.",
+      "previousSourceSha": "e91c6c596e3154d24f4aa8637ddc901adfa15d64",
+      "previousTreeSha": "854a2763ce2e00f9235e4c15fb5540a77358ed54"
+    }
+  ],
+  "r27DirectExperiment": {
+    "scope": "Isolated synthetic PostgreSQL16 full-width Booking fixture and actual generated Prisma SQL; not the guarded Docker HTTP/browser workflow",
+    "bookings": 5418,
+    "visibleCompleted": 1626,
+    "deletedCompleted": 180,
+    "scheduled": 3612,
+    "scalarColumns": 12,
+    "candidateIndex": "Booking_status_updatedAt_id_deletedAt_idx",
+    "indexBytes": 532480,
+    "beforeBuffers": 148,
+    "afterBuffersByTake": {
+      "6": 6,
+      "21": 23,
+      "101": 102
+    },
+    "defaultPlannerGenericAndBoundUsedIndex": true,
+    "rejectedAlternatives": [
+      "deletedAt prefix retained sequential scan plus sort",
+      "partial visible-completed index not used for generic status parameter"
+    ],
+    "actualMigrationIndexValidAndReady": true,
+    "sourceSchemaDiff": "Exactly one CREATE INDEX",
+    "originalRowsAndLedgerPreserved": true,
+    "mutableCursorObservation": {
+      "duplicatesFromEarlierPage": 19,
+      "snapshotGuarantee": false,
+      "unreadSoftDeletionExcluded": true,
+      "fixtureRestored": true
+    },
+    "amplification": {
+      "requests": 10836,
+      "bids": 43344,
+      "bookings": 5418,
+      "largestTimestampTie": 16,
+      "repeatRefused": true
+    },
+    "budgets": "UNCHANGED_PROPOSED_AWAITING_OWNER_APPROVAL",
+    "privateEvidenceDigests": [
+      {
+        "name": "hsm-g2-r27-financial-index-evidence-v3-ca0e1fde8f79.json",
+        "sha256": "f8083fcd9c6672cd63833971dbe91e2e20a792dde2aa64472bc27e4dacc98bf4",
+        "bytes": 470756
+      },
+      {
+        "name": "hsm-g2-r27-prisma-index-evidence-ca0e1fde8f79.json",
+        "sha256": "82812296978eb5d21163353a8c39ec70f3507a7369d845e09dc4a12f3cc79ae2",
+        "bytes": 41468
+      },
+      {
+        "name": "hsm-g2-r27-amplify-evidence-ca0e1fde8f79.json",
+        "sha256": "8747feaf21d45c3695b97f32fde8c60a04707fd14c368753701b0848b9327e82",
+        "bytes": 1306
+      },
+      {
+        "name": "hsm-g2-r27-catalog-evidence-ca0e1fde8f79.json",
+        "sha256": "419041a1b441a2e7cf9a50e043f2becd995d411fe5db6410683e0f908c01edad",
+        "bytes": 13903
+      }
+    ],
+    "candidateIndexCatalogGate": "Exact definition/order/directions/null order/valid/ready/live required only for candidate; complete generic and bound plans required for both; actual planner choices retained."
+  },
+  "nonUtcApiDiagnostic": {
+    "databaseTimezone": "Asia/Riyadh",
+    "sourceScope": "Uncommitted G2 API source; isolated task-only database inherited host PostgreSQL configuration",
+    "suites": {
+      "total": 356,
+      "passed": 340,
+      "failed": 3,
+      "skipped": 13
+    },
+    "tests": {
+      "total": 6587,
+      "passed": 6502,
+      "failed": 4,
+      "skipped": 81
+    },
+    "failedAssertions": [
+      "outbox future availableAt claimed early",
+      "outbox reclaimStale expected1 got0",
+      "R22 legacy application-cutoff control expected1 got0; database-clock reclaim assertion passed",
+      "work-access readiness expected1 got2"
+    ],
+    "disposition": "Retained diagnostic. Standard CI comparison uses a separate freshly migrated UTC database. Hosted acceptance requires actual UTC app/worker/pool-session verification; no global clocks/defaults rewrite or retrospective timestamp interpretation is inferred."
+  },
+  "supportedApiIntegration": {
+    "scope": "Local assembled G2 API source with real disposable PostgreSQL/Redis/Mailpit; not a fresh published-head or hosted acceptance claim",
+    "runtime": {
+      "node": "24.21.0",
+      "pnpm": "10.32.1",
+      "postgres": "16.15"
+    },
+    "databaseAndNewChildPrismaTimezone": "UTC",
+    "appliedMigrations": 72,
+    "migrateExitCode": 0,
+    "seedExitCode": 0,
+    "command": "pnpm --filter @homeservicemarketplace/api exec jest --maxWorkers=2 --json --outputFile=<private-report>",
+    "enabledGates": [
+      "RUN_DB_INTEGRATION=1",
+      "RUN_REDIS_INTEGRATION=1",
+      "R21_MAILPIT_SMTP_PORT=<owned-port>",
+      "R21_MAILPIT_API_URL=<owned-loopback-service>"
+    ],
+    "suites": {
+      "passed": 343,
+      "failed": 0,
+      "skipped": 13,
+      "total": 356
+    },
+    "tests": {
+      "passed": 6506,
+      "failed": 0,
+      "skipped": 81,
+      "total": 6587
+    },
+    "exitCode": 0,
+    "durationSeconds": 290.374,
+    "privateReportSha256": "27dd3c8c531f0d9059776e74bcb4a07639a7c25e908f2ea8a37f1c83815c72e8",
+    "unrunCases": {
+      "MinIO/S3": 40,
+      "retentionExternalStorageAndScanner": 29,
+      "independentWorkerProcesses": 6,
+      "browser": 6
+    },
+    "diagnosticRuns": [
+      {
+        "databaseTimezone": "Asia/Riyadh",
+        "passed": 6502,
+        "failed": 4,
+        "skipped": 81
+      },
+      {
+        "databaseTimezone": "UTC main database; child inherited Asia/Riyadh",
+        "passed": 6505,
+        "failed": 1,
+        "skipped": 81
+      }
+    ],
+    "qualification": "Dedicated UTC cluster and actual Prisma-created child prove CI session parity. Original diagnostic databases and R25 services were preserved. No source assertions or clocks were changed to make this full run pass; hosted UTC sessions remain an explicit prerequisite."
+  },
+  "localDependencyAudits": [
+    {
+      "command": "pnpm audit --json",
+      "exitCode": 0,
+      "policy": "zero findings at every severity",
+      "vulnerabilities": {
+        "info": 0,
+        "low": 0,
+        "moderate": 0,
+        "high": 0,
+        "critical": 0
+      },
+      "privateReportSha256": "137406d6a7203e02dc822cb20f033959391ab4c13765f8c13203faf09193c198",
+      "qualification": "Pinned lockfile unchanged; actual final-head workflow evidence remains required."
+    },
+    {
+      "command": "pnpm audit --prod --json",
+      "exitCode": 0,
+      "policy": "zero findings at every severity",
+      "vulnerabilities": {
+        "info": 0,
+        "low": 0,
+        "moderate": 0,
+        "high": 0,
+        "critical": 0
+      },
+      "privateReportSha256": "1880b619f39c3c9cadaba46553ae80b5e4acf05999f2e0fb8a64e47bc5b798dd",
+      "qualification": "Pinned lockfile unchanged; actual final-head workflow evidence remains required."
+    }
+  ]
+}

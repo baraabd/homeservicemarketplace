@@ -23,6 +23,19 @@ import { amplify, rowCounts } from './lib/amplify.mjs';
 import { startApi, stopApi } from './lib/api-process.mjs';
 import { laneDb } from './lib/db.mjs';
 import {
+  assertClonedFinancialValues,
+  assertFinancialIndex,
+  assertFinancialIntegrity,
+  assertFinancialPlanEvidence,
+  completeFinancialFixture,
+  financialBoundPlans,
+  financialDistribution,
+  financialGenericPlans,
+  financialIndexCatalog,
+  financialIntegritySnapshot,
+  financialListEvidence,
+} from './lib/financials.mjs';
+import {
   acceptBid,
   adminSession,
   leafCategoryId,
@@ -86,7 +99,12 @@ function scenarios(f) {
       path: '/v1/admin/category-applications?status=PENDING',
     },
     { name: 'admin disputes', who: f.admin, path: '/v1/admin/disputes' },
-    { name: 'admin financial bookings', who: f.admin, path: '/v1/admin/financials/bookings' },
+    {
+      name: 'admin financial bookings',
+      who: f.admin,
+      path: '/v1/admin/financials/bookings',
+      paged: true,
+    },
     { name: 'admin audit logs', who: f.admin, path: '/v1/admin/audit-logs' },
   ];
 }
@@ -361,6 +379,7 @@ async function main() {
       seekers.push(seeker);
     }
     let bookings = 0;
+    let completedBookings = 0;
     for (const seeker of seekers) {
       for (const [j, requestId] of seeker.requestIds.entries()) {
         const bids = [];
@@ -368,7 +387,13 @@ async function main() {
           bids.push(await submitBid(provider, requestId, 100 + k * 5));
         // Keep the first request of each seeker open so its bid list stays readable.
         if (j >= 1 && j <= ACCEPTS_PER_SEEKER) {
-          await acceptBid(seeker, requestId, bids[j % bids.length]);
+          const bookingId = await acceptBid(seeker, requestId, bids[j % bids.length]);
+          // One guarded completion per seeker supplies actual financial rows.
+          // Provider 1's booked-list fixture remains scheduled and populated.
+          if (j === 2) {
+            await completeFinancialFixture(providers[j % bids.length], bookingId);
+            completedBookings += 1;
+          }
           bookings += 1;
         }
       }
@@ -388,11 +413,18 @@ async function main() {
           ...(await measure(db, scenario)),
         };
       }
-      phases[phase] = { rowCounts: await rowCounts(db), scenarios: rows };
+      phases[phase] = {
+        rowCounts: await rowCounts(db),
+        financialDistribution: await financialDistribution(db),
+        scenarios: rows,
+      };
       console.log(`[r27-query] ${phase}: ${JSON.stringify(phases[phase].rowCounts)}`);
     };
     await run('base');
+    const originalFinancialIntegrity = await financialIntegritySnapshot(db);
     const amplified = await amplify(db, COPIES);
+    assertFinancialIntegrity(originalFinancialIntegrity, await financialIntegritySnapshot(db));
+    await assertClonedFinancialValues(db);
     console.log(`[r27-query] amplified x${COPIES}`);
     await run('amplified');
 
@@ -418,8 +450,13 @@ async function main() {
 
     const plans = {};
     for (const [name, row] of Object.entries(phases.amplified.scenarios)) {
-      plans[name] = await plansFor(db, row.queries);
+      plans[name] =
+        name === 'admin financial bookings'
+          ? await financialGenericPlans(db, row.queries)
+          : await plansFor(db, row.queries);
     }
+    const financialScalarPlans = await financialBoundPlans(db);
+    const financialIndex = await financialIndexCatalog(db);
     const pagination = {
       'provider bids': await walkPages(
         providers[0].jar,
@@ -453,6 +490,7 @@ async function main() {
       ),
     };
     const cacheAuth = await negatives(fixtures);
+    const financials = await financialListEvidence(db, fixtures);
     const bidCounts = await bidCountContract(db, fixtures);
     const workloads = await measureWorkloads(handle.pid, () =>
       api(seekers[0].jar, '/v1/me/requests?limit=20'),
@@ -462,18 +500,6 @@ async function main() {
         throw new Error('pagination contract failed: ' + name);
       }
     }
-    if (ASSERT_REPAIRS) {
-      if (pageSize['admin users'].verdict !== 'bounded') throw new Error('admin user N+1 remains');
-      if (
-        plans['seeker requests'].some(
-          (plan) =>
-            plan.error || plan.seqScansOnLargeTables?.some((scan) => scan.startsWith('Bid ')),
-        )
-      ) {
-        throw new Error('page bid count still scans the large Bid table');
-      }
-    }
-
     for (const phase of Object.values(phases)) {
       for (const row of Object.values(phase.scenarios)) delete row.queries;
     }
@@ -489,11 +515,14 @@ async function main() {
           providers: PROVIDERS,
           requestsPerSeeker: REQUESTS_PER_SEEKER,
           bookings,
+          completedBookings,
         },
         amplification: {
           copies: COPIES,
           tables: ['ServiceRequest', 'Bid', 'Booking'],
           rowCountsAfter: amplified,
+          financialFixture:
+            'completed clones preserve amounts and owners; every tenth completed generation is soft-deleted; day-boundary completion ties exercise id ordering',
         },
         limits:
           'clones share the real users: per-user histories are heavy; user/notification/audit tables stay small',
@@ -508,13 +537,36 @@ async function main() {
       phases,
       pageSizeInvariance: pageSize,
       plans,
+      financialScalarPlans,
+      financialIndex,
+      financials: {
+        ...financials,
+        amplificationPreservedOriginalRowsAndLedger: true,
+        clonedFinancialValuesMatchOriginals: true,
+        budgetDecision: 'PROPOSED_THRESHOLDS_REMAIN_UNAPPROVED',
+      },
       pagination,
       cacheAuthorization: cacheAuth,
       bidCountContract: bidCounts,
       workloads,
       repairAssertionsEnabled: ASSERT_REPAIRS,
     };
+    // Preserve actual measurements and catalog metadata even when a repair
+    // assertion fails. The CI result, not the existence of this report, gates acceptance.
     if (OUT) writeFileSync(resolve(REPO_ROOT, OUT), `${JSON.stringify(report, null, 2)}\n`);
+    assertFinancialPlanEvidence(plans['admin financial bookings'], financialScalarPlans);
+    if (ASSERT_REPAIRS) {
+      assertFinancialIndex(financialIndex);
+      if (pageSize['admin users'].verdict !== 'bounded') throw new Error('admin user N+1 remains');
+      if (
+        plans['seeker requests'].some(
+          (plan) =>
+            plan.error || plan.seqScansOnLargeTables?.some((scan) => scan.startsWith('Bid ')),
+        )
+      ) {
+        throw new Error('page bid count still scans the large Bid table');
+      }
+    }
     for (const c of comparison) {
       console.log(
         `  ${c.name.padEnd(30)} ${String(c.status)} items ${String(c.items).padEnd(9)} stmts ${String(c.statements).padEnd(7)} ${c.bounded ? 'bounded' : 'GROWS'}  p50 ${c.p50Ms.join(' -> ')} ms`,

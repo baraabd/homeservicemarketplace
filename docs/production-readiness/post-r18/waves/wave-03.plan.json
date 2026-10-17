@@ -1,0 +1,103 @@
+{
+  "schemaVersion": 1,
+  "wave": 3,
+  "startGate": "G2",
+  "status": "BLOCKED",
+  "baseSha": null,
+  "startableLanes": [],
+  "blockedLanes": ["R29", "R30", "R31", "R32", "R33"],
+  "decisionRecord": "docs/production-readiness/post-r18/gates/g2/SOURCE_MANIFEST.json",
+  "publicationRequirement": "No start from this review PR. G2 source acceptance, owner approval and verified merged publication must be recorded first.",
+  "lanes": [
+    {
+      "id": "R29",
+      "wave": 3,
+      "lane": 1,
+      "title": null,
+      "branch": null,
+      "owner": null,
+      "status": "RESERVED_PENDING_PACKAGE",
+      "frozenBaseSha": null,
+      "dependencies": null,
+      "exactFiles": [],
+      "leases": []
+    },
+    {
+      "id": "R30",
+      "wave": 3,
+      "lane": 2,
+      "title": null,
+      "branch": null,
+      "owner": null,
+      "status": "RESERVED_PENDING_PACKAGE",
+      "frozenBaseSha": null,
+      "dependencies": null,
+      "exactFiles": [],
+      "leases": []
+    },
+    {
+      "id": "R31",
+      "wave": 3,
+      "lane": 3,
+      "title": null,
+      "branch": null,
+      "owner": null,
+      "status": "RESERVED_PENDING_PACKAGE",
+      "frozenBaseSha": null,
+      "dependencies": null,
+      "exactFiles": [],
+      "leases": []
+    },
+    {
+      "id": "R32",
+      "wave": 3,
+      "lane": 4,
+      "title": "Refund eligibility, reservations and ambiguous-outcome recovery",
+      "branch": "feat/r32-refund-recovery",
+      "owner": {
+        "lane": "R32 owner-delegated session after verified G2 approval/publication",
+        "coordinator": "G2 owner-delegated coordinator for baraabd"
+      },
+      "status": "BLOCKED",
+      "frozenBaseSha": null,
+      "dependencies": ["R24", "R22", "R23"],
+      "exactFiles": [
+        "apps/api/src/modules/money/refunds/refund-eligibility.policy.ts",
+        "apps/api/src/modules/money/refunds/refund-eligibility.policy.spec.ts",
+        "apps/api/src/modules/money/refunds/refund-orchestrator.service.ts",
+        "apps/api/src/modules/money/refunds/refund-orchestrator.service.spec.ts",
+        "apps/api/src/modules/money/refunds/refund.controller.ts",
+        "apps/api/src/modules/money/refunds/refund.controller.spec.ts",
+        "apps/api/src/modules/money/refunds/refunds.module.ts",
+        "apps/api/src/modules/money/refunds/refunds.module.spec.ts",
+        "apps/api/src/modules/money/recovery/refund-recovery.service.ts",
+        "apps/api/src/modules/money/recovery/refund-recovery.service.spec.ts",
+        "apps/api/src/modules/money/recovery/refund-outbox.consumer.ts",
+        "apps/api/src/modules/money/recovery/refund-outbox.consumer.spec.ts",
+        "apps/api/test/integration/r32-refund-recovery.integration.spec.ts",
+        "scripts/production/refund-recovery/inspect.cjs",
+        "scripts/production/refund-recovery/inspect.test.cjs",
+        "docs/production-readiness/r32/IMPLEMENTATION.md",
+        "docs/production-readiness/r32/ACCEPTANCE.md",
+        "docs/production-readiness/r32/RISKS.md",
+        "docs/production-readiness/r32/ROLLBACK.md",
+        "docs/production-readiness/r32/OWNERSHIP.md",
+        "docs/production-readiness/r32/shared-change-requests/CR-001-integration.md"
+      ],
+      "leases": []
+    },
+    {
+      "id": "R33",
+      "wave": 3,
+      "lane": 5,
+      "title": null,
+      "branch": null,
+      "owner": null,
+      "status": "RESERVED_PENDING_PACKAGE",
+      "frozenBaseSha": null,
+      "dependencies": null,
+      "exactFiles": [],
+      "leases": []
+    }
+  ]
+}

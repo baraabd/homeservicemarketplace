@@ -775,7 +775,7 @@
         ]
       },
       "execution": {
-        "state": "IN_PROGRESS",
+        "state": "MERGED_INTEGRATION_PENDING",
         "startedAtUtc": "2026-10-17T15:55:11Z",
         "worktree": "/workspace/scratch/3c602a5e36ee/homeservicemarketplace-r24",
         "startHeadSha": "07c8e584c684111bfc80995c7efb0144cfb6161b",
@@ -788,7 +788,11 @@
         "acceptance": "NOT_ASSERTED",
         "ownershipCommitSha": "60df8018ea9c76b1cda1c322fb279c7b9d7fde93",
         "integratedDevelopSha": "21089a5065169b78bea5e711a4839e1a467531dc",
-        "integrationCommitSha": "65b2a0e59604931a4b8b87acb971c71afaaf9a74"
+        "integrationCommitSha": "65b2a0e59604931a4b8b87acb971c71afaaf9a74",
+        "mergeCommitSha": "820913a87c90fd283df58e00827bcc79a1e0ca39",
+        "pr": 176,
+        "gate": "G2",
+        "gateRecord": "docs/production-readiness/post-r18/gates/g2/SOURCE_MANIFEST.json"
       },
       "requiredEvidence": [
         "docs/production-readiness/r24/IMPLEMENTATION.md",
@@ -798,8 +802,8 @@
         "All behavioral, negative and integration tests in the complete authoritative prompt",
         "Exact final-head CI and CodeQL; real-service evidence; limitations and rollback"
       ],
-      "pr": null,
-      "scopeNote": "G1 publication identity verified; R24 exact ownership and the serialized shared integration lease are recorded before runtime work in r24/OWNERSHIP.md and CR-001-integration.md. READY_TO_START preserves the accepted start barrier; execution.IN_PROGRESS is not implementation or acceptance. The G1 frozen runtime remains unchanged while owner-merged develop has been integrated into the R24 branch by the recorded normal merge. Complete requirements remain in gates/g1/prompts/R19-R28.md; preserve all policy/external holds.",
+      "pr": 176,
+      "scopeNote": "Historical READY_TO_START preserves the verified G1 start contract. Owner-merged PR #176 is implemented source; execution records the actual merge. G2 integrated acceptance is separately blocked; individual green checks do not certify the combined source.",
       "startBarrier": {
         "gate": "G1",
         "decision": "ACCEPTED",
@@ -888,14 +892,22 @@
         "All behavioral, negative and integration tests in the complete authoritative prompt",
         "Exact final-head CI and CodeQL; real-service evidence; limitations and rollback"
       ],
-      "pr": null,
-      "scopeNote": "G1 publication identity verified; exact lane ownership released to the owner-assigned session. READY_TO_START is not implementation or acceptance. Complete requirements remain in gates/g1/prompts/R19-R28.md; preserve frozen source and all policy/external holds.",
+      "pr": 175,
+      "scopeNote": "Historical READY_TO_START preserves the verified G1 start contract. Owner-merged PR #175 is implemented source; execution records the actual merge. G2 integrated acceptance is separately blocked; individual green checks do not certify the combined source.",
       "startBarrier": {
         "gate": "G1",
         "decision": "ACCEPTED",
         "publication": "MERGED",
         "acceptanceRecordCommitSha": "0568739096ceeaf0cfc79034626886e258fe4328",
         "verificationRecord": "docs/production-readiness/post-r18/gates/g1/PUBLICATION_VERIFICATION.json"
+      },
+      "execution": {
+        "state": "MERGED_INTEGRATION_PENDING",
+        "mergeCommitSha": "4e87bf03663fb3c72ffee983fdb70c2863e1ce8a",
+        "pr": 175,
+        "gate": "G2",
+        "acceptance": "NOT_ASSERTED",
+        "gateRecord": "docs/production-readiness/post-r18/gates/g2/SOURCE_MANIFEST.json"
       }
     },
     {
@@ -983,7 +995,7 @@
         "Exact final-head CI and CodeQL; real-service evidence; limitations and rollback"
       ],
       "pr": 174,
-      "scopeNote": "G1 publication and all assigned lane starts remain as owner-merged #172. R26 implementation is in Draft PR #174 under its recorded exact shared-file lease; final checks and external security/hosted evidence remain required. No implementation or release acceptance inferred.",
+      "scopeNote": "Historical READY_TO_START preserves the verified G1 start contract. Owner-merged PR #174 is implemented source; execution records the actual merge. G2 integrated acceptance is separately blocked; individual green checks do not certify the combined source.",
       "startBarrier": {
         "gate": "G1",
         "decision": "ACCEPTED",
@@ -992,10 +1004,15 @@
         "verificationRecord": "docs/production-readiness/post-r18/gates/g1/PUBLICATION_VERIFICATION.json"
       },
       "execution": {
-        "state": "IN_PROGRESS",
+        "state": "MERGED_INTEGRATION_PENDING",
         "startedAtUtc": "2026-10-16T23:08:21.661691+00:00",
         "coordinationBaseSha": "0568739096ceeaf0cfc79034626886e258fe4328",
-        "frozenRuntimeSourceSha": "40cdac5c9ce6acaa8dedc0385984a807ae9a84d0"
+        "frozenRuntimeSourceSha": "40cdac5c9ce6acaa8dedc0385984a807ae9a84d0",
+        "mergeCommitSha": "6c599618f2a97407093b37ddfa93ad21a41ea7a1",
+        "pr": 174,
+        "gate": "G2",
+        "acceptance": "NOT_ASSERTED",
+        "gateRecord": "docs/production-readiness/post-r18/gates/g2/SOURCE_MANIFEST.json"
       }
     },
     {
@@ -1079,14 +1096,22 @@
         "All behavioral, negative and integration tests in the complete authoritative prompt",
         "Exact final-head CI and CodeQL; real-service evidence; limitations and rollback"
       ],
-      "pr": 162,
-      "scopeNote": "G1 publication identity verified; exact lane ownership released to the owner-assigned session. READY_TO_START is not implementation or acceptance. Complete requirements remain in gates/g1/prompts/R19-R28.md; preserve frozen source and all policy/external holds.",
+      "pr": 173,
+      "scopeNote": "Historical READY_TO_START preserves the verified G1 start contract. Owner-merged PR #173 is implemented source; execution records the actual merge. G2 integrated acceptance is separately blocked; individual green checks do not certify the combined source.",
       "startBarrier": {
         "gate": "G1",
         "decision": "ACCEPTED",
         "publication": "MERGED",
         "acceptanceRecordCommitSha": "0568739096ceeaf0cfc79034626886e258fe4328",
         "verificationRecord": "docs/production-readiness/post-r18/gates/g1/PUBLICATION_VERIFICATION.json"
+      },
+      "execution": {
+        "state": "MERGED_INTEGRATION_PENDING",
+        "mergeCommitSha": "21089a5065169b78bea5e711a4839e1a467531dc",
+        "pr": 173,
+        "gate": "G2",
+        "acceptance": "NOT_ASSERTED",
+        "gateRecord": "docs/production-readiness/post-r18/gates/g2/SOURCE_MANIFEST.json"
       }
     },
     {
@@ -1140,14 +1165,25 @@
         "All behavioral, negative and integration tests in the complete authoritative prompt",
         "Exact final-head CI and CodeQL; real-service evidence; limitations and rollback"
       ],
-      "pr": null,
-      "scopeNote": "G1 publication identity verified; exact lane ownership released to the owner-assigned session. READY_TO_START is not implementation or acceptance. Complete requirements remain in gates/g1/prompts/R19-R28.md; preserve frozen source and all policy/external holds.",
+      "pr": 179,
+      "scopeNote": "Historical G1 start retained. Exact twelve-file R28 delivery from Draft #179 is consolidated in G2 review; no hosted acceptance, account, region, spending or deployment is inferred.",
       "startBarrier": {
         "gate": "G1",
         "decision": "ACCEPTED",
         "publication": "MERGED",
         "acceptanceRecordCommitSha": "0568739096ceeaf0cfc79034626886e258fe4328",
         "verificationRecord": "docs/production-readiness/post-r18/gates/g1/PUBLICATION_VERIFICATION.json"
+      },
+      "execution": {
+        "state": "INTEGRATION_PENDING",
+        "gate": "G2",
+        "ownershipRecord": "docs/production-readiness/post-r18/gates/g2/OWNERSHIP.md",
+        "scope": "CONFIGURATION_ONLY checked plan under the R28 prompt; HOSTED_ENVIRONMENT_BLOCKED retained.",
+        "acceptance": "NOT_ASSERTED",
+        "pr": 179,
+        "deliveryHeadSha": "60b64cd8216294d7476a7a22607ee56feb18dec4",
+        "deliveryTreeSha": "a89d8cdf69f7fa368dc9ffb91fc1b241bdcc49b5",
+        "integrationPolicy": "Exact same-wave delivery blobs imported into coordinator review without merging or altering the peer branch; source checks do not release Wave3."
       }
     },
     {
@@ -1203,20 +1239,62 @@
     },
     {
       "id": "R32",
-      "title": null,
-      "titleSource": "PENDING_PACKAGE: SPRINT_PLAN.json and this lane prompt were not provided",
+      "title": "Refund eligibility, reservations and ambiguous-outcome recovery",
+      "titleSource": "gates/g2/prompts/R32.md",
       "wave": 3,
       "lane": 4,
-      "branch": null,
-      "owner": null,
-      "status": "RESERVED_PENDING_PACKAGE",
+      "branch": "feat/r32-refund-recovery",
+      "owner": {
+        "lane": "R32 owner-delegated session after verified G2 approval/publication",
+        "coordinator": "G2 owner-delegated coordinator for baraabd"
+      },
+      "status": "PLANNED",
       "frozenBase": null,
-      "dependencies": null,
+      "dependencies": ["R24", "R22", "R23"],
       "legacyAliases": [],
-      "ownedPaths": null,
-      "requiredEvidence": null,
+      "ownedPaths": {
+        "exact": [
+          "apps/api/src/modules/money/refunds/refund-eligibility.policy.ts",
+          "apps/api/src/modules/money/refunds/refund-eligibility.policy.spec.ts",
+          "apps/api/src/modules/money/refunds/refund-orchestrator.service.ts",
+          "apps/api/src/modules/money/refunds/refund-orchestrator.service.spec.ts",
+          "apps/api/src/modules/money/refunds/refund.controller.ts",
+          "apps/api/src/modules/money/refunds/refund.controller.spec.ts",
+          "apps/api/src/modules/money/refunds/refunds.module.ts",
+          "apps/api/src/modules/money/refunds/refunds.module.spec.ts",
+          "apps/api/src/modules/money/recovery/refund-recovery.service.ts",
+          "apps/api/src/modules/money/recovery/refund-recovery.service.spec.ts",
+          "apps/api/src/modules/money/recovery/refund-outbox.consumer.ts",
+          "apps/api/src/modules/money/recovery/refund-outbox.consumer.spec.ts",
+          "apps/api/test/integration/r32-refund-recovery.integration.spec.ts",
+          "scripts/production/refund-recovery/inspect.cjs",
+          "scripts/production/refund-recovery/inspect.test.cjs",
+          "docs/production-readiness/r32/IMPLEMENTATION.md",
+          "docs/production-readiness/r32/ACCEPTANCE.md",
+          "docs/production-readiness/r32/RISKS.md",
+          "docs/production-readiness/r32/ROLLBACK.md",
+          "docs/production-readiness/r32/OWNERSHIP.md",
+          "docs/production-readiness/r32/shared-change-requests/CR-001-integration.md"
+        ],
+        "prefixes": [],
+        "leases": []
+      },
+      "requiredEvidence": [
+        "docs/production-readiness/r32/IMPLEMENTATION.md",
+        "docs/production-readiness/r32/ACCEPTANCE.md",
+        "docs/production-readiness/r32/RISKS.md",
+        "docs/production-readiness/r32/ROLLBACK.md",
+        "Every behavioral, negative, concurrency, PostgreSQL and eventual assembled Wave 3 adapter-backed test in gates/g2/prompts/R32.md; exact final-head CI and CodeQL."
+      ],
       "pr": null,
-      "scopeNote": "Refund orchestration (coordinator prompt, Mode 3.4)."
+      "scopeNote": "Only the supplied full R32 package is transcribed. Proposed exact future files confer no start while G2 is blocked. Shared MoneyModule/MoneyCommandService/outbox wiring requires a serialized exact lease after G2 publication; no schema change is presumed.",
+      "startBarrier": {
+        "gate": "G2",
+        "decision": "BLOCKED",
+        "publication": "DRAFT_PENDING_OWNER_REVIEW",
+        "acceptanceRecordCommitSha": null,
+        "verificationRecord": "docs/production-readiness/post-r18/gates/g2/SOURCE_MANIFEST.json"
+      }
     },
     {
       "id": "R33",
@@ -1363,12 +1441,19 @@
       "observedAt": "2026-10-16T23:43:56.210794+00:00",
       "by": "R26 delegated owner / serialized coordinator reconciliation",
       "note": "Owner-merged #172 advanced develop to 07c8e584c684111bfc80995c7efb0144cfb6161b during R26 checks. Preserve its all-lane readiness and immutable publication records; retain only R26 exact ownership/extensions and active PR #174. Runtime and all unmerged R27 source remain unchanged by this integration."
+    },
+    {
+      "observedAt": "2026-10-17T20:06:42Z",
+      "by": "G2 coordinator explicitly delegated by baraabd",
+      "note": "Reconciled owner-merged R24 #176, R25 #175, R26 #174 and R27 #173. Combined develop 4e87bf03663fb3c72ffee983fdb70c2863e1ce8a fails R25 and aggregate CI. Exact G2 ownership recorded; R28 checked-plan work authorized; R32 supplied prompt transcribed but held. No merge or deployment authorized."
     }
   ],
   "gates": {
-    "G1": "docs/production-readiness/post-r18/gates/g1/SOURCE_MANIFEST.json"
+    "G1": "docs/production-readiness/post-r18/gates/g1/SOURCE_MANIFEST.json",
+    "G2": "docs/production-readiness/post-r18/gates/g2/SOURCE_MANIFEST.json"
   },
   "waveManifests": {
-    "2": "docs/production-readiness/post-r18/waves/wave-02.plan.json"
+    "2": "docs/production-readiness/post-r18/waves/wave-02.plan.json",
+    "3": "docs/production-readiness/post-r18/waves/wave-03.plan.json"
   }
 }
