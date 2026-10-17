@@ -1,0 +1,119 @@
+{
+  "schema": "hsm.edge-policy/v1",
+  "status": "CONFIGURATION_ONLY",
+  "topology": "same-origin",
+  "origin": null,
+  "tls": {
+    "minimumVersion": "TLSv1.2",
+    "certificateVerification": true,
+    "certificateRef": null,
+    "hstsMaxAgeSeconds": 300,
+    "includeSubDomains": false,
+    "preload": false
+  },
+  "cookies": {
+    "secure": true,
+    "domain": null,
+    "refreshPath": "/v1/auth/refresh",
+    "refreshSameSite": "strict",
+    "csrfSameSite": "strict",
+    "accessHttpOnly": true,
+    "csrfHttpOnly": false,
+    "preserveSetCookie": true
+  },
+  "cors": {
+    "mode": "exact-origin",
+    "allowCredentials": true,
+    "rejectNullOrigin": true,
+    "reflectOrigin": false,
+    "forwardToApi": true,
+    "missingOrigin": "allow-non-upgrade-only"
+  },
+  "csp": {
+    "webMode": "enforce",
+    "apiMode": "enforce",
+    "apiAuthority": "apps/api/src/infrastructure/http/security-headers.ts",
+    "allowUnsafeEval": false,
+    "scriptSources": ["'self'"],
+    "styleSources": ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
+    "fontSources": ["'self'", "https://fonts.gstatic.com"],
+    "connectSources": ["approved-https-origin", "approved-wss-origin"],
+    "extraAssetOrigins": [],
+    "integrationEvidenceRef": null
+  },
+  "routes": [
+    {
+      "path": "/v1/me/events",
+      "match": "exact",
+      "upstream": "api",
+      "cache": "off"
+    },
+    {
+      "path": "/socket.io/",
+      "match": "prefix",
+      "upstream": "api",
+      "cache": "off"
+    },
+    {
+      "path": "/v1/",
+      "match": "prefix",
+      "upstream": "api",
+      "cache": "off"
+    },
+    {
+      "path": "/health/live",
+      "match": "exact",
+      "upstream": "api",
+      "cache": "off"
+    },
+    {
+      "path": "/health/ready",
+      "match": "exact",
+      "upstream": "api",
+      "cache": "off"
+    },
+    {
+      "path": "/metrics",
+      "match": "prefix",
+      "upstream": "deny",
+      "cache": "off"
+    },
+    {
+      "path": "/build-info.json",
+      "match": "exact",
+      "upstream": "web",
+      "cache": "off"
+    },
+    {
+      "path": "/",
+      "match": "prefix",
+      "upstream": "web",
+      "cache": "web-authority"
+    }
+  ],
+  "realtime": {
+    "socketIoPath": "/socket.io/",
+    "transports": ["websocket", "polling"],
+    "forwardUpgrade": true,
+    "requireAllowedOrigin": true,
+    "proxyReadTimeoutSeconds": 75,
+    "ssePath": "/v1/me/events",
+    "sseBuffering": false,
+    "sseCache": false,
+    "sseCompression": false,
+    "multiInstanceStatus": "R25_INTEGRATION_PENDING"
+  },
+  "privateMedia": {
+    "cacheAuthenticatedResponses": false,
+    "cdnPrefixes": ["requests/", "avatars/"],
+    "neverCdnPrefixes": ["verification/", "portfolio-staging/", "portfolio/"],
+    "stripAuthHeaders": false
+  },
+  "proxy": {
+    "trustProxyHops": 1,
+    "overwriteForwardedHeaders": true,
+    "allowDirectApiAccess": false,
+    "managementExposure": "private"
+  },
+  "applicationEvidenceRef": null
+}
