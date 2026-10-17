@@ -1,13 +1,16 @@
 import { useEffect, useRef } from 'react';
 import { useQueryClient, type QueryClient } from '@tanstack/react-query';
-import type { RealtimeEvent } from '@homeservicemarketplace/contracts';
+import type { MeResponse, RealtimeEvent } from '@homeservicemarketplace/contracts';
 
 import { providerQueryKeys } from '../provider/query-keys';
 import { seekerQueryKeys } from '../seeker/query-keys';
+import { authRequestScope, isLocallySignedOut } from '../auth-session-boundary';
 import { dispatchRealtimeSideEffects } from './side-effects';
+import { notificationFingerprint } from './notification-baseline';
 import {
   closeRealtimeSocket,
   openRealtimeSocket,
+  subscribeToConversation,
   type OpenRealtimeSocketOptions,
 } from './socket-client';
 
@@ -29,11 +32,9 @@ interface UseRealtimeSocketOptions {
   // socket-client re-evaluates this on every reconnect so a token
   // rotation surfaces seamlessly.
   getToken: OpenRealtimeSocketOptions['getToken'];
-  // Sprint 7.6 — the authenticated user's id. Used ONLY by the
-  // side-effects bridge to suppress UX feedback for actor-originated
-  // events; the socket connection itself is unaffected. Pass `null`
-  // when no user is loaded (the bridge then treats every recipient
-  // as a non-actor, which is the safe default).
+  // The current authenticated identity fences socket callbacks, recovery
+  // flights and cross-tab hints, as well as suppressing actor feedback.
+  // No connection is opened until this identity has been loaded.
   currentUserId?: string | null;
 }
 
@@ -43,46 +44,392 @@ export function useRealtimeSocket({
   currentUserId,
 }: UseRealtimeSocketOptions): void {
   const qc = useQueryClient();
-  // Stash the latest dispatcher so we don't tear down the socket
-  // every render cycle just because the closure identity changed.
-  // Sprint 7.5.1: every event fans out through TWO pure dispatchers:
-  //   - dispatchInvalidations  → React Query cache refresh
-  //   - dispatchRealtimeSideEffects → toast + sound + vibration (with
-  //                                   built-in dedupe)
-  // Keeping them separate means cache logic stays testable without
-  // mocking sonner, and side-effects stay testable without a
-  // QueryClient.
-  //
-  // Sprint 7.6 anti-echo: the side-effects dispatcher now receives
-  // `currentUserId` so it can early-return when the recipient is the
-  // event's actor. Cache invalidation runs UNCONDITIONALLY so the
-  // actor's own tabs/devices still converge on the new state.
-  const dispatchRef = useRef<(event: RealtimeEvent) => void>(() => {});
-  dispatchRef.current = (event) => {
-    dispatchInvalidations(qc, event);
-    dispatchRealtimeSideEffects(event, { currentUserId: currentUserId ?? null });
-  };
+  const tokenRef = useRef(getToken);
+  tokenRef.current = getToken;
 
   useEffect(() => {
-    if (!enabled) {
+    if (!enabled || !currentUserId) {
       closeRealtimeSocket();
       return undefined;
     }
-    openRealtimeSocket({
-      getToken,
-      onEvent: (event) => dispatchRef.current(event),
+    let active = true;
+    let connected = false;
+    let failures = 0;
+    let retryAttempt = 0;
+    let retryTimer: ReturnType<typeof setTimeout> | undefined;
+    let recoveryTimer: ReturnType<typeof setTimeout> | undefined;
+    let recoveryDueAt = Infinity;
+    let recoveryRequested = false;
+    let recoveryFlight: Promise<boolean> | null = null;
+    let lastRecoveryAt = 0;
+    const replayWindow = createRealtimeEventWindow();
+    let socket: ReturnType<typeof openRealtimeSocket> | null = null;
+    const subscribedConversations = new Set<string>();
+    let socketGeneration = 0;
+    let subscribingGeneration = -1;
+    const scope = authRequestScope();
+    const isCurrent = () =>
+      active &&
+      !isLocallySignedOut() &&
+      authRequestScope() === scope &&
+      qc.getQueryData<MeResponse | null>(['auth', 'me'])?.id === currentUserId;
+
+    // Both the initial handshake and every reconnect are a possible gap.
+    // Classic Redis Pub/Sub does not retain missed messages. We invalidate
+    // existing caches and ask the same authorized REST queries used by UI.
+    const recover = (): Promise<boolean> => {
+      if (recoveryFlight) return recoveryFlight;
+      if (!isCurrent()) return Promise.resolve(false);
+      recoveryFlight = resyncAuthoritativeState(qc, currentUserId, isCurrent)
+        .then((ok) => {
+          failures = ok ? 0 : Math.min(failures + 1, 3);
+          lastRecoveryAt = Date.now();
+          return ok;
+        })
+        .finally(() => {
+          recoveryFlight = null;
+        });
+      return recoveryFlight;
+    };
+    const scheduleRecovery = (delay: number) => {
+      if (!active) return;
+      const dueAt = Date.now() + delay;
+      if (recoveryTimer !== undefined && recoveryDueAt <= dueAt) return;
+      clearTimeout(recoveryTimer);
+      recoveryDueAt = dueAt;
+      recoveryTimer = setTimeout(async () => {
+        recoveryTimer = undefined;
+        recoveryDueAt = Infinity;
+        if (!active) return;
+        const canRead = document.visibilityState !== 'hidden' && navigator.onLine !== false;
+        if (canRead) {
+          // A hint received during a read may describe a later commit. Keep
+          // it pending until one subsequent authoritative read completes.
+          if (recoveryFlight) await recoveryFlight;
+          else {
+            recoveryRequested = false;
+            await recover();
+          }
+        }
+        if (active)
+          scheduleRecovery(
+            canRead && recoveryRequested
+              ? Math.max(100, 1_000 - (Date.now() - lastRecoveryAt))
+              : recoveryDelayMs(connected, failures),
+          );
+      }, delay);
+    };
+    const requestRecovery = () => {
+      if (!isCurrent()) return;
+      recoveryRequested = true;
+      // Coalesce bursts without dropping the trailing hint or indefinitely
+      // postponing a queued read when more hints arrive.
+      scheduleRecovery(Math.max(100, 1_000 - (Date.now() - lastRecoveryAt)));
+    };
+    const scheduleRetry = () => {
+      if (!socket || retryTimer || !active) return;
+      retryTimer = setTimeout(async () => {
+        retryTimer = undefined;
+        if (!active || !socket || connected) return;
+        // /auth/me may refresh an expired cookie. Never reconnect a stale
+        // account merely because a transport retry timer fired.
+        const ok = navigator.onLine !== false && (await recover());
+        if (ok && isCurrent()) socket.connect();
+        else if (active) scheduleRetry();
+      }, reconnectDelayMs(retryAttempt++));
+    };
+    const subscribeActiveConversations = async () => {
+      if (!connected || !isCurrent() || subscribingGeneration === socketGeneration) return;
+      const generation = socketGeneration;
+      subscribingGeneration = generation;
+      try {
+        while (connected && isCurrent() && generation === socketGeneration) {
+          const id = qc
+            .getQueryCache()
+            .getAll()
+            .filter((query) => query.isActive())
+            .map((query) => activeConversationId(query.queryKey))
+            .find((candidate) => candidate && !subscribedConversations.has(candidate));
+          if (!id) return;
+          // The existing protocol has no leave-conversation command. Recycling
+          // this read-only connection bounds retained rooms after navigation.
+          if (subscribedConversations.size >= 16) {
+            socket?.disconnect();
+            return;
+          }
+          subscribedConversations.add(id);
+          // Serialize acks: the gateway permits one membership check in flight.
+          const ack = await subscribeToConversation(id);
+          if (!ack.ok && isCurrent()) requestRecovery();
+        }
+      } catch {
+        if (isCurrent()) requestRecovery();
+      } finally {
+        if (subscribingGeneration === generation) subscribingGeneration = -1;
+      }
+    };
+    socket =
+      import.meta.env.VITE_REALTIME_SOCKET_IO === 'true'
+        ? openRealtimeSocket({
+            getToken: () => tokenRef.current(),
+            onConnect: () => {
+              if (!isCurrent()) {
+                closeRealtimeSocket();
+                return;
+              }
+            },
+            onReady: (ack) => {
+              if (!isCurrent() || ack.userId !== currentUserId) {
+                closeRealtimeSocket();
+                requestRecovery();
+                return;
+              }
+              connected = true;
+              socketGeneration += 1;
+              retryAttempt = 0;
+              clearTimeout(retryTimer);
+              retryTimer = undefined;
+              subscribedConversations.clear();
+              void subscribeActiveConversations();
+              requestRecovery();
+            },
+            onDisconnect: () => {
+              connected = false;
+              socketGeneration += 1;
+              subscribedConversations.clear();
+              requestRecovery();
+              scheduleRetry();
+            },
+            onConnectError: () => {
+              connected = false;
+              requestRecovery();
+              scheduleRetry();
+            },
+            onEvent: (raw) => {
+              if (!isCurrent()) return;
+              const event = validateRealtimeEvent(raw, currentUserId);
+              if (!event) {
+                requestRecovery();
+                return;
+              }
+              const disposition = replayWindow.observe(event);
+              if (disposition === 'duplicate') return;
+              dispatchInvalidations(qc, event);
+              if (disposition === 'resync' || disposition === 'stale') requestRecovery();
+              if (disposition !== 'stale') {
+                dispatchRealtimeSideEffects(event, {
+                  currentUserId,
+                  coordinateTabs: true,
+                  isCurrent,
+                });
+              }
+            },
+          })
+        : null;
+
+    // A hint contains no cached data, session claims or private event payload.
+    // Successful mutations (including read-all/read-position) ask sibling
+    // tabs to reread their own authorized resources. Refetches never echo it.
+    let channel: BroadcastChannel | null = null;
+    try {
+      if (typeof BroadcastChannel !== 'undefined') {
+        channel = new BroadcastChannel(`hsm:realtime:v1:${notificationFingerprint(currentUserId)}`);
+      }
+    } catch {
+      /* Polling still converges when cross-tab messaging is denied. */
+    }
+    if (channel)
+      channel.onmessage = (event: MessageEvent<unknown>) => {
+        if (event.data === 'resync' && isCurrent()) requestRecovery();
+      };
+    let lastHintAt = 0;
+    const unsubscribe = qc.getMutationCache().subscribe((event) => {
+      if (
+        event.type === 'updated' &&
+        event.action.type === 'success' &&
+        isCurrent() &&
+        Date.now() - lastHintAt >= 500
+      ) {
+        lastHintAt = Date.now();
+        try {
+          channel?.postMessage('resync');
+        } catch {
+          /* Non-authoritative hint. */
+        }
+      }
     });
+    const unsubscribeQueries = qc.getQueryCache().subscribe((event) => {
+      if (event.type === 'observerAdded') void subscribeActiveConversations();
+    });
+    const onResume = () => {
+      if (document.visibilityState === 'hidden') return;
+      requestRecovery();
+      if (!connected) scheduleRetry();
+    };
+    globalThis.window.addEventListener('online', onResume);
+    globalThis.window.addEventListener('focus', onResume);
+    document.addEventListener('visibilitychange', onResume);
+    // A periodic safety read also covers undetectable Pub/Sub gaps and
+    // server capability changes while the socket appears healthy.
+    scheduleRecovery(recoveryDelayMs(false, 0));
     return () => {
+      active = false;
+      clearTimeout(retryTimer);
+      clearTimeout(recoveryTimer);
+      channel?.close();
+      unsubscribe();
+      unsubscribeQueries();
+      globalThis.window.removeEventListener('online', onResume);
+      globalThis.window.removeEventListener('focus', onResume);
+      document.removeEventListener('visibilitychange', onResume);
       closeRealtimeSocket();
     };
-    // getToken is expected to be a stable reference (a function that
-    // reads from a closure, not one allocated per render). The hook
-    // otherwise restarts the socket on every render which would lose
-    // every event between renders. currentUserId intentionally NOT
-    // in the dep list — the latest value is captured via the ref
-    // closure above so a userId change does NOT tear the socket down.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [enabled]);
+  }, [enabled, currentUserId, qc]);
+}
+
+export function activeConversationId(key: readonly unknown[]): string | null {
+  const id =
+    key[0] === 'seeker' && key[1] === 'conversations' && key[3] === 'messages'
+      ? key[2]
+      : key[0] === 'provider' && key[1] === 'chat' && key[2] === 'messages'
+        ? key[3]
+        : null;
+  return typeof id === 'string' && /^[A-Za-z0-9_-]{1,64}$/.test(id) ? id : null;
+}
+
+export function reconnectDelayMs(attempt: number, random = Math.random()): number {
+  return Math.round(Math.min(2_000 * 2 ** Math.min(attempt, 5), 60_000) * (0.8 + random * 0.2));
+}
+
+export function recoveryDelayMs(connected: boolean, failures: number): number {
+  return Math.min((connected ? 60_000 : 20_000) * 2 ** Math.min(failures, 2), 60_000);
+}
+
+const isPrivateQuery = (query: { queryKey: readonly unknown[] }) =>
+  ['seeker', 'provider', 'admin'].includes(String(query.queryKey[0]));
+
+export async function resyncAuthoritativeState(
+  qc: QueryClient,
+  userId: string,
+  isCurrent: () => boolean,
+): Promise<boolean> {
+  if (!isCurrent()) return false;
+  try {
+    await qc.invalidateQueries({ predicate: isPrivateQuery, refetchType: 'none' });
+    await qc.refetchQueries(
+      { queryKey: ['auth', 'me'], exact: true, type: 'active' },
+      { cancelRefetch: false, throwOnError: true },
+    );
+    if (!isCurrent() || qc.getQueryData<MeResponse | null>(['auth', 'me'])?.id !== userId)
+      return false;
+  } catch (error) {
+    const status = (error as { response?: { status?: number } })?.response?.status;
+    // Revocation/suspension is not a network outage. Reuse the existing auth
+    // boundary's purge, including cancellation of in-flight private reads.
+    if (isCurrent() && (status === 401 || status === 403)) {
+      globalThis.window.dispatchEvent(new Event('auth:session-expired'));
+    }
+    return false;
+  }
+  try {
+    await qc.refetchQueries(
+      { predicate: isPrivateQuery, type: 'active' },
+      { cancelRefetch: false, throwOnError: true },
+    );
+    return isCurrent();
+  } catch {
+    if (!isCurrent()) return false;
+    // A forbidden resource is not proof that the whole identity is revoked.
+    // Remove denied stale resource data; the refreshed server capabilities
+    // and existing route guards decide what the account can still access.
+    for (const query of qc.getQueryCache().findAll({ predicate: isPrivateQuery })) {
+      const status = (query.state.error as { response?: { status?: number } } | null)?.response
+        ?.status;
+      if (status === 401 || status === 403 || status === 404) {
+        qc.removeQueries({ queryKey: query.queryKey, exact: true });
+      }
+    }
+    return false;
+  }
+}
+
+interface RecoveryEvent extends RealtimeEvent {
+  eventId?: string;
+  revision?: number;
+}
+
+export function validateRealtimeEvent(value: unknown, userId: string): RecoveryEvent | null {
+  if (!value || typeof value !== 'object') return null;
+  const event = value as Partial<RecoveryEvent>;
+  if (
+    event.v !== 1 ||
+    typeof event.type !== 'string' ||
+    event.type.length > 64 ||
+    (event.userId !== null && event.userId !== userId) ||
+    typeof event.occurredAt !== 'string' ||
+    !Number.isFinite(Date.parse(event.occurredAt)) ||
+    !event.payload ||
+    typeof event.payload !== 'object' ||
+    Array.isArray(event.payload)
+  )
+    return null;
+  if (
+    event.eventId !== undefined &&
+    (typeof event.eventId !== 'string' || event.eventId.length < 1 || event.eventId.length > 256)
+  )
+    return null;
+  if (event.revision !== undefined && (!Number.isSafeInteger(event.revision) || event.revision < 0))
+    return null;
+  try {
+    if (JSON.stringify(event).length > 64 * 1024) return null;
+  } catch {
+    return null;
+  }
+  return event as RecoveryEvent;
+}
+
+/** Bounded cursor window; its values never patch durable client state. */
+export function createRealtimeEventWindow(capacity = 200) {
+  const seen = new Set<string>();
+  const revisions = new Map<string, number>();
+  const limit = Math.max(1, Math.min(capacity, 200));
+  return {
+    observe(event: RecoveryEvent): 'fresh' | 'duplicate' | 'stale' | 'resync' {
+      const payload = event.payload as Record<string, unknown>;
+      const immutableId =
+        event.type.endsWith('.created') && typeof payload.id === 'string' ? payload.id : undefined;
+      const eventId = event.eventId ?? (immutableId ? `${event.type}:${immutableId}` : undefined);
+      if (eventId && seen.has(eventId)) return 'duplicate';
+      let overflow = false;
+      if (eventId) {
+        seen.add(eventId);
+        if (seen.size > limit) {
+          seen.delete(seen.values().next().value!);
+          overflow = true;
+        }
+      }
+      // Each created record is distinct even at the same/older timestamp.
+      // Only state transitions share a revision slot; REST owns ordering.
+      const resourceId =
+        payload.bookingId ?? payload.providerId ?? payload.resourceId ?? payload.id;
+      if (
+        event.type.endsWith('status_changed') &&
+        typeof resourceId === 'string' &&
+        typeof event.revision === 'number'
+      ) {
+        const key = `${event.type}:${resourceId}`;
+        const previous = revisions.get(key);
+        if (previous !== undefined && event.revision < previous) return 'stale';
+        revisions.set(key, event.revision);
+        if (revisions.size > limit) {
+          revisions.delete(revisions.keys().next().value!);
+          overflow = true;
+        }
+      }
+      return !eventId || overflow ? 'resync' : 'fresh';
+    },
+    size: () => ({ events: seen.size, revisions: revisions.size }),
+  };
 }
 
 // Pure function exported for the unit test — given an event, fire
@@ -102,6 +449,7 @@ export function dispatchInvalidations(qc: QueryClient, event: RealtimeEvent): vo
       // Always-on: refresh the drawer + unread badge.
       qc.invalidateQueries({ queryKey: seekerQueryKeys.notifications.root });
       qc.invalidateQueries({ queryKey: providerQueryKeys.notifications.root });
+      qc.invalidateQueries({ queryKey: ['admin', 'notifications'] });
       // R17-E — verification and account notices announce authority changes;
       // re-asking costs one GET and only runs while a workspace observes it.
       qc.invalidateQueries({ queryKey: providerQueryKeys.capabilities.get() });
@@ -167,6 +515,7 @@ export function dispatchInvalidations(qc: QueryClient, event: RealtimeEvent): vo
       qc.invalidateQueries({ queryKey: seekerQueryKeys.requests.root });
       break;
     case 'provider.status_changed':
+      qc.invalidateQueries({ queryKey: ['admin', 'providers'] });
       qc.invalidateQueries({ queryKey: providerQueryKeys.profile.root });
       qc.invalidateQueries({ queryKey: ['auth', 'me'] });
       // R17-E — a status change is an authority change. The workspace renders

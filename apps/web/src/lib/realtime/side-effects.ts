@@ -17,6 +17,11 @@ import {
   type NotificationTarget,
 } from './notification-target';
 import { getNotificationTargetHandler } from './notification-target-handler';
+import {
+  presentNotificationOnce,
+  PRESENTATION_CAPACITY,
+  PRESENTATION_WINDOW_MS,
+} from './notification-baseline';
 
 // Sprint 7.5.1 — UI side-effects bridge for realtime events.
 // Sprint 7.6 — anti-echo gate (currentUserId vs event.actorUserId).
@@ -73,6 +78,8 @@ export interface DispatchRealtimeSideEffectsOptions {
   // from `realtime-i18n` which is kept in sync by RootInner's
   // LanguageProvider bridge.
   locale?: string;
+  coordinateTabs?: boolean;
+  isCurrent?: () => boolean;
 }
 
 export function dispatchRealtimeSideEffects(
@@ -91,18 +98,56 @@ export function dispatchRealtimeSideEffects(
     return;
   }
 
+  if (options.isCurrent && !options.isCurrent()) return;
+  const payload = event.payload as { id?: string; readAt?: unknown } | null;
+  // A REST row another tab has already read is history, not a new alert.
+  if (event.type === 'notification.created' && payload?.readAt != null) return;
   const key = buildDedupeKey(event, actorUserId);
   if (!key) return;
+  const keys = [key];
+  if (event.type === 'notification.created' && payload?.id) {
+    keys.push(`immutable:notification:${payload.id}`);
+  }
+  const eventId = (event as RealtimeEvent & { eventId?: string }).eventId;
+  if (eventId) keys.push(`immutable:event:${eventId}`);
   const now = nowMs();
-  const last = seen.get(key);
-  if (last !== undefined && now - last < DEDUPE_WINDOW_MS) {
+  const duplicate = keys.some((alias) => {
+    const last = seen.get(`${options.currentUserId ?? ''}:${alias}`);
+    return (
+      last !== undefined &&
+      now - last < (alias.startsWith('immutable:') ? PRESENTATION_WINDOW_MS : DEDUPE_WINDOW_MS)
+    );
+  });
+  for (const alias of keys) seen.set(`${options.currentUserId ?? ''}:${alias}`, now);
+  while (seen.size > PRESENTATION_CAPACITY) seen.delete(seen.keys().next().value!);
+  if (duplicate) {
     // Duplicate inside the window — silently drop the UX side-effect.
     // The cache invalidation already fired through the sibling
     // dispatcher; the user has the data, just not the redundant beep.
+    if (options.coordinateTabs && options.currentUserId) {
+      void presentNotificationOnce({
+        userId: options.currentUserId,
+        keys,
+        isCurrent: options.isCurrent,
+        present: () => undefined,
+      });
+    }
     return;
   }
-  seen.set(key, now);
 
+  if (options.coordinateTabs && options.currentUserId) {
+    void presentNotificationOnce({
+      userId: options.currentUserId,
+      keys,
+      isCurrent: options.isCurrent,
+      present: () => emitRealtimeSideEffect(event),
+    });
+  } else {
+    emitRealtimeSideEffect(event);
+  }
+}
+
+function emitRealtimeSideEffect(event: RealtimeEvent): void {
   switch (event.type) {
     case 'booking.status_changed': {
       const payload = event.payload as BookingStatusChangedRealtimePayload;
@@ -485,7 +530,7 @@ export function __resetSideEffectsForTests(): void {
 // invokes it on every batch) to drop entries older than the window.
 export function pruneDedupeStore(now: number = nowMs()): void {
   for (const [key, ts] of seen) {
-    if (now - ts >= DEDUPE_WINDOW_MS) seen.delete(key);
+    if (now - ts >= PRESENTATION_WINDOW_MS) seen.delete(key);
   }
 }
 
@@ -506,11 +551,30 @@ export interface EmitAggregateNotificationToastOptions {
   // notifications drawer/page for that experience. Defaults to no
   // action — the user can open the drawer themselves.
   drawerDeepLink?: string | null;
+  userId?: string;
+  dedupeKeys?: readonly string[];
+  isCurrent?: () => boolean;
 }
 
 export function emitAggregateNotificationToast(
   options: EmitAggregateNotificationToastOptions,
 ): void {
+  if (options.userId && options.dedupeKeys) {
+    void presentNotificationOnce({
+      userId: options.userId,
+      keys: options.dedupeKeys,
+      aggregate: true,
+      isCurrent: options.isCurrent,
+      present: (count) =>
+        emitAggregateNotificationToast({
+          ...options,
+          userId: undefined,
+          dedupeKeys: undefined,
+          count: options.count == null ? null : count,
+        }),
+    });
+    return;
+  }
   // Aggregate is exempt from the per-event dedupe map (it represents
   // many distinct events) but we still funnel through the brand
   // variant so the rendered toast matches the active experience.

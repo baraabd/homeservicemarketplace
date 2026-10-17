@@ -11,7 +11,7 @@ function gate(participant: unknown, canManageBookings: boolean) {
   const participants = { findByConversationAndUser: jest.fn().mockResolvedValue(participant) };
   const capabilities = { can: jest.fn().mockResolvedValue(canManageBookings) };
   const g = new ConversationParticipantGate(
-    {} as never,
+    { findByUserId: jest.fn().mockResolvedValue({ id: 'prof-9' }) } as never,
     participants as never,
     {} as never,
     capabilities as never,
@@ -48,5 +48,15 @@ describe('ConversationParticipantGate.mayReceiveConversation (R12)', () => {
   it('refuses the provider-side participant who may not (e.g. suspended)', async () => {
     const { g } = gate({ role: 'PROVIDER', providerProfileId: 'prof-9' }, false);
     await expect(g.mayReceiveConversation('u-2', 'c-1')).resolves.toEqual({ allowed: false });
+  });
+
+  it.each([
+    { role: 'UNKNOWN', providerProfileId: 'prof-9' },
+    { role: 'PROVIDER', providerProfileId: null },
+    { role: 'PROVIDER', providerProfileId: 'another-profile' },
+  ])('refuses a stale or unsupported participant binding (%p)', async (participant) => {
+    const { g, capabilities } = gate(participant, true);
+    await expect(g.mayReceiveConversation('u-2', 'c-1')).resolves.toEqual({ allowed: false });
+    expect(capabilities.can).not.toHaveBeenCalled();
   });
 });

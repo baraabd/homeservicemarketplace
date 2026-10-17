@@ -1,10 +1,25 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { QueryClient } from '@tanstack/react-query';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { QueryClient, QueryClientProvider, QueryObserver } from '@tanstack/react-query';
+import { act, renderHook } from '@testing-library/react';
+import { createElement } from 'react';
 import type { RealtimeEvent } from '@homeservicemarketplace/contracts';
 
-import { dispatchInvalidations } from './use-realtime-socket';
+import {
+  createRealtimeEventWindow,
+  activeConversationId,
+  dispatchInvalidations,
+  reconnectDelayMs,
+  recoveryDelayMs,
+  resyncAuthoritativeState,
+  useRealtimeSocket,
+  validateRealtimeEvent,
+} from './use-realtime-socket';
+import { closeRealtimeSocket, openRealtimeSocket } from './socket-client';
 import { providerQueryKeys } from '../provider/query-keys';
 import { seekerQueryKeys } from '../seeker/query-keys';
+
+const socketIo = vi.hoisted(() => vi.fn());
+vi.mock('socket.io-client', () => ({ io: socketIo }));
 
 // Sprint 7.0 (refined) — verify that each `RealtimeEventType` triggers
 // the right React Query invalidation. We exercise `dispatchInvalidations`
@@ -242,5 +257,354 @@ describe('dispatchInvalidations', () => {
     // notifications drawer + unread badge cover the visible state.
     expect(calls).not.toContainEqual(seekerQueryKeys.requests.root);
     expect(calls).not.toContainEqual(seekerQueryKeys.bookings.root);
+  });
+});
+
+describe('R25 immutable event window and bounded recovery', () => {
+  it('derives only existing message-query conversation ids, never arbitrary private rooms', () => {
+    expect(activeConversationId(seekerQueryKeys.conversations.messages('c-1'))).toBe('c-1');
+    expect(activeConversationId(providerQueryKeys.chat.messages('c-2'))).toBe('c-2');
+    expect(activeConversationId(['admin', 'providers', 'c-1', 'messages'])).toBeNull();
+    expect(
+      activeConversationId(['seeker', 'conversations', 'admin:private', 'messages']),
+    ).toBeNull();
+    expect(activeConversationId(seekerQueryKeys.conversations.list())).toBeNull();
+  });
+  it('rejects malformed, oversized and foreign-user envelopes without consuming state', () => {
+    const valid = {
+      ...event('message.created', { id: 'message-1' }),
+      eventId: 'immutable-1',
+      revision: 1,
+    };
+    expect(validateRealtimeEvent(valid, 'u-1')).toEqual(valid);
+    expect(validateRealtimeEvent({ ...valid, userId: null }, 'u-1')).not.toBeNull();
+    for (const invalid of [
+      null,
+      { ...valid, v: 2 },
+      { ...valid, userId: 'another-user' },
+      { ...valid, occurredAt: 'invalid' },
+      { ...valid, revision: -1 },
+      { ...valid, revision: Number.MAX_SAFE_INTEGER + 1 },
+      { ...valid, eventId: 'x'.repeat(257) },
+      { ...valid, payload: [] },
+      { ...valid, payload: { body: 'x'.repeat(65_536) } },
+    ])
+      expect(validateRealtimeEvent(invalid, 'u-1')).toBeNull();
+  });
+
+  it('drops immutable replays but accepts distinct creations with equal or older revisions', () => {
+    const window = createRealtimeEventWindow();
+    const first = {
+      ...event('message.created', { id: 'm-1', conversationId: 'c-1' }),
+      eventId: 'e-1',
+      revision: 20,
+    };
+    expect(window.observe(first)).toBe('fresh');
+    expect(window.observe(first)).toBe('duplicate');
+    expect(window.observe({ ...first, eventId: 'e-2', payload: { id: 'm-2' } })).toBe('fresh');
+    expect(window.observe({ ...first, eventId: 'e-3', revision: 10, payload: { id: 'm-3' } })).toBe(
+      'fresh',
+    );
+  });
+
+  it('suppresses stale transition UX and asks REST when the finite window cannot prove continuity', () => {
+    const window = createRealtimeEventWindow(2);
+    const transition = {
+      ...event('booking.status_changed', { bookingId: 'booking-1' }),
+      eventId: 'e-new',
+      revision: 20,
+    };
+    expect(window.observe(transition)).toBe('fresh');
+    expect(window.observe({ ...transition, eventId: 'e-old', revision: 10 })).toBe('stale');
+    expect(window.observe({ ...transition, eventId: 'e-next', revision: 30 })).toBe('resync');
+    for (let n = 0; n < 1_000; n += 1) {
+      window.observe({
+        ...transition,
+        eventId: `event-${n}`,
+        payload: { bookingId: `booking-${n}` },
+        revision: n,
+      });
+    }
+    expect(window.size()).toEqual({ events: 2, revisions: 2 });
+    expect(window.observe(event('message.created', {}))).toBe('resync');
+    const legacy = { ...event('provider.status_changed', { id: 'provider-1', status: 'ACTIVE' }) };
+    expect(window.observe(legacy)).toBe('resync');
+    expect(window.observe({ ...legacy, payload: { id: 'provider-1', status: 'SUSPENDED' } })).toBe(
+      'resync',
+    );
+  });
+
+  it('caps socket attempts and failed polling with jitter, without zero-delay retries', () => {
+    expect(reconnectDelayMs(0, 0)).toBe(1_600);
+    expect(reconnectDelayMs(0, 1)).toBe(2_000);
+    expect(reconnectDelayMs(50, 1)).toBe(60_000);
+    expect(recoveryDelayMs(false, 0)).toBe(20_000);
+    expect(recoveryDelayMs(false, 3)).toBe(60_000);
+    expect(recoveryDelayMs(true, 0)).toBe(60_000);
+  });
+});
+
+describe('R25 authorized REST recovery', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('checks current identity before re-reading active seeker/provider/admin resources; invalidates inactive history', async () => {
+    const qc = new QueryClient({
+      defaultOptions: { queries: { retry: false, staleTime: Infinity } },
+    });
+    const calls: string[] = [];
+    const keys = [
+      ['auth', 'me'],
+      seekerQueryKeys.conversations.list(),
+      providerQueryKeys.chat.conversations(),
+      ['admin', 'providers', 'list'],
+    ];
+    const subscriptions = keys.map((key) => {
+      qc.setQueryData(key, key[0] === 'auth' ? { id: 'u-1' } : { items: ['stale'] });
+      const observer = new QueryObserver(qc, {
+        queryKey: key,
+        queryFn: async () => {
+          calls.push(String(key[0]));
+          return key[0] === 'auth' ? { id: 'u-1' } : { items: ['authoritative'] };
+        },
+      });
+      return observer.subscribe(() => undefined);
+    });
+    qc.setQueryData(['seeker', 'conversations', 'old-thread', 'messages'], { items: ['history'] });
+    expect(await resyncAuthoritativeState(qc, 'u-1', () => true)).toBe(true);
+    expect(calls[0]).toBe('auth');
+    expect(new Set(calls.slice(1))).toEqual(new Set(['seeker', 'provider', 'admin']));
+    expect(qc.getQueryData(providerQueryKeys.chat.conversations())).toEqual({
+      items: ['authoritative'],
+    });
+    expect(
+      qc.getQueryState(['seeker', 'conversations', 'old-thread', 'messages'])?.isInvalidated,
+    ).toBe(true);
+    subscriptions.forEach((unsubscribe) => unsubscribe());
+    qc.clear();
+  });
+
+  it('does not fetch private data for a changed identity or a cancelled session', async () => {
+    const qc = new QueryClient();
+    qc.setQueryData(['auth', 'me'], { id: 'new-user' });
+    const spy = vi.spyOn(qc, 'refetchQueries');
+    expect(await resyncAuthoritativeState(qc, 'old-user', () => false)).toBe(false);
+    expect(spy).not.toHaveBeenCalled();
+    expect(await resyncAuthoritativeState(qc, 'old-user', () => true)).toBe(false);
+    expect(spy).toHaveBeenCalledTimes(1);
+    expect(spy.mock.calls[0][0]).toMatchObject({ queryKey: ['auth', 'me'] });
+    qc.clear();
+  });
+
+  it('uses the existing auth purge signal on suspension, without retrying private data', async () => {
+    const qc = new QueryClient();
+    const ended = vi.fn();
+    globalThis.window.addEventListener('auth:session-expired', ended);
+    const reads = vi.spyOn(qc, 'refetchQueries').mockRejectedValue({ response: { status: 403 } });
+    expect(await resyncAuthoritativeState(qc, 'u-1', () => true)).toBe(false);
+    expect(reads).toHaveBeenCalledTimes(1);
+    expect(ended).toHaveBeenCalledTimes(1);
+    globalThis.window.removeEventListener('auth:session-expired', ended);
+    qc.clear();
+  });
+
+  it('does not remove a new session cache when an old private read rejects after logout', async () => {
+    const qc = new QueryClient();
+    qc.setQueryData(['auth', 'me'], { id: 'u-1' });
+    qc.setQueryData(['seeker', 'conversations'], { items: ['new-session'] });
+    let current = true;
+    vi.spyOn(qc, 'refetchQueries')
+      .mockResolvedValueOnce()
+      .mockImplementationOnce(async () => {
+        current = false;
+        const query = qc.getQueryCache().find({ queryKey: ['seeker', 'conversations'] })!;
+        query.setState({ error: { response: { status: 403 } } as unknown as Error });
+        throw new Error('late denied response');
+      });
+    const removed = vi.spyOn(qc, 'removeQueries');
+    expect(await resyncAuthoritativeState(qc, 'u-1', () => current)).toBe(false);
+    expect(removed).not.toHaveBeenCalled();
+    expect(qc.getQueryData(['seeker', 'conversations'])).toEqual({ items: ['new-session'] });
+    qc.clear();
+  });
+});
+
+describe('R25 authenticated socket lifecycle', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.stubEnv('VITE_REALTIME_SOCKET_IO', 'true');
+    vi.mocked(openRealtimeSocket).mockClear();
+    vi.mocked(closeRealtimeSocket).mockClear();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllEnvs();
+  });
+
+  it('restores on connect and ignores old callback traffic after switching users or logging out', async () => {
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    qc.setQueryData(['auth', 'me'], { id: 'u-1' });
+    const invalidated = vi.spyOn(qc, 'invalidateQueries');
+    const getToken = vi.fn(() => null);
+    const hook = renderHook(
+      (props: { enabled: boolean; currentUserId: string | null }) =>
+        useRealtimeSocket({ ...props, getToken }),
+      {
+        initialProps: { enabled: true, currentUserId: 'u-1' },
+        wrapper: ({ children }) => createElement(QueryClientProvider, { client: qc }, children),
+      },
+    );
+    const old = vi.mocked(openRealtimeSocket).mock.calls[0][0];
+    old.onConnect?.();
+    expect(invalidated).not.toHaveBeenCalled();
+    old.onReady?.({ userId: 'u-1', joinedRooms: ['user:u-1'] });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(100);
+    });
+    expect(invalidated).toHaveBeenCalledWith(expect.objectContaining({ refetchType: 'none' }));
+    qc.setQueryData(['auth', 'me'], { id: 'u-2' });
+    hook.rerender({ enabled: true, currentUserId: 'u-2' });
+    expect(openRealtimeSocket).toHaveBeenCalledTimes(2);
+    invalidated.mockClear();
+    old.onEvent?.(event('message.created', { id: 'old-private-message' }));
+    expect(invalidated).not.toHaveBeenCalled();
+    hook.rerender({ enabled: false, currentUserId: null });
+    expect(closeRealtimeSocket).toHaveBeenCalled();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(120_000);
+    });
+    expect(invalidated).not.toHaveBeenCalled();
+    hook.unmount();
+    qc.clear();
+  });
+
+  it('coalesces rapid recovery hints but preserves the trailing authoritative read', async () => {
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    qc.setQueryData(['auth', 'me'], { id: 'u-1' });
+    const invalidated = vi.spyOn(qc, 'invalidateQueries');
+    const hook = renderHook(
+      () => useRealtimeSocket({ enabled: true, currentUserId: 'u-1', getToken: () => null }),
+      {
+        wrapper: ({ children }) => createElement(QueryClientProvider, { client: qc }, children),
+      },
+    );
+    vi.mocked(openRealtimeSocket).mock.calls[0][0].onReady?.({
+      userId: 'u-1',
+      joinedRooms: ['user:u-1'],
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(100);
+    });
+    expect(invalidated).toHaveBeenCalledTimes(1);
+    await act(async () => {
+      for (let hint = 0; hint < 10; hint += 1) {
+        window.dispatchEvent(new Event('focus'));
+        await vi.advanceTimersByTimeAsync(100);
+      }
+    });
+    expect(invalidated).toHaveBeenCalledTimes(2);
+    hook.unmount();
+    qc.clear();
+  });
+});
+
+describe('R25 Socket.IO client transport contract', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.useRealTimers();
+  });
+
+  it('holds application traffic until server authorization acknowledgement, and bounds a missing acknowledgement', async () => {
+    vi.useFakeTimers();
+    const client = await vi.importActual<typeof import('./socket-client')>('./socket-client');
+    const handlers = new Map<string, (...args: unknown[]) => void>();
+    const socket = {
+      on: vi.fn((name: string, handler: (...args: unknown[]) => void) => {
+        handlers.set(name, handler);
+      }),
+      connect: vi.fn(),
+      removeAllListeners: vi.fn(),
+      disconnect: vi.fn(),
+    };
+    socketIo.mockReturnValue(socket);
+    const ready = vi.fn();
+    const received = vi.fn();
+    const failed = vi.fn();
+    client.openRealtimeSocket({
+      url: 'http://127.0.0.1:4325',
+      getToken: () => null,
+      onReady: ready,
+      onEvent: received,
+      onConnectError: failed,
+    });
+    handlers.get('connect')!();
+    handlers.get('realtime.event')!(event('message.created', { id: 'before-auth' }));
+    expect(received).not.toHaveBeenCalled();
+    handlers.get('connection.ack')!({ userId: 'u-1', joinedRooms: ['user:u-1'] });
+    expect(ready).toHaveBeenCalledTimes(1);
+    handlers.get('realtime.event')!(event('message.created', { id: 'after-auth' }));
+    expect(received).toHaveBeenCalledTimes(1);
+    handlers.get('disconnect')!('transport close');
+    handlers.get('connect')!();
+    await vi.advanceTimersByTimeAsync(5_000);
+    expect(failed).toHaveBeenCalledWith(expect.objectContaining({ data: { code: 'ACK_TIMEOUT' } }));
+    expect(socket.disconnect).toHaveBeenCalledTimes(1);
+    client.closeRealtimeSocket();
+  });
+
+  it('completes callback-based auth, bounds connect timeout and delegates retries to one owner', async () => {
+    const client = await vi.importActual<typeof import('./socket-client')>('./socket-client');
+    const socket = {
+      on: vi.fn(),
+      connect: vi.fn(),
+      removeAllListeners: vi.fn(),
+      disconnect: vi.fn(),
+    };
+    socketIo.mockReturnValue(socket);
+    let token = 'first-token';
+    client.openRealtimeSocket({ url: 'http://127.0.0.1:4325', getToken: () => token });
+    const options = socketIo.mock.calls.at(-1)![1];
+    expect(options).toMatchObject({
+      reconnection: false,
+      timeout: 10_000,
+      transports: ['websocket'],
+      withCredentials: true,
+    });
+    const answer = vi.fn();
+    options.auth(answer);
+    expect(answer).toHaveBeenLastCalledWith({ token: 'first-token' });
+    token = 'rotated-token';
+    options.auth(answer);
+    expect(answer).toHaveBeenLastCalledWith({ token: 'rotated-token' });
+    expect(socket.connect).toHaveBeenCalledTimes(1);
+    client.closeRealtimeSocket();
+  });
+
+  it('requires explicit polling upgrade opt-in and bounds a disappeared conversation acknowledgement', async () => {
+    const client = await vi.importActual<typeof import('./socket-client')>('./socket-client');
+    const emit = vi.fn();
+    const socket = {
+      on: vi.fn(),
+      connect: vi.fn(),
+      removeAllListeners: vi.fn(),
+      disconnect: vi.fn(),
+      connected: true,
+      timeout: vi.fn(() => ({ emit })),
+    };
+    socketIo.mockReturnValue(socket);
+    vi.stubEnv('VITE_REALTIME_TRANSPORTS', 'polling,websocket');
+    client.openRealtimeSocket({ url: 'http://127.0.0.1:4325', getToken: () => null });
+    expect(socketIo.mock.calls.at(-1)![1].transports).toEqual(['polling', 'websocket']);
+    expect(await client.subscribeToConversation('foreign room:admin')).toEqual({
+      ok: false,
+      code: 'INVALID_CONVERSATION',
+    });
+    expect(emit).not.toHaveBeenCalled();
+    const ack = client.subscribeToConversation('conversation-1');
+    expect(socket.timeout).toHaveBeenCalledWith(5_000);
+    emit.mock.calls[0][2](new Error('timeout'));
+    expect(await ack).toEqual({ ok: false, code: 'ACK_TIMEOUT' });
+    client.closeRealtimeSocket();
   });
 });
