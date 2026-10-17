@@ -1,6 +1,7 @@
 // R26: build-time document policy. No secret may be passed as a browser origin.
 // Hosts are exact; deployed CDN/upload hosts must be explicitly supplied.
 const LOOPBACK = new Set(['localhost', '127.0.0.1', '[::1]']);
+const FORBIDDEN_ORIGIN_CHARACTERS = /[\s*\\;'"<>,]/u;
 
 function exactOrigin(raw, name) {
   let url;
@@ -9,10 +10,14 @@ function exactOrigin(raw, name) {
   } catch {
     throw new Error(`${name} requires an exact HTTP(S) origin`);
   }
+  const origin = url.origin;
   if (
     typeof raw !== 'string' ||
     raw.length > 2048 ||
-    /[\s*\\;'"<>,]/u.test(raw) ||
+    FORBIDDEN_ORIGIN_CHARACTERS.test(raw) ||
+    // URL canonicalization decodes host escapes and folds Unicode characters.
+    // A raw %2A or fullwidth asterisk must not become a CSP wildcard here.
+    FORBIDDEN_ORIGIN_CHARACTERS.test(origin) ||
     !['http:', 'https:'].includes(url.protocol) ||
     url.username ||
     url.password ||
@@ -25,7 +30,7 @@ function exactOrigin(raw, name) {
       `${name} requires an exact HTTPS origin (HTTP is limited to loopback fixtures)`,
     );
   }
-  return url.origin;
+  return origin;
 }
 
 function originList(raw, name) {

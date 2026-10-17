@@ -41,3 +41,33 @@ The meta policy travels with the built HTML across Vite preview, Vercel and ngin
 The new job owns disposable Postgres `r26_security_ci`, Redis service, SMTP catcher, `/tmp/r26-restricted`, API 4326 and web 5326. Independent browser contexts isolate cookies; ports alone are not cookie isolation. Existing real-AppModule integration fixtures use scoped rows and advisory locks; their mail/scanner adapters are component fixtures. Browser journeys use real SMTP/OTP, compiled API and a production web build, with test scanning explicitly identified. The loopback API uses development configuration; this does not attest hosted HTTPS/production cookies or ClamAV.
 
 Metrics acceptance uses a generated ephemeral token with both denied and authorized scrapes. Existing CI/CodeQL/security gates are retained. R26 adds two independently runnable browser scenarios with two workers and zero retries, five real database authorization cases and 18 build-policy regressions. Raw traces, cookies, request bodies and identity files are not published. Only synthetic preview screenshots and sanitized source-bound JSON are retained.
+
+## Successor corrections — 2026-10-17
+
+The same PR continues from `ab089d14ec7141977db083e55b6165e493c2bb04`;
+the frozen G1 source and integrated coordination base remain as above.
+
+**R26-CONFIG-02 — canonical origin validation.** The initial validator checked
+only the supplied string. URL parsing can turn percent escapes or Unicode
+characters into a wildcard or policy separator in the serialized hostname.
+Both the CSP builder and CORS configuration now check the original input and
+the canonical origin before returning it. Eleven newly reproduced hostile
+canonicalization cases failed before the correction and pass afterward.
+Safe IDN, IPv6, explicit/default port and loopback configurations remain valid.
+This is a configuration-validation defect; no unauthenticated remote path to
+these deployment variables or deployed exploitation was established. The CSP
+policy suite now has 30 cases, and the CORS suite has 29.
+
+**R26-CI-01 — public upload-origin parity.** Existing avatar browser fixtures
+advertised a fixed loopback upload endpoint even when CI built the SPA for
+`https://api.example.com`. The fixture now derives synthetic upload and file
+URLs from the actual intercepted presign request. Phase 5's disposable API now
+sets `PUBLIC_API_URL` to `http://127.0.0.1:4010`, matching the SPA and preventing
+local storage from advertising the distinct `localhost:4010` origin. The
+original browser traces confirmed CSP blocked both mismatches before PUT or
+finalization. All original encoding, rotation, upload and persistence
+assertions remain; no CSP source, timeout, retry, guard or gate was widened.
+
+The successor exact leases and no-overlap check are recorded in OWNERSHIP.md
+and CR-001. No runtime domain interface, schema, migration, package version,
+lockfile, permission grant, financial policy or deployment setting changes.

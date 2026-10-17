@@ -14,3 +14,11 @@
 Develop branch protection was observed disabled during the G1 handoff. That remains an owner-managed repository control, not something a successful workflow enables. No scan policy, required check, test assertion, global limiter, deployment switch or live-funds default is relaxed here.
 
 The isolated browser scanner is a test component and the browser API uses loopback development configuration. Neither is production malware or HTTPS acceptance. Private synthetic screenshots contain no actual identity material. Missing required evidence keeps the PR Draft even if implementation checks are green.
+
+Successor R26-CONFIG-02 (2026-10-17): URL canonicalization could introduce a
+wildcard or CSP separator absent from the raw configured string. Raw and
+canonical validation plus adversarial regressions remediate the source defect;
+no remote-controlled configuration path or deployed exploitation was established.
+The exact configured API/media/upload origins still require deployment-owner
+review. Existing CI upload-origin mismatches are corrected in disposable
+fixtures/configuration, with final-head real-browser evidence required.

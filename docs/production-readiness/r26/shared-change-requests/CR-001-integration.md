@@ -18,3 +18,18 @@ Coordinator record edits publish observed owner merges #170/#171 and authorize R
 Validation: parser/CORS/header unit regressions, 17 policy tests, real PostgreSQL/Redis independent-session authorization and last-admin race, real SMTP/cookie/private-preview browser acceptance, API/web typecheck/build/lint and retained full CI/CodeQL/scanning. Missing current security-alert and hosted-topology evidence is recorded as blocking acceptance, not waived.
 
 Successor exact-file lease: `apps/web/startup-tests/startup.spec.ts`, recorded before editing after final-head startup job 117248071720 exposed the missing root CSP helper in its isolated copy. Minimal patch copies that exact dependency with the existing Vite source. Preserve all six tests, legacy-config reproduction, cache/process isolation, strict filesystem allowlist, workers, timeouts and assertions. No workspace-recovery implementation is modified.
+
+## 2026-10-17 continuation — upload-origin parity
+
+Status: APPROVED before implementation by the continuing delegated coordinator;
+exact successor worktree and single-writer ownership are in OWNERSHIP.md.
+
+| Exact shared path                                    | Minimal patch and reason                                                                                                                                                 | Required verification                                                                                                                                        |
+| ---------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `apps/web/e2e/provider-onboarding-v2-basics.spec.ts` | Derive synthetic upload/file URLs from the intercepted presign request origin. The prior fixture used `127.0.0.1:4010` while CI built an exact `api.example.com` policy. | Preserve and pass genuine image encoding, rotation, PUT and finalize assertions in all three Chromium projects.                                              |
+| `.github/workflows/ci.yml`                           | Set only Phase 5 API `PUBLIC_API_URL: http://127.0.0.1:4010`. Without it local storage returns `localhost:4010`, which differs from the SPA's exact API origin.          | Existing complete Phase 5 real-service journeys, including R06 attachment finalization and later persistence/authorization cases; unchanged aggregate gates. |
+
+No schema, migration, dependency, public storage rule, cookie policy, guard,
+CSP allowlist, production setting or unrelated workflow changes are requested.
+The intended deployment still needs an owner-approved public API/storage
+topology. This lease covers disposable CI and synthetic UI fixtures only.

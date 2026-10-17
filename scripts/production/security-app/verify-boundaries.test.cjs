@@ -58,6 +58,39 @@ for (const raw of [
     );
   });
 }
+for (const raw of [
+  'https://%2A',
+  'https://%2a.example.test',
+  'https://api%3bprivate.example.test',
+  'https://api%27private.example.test',
+  'https://api%22private.example.test',
+  'https://api%2cprivate.example.test',
+  'https://＊.example.test',
+  'https://api；private.example.test',
+  'https://api＇private.example.test',
+  'https://api＂private.example.test',
+  'https://api，private.example.test',
+]) {
+  test(`rejects origin characters introduced by URL canonicalization ${JSON.stringify(raw)}`, () => {
+    assert.throws(
+      () => exactOrigin(raw, 'origin'),
+      (error) => !error.message.includes('private'),
+    );
+    for (const key of ['VITE_API_URL', 'VITE_CSP_MEDIA_ORIGINS', 'VITE_CSP_UPLOAD_ORIGINS']) {
+      assert.throws(() => buildWebCsp({ VITE_API_URL: 'https://api.test', [key]: raw }));
+    }
+  });
+}
+test('safe Unicode hosts, IPv6 and default ports retain canonical exact origins', () => {
+  for (const [raw, expected] of [
+    ['https://BÜCHER.example:443/', 'https://xn--bcher-kva.example'],
+    ['https://[2001:db8::1]:8443/', 'https://[2001:db8::1]:8443'],
+    ['http://[::1]:4326/', 'http://[::1]:4326'],
+    ['https://APP.example:443/', 'https://app.example'],
+  ]) {
+    assert.equal(exactOrigin(raw, 'origin'), expected);
+  }
+});
 test('loopback-only HTTP fixture keeps its exact API and WS port', () => {
   const csp = parse(buildWebCsp({ VITE_API_URL: 'http://127.0.0.1:4326' }));
   assert.ok(csp['connect-src'].includes('http://127.0.0.1:4326'));

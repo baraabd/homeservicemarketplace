@@ -84,3 +84,84 @@ At integrated head `7ad12eb539fbd60fbb9772859f8550da4f188d65` (tree `402cbee0a22
 R26 run **38983039259 passed** on that head. Artifact 12081398336, SHA-256 `943d22d80421be29eefae2baf54ace9a6939300b6faac408d5df39a668a33c38`, was downloaded, digest-checked and its source identity/results inspected: both browser scenarios passed, 0 skipped/flaky/retries. Synthetic PDF/gallery screenshots were inspected again. All nine real database cases passed.
 
 The shared Web development startup run 38983039166 then exposed an incomplete isolated fixture (Linux job 117248071720): 5 tests failed because its copied Vite config could not resolve the new root CSP helper; 1 passed. This is an R26 integration regression, not an accepted green run. The exact startup fixture lease now copies `scripts/production/security-app/web-csp.cjs` into that disposable workspace. No test, assertion, strict filesystem control, process isolation, worker count or timeout changes. Local `pnpm --filter @homeservicemarketplace/web exec playwright test --config playwright.startup.config.ts --grep 'commands pin the source config'` passes (1 test); E2E typecheck and registry validation pass. Full Linux/Windows browser startup and all final-head CI still must rerun.
+
+## Successor reproduction and source verification — 2026-10-17
+
+Resumed branch: `feat/r26-application-security`, existing Draft PR #174.
+Starting head: `ab089d14ec7141977db083e55b6165e493c2bb04`; complete tree:
+`b782941413e1ce9ef03157a79dd7b972b3642a3e`. Frozen G1 runtime source remains
+`40cdac5c9ce6acaa8dedc0385984a807ae9a84d0`; current integration base remains
+`07c8e584c684111bfc80995c7efb0144cfb6161b`. Final commit/tree and final-head
+workflow/artifact identities are recorded in the PR after publication, so this
+source document never claims to contain its own commit identity.
+
+The starting head had 28 successful checks and five failures. Official CodeQL
+check 117250564920 had zero annotations and R26 job 117249872915 passed, but
+those successes did not override these independently reproduced failures:
+
+- Browser job 117251281997, run 38983608704: **830 passed, six failed,
+  349 skipped**. Genuine PNG finalization and rotated-image re-upload failed
+  in all three Chromium projects. All six traces showed the fixed fixture
+  upload origin blocked by the enforced policy for the built API origin.
+- Phase 5 job 117252187006, same run: R06 **one passed, one failed**. Its trace
+  showed `localhost:4010` upload blocked by the exact `127.0.0.1:4010` policy.
+  Later required journeys and aggregate acceptance therefore were incomplete.
+- Governance job 117249871840, run 38983608660: the PR description's Final SHA
+  still named `7ad12eb539fbd60fbb9772859f8550da4f188d65`. Synchronize metadata
+  only after publishing the successor commit; retain the exact-head check.
+
+Independent source review reproduced R26-CONFIG-02 before correcting it:
+the extended CSP policy suite had **19 passing and 11 failing cases** against
+the original implementation. Checking raw and canonical origins makes all
+30 pass without granting additional sources. The corresponding CORS cases
+preserve exact-origin semantics and safe errors.
+
+### Local commands and results for the successor
+
+Node **24.21.0** and pnpm **10.32.1** were installed into an isolated temporary
+toolchain and selected for each command; no machine-wide version, package pin
+or lockfile changed. Prisma remains **6.12.0**. Every executed command's exit
+status was checked.
+
+| Executed command                                                                                                                                                                                                                                                  | Result                                                                                                                        |
+| ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| `pnpm install --frozen-lockfile --store-dir /tmp/hsm-r26-store`                                                                                                                                                                                                   | PASS; 1,166 locked packages, exact toolchain preinstall and normal Husky preparation passed.                                  |
+| `pnpm --filter @homeservicemarketplace/database generate`                                                                                                                                                                                                         | PASS; existing schema, guarded completion record and separate native-engine load verified.                                    |
+| `node --test scripts/production/security-app/verify-boundaries.test.cjs`                                                                                                                                                                                          | PASS, 30 cases, zero failures/skips.                                                                                          |
+| `pnpm --filter @homeservicemarketplace/api exec jest src/infrastructure/http/cors-policy.spec.ts src/infrastructure/http/request-body.spec.ts src/infrastructure/http/security-headers.spec.ts src/infrastructure/http/all-exceptions.filter.spec.ts --runInBand` | PASS, four suites and 100 cases, zero failures/skips.                                                                         |
+| `node --test .github/scripts/*.test.mjs`                                                                                                                                                                                                                          | PASS, 160 cases, zero failures/skips, including exact ownership and unchanged fail-closed gates.                              |
+| `node .github/scripts/sprint-registry.mjs`                                                                                                                                                                                                                        | PASS; record consistency, not sprint acceptance.                                                                              |
+| `VITE_API_URL=https://api.example.com pnpm --filter @homeservicemarketplace/web build`                                                                                                                                                                            | PASS; production CSP precedes script/resource loading and retains exact API/WS origins. Existing large-chunk warning remains. |
+| `pnpm --filter @homeservicemarketplace/web typecheck:e2e`                                                                                                                                                                                                         | PASS.                                                                                                                         |
+| `pnpm --filter @homeservicemarketplace/api typecheck`                                                                                                                                                                                                             | PASS, including database/contracts dependency builds.                                                                         |
+| `pnpm --filter @homeservicemarketplace/api build`                                                                                                                                                                                                                 | PASS, including the compiled Nest application and workspace dependency builds.                                                |
+| `pnpm --filter @homeservicemarketplace/api exec eslint src/infrastructure/http/cors-policy.ts src/infrastructure/http/cors-policy.spec.ts`                                                                                                                        | PASS, zero errors/warnings.                                                                                                   |
+| `pnpm --filter @homeservicemarketplace/web lint`                                                                                                                                                                                                                  | PASS, zero errors, 34 existing warnings.                                                                                      |
+| `pnpm security:audit --output /tmp/hsm-r26-audit-full.json`                                                                                                                                                                                                       | PASS, zero findings at every severity; no ignored/muted advisories.                                                           |
+| `git diff --check`                                                                                                                                                                                                                                                | PASS.                                                                                                                         |
+
+Initial sandbox-only subprocess attempts for governance and Prisma failed;
+governance's negative shell tests reported `EPERM`. The same commands passed
+with the authorized subprocess permission. The failed generation left an
+empty lock directory in this new checkout; after both attempts exited and a
+process check found no active generator, only that empty directory was removed
+and the normal guarded generation passed. No generation guard or source was
+changed. The first lint permission review timed out before execution; its
+permitted single retry passed. Install retained the repository's ignored
+build-script policy for `@parcel/watcher` and `unrs-resolver`; existing ts-jest
+configuration deprecation warnings remain.
+
+Local `pnpm --filter @homeservicemarketplace/web exec playwright install
+chromium` failed: the pinned official Chromium download returned HTTP 200
+with a 195-byte `text/html` **Site Unavailable** page instead of the archive.
+No alternate browser/version, disabled CSP, or successful browser result is
+substituted. Local browser and real PostgreSQL/Redis/container acceptance are
+not credited. The unchanged full CI, real Phase 5 journeys, R26 acceptance,
+secret/container scans and official CodeQL result must validate the final
+published head. The PR records their actual results and source-bound artifacts.
+
+Current repository-wide alert inventories/dispositions, deployed-source
+reconciliation, hosted HTTPS acceptance and R24/G2 money-interface integration
+remain separately blocked as documented above; this continuation does not
+waive them. Synthetic failed traces were inspected only in temporary scratch
+storage and are not committed or republished.

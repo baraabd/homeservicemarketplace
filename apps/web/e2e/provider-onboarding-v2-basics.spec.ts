@@ -141,6 +141,9 @@ async function openTask(
   });
 
   await page.route('**/v1/media/presigned-url', async (route) => {
+    // Keep the synthetic storage endpoint on the API origin in the served
+    // production bundle, including its enforced CSP and custom local builds.
+    const apiOrigin = new URL(route.request().url()).origin;
     recorded.presigns.push(JSON.parse(route.request().postData() ?? '{}'));
     return route.fulfill({
       status: 200,
@@ -148,8 +151,8 @@ async function openTask(
       body: JSON.stringify({
         items: [
           {
-            uploadUrl: 'http://127.0.0.1:4010/v1/media/uploads/avatars/ref/new.jpg?sig=x',
-            fileUrl: 'http://127.0.0.1:4010/v1/media/files/avatars/ref/new.jpg',
+            uploadUrl: `${apiOrigin}/v1/media/uploads/avatars/ref/new.jpg?sig=x`,
+            fileUrl: `${apiOrigin}/v1/media/files/avatars/ref/new.jpg`,
             expiresAt: new Date(Date.now() + 60_000).toISOString(),
           },
         ],
