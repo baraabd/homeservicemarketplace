@@ -386,3 +386,87 @@ Review/remove these two entries using §5 when the originating commit is no
 longer reachable, and at every release review. Scanner verification is
 recorded in the G1 `INTEGRATION_EVIDENCE.md` follow-up. Final-head remote CI
 must succeed before technical acceptance; G1's independent blockers remain.
+
+## 13. G2 delta — compile-time idempotency identifiers (2026-10-17)
+
+[CI run 39071261819](https://github.com/baraabd/homeservicemarketplace/actions/runs/39071261819),
+[security job 117510127234](https://github.com/baraabd/homeservicemarketplace/actions/runs/39071261819/job/117510127234),
+reported three `generic-api-key` findings in the history and tracked-tree
+scans of PR #180 head `736208b70c211c5c1fe931f0a2f0f37c4d55d529`.
+All three are in `apps/api/test/support/g2-money-ports-consumer.fixture.ts`:
+
+| Reported line | Input field                         | Classification and purpose                                                     |
+| ------------- | ----------------------------------- | ------------------------------------------------------------------------------ |
+| 53            | Collection `providerIdempotencyKey` | Authored synthetic identifier for the collection adapter's compile-time input  |
+| 74            | Receipt `idempotencyKey`            | Authored synthetic identifier for the receipt participant's compile-time input |
+| 105           | Refund `providerIdempotencyKey`     | Authored synthetic identifier for the refund adapter's compile-time input      |
+
+The Codex fixture author performed this individual classification under the
+owner-delegated G2 coordinator's recorded three-path lease. The coordinator
+also inspected the three source lines. This records the performed agent
+review; it does not claim independent human security approval.
+
+Each full source line and its surrounding function was read at the reported
+commit. The identifiers were authored for the new `g2MoneyPortsConsumerFixture`
+function, which has no caller in tracked source and is never invoked by tests
+or application runtime. Its input objects exercise the actual frozen ports
+with synthetic account references, `SANDBOX` mode and `XTS` amounts. None of
+these three identifiers authenticates a request, signs a payload, selects a
+live rail account or comes from an external credential provider. No value
+carries a known provider-credential prefix. **Verdict: three non-secret,
+authored compile-time fixtures; credential rotation does not apply.**
+
+Provenance was checked with exact-value `git grep -l -F` searches of both the
+reported tree and current tracked files: each identifier has one occurrence,
+only in this fixture. The consumer function name likewise appears only in
+its declaration file. The locally available fixture history was inspected
+at `f93ddb5509a33c471a4f3758889643e581727aa9` and the reported head, plus the
+local hook checkpoint `ca32750c535338cab7a1821452086468370dd216`; each source
+version contains the same three fixture inputs. These local checkpoints do
+not receive additional baseline entries.
+
+The checkout exposes 183 refs and 1,145 reachable commit objects. An attempted
+repository-wide `git log --all -S<literal> --name-only` search could not finish
+because this partial clone lacks an unrelated historical promisor blob and
+automatic network hydration was unavailable in the default sandbox. The
+completed review therefore covers the exact reported source, available
+fixture history and current tracked-file searches, consistent with the
+bounded authored-provenance reviews in sections 6 and 12. It does not claim a
+complete historical-content search, environment inventory or credential-store
+audit. Only source paths, commit identities and counts are retained as
+provenance evidence; the fixture values are not recorded here.
+
+The three fixed inputs are replaced with `randomUUID()` from `node:crypto`.
+All actual-port calls and all seven `@ts-expect-error` transaction-boundary
+controls remain unchanged. No runtime money orchestration is added.
+
+Only the three exact reported `commit:path:rule:line` fingerprints are added
+to `.gitleaksignore`, preserving its 23 existing entries. There is no path or
+extension exclusion, regex allowance, disabled rule, altered workflow or scan
+range, tolerated failure, or history rewrite. A finding at a different commit
+or line remains outside these historical entries. Review/remove the three
+entries using section 5 when the reported commit is no longer reachable and
+at every release review.
+
+The official Gitleaks 8.24.3 Linux x64 archive was verified against the
+workflow's pinned SHA-256:
+`9991e0b2903da4c8f6122b5c3186448b927a5da4deef1fe45271c3793f4ee29c`.
+Before correction, that binary reproduced exactly the three findings in both
+the unchanged published history range
+(`--no-merges --first-parent 736208b70c211c5c1fe931f0a2f0f37c4d55d529^..736208b70c211c5c1fe931f0a2f0f37c4d55d529`)
+and the existing tracked-tree scanner on the reported commit. After the three
+reviewed fingerprints were added, that identical history range scanned one
+commit and 447,485 bytes, returning zero findings and exit 0.
+
+To prove the gate still blocks, a separate temporary directory outside this
+repository received the updated 26-entry `.gitleaksignore` and two freshly
+generated canaries. Gitleaks detected both `generic-api-key` and `github-pat`,
+returning exit 2 with exactly two findings. No canary value was printed or
+committed; the canary source directory was removed after the redacted results
+were recorded. API TypeScript checking, exact fixture lint and scoped
+formatting checks also passed; all seven negative type controls are retained.
+
+The corrected-tree verification uses a complete private copy of the reported
+tracked tree with only these three leased file changes overlaid. It creates
+no source commit or Git ref and cannot stand in for the coordinator's final
+commit-bound scan. Final remote CI remains an acceptance requirement.

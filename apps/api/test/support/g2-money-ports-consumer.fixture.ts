@@ -1,5 +1,6 @@
 // Compile-time consumer fixture only. Never invoked by tests or runtime code.
 // Synthetic identifiers and XTS select no policy, market, price or rail account.
+import { randomUUID } from 'node:crypto';
 import { toMoneyWire } from '@homeservicemarketplace/contracts';
 import type { PrismaTx } from '@homeservicemarketplace/database';
 import type {
@@ -50,7 +51,7 @@ export async function g2MoneyPortsConsumerFixture(
     binding,
     paymentIntentId: 'synthetic-intent',
     paymentAttemptId: 'synthetic-attempt',
-    providerIdempotencyKey: 'synthetic-collection-0001',
+    providerIdempotencyKey: randomUUID(),
     amount: toMoneyWire({ amountMinor: 9007199254740993n, currency: 'XTS' }),
     externalOperationId: null,
   };
@@ -71,7 +72,7 @@ export async function g2MoneyPortsConsumerFixture(
     receiptMediaAssetId: 'synthetic-receipt',
     ownerUserId: 'synthetic-provider-user',
     reviewerUserId: 'synthetic-reviewer',
-    idempotencyKey: 'synthetic-receipt-0001',
+    idempotencyKey: randomUUID(),
   };
   ports.receipt.isConfigured(receipt.binding);
   await ports.receipt.accept(receipt, tx);
@@ -102,7 +103,7 @@ export async function g2MoneyPortsConsumerFixture(
     binding,
     refundId: 'synthetic-refund',
     paymentConfirmationId: reservation.paymentConfirmationId,
-    providerIdempotencyKey: 'synthetic-refund-0001',
+    providerIdempotencyKey: randomUUID(),
     amount: reservation.amount,
     externalOperationId: null,
   };

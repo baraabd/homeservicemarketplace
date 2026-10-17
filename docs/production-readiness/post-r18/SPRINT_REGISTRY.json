@@ -1166,7 +1166,7 @@
         "Exact final-head CI and CodeQL; real-service evidence; limitations and rollback"
       ],
       "pr": 179,
-      "scopeNote": "Historical G1 start retained. Exact twelve-file R28 delivery from Draft #179 is consolidated in G2 review; no hosted acceptance, account, region, spending or deployment is inferred.",
+      "scopeNote": "Historical G1 start retained. The exact twelve-file R28 import from Draft #179 has one coordinator-owned portable test-fixture correction in G2 PR #180; runtime and eleven other peer files remain exact. No hosted acceptance, account, region, spending or deployment is inferred.",
       "startBarrier": {
         "gate": "G1",
         "decision": "ACCEPTED",
@@ -1183,7 +1183,7 @@
         "pr": 179,
         "deliveryHeadSha": "60b64cd8216294d7476a7a22607ee56feb18dec4",
         "deliveryTreeSha": "a89d8cdf69f7fa368dc9ffb91fc1b241bdcc49b5",
-        "integrationPolicy": "Exact same-wave delivery blobs imported into coordinator review without merging or altering the peer branch; source checks do not release Wave3."
+        "integrationPolicy": "Initial twelve-file import uses exact peer60b64cd blobs. Coordinator PR #180 changes only its portable adversarial test fixture, with separately scoped verification; eleven other files and runtime remain exact. Peer branch unchanged; no merge or Wave3 release."
       }
     },
     {

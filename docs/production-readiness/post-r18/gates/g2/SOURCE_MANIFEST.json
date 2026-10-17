@@ -2,10 +2,10 @@
   "schemaVersion": 1,
   "gateId": "G2",
   "decision": "BLOCKED",
-  "recordedAtUtc": "2026-10-17T20:53:58Z",
+  "recordedAtUtc": "2026-10-17T21:59:07Z",
   "authority": "baraabd explicitly delegated full G2 coordination and repairs for a review PR; no merge or deployment. R32 only after approval and verified publication.",
-  "candidateSourceSha": "4e87bf03663fb3c72ffee983fdb70c2863e1ce8a",
-  "candidateTreeSha": "eaca9cdeab15e719570f7997c4fc3bbeb64e562e",
+  "candidateSourceSha": "736208b70c211c5c1fe931f0a2f0f37c4d55d529",
+  "candidateTreeSha": "8e781fed05ab93da39b5c4e3e286a67550d2d7d6",
   "frozenBaseSha": null,
   "frozenTreeSha": null,
   "acceptedSprints": [],
@@ -13,68 +13,69 @@
     {
       "id": "G2-CI-01",
       "owner": "G2 coordinator",
-      "reason": "Combined baseline failures are reproduced and scoped repairs implemented; original committed-candidate R25 and final-head CI verification remain required."
+      "reason": "Original R25 now passes on the initial published source. Its Windows R28 test fixture and individually reviewed synthetic idempotency findings require a corrective successor and complete final-head verification."
     },
     {
       "id": "G2-R27-01",
       "owner": "G2 coordinator and performance decision owner baraabd",
-      "reason": "Private HTTP and representative financial fixture/index repairs implemented; complete guarded baseline/candidate measurements and explicit owner budget decision remain required."
+      "reason": "Complete guarded baseline/candidate measurements and browser/financial correctness pass. Four unchanged proposed statement ceilings fail; the concrete scenario-scoped 6/13/12/9 proposal awaits an explicit owner decision."
     },
     {
       "id": "G2-SOURCE-01",
       "owner": "G2 coordinator",
-      "reason": "Assembled G2 changes require committed-source validation and final PR evidence."
+      "reason": "Initial published source 736208 has exact verified provenance; the corrective successor and complete final-head evidence remain required."
     }
   ],
   "mandatoryEvidence": [
     {
       "id": "combined-wave2-checks",
       "status": "FAIL",
-      "sourceSha": "4e87bf03663fb3c72ffee983fdb70c2863e1ce8a",
-      "treeSha": "eaca9cdeab15e719570f7997c4fc3bbeb64e562e",
-      "reference": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39062646647"
+      "sourceSha": "736208b70c211c5c1fe931f0a2f0f37c4d55d529",
+      "treeSha": "8e781fed05ab93da39b5c4e3e286a67550d2d7d6",
+      "reference": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39071261819"
     },
     {
       "id": "r24-interface-freeze",
       "status": "NOT_RUN",
-      "sourceSha": "4e87bf03663fb3c72ffee983fdb70c2863e1ce8a",
-      "treeSha": "eaca9cdeab15e719570f7997c4fc3bbeb64e562e",
+      "sourceSha": "736208b70c211c5c1fe931f0a2f0f37c4d55d529",
+      "treeSha": "8e781fed05ab93da39b5c4e3e286a67550d2d7d6",
       "reference": "docs/production-readiness/post-r18/gates/g2/ACCEPTANCE_EVIDENCE.json"
     },
     {
       "id": "r25-real-replicas-recovery",
-      "status": "FAIL",
-      "sourceSha": "4e87bf03663fb3c72ffee983fdb70c2863e1ce8a",
-      "treeSha": "eaca9cdeab15e719570f7997c4fc3bbeb64e562e",
-      "reference": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39062646647/artifacts/12111448781"
+      "status": "PASS",
+      "sourceSha": "736208b70c211c5c1fe931f0a2f0f37c4d55d529",
+      "treeSha": "8e781fed05ab93da39b5c4e3e286a67550d2d7d6",
+      "reference": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39071261819/artifacts/12115223637"
     },
     {
       "id": "r26-money-interface-security",
-      "status": "NOT_RUN",
-      "sourceSha": "4e87bf03663fb3c72ffee983fdb70c2863e1ce8a",
-      "treeSha": "eaca9cdeab15e719570f7997c4fc3bbeb64e562e",
-      "reference": "docs/production-readiness/post-r18/gates/g2/ACCEPTANCE_EVIDENCE.json"
+      "status": "PASS",
+      "sourceSha": "736208b70c211c5c1fe931f0a2f0f37c4d55d529",
+      "treeSha": "8e781fed05ab93da39b5c4e3e286a67550d2d7d6",
+      "reference": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39071261824"
     },
     {
       "id": "r27-measured-performance",
-      "status": "NOT_RUN",
-      "sourceSha": "4e87bf03663fb3c72ffee983fdb70c2863e1ce8a",
-      "treeSha": "eaca9cdeab15e719570f7997c4fc3bbeb64e562e",
-      "reference": "docs/production-readiness/post-r18/gates/g2/ACCEPTANCE_EVIDENCE.json"
+      "status": "FAIL",
+      "sourceSha": "736208b70c211c5c1fe931f0a2f0f37c4d55d529",
+      "treeSha": "8e781fed05ab93da39b5c4e3e286a67550d2d7d6",
+      "reference": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39071261866",
+      "qualification": "Both measurement jobs and all browser/financial correctness checks pass; four unchanged proposed statement ceilings and owner decision remain unresolved."
     },
     {
       "id": "r28-checked-platform-plan",
-      "status": "NOT_RUN",
-      "sourceSha": "4e87bf03663fb3c72ffee983fdb70c2863e1ce8a",
-      "treeSha": "eaca9cdeab15e719570f7997c4fc3bbeb64e562e",
-      "reference": "docs/production-readiness/post-r18/gates/g2/ACCEPTANCE_EVIDENCE.json",
+      "status": "FAIL",
+      "sourceSha": "736208b70c211c5c1fe931f0a2f0f37c4d55d529",
+      "treeSha": "8e781fed05ab93da39b5c4e3e286a67550d2d7d6",
+      "reference": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39071261785",
       "scope": "CONFIGURATION_ONLY"
     }
   ],
   "publication": {
     "state": "DRAFT_PENDING_OWNER_REVIEW",
     "branch": "chore/g2-wave2-acceptance",
-    "pr": null,
+    "pr": 180,
     "acceptanceRecordCommitSha": null,
     "requirement": "Owner review/approval and separately verified merged publication are required before releasing R32. This task never merges."
   },
@@ -103,5 +104,5 @@
   ],
   "evidenceRecord": "docs/production-readiness/post-r18/gates/g2/ACCEPTANCE_EVIDENCE.json",
   "preservedG1SourceSha": "40cdac5c9ce6acaa8dedc0385984a807ae9a84d0",
-  "identityResolution": "This initial record names the observed merged baseline. Uncommitted local checks are not relabeled as evidence for that source. Successor records bind each actual checked commit and tree."
+  "identityResolution": "This successor record names the initial published implementation and its observed checks. Pending corrective source and record-only descendants must be verified at their actual published heads; no self-referential future SHA is invented."
 }

@@ -185,7 +185,25 @@ Before publication, the coordinator reviewed the one-commit descendant of the se
 - `docs/production-readiness/r28/RISKS.md`
 - `docs/production-readiness/r28/shared-change-requests/CR-001-integration.md`
 
-The initial coherent review checkpoint comprises these 61 exact paths. Earlier lease sections establish the author and disposition for each source slice; this inventory adds no executable Wave3 ownership. Imported R28 files retain their exact peer blobs. Final record-only successors are identified separately in acceptance evidence.
+### R28 portable descriptor/path regression corrective writer: r28_plan
+
+After the exact imported source was published as PR #180 at `736208b70c211c5c1fe931f0a2f0f37c4d55d529`, Windows controls job `117509196900` passed438 tests and failed only the replacement-fixture test. Its instrumented `openSync` opened a descriptor, then the fixture's rename threw before returning that descriptor to the validator. The log proves zero reads but also zero validator closes and no completed replacement; it does not expose an OS error code. The original published-source R25 harness has completed and the coordinator now grants `/root/r28_plan` this exclusive one-file lease before edits:
+
+- `scripts/production/platform/validate-plan.test.cjs`
+
+Make the adversarial descriptor/path-identity fixture portable without requiring rename over an open file. Exercise actual distinct regular files and actual descriptor identity, retaining rejection before any reads, exactly one close, and an unusable closed descriptor. Prove that the pre-correction reader fails the strengthened scenario. Do not skip Windows, remove assertions, alter runtime validation, suppress CodeQL, or change any timeout or security limit. The initial twelve-file import and its457-case local result remain historical; this coordinator-owned test correction is recorded separately from peer source. Root retains commits, PR updates and final source verification.
+
+### G2 synthetic idempotency fixture security review: refund_contract_audit
+
+CI run `39071261819`, job `117510127234`, reported three `generic-api-key` findings at lines53,74,105 of the newly authored compile-time money-port fixture in commit `736208b70c211c5c1fe931f0a2f0f37c4d55d529`. The coordinator inspected the exact source: these are readable synthetic idempotency identifiers, never invoked by the application or used as authentication. The existing historical-baseline policy requires individual classification before recording an exact fingerprint. Root grants `/root/refund_contract_audit` exclusive ownership of the three paths below for that review and bounded correction:
+
+- `apps/api/test/support/g2-money-ports-consumer.fixture.ts`
+- `.gitleaksignore`
+- `docs/security/gitleaks-historical-baseline.md`
+
+Verify and document each finding's authored non-secret provenance, replace fixed fixture identifiers with `randomUUID()` while retaining every real-port and negative type assertion, and append only the three reported immutable historical fingerprints after classification. Preserve every existing baseline entry. No path/extension/regex exclusion, disabled rule, scan-range change, tolerated failure, workflow edit or history rewrite is authorized. Verify the unchanged pinned scanner still rejects a separately generated canary outside this repository and that the corrected tracked tree and exact published history range pass. Only paths, counts and redacted scanner findings may enter evidence; no real credentials are read or printed. Root performs the final commit and source-bound scan.
+
+The initial coherent review checkpoint comprises the 61 paths below. The individually leased security-review follow-up adds `.gitleaksignore` and `docs/security/gitleaks-historical-baseline.md`, making 63 exact changed paths for the corrected review candidate. Earlier lease sections establish the author and disposition for each source slice; this inventory adds no executable Wave3 ownership. The initial twelve-file R28 import is retained in history; the later one-file portable regression correction is separately leased above, and its other eleven files retain exact peer blobs. Final record-only successors are identified separately in acceptance evidence.
 
 - `.github/scripts/sprint-registry.mjs`
 - `.github/scripts/sprint-registry.test.mjs`

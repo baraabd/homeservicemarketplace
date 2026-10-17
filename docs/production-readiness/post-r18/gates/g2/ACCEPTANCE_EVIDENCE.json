@@ -2,9 +2,9 @@
   "schemaVersion": 1,
   "gateId": "G2",
   "state": "INTEGRATION_PENDING",
-  "candidateSourceSha": "4e87bf03663fb3c72ffee983fdb70c2863e1ce8a",
-  "candidateTreeSha": "eaca9cdeab15e719570f7997c4fc3bbeb64e562e",
-  "sourceIdentityNote": "Initial observed baseline only. Scoped uncommitted source checks below are not attributed to this SHA. Actual committed-source and final PR results will be appended separately.",
+  "candidateSourceSha": "736208b70c211c5c1fe931f0a2f0f37c4d55d529",
+  "candidateTreeSha": "8e781fed05ab93da39b5c4e3e286a67550d2d7d6",
+  "sourceIdentityNote": "The initial published source and tree are identified here. Historical failures and pre-publication scoped checks remain separately qualified. Follow-up fixture/security corrections and final-head evidence are recorded as successors, never relabeled as checks of this source.",
   "prompt": {
     "sprint": "R32",
     "originalFilename": "Pasted markdown(20261017-193931).md",
@@ -205,10 +205,628 @@
         "failed": 0,
         "skipped": 0
       }
+    },
+    "coordinatorFixtureCorrection": {
+      "path": "scripts/production/platform/validate-plan.test.cjs",
+      "blobSha": "3834d841b93f19019c551871eaf287fac537b241",
+      "unchangedPeerFiles": 11,
+      "runtimeValidatorUnchanged": true,
+      "qualification": "Exact twelve-file import remains historical. The follow-up portable fixture is coordinator-owned and requires its own Windows and final-head checks."
     }
   },
-  "finalPr": null,
-  "sourceBoundChecks": [],
+  "finalPr": {
+    "number": 180,
+    "url": "https://github.com/baraabd/homeservicemarketplace/pull/180",
+    "headSha": "736208b70c211c5c1fe931f0a2f0f37c4d55d529",
+    "treeSha": "8e781fed05ab93da39b5c4e3e286a67550d2d7d6",
+    "state": "DRAFT_PENDING_OWNER_REVIEW",
+    "headQualification": "Initial published implementation; a bounded corrective successor is being prepared."
+  },
+  "sourceBoundChecks": [
+    {
+      "scope": "Original local R25 real replicas/recovery harness",
+      "sourceSha": "736208b70c211c5c1fe931f0a2f0f37c4d55d529",
+      "treeSha": "8e781fed05ab93da39b5c4e3e286a67550d2d7d6",
+      "status": "PASS",
+      "attempt": "20261017213151878-7407f266",
+      "command": "node scripts/production/realtime/verify-replicas.cjs --run",
+      "exitCode": 0,
+      "cleanBeforeAndAfter": true,
+      "durationSeconds": 107.201,
+      "api": {
+        "suites": 1,
+        "passed": 13,
+        "failed": 0,
+        "skipped": 0,
+        "success": true
+      },
+      "browser": {
+        "passed": 1,
+        "failed": 0,
+        "skipped": 0,
+        "flaky": 0
+      },
+      "summarySha256": "ecebfed5ad3b76fdc48b5b9ad8352049f0d322f96b86af10486a6bbf9bf2c94b",
+      "visualInspection": {
+        "unchangedPrivateScreenshots": 16,
+        "browserLocales": ["en", "ar"],
+        "notificationWidths": [320, 390, 430, 768, 1024, 1440],
+        "keyboardAndOverflowAssertions": "PASS",
+        "coordinatorViewed": [
+          "ar notifications320",
+          "en notifications1440",
+          "ar admin390",
+          "en seeker messages390"
+        ]
+      },
+      "hostedAcceptance": false
+    },
+    {
+      "scope": "Official R25 original real replicas/recovery CI lane",
+      "sourceSha": "736208b70c211c5c1fe931f0a2f0f37c4d55d529",
+      "treeSha": "8e781fed05ab93da39b5c4e3e286a67550d2d7d6",
+      "status": "PASS",
+      "runId": 39071261819,
+      "jobId": 117510127218,
+      "artifactId": 12115223637,
+      "zipSha256": "b2b4f1de0b02ae029f0fa7c448c0e41d764a2d86b4ba2b38c15c3b3538a048c1",
+      "attempt": "20261017213621328-632aa0c2",
+      "api": {
+        "suites": 1,
+        "passed": 13,
+        "failed": 0,
+        "skipped": 0,
+        "success": true
+      },
+      "browser": {
+        "passed": 1,
+        "failed": 0,
+        "skipped": 0,
+        "flaky": 0
+      },
+      "commandCount": 9,
+      "allCommandsSucceeded": true,
+      "reference": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39071261819/artifacts/12115223637"
+    },
+    {
+      "scope": "Official Production governance and exact tracked-source archive",
+      "sourceSha": "736208b70c211c5c1fe931f0a2f0f37c4d55d529",
+      "treeSha": "8e781fed05ab93da39b5c4e3e286a67550d2d7d6",
+      "status": "PASS",
+      "workflowRun": 39071261907,
+      "artifactId": 12115450794,
+      "zipSha256": "648c27cd7ba468371a88d47a5bde2b3e61a241d6ef8205fb44cb80ce446313e9",
+      "base": "4e87bf03663fb3c72ffee983fdb70c2863e1ce8a",
+      "trackedTreeMatches": true,
+      "sourceArchiveMatches": true,
+      "reference": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39071261907/artifacts/12115450794"
+    },
+    {
+      "scope": "Official R26 standalone real-service acceptance",
+      "sourceSha": "736208b70c211c5c1fe931f0a2f0f37c4d55d529",
+      "treeSha": "8e781fed05ab93da39b5c4e3e286a67550d2d7d6",
+      "status": "PASS",
+      "runId": 39071261824,
+      "jobId": 117509197057,
+      "artifactId": 12115357430,
+      "artifactDigest": "sha256:6563fba8a10e1ef804412dd332814567fb7703845d8492e040e78990d120c4cd",
+      "artifactVerified": true,
+      "reference": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39071261824",
+      "databaseTests": {
+        "passed": 9,
+        "failed": 0,
+        "skipped": 0
+      },
+      "limitations": {
+        "hosted_acceptance": false,
+        "scanner": "test component; no malware-detection acceptance",
+        "repository_alert_inventory": "EXTERNAL_BLOCKED",
+        "runtime": "compiled development runtime on disposable loopback services"
+      },
+      "adversarial_policy_tests": {
+        "passed": 30,
+        "failed": 0,
+        "skipped": 0
+      },
+      "browser": {
+        "passed": 2,
+        "failed": 0,
+        "skipped": 0,
+        "flaky": 0,
+        "duration_ms": 9532.642,
+        "cases": [
+          {
+            "title": "built document enforces scripts and connections while real API boundaries stay safe",
+            "status": "expected",
+            "attempts": ["passed"]
+          },
+          {
+            "title": "real cookies protect uploaded PDF and gallery while the built Admin previews both",
+            "status": "expected",
+            "attempts": ["passed"]
+          }
+        ]
+      },
+      "built_document": {
+        "served_document_matches_build": true,
+        "index_sha256": "b8bc2c621ae48167bff19ab1aa28a813a5f7bc13cddec695cf591e3a9db552ff",
+        "api_ready_status": 200
+      }
+    },
+    {
+      "scope": "Official R04 standalone real-service acceptance",
+      "sourceSha": "736208b70c211c5c1fe931f0a2f0f37c4d55d529",
+      "treeSha": "8e781fed05ab93da39b5c4e3e286a67550d2d7d6",
+      "status": "PASS",
+      "runId": 39071261728,
+      "jobId": 117509196621,
+      "artifactId": 12115088504,
+      "artifactDigest": "sha256:d0e389bdf57895a7ec2b5bb175ff011f935ca50f6cc6371687ff37959ec4f655",
+      "artifactVerified": true,
+      "reference": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39071261728",
+      "databaseTests": {
+        "passed": 21,
+        "failed": 0,
+        "skipped": 0
+      },
+      "limitations": {
+        "live_staging_accepted": false
+      },
+      "browser_mail_phases": {
+        "passed": 7,
+        "failed": 0,
+        "phases": [
+          {
+            "name": "register-real-ui-and-smtp-without-premature-session",
+            "status": "PASS",
+            "durationMs": 823
+          },
+          {
+            "name": "wrong-code-is-durable-resend-rotates-and-confirm-preserves-return-target",
+            "status": "PASS",
+            "durationMs": 527
+          },
+          {
+            "name": "browser-cookie-csrf-and-server-refresh-rotation",
+            "status": "PASS",
+            "durationMs": 40
+          },
+          {
+            "name": "offline-local-logout-clears-two-tabs-and-does-not-auto-restore",
+            "status": "PASS",
+            "durationMs": 6615
+          },
+          {
+            "name": "recovery-through-real-mail-revokes-pending-codes-and-every-previous-session",
+            "status": "PASS",
+            "durationMs": 2011
+          },
+          {
+            "name": "cold-verification-recovery-and-arabic-narrow-viewport",
+            "status": "PASS",
+            "durationMs": 893
+          },
+          {
+            "name": "roles-are-server-provisioned-and-all-three-roles-use-real-otp-login",
+            "status": "PASS",
+            "durationMs": 1930
+          }
+        ]
+      },
+      "no_api_response_mocks": true
+    },
+    {
+      "scope": "Official CodeQL Actions analysis and independent GitHub Advanced Security check",
+      "sourceSha": "736208b70c211c5c1fe931f0a2f0f37c4d55d529",
+      "treeSha": "8e781fed05ab93da39b5c4e3e286a67550d2d7d6",
+      "status": "PASS",
+      "workflowRun": 39071261703,
+      "actionsJobs": [
+        {
+          "id": 117509196548,
+          "name": "Analyze JavaScript/TypeScript",
+          "head": "736208b70c211c5c1fe931f0a2f0f37c4d55d529",
+          "status": "completed",
+          "conclusion": "success"
+        }
+      ],
+      "officialSecurityCheck": {
+        "id": 117509813623,
+        "name": "CodeQL",
+        "head": "736208b70c211c5c1fe931f0a2f0f37c4d55d529",
+        "appId": 57789,
+        "appSlug": "github-advanced-security",
+        "status": "completed",
+        "conclusion": "success",
+        "annotationsCount": 0,
+        "prs": [180],
+        "completedAt": "2026-10-17T21:33:57Z",
+        "detailsUrl": "https://github.com/baraabd/homeservicemarketplace/runs/117509813623"
+      },
+      "completeCheckInventory": {
+        "filter": "all",
+        "perPage": 100,
+        "page": 1,
+        "total": 34,
+        "returned": 34,
+        "complete": true
+      },
+      "sarif": {
+        "artifactId": 12115407259,
+        "resultCount": 0,
+        "executionSuccessful": true,
+        "notificationLevels": {
+          "none": 1958
+        },
+        "warningOrErrorNotifications": 0,
+        "zipSha256": "6be0e6826a754aa5a24c70b6d4468d12f1bb0304be24fd018513cd8da8848c61"
+      },
+      "qualification": "Direct /check-runs/{id} and /annotations endpoints rejected by GitHub connector allowlist with INVALID_ARGUMENT400. Count0 is observed directly in the official check from the complete commit inventory; no annotation-body enumeration claim."
+    },
+    {
+      "scope": "Official staging controls and packaged image boundary",
+      "sourceSha": "736208b70c211c5c1fe931f0a2f0f37c4d55d529",
+      "treeSha": "8e781fed05ab93da39b5c4e3e286a67550d2d7d6",
+      "status": "FAIL",
+      "workflowRun": 39071261785,
+      "jobs": [
+        {
+          "id": 117509196709,
+          "name": "Staging image boundaries",
+          "head": "736208b70c211c5c1fe931f0a2f0f37c4d55d529",
+          "status": "completed",
+          "conclusion": "success",
+          "attempt": 1,
+          "htmlUrl": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39071261785/job/117509196709"
+        },
+        {
+          "id": 117509196900,
+          "name": "Staging release controls (windows-latest)",
+          "head": "736208b70c211c5c1fe931f0a2f0f37c4d55d529",
+          "status": "completed",
+          "conclusion": "failure",
+          "attempt": 1,
+          "htmlUrl": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39071261785/job/117509196900"
+        },
+        {
+          "id": 117509196979,
+          "name": "Staging release controls (ubuntu-latest)",
+          "head": "736208b70c211c5c1fe931f0a2f0f37c4d55d529",
+          "status": "completed",
+          "conclusion": "success",
+          "attempt": 1,
+          "htmlUrl": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39071261785/job/117509196979"
+        },
+        {
+          "id": 117509851011,
+          "name": "Staging boundary gate",
+          "head": "736208b70c211c5c1fe931f0a2f0f37c4d55d529",
+          "status": "completed",
+          "conclusion": "failure",
+          "attempt": 1,
+          "htmlUrl": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39071261785/job/117509851011"
+        }
+      ],
+      "artifacts": [
+        {
+          "id": 12115580915,
+          "name": "staging-controls-ubuntu-latest",
+          "digest": "sha256:d13636c0435586321a93dca26da4e72c3859f87155db515dc4b59a9ea526bdff",
+          "expired": false,
+          "head": "736208b70c211c5c1fe931f0a2f0f37c4d55d529"
+        },
+        {
+          "id": 12115213141,
+          "name": "staging-image-boundary",
+          "digest": "sha256:d82494e148476c3746ce79bc644842f2234f68b9a92f6be064ab13046937b16a",
+          "expired": false,
+          "head": "736208b70c211c5c1fe931f0a2f0f37c4d55d529"
+        }
+      ],
+      "linux": {
+        "tests": 439,
+        "pass": 439,
+        "fail": 0,
+        "skipped": 0,
+        "cancelled": 0,
+        "todo": 0
+      },
+      "windows": {
+        "tests": 439,
+        "pass": 438,
+        "fail": 1,
+        "skipped": 0,
+        "cancelled": 0,
+        "todo": 0
+      },
+      "missingArtifact": "staging-controls-windows-latest: upload was skipped after the actual test failure; no artifact invented.",
+      "configurationOnly": true,
+      "deployed": false
+    },
+    {
+      "scope": "Official guarded R27 baseline and candidate performance measurement",
+      "sourceSha": "736208b70c211c5c1fe931f0a2f0f37c4d55d529",
+      "treeSha": "8e781fed05ab93da39b5c4e3e286a67550d2d7d6",
+      "status": "MEASUREMENTS_PASS_BUDGET_DECISION_PENDING",
+      "workflowRun": 39071261866,
+      "reference": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39071261866",
+      "sources": {
+        "baseline": [
+          "40cdac5c9ce6acaa8dedc0385984a807ae9a84d0",
+          "109b514fe9833a9aac3e8caecd7f9b14d4f61b3b"
+        ],
+        "candidate": [
+          "736208b70c211c5c1fe931f0a2f0f37c4d55d529",
+          "8e781fed05ab93da39b5c4e3e286a67550d2d7d6"
+        ]
+      },
+      "measurementHarnessCommit": "736208b70c211c5c1fe931f0a2f0f37c4d55d529",
+      "lockfileSha256": "724b826ea09da6e070f4721a30f5dd9145a333606fac124e0249b5ef7fe18222",
+      "artifacts": [
+        {
+          "side": "baseline",
+          "artifactId": 12115541931,
+          "zipSha256": "6791a19eff63e445ae1c1a243cbc571772509d4b5659c02f624e0d158e57cef3",
+          "bytes": 2739408
+        },
+        {
+          "side": "candidate",
+          "artifactId": 12115601631,
+          "zipSha256": "cd74fb8b845ae03b19bd168d3ff0762755dcb36171148c4bba85e94cb747ad9e",
+          "bytes": 3940460
+        }
+      ],
+      "browserAndHelperCounts": {
+        "baseline": {
+          "helpers": {
+            "tests": 106,
+            "pass": 106,
+            "fail": 0,
+            "cancelled": 0,
+            "skipped": 0,
+            "todo": 0
+          },
+          "browserScheduled": [8, 8],
+          "browserPassed": [8, 8],
+          "browserFailures": 0,
+          "browserSkipped": 0,
+          "browserReportedFlaky": 0,
+          "retriesConfigured": 0,
+          "logSha256": "cb4b92958d6670356857f9f64de8f728827c1e029df65d8c71f0ceb6f28f82a5"
+        },
+        "candidate": {
+          "helpers": {
+            "tests": 106,
+            "pass": 106,
+            "fail": 0,
+            "cancelled": 0,
+            "skipped": 0,
+            "todo": 0
+          },
+          "browserScheduled": [28, 20],
+          "browserPassed": [28, 20],
+          "browserFailures": 0,
+          "browserSkipped": 0,
+          "browserReportedFlaky": 0,
+          "retriesConfigured": 0,
+          "logSha256": "607ea184887f6b9261b8462c555cb5f3d56e19f160b14456ff9d3090c87a7229"
+        }
+      },
+      "comparator": {
+        "status": "PASS",
+        "pairedGroups": 48,
+        "missingGroups": 0,
+        "observationsPerSourceAndGroup": 3
+      },
+      "authorityReports": {
+        "verified": 24,
+        "failed": 0,
+        "modes": ["production", "development"],
+        "projects": ["desktop-en", "desktop-ar", "mobile-en", "mobile-ar"],
+        "scenarios": ["private-cache", "cross-tab-logout", "permission-revocation"],
+        "sourceTreeHarnessVerified": true
+      },
+      "financial": {
+        "bookings": 5418,
+        "visibleCompleted": 1626,
+        "softDeletedCompleted": 180,
+        "scheduled": 3612,
+        "fullWalkPages": 82,
+        "fullWalkDistinctBookings": 1626,
+        "unchangedSortKeysDuplicates": 0,
+        "orderedDatabaseTruth": true,
+        "correctnessLimits": [5, 20, 100],
+        "anonymousStatus": 401,
+        "unauthorizedStatus": 403,
+        "monetaryAndLedgerOriginalsPreserved": true,
+        "fixtureRestored": true,
+        "defaultGenericAndBoundPlannerSelectsCandidateIndex": true,
+        "index": "Booking_status_updatedAt_id_deletedAt_idx",
+        "exactCatalogValidReadyLive": true,
+        "boundPlans": [
+          {
+            "source": "baseline",
+            "httpLimit": 5,
+            "sqlParameters": ["COMPLETED", 6, 0],
+            "scans": [
+              {
+                "node": "Seq Scan",
+                "relation": "Booking",
+                "index": null,
+                "estimatedRows": 1746
+              }
+            ],
+            "sharedHitBlocks": 148,
+            "sharedReadBlocks": 0,
+            "tempReadBlocks": 0,
+            "tempWrittenBlocks": 0,
+            "actualRows": 6,
+            "planningTimeMs": 0.055,
+            "executionTimeMs": 0.915,
+            "planWidth": 195
+          },
+          {
+            "source": "baseline",
+            "httpLimit": 20,
+            "sqlParameters": ["COMPLETED", 21, 0],
+            "scans": [
+              {
+                "node": "Seq Scan",
+                "relation": "Booking",
+                "index": null,
+                "estimatedRows": 1746
+              }
+            ],
+            "sharedHitBlocks": 148,
+            "sharedReadBlocks": 0,
+            "tempReadBlocks": 0,
+            "tempWrittenBlocks": 0,
+            "actualRows": 21,
+            "planningTimeMs": 0.055,
+            "executionTimeMs": 0.899,
+            "planWidth": 195
+          },
+          {
+            "source": "baseline",
+            "httpLimit": 100,
+            "sqlParameters": ["COMPLETED", 101, 0],
+            "scans": [
+              {
+                "node": "Seq Scan",
+                "relation": "Booking",
+                "index": null,
+                "estimatedRows": 1746
+              }
+            ],
+            "sharedHitBlocks": 148,
+            "sharedReadBlocks": 0,
+            "tempReadBlocks": 0,
+            "tempWrittenBlocks": 0,
+            "actualRows": 101,
+            "planningTimeMs": 0.052,
+            "executionTimeMs": 0.966,
+            "planWidth": 195
+          },
+          {
+            "source": "candidate",
+            "httpLimit": 5,
+            "sqlParameters": ["COMPLETED", 6, 0],
+            "scans": [
+              {
+                "node": "Index Scan",
+                "relation": "Booking",
+                "index": "Booking_status_updatedAt_id_deletedAt_idx",
+                "estimatedRows": 1746
+              }
+            ],
+            "sharedHitBlocks": 8,
+            "sharedReadBlocks": 0,
+            "tempReadBlocks": 0,
+            "tempWrittenBlocks": 0,
+            "actualRows": 6,
+            "planningTimeMs": 0.055,
+            "executionTimeMs": 0.066,
+            "planWidth": 195
+          },
+          {
+            "source": "candidate",
+            "httpLimit": 20,
+            "sqlParameters": ["COMPLETED", 21, 0],
+            "scans": [
+              {
+                "node": "Index Scan",
+                "relation": "Booking",
+                "index": "Booking_status_updatedAt_id_deletedAt_idx",
+                "estimatedRows": 1746
+              }
+            ],
+            "sharedHitBlocks": 18,
+            "sharedReadBlocks": 0,
+            "tempReadBlocks": 0,
+            "tempWrittenBlocks": 0,
+            "actualRows": 21,
+            "planningTimeMs": 0.051,
+            "executionTimeMs": 0.055,
+            "planWidth": 195
+          },
+          {
+            "source": "candidate",
+            "httpLimit": 100,
+            "sqlParameters": ["COMPLETED", 101, 0],
+            "scans": [
+              {
+                "node": "Index Scan",
+                "relation": "Booking",
+                "index": "Booking_status_updatedAt_id_deletedAt_idx",
+                "estimatedRows": 1746
+              }
+            ],
+            "sharedHitBlocks": 96,
+            "sharedReadBlocks": 0,
+            "tempReadBlocks": 0,
+            "tempWrittenBlocks": 0,
+            "actualRows": 101,
+            "planningTimeMs": 0.051,
+            "executionTimeMs": 0.09,
+            "planWidth": 195
+          }
+        ],
+        "mutableCursorBothSources": {
+          "previousRowsRepeated": 19,
+          "originalNextPageRowsOmitted": 19,
+          "snapshotGuarantee": false
+        }
+      },
+      "bundle": {
+        "candidateProposalsPass": true,
+        "initialSeekerGzipChangePercent": -15.04,
+        "initialAdminGzipChangePercent": -24.19,
+        "sharedShellGzipGrowthBytes": 2507,
+        "completeAdminWithChartsGzipChangePercent": 0.87
+      },
+      "unchangedBudgets": {
+        "candidate": {
+          "passed": 48,
+          "failed": 4,
+          "exitCode": 1
+        },
+        "baseline": {
+          "passed": 41,
+          "failed": 11,
+          "exitCode": 1
+        }
+      },
+      "timingQualifications": [
+        "CPU model mismatch among declared core/browser hosts (baseline: INTEL(R) XEON(R) PLATINUM 8573C; candidate: AMD EPYC 7763 64-Core Processor). Source identities were validated separately. All boot, browser, query and workload timing deltas are hardware-confounded; do not interpret them as causal implementation effects.",
+        "Five HTTP samples support medians only; browser groups have three observations; workload tails are empirical.",
+        "The budget CLI does not evaluate hostedOnly fields; no hosted SLO is accepted."
+      ],
+      "rawEvidenceRequirement": "Retain both query.json files: comparator summaries omit exact catalog, full generic/bound SQL plans and financial mutation/integrity evidence.",
+      "privateDerivedEvidenceHashes": {
+        "OWNER_REVIEW.md": {
+          "bytes": 27918,
+          "sha256": "d033eaf9172719d28c7ccd1e62834a2994f75b0d6e08e316a03f26aeada0386b"
+        },
+        "owner-review-data.json": {
+          "bytes": 119895,
+          "sha256": "c36b2b13ad4c8145107d17b2b7c101d711f0212a02151c3a142a0aa60ebb3db5"
+        },
+        "financial-evidence.json": {
+          "bytes": 79492,
+          "sha256": "e95dbc31bf8947535a7c6b25b1c9cb33a57ec4657e1d655b00fae4e90c9d8084"
+        },
+        "authority-audit.json": {
+          "bytes": 18831,
+          "sha256": "7003dbe484e73e317dda2902b5ff49f84b6bd59dd73c95e498f2b6bf0bd37961"
+        },
+        "browser-48-paired-groups.csv": {
+          "bytes": 5901,
+          "sha256": "27519f4e2faaf54df17292f24af23b8bb34e842efec1c4f7f179c2b5516e6f82"
+        }
+      },
+      "hostedAcceptance": false
+    }
+  ],
   "publication": {
     "state": "DRAFT_PENDING_OWNER_REVIEW",
     "merged": false,
@@ -485,5 +1103,246 @@
       "privateReportSha256": "1880b619f39c3c9cadaba46553ae80b5e4acf05999f2e0fb8a64e47bc5b798dd",
       "qualification": "Pinned lockfile unchanged; actual final-head workflow evidence remains required."
     }
-  ]
+  ],
+  "initialPublishedCorrections": [
+    {
+      "id": "G2-WIN-R28",
+      "state": "IMPLEMENTED_PENDING_SUCCESSOR_CI",
+      "reportedSourceSha": "736208b70c211c5c1fe931f0a2f0f37c4d55d529",
+      "runId": 39071261785,
+      "jobId": 117509196900,
+      "passed": 438,
+      "failed": 1,
+      "skipped": 0,
+      "cause": "Replacement fixture could not return its opened descriptor after the fixture rename failed on Windows; no runtime validator failure demonstrated.",
+      "correctivePath": "scripts/production/platform/validate-plan.test.cjs",
+      "correctiveBlob": "3834d841b93f19019c551871eaf287fac537b241",
+      "preservedAssertions": [
+        "real regular-file identity mismatch",
+        "zero reads",
+        "exactly one close",
+        "closed descriptor unusable"
+      ],
+      "localAfter": {
+        "passed": 457,
+        "failed": 0,
+        "skipped": 0
+      },
+      "oldReaderControl": "Exact e91c reader performs one forbidden read; current unchanged reader performs zero.",
+      "privateProofSha256": "8e59378eea489b1c9e6732e67f8f3c2b27d1289f94ceda5659343be4ecf4dd96"
+    },
+    {
+      "id": "G2-SYNTHETIC-IDEMPOTENCY",
+      "state": "IMPLEMENTED_PENDING_SUCCESSOR_CI",
+      "reportedSourceSha": "736208b70c211c5c1fe931f0a2f0f37c4d55d529",
+      "runId": 39071261819,
+      "jobId": 117510127234,
+      "rule": "generic-api-key",
+      "count": 3,
+      "path": "apps/api/test/support/g2-money-ports-consumer.fixture.ts",
+      "lines": [53, 74, 105],
+      "classification": "Newly authored compile-time fixture idempotency identifiers, not authentication material.",
+      "policy": "Existing individual historical-fingerprint review; no broad allowance or history rewrite.",
+      "reviewStatus": "INDIVIDUALLY_CLASSIFIED_SYNTHETIC_FIXTURE",
+      "reviewer": "Codex subagent under owner-delegated G2 coordinator; not independent human security approval",
+      "sourceChange": "Exactly three fixed input values replaced by randomUUID() and one node:crypto import; all other fixture bytes preserved",
+      "negativeTransactionControlsPreserved": 7,
+      "historicalBaseline": {
+        "existingEntriesPreserved": 23,
+        "exactEntriesAdded": 3,
+        "reference": "docs/security/gitleaks-historical-baseline.md"
+      },
+      "scanner": {
+        "url": "https://github.com/gitleaks/gitleaks/releases/download/v8.24.3/gitleaks_8.24.3_linux_x64.tar.gz",
+        "archive_sha256": "9991e0b2903da4c8f6122b5c3186448b927a5da4deef1fe45271c3793f4ee29c",
+        "version": "8.24.3",
+        "binary_sha256": "e18325d568268b6efb6cd0cc721f8bea5667f4cd1c8d03618ab61987f41269ad"
+      },
+      "before": {
+        "historyFindings": 3,
+        "trackedTreeFindings": 3
+      },
+      "after": {
+        "unchangedPublishedHistoryFindings": 0,
+        "unchangedPublishedHistoryExitCode": 0,
+        "correctedPrivateSnapshotFindings": 0,
+        "correctedPrivateSnapshotFiles": 2606,
+        "correctedPrivateSnapshotBytes": 22597969,
+        "correctedPrivateSnapshotExitCode": 0
+      },
+      "canaries": {
+        "exit_code": 2,
+        "finding_count": 2,
+        "project_git_refs_created": false,
+        "canary_git_refs_created": false,
+        "raw_values_printed": false,
+        "canary_source_removed": true
+      },
+      "typeLintFormat": {
+        "node": "24.21.0",
+        "pnpm": "10.32.1",
+        "results": [
+          {
+            "check": "typecheck",
+            "exit_code": 0,
+            "command": [
+              "pnpm",
+              "--filter",
+              "@homeservicemarketplace/api",
+              "exec",
+              "tsc",
+              "--noEmit",
+              "--incremental",
+              "false"
+            ]
+          },
+          {
+            "check": "fixture-lint",
+            "exit_code": 0,
+            "command": [
+              "pnpm",
+              "--filter",
+              "@homeservicemarketplace/api",
+              "exec",
+              "eslint",
+              "test/support/g2-money-ports-consumer.fixture.ts",
+              "--max-warnings=0"
+            ]
+          },
+          {
+            "check": "scoped-format",
+            "exit_code": 0,
+            "command": [
+              "pnpm",
+              "exec",
+              "prettier",
+              "--check",
+              "apps/api/test/support/g2-money-ports-consumer.fixture.ts",
+              "docs/security/gitleaks-historical-baseline.md"
+            ]
+          }
+        ]
+      },
+      "fileHashes": [
+        {
+          "path": ".gitleaksignore",
+          "sha256": "f5253b8495ae355b788965f4517103e1d92358d990c7d3681340ff07710026ac"
+        },
+        {
+          "path": "apps/api/test/support/g2-money-ports-consumer.fixture.ts",
+          "sha256": "5f97871e54fe9ab57cdfcbe08687a3d58834980e714dc236dc28492f401d3b88"
+        },
+        {
+          "path": "docs/security/gitleaks-historical-baseline.md",
+          "sha256": "afbd46ffde10bb89ca403a580888d5418130aa7f0c9344cccaa66236cd52f887"
+        }
+      ],
+      "limitations": [
+        "Full all-ref historical-content provenance scan was incomplete because of missing unrelated promisor blobs; exact known-authored fixture versions and current tracked files were reviewed.",
+        "Corrected tree is a complete private snapshot plus three overlaid leased files, not a final repository commit. Coordinator must run commit-bound and remote scans on the final head.",
+        "No API runtime test suite or workflow rerun was performed for this bounded fixture correction."
+      ]
+    }
+  ],
+  "r27OwnerBudgetProposal": {
+    "state": "PROPOSED_AWAITING_OWNER_APPROVAL",
+    "owner": "baraabd",
+    "measurementRunId": 39071261866,
+    "unchangedBudgetCheck": {
+      "candidate": {
+        "passed": 48,
+        "failed": 4,
+        "exitCode": 1
+      },
+      "baseline": {
+        "passed": 41,
+        "failed": 11,
+        "exitCode": 1
+      }
+    },
+    "scenarios": [
+      {
+        "scenario": "seeker requests",
+        "previousProposedCeiling": 5,
+        "baselineMeasured": 5,
+        "candidateMeasured": 6,
+        "proposedReviewedCeiling": 6
+      },
+      {
+        "scenario": "provider available requests",
+        "previousProposedCeiling": 10,
+        "baselineMeasured": 13,
+        "candidateMeasured": 13,
+        "proposedReviewedCeiling": 13
+      },
+      {
+        "scenario": "provider bookings",
+        "previousProposedCeiling": 7,
+        "baselineMeasured": 12,
+        "candidateMeasured": 12,
+        "proposedReviewedCeiling": 12
+      },
+      {
+        "scenario": "populated administrative financial bookings",
+        "previousProposedCeiling": 3,
+        "baselineMeasured": 9,
+        "candidateMeasured": 9,
+        "proposedReviewedCeiling": 9
+      }
+    ],
+    "scope": "Zero-headroom statement ceilings for these guarded benchmark scenarios; counts constant at measured limits 5 and 20. Not universal route ceilings, latency SLOs or hosted budgets.",
+    "unmeasuredVariants": [
+      "provider-booking cursor ownership lookup",
+      "explicit available-request category validation",
+      "financial limit 100 HTTP statement count; correctness and bound-plan evidence are available"
+    ],
+    "sourceBudgetChanged": false,
+    "approval": null,
+    "reference": "docs/production-readiness/post-r18/gates/g2/DECISION.md",
+    "queryDecomposition": [
+      {
+        "scenario": "seeker requests",
+        "components": [2, 3, 1],
+        "description": "session/account; page/relation; authorized-page Bid aggregate"
+      },
+      {
+        "scenario": "provider available requests",
+        "components": [2, 3, 4, 3, 1],
+        "description": "session/account; capability; profile/category; page/relation; Bid aggregate"
+      },
+      {
+        "scenario": "provider bookings",
+        "components": [2, 3, 1, 6],
+        "description": "session/account; capability; profile lookup; page/relation"
+      },
+      {
+        "scenario": "administrative financial bookings",
+        "components": [2, 7],
+        "description": "session/account; page/relation"
+      }
+    ]
+  },
+  "initialPublishedCombinedCi": {
+    "sourceSha": "736208b70c211c5c1fe931f0a2f0f37c4d55d529",
+    "treeSha": "8e781fed05ab93da39b5c4e3e286a67550d2d7d6",
+    "runId": 39071261819,
+    "runAttempt": 1,
+    "status": "FAIL",
+    "successfulJobs": 16,
+    "failedJobs": [
+      {
+        "id": 117510127234,
+        "name": "Dependency, secret, and container scans"
+      },
+      {
+        "id": 117513178298,
+        "name": "R18 functional completion acceptance"
+      },
+      {
+        "id": 117513191356,
+        "name": "CI gate"
+      }
+    ],
+    "qualification": "All other sixteen jobs succeeded. The security leaf failed on the three synthetic fixture findings; downstream container SBOM and Trivy remain unexecuted in that failed leaf. Aggregates correctly fail. Successor checks must execute again."
+  }
 }

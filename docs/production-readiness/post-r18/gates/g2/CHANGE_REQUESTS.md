@@ -13,3 +13,9 @@
 | G2-DEC-03 | Owner approval and verified merged publication are required before R32. This PR does not merge or deploy and does not activate any Wave 3 lane.                                                                                                                           |
 
 The latest exact candidate identities/results in the acceptance records determine closure. A proposed or implemented row is not automatically PASS. Existing R24/R27/R28 source requests are retained for history; this coordinator register states how the new candidate resolves or holds each condition.
+
+## Initial published-source corrective requests
+
+- G2-CR-08: Make only the R28 adversarial descriptor/path test portable after Windows fixture setup failed. Preserve the real security assertion and all platform coverage; the runtime validator is unchanged.
+- G2-CR-09: Individually classify the three newly authored compile-time idempotency examples reported by Gitleaks, generate their future values, and record only exact historical fingerprints under the existing security-review policy. Retain history, every rule, full tracked-tree scanning and blocking exits; prove new canaries still fail.
+- G2-DEC-04: Review the explicit R27 scenario ceilings 6/13/12/9 and their parameter, dataset, timing and cursor limits in `DECISION.md`. The original proposed budget file is unchanged and its four failing candidate checks remain visible until owner decision.
