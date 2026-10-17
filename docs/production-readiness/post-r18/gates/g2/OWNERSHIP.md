@@ -56,8 +56,8 @@ must verify current paths and active writers before reassignment.
 
 Only the supplied full R29 prompt supports an exact R29 preparation allowlist.
 The Wave 3 plan records it as a conditional reservation, effective only after
-accepted G2 source, verified merged publication and a complete non-overlapping
-five-lane package. Missing peer packages stay unassigned, never invented.
+accepted G2 source, verified merged publication and a current non-overlapping
+lane ownership manifest. Missing peer packages stay unassigned, never invented.
 No R29 runtime branch is created and no lane is authorized to start by this
 checkpoint. Shared money wiring, raw-body parsing, SDK/API pins and schema changes
 still require separate serialized leases. Live rails remain disabled.
