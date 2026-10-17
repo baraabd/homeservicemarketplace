@@ -71,6 +71,11 @@ function makeMocks(
       findById: jest.fn().mockResolvedValue(over.user === undefined ? makeUser() : over.user),
       searchForAdmin: jest.fn().mockResolvedValue(over.rows ?? [makeUser()]),
       update: jest.fn(async (_id, _input) => makeUser({ isActive: false })),
+      listRoleNamesForUsers: jest
+        .fn()
+        .mockImplementation(async (ids: string[]) =>
+          ids.map((userId) => ({ userId, role: { name: 'customer' } })),
+        ),
       listRoles: jest.fn().mockResolvedValue([
         {
           userId: 'u-1',
@@ -95,6 +100,7 @@ function makeMocks(
     // Phase 4 â€” axis 3. Default: this user has never asked for admin access.
     adminAccessRequests: {
       findLatestByUserId: jest.fn().mockResolvedValue(null),
+      findLatestStatusesByUserIds: jest.fn().mockResolvedValue([]),
     } as unknown as AdminAccessRequestRepository,
   };
 }
@@ -126,9 +132,12 @@ describe('AdminUsersService', () => {
 
     it('reports a PENDING admin-access request without granting any role', async () => {
       const m = makeMocks({ user: makeUser({ status: 'ACTIVE' }) });
-      (m.adminAccessRequests.findLatestByUserId as jest.Mock).mockResolvedValue({
-        status: 'PENDING',
-      });
+      (m.adminAccessRequests.findLatestStatusesByUserIds as jest.Mock).mockResolvedValue([
+        {
+          userId: 'u-1',
+          status: 'PENDING',
+        },
+      ]);
       const [row] = (await makeService(m).list({})).items;
       expect(row.adminAccessRequestStatus).toBe('PENDING');
       // Asked is not granted.
@@ -139,9 +148,12 @@ describe('AdminUsersService', () => {
       const m = makeMocks({ user: makeUser({ status: 'ACTIVE' }) });
       expect((await makeService(m).list({})).items[0].adminAccessRequestStatus).toBeNull();
 
-      (m.adminAccessRequests.findLatestByUserId as jest.Mock).mockResolvedValue({
-        status: 'REJECTED',
-      });
+      (m.adminAccessRequests.findLatestStatusesByUserIds as jest.Mock).mockResolvedValue([
+        {
+          userId: 'u-1',
+          status: 'REJECTED',
+        },
+      ]);
       expect((await makeService(m).list({})).items[0].adminAccessRequestStatus).toBe('REJECTED');
     });
   });
@@ -151,6 +163,36 @@ describe('AdminUsersService', () => {
     const out = await makeService(m).list({ limit: 50 });
     expect(out.items).toHaveLength(2);
     expect(out.items[0].roles).toEqual(['customer']);
+  });
+
+  it('batches only the returned page and never performs per-user reads', async () => {
+    const m = makeMocks({ rows: ['a', 'b', 'lookahead'].map((id) => makeUser({ id })) });
+    (m.users.listRoleNamesForUsers as jest.Mock).mockResolvedValue([
+      { userId: 'a', role: { name: 'admin' } },
+      { userId: 'a', role: { name: 'customer' } },
+    ]);
+    (m.adminAccessRequests.findLatestStatusesByUserIds as jest.Mock).mockResolvedValue([
+      { userId: 'b', status: 'REJECTED' },
+    ]);
+    const out = await makeService(m).list({ limit: 2 });
+    expect(out.nextCursor).toBe('b');
+    expect(out.items.map((u) => [u.id, u.roles, u.adminAccessRequestStatus])).toEqual([
+      ['a', ['admin', 'customer'], null],
+      ['b', [], 'REJECTED'],
+    ]);
+    expect(m.users.listRoleNamesForUsers).toHaveBeenCalledTimes(1);
+    expect(m.users.listRoleNamesForUsers).toHaveBeenCalledWith(['a', 'b']);
+    expect(m.adminAccessRequests.findLatestStatusesByUserIds).toHaveBeenCalledWith(['a', 'b']);
+    expect(m.users.listRoles).not.toHaveBeenCalled();
+    expect(m.adminAccessRequests.findLatestByUserId).not.toHaveBeenCalled();
+    expect(JSON.stringify(out)).not.toMatch(/passwordHash|mfaSecret|justification/);
+  });
+
+  it('does not issue enrichment reads for an empty page', async () => {
+    const m = makeMocks({ rows: [] });
+    expect(await makeService(m).list({})).toEqual({ items: [], nextCursor: null });
+    expect(m.users.listRoleNamesForUsers).not.toHaveBeenCalled();
+    expect(m.adminAccessRequests.findLatestStatusesByUserIds).not.toHaveBeenCalled();
   });
 
   it('detail returns 404 if user is missing', async () => {

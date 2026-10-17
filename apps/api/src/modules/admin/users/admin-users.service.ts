@@ -63,7 +63,22 @@ export class AdminUsersService {
       cursor: query.cursor,
     });
     const page = rows.slice(0, take);
-    const items = await Promise.all(page.map((u) => this.toSummary(u)));
+    if (page.length === 0) return { items: [], nextCursor: null };
+    const ids = page.map((user) => user.id);
+    const [memberships, latestRequests] = await Promise.all([
+      this.users.listRoleNamesForUsers(ids),
+      this.adminAccessRequests.findLatestStatusesByUserIds(ids),
+    ]);
+    const rolesByUser = new Map<string, string[]>();
+    for (const membership of memberships) {
+      const names = rolesByUser.get(membership.userId) ?? [];
+      names.push(membership.role.name);
+      rolesByUser.set(membership.userId, names);
+    }
+    const statusByUser = new Map(latestRequests.map((row) => [row.userId, row.status]));
+    const items = page.map((user) =>
+      this.summary(user, rolesByUser.get(user.id) ?? [], statusByUser.get(user.id) ?? null),
+    );
     const nextCursor = rows.length > take ? items[items.length - 1].id : null;
     return { items, nextCursor };
   }
@@ -302,6 +317,18 @@ export class AdminUsersService {
       this.users.listRoles(u.id),
       this.adminAccessRequests.findLatestByUserId(u.id),
     ]);
+    return this.summary(
+      u,
+      userRoles.map((r) => r.role.name),
+      latestAccessRequest?.status ?? null,
+    );
+  }
+
+  private summary(
+    u: User,
+    roleNames: string[],
+    accessStatus: AdminUserSummary['adminAccessRequestStatus'],
+  ): AdminUserSummary {
     return {
       id: u.id,
       email: u.email,
@@ -311,13 +338,11 @@ export class AdminUsersService {
       isActive: u.isActive,
       emailVerifiedAt: u.emailVerifiedAt ? u.emailVerifiedAt.toISOString() : null,
       mfaEnabled: u.mfaEnabled,
-      roles: userRoles.map((r) => r.role.name),
+      roles: roleNames,
       // Axis 3, reported independently of the two above. Null means the user
       // has never asked for admin access — which is NOT the same as having
       // been refused, and the dashboard renders the two differently.
-      adminAccessRequestStatus: latestAccessRequest
-        ? (latestAccessRequest.status as AdminUserSummary['adminAccessRequestStatus'])
-        : null,
+      adminAccessRequestStatus: accessStatus,
       createdAt: u.createdAt.toISOString(),
       updatedAt: u.updatedAt.toISOString(),
     };

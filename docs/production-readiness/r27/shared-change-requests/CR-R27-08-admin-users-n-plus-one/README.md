@@ -1,3 +1,9 @@
+> **Current G1 continuation:** The current-source baseline reproduced this
+> finding. The minimal runtime patch is now implemented under the exact
+> lease in `../../G1_HANDOFF.json`; affected local tests pass. Fresh real-service
+> baseline/after and browser evidence are pending in Draft #173. The earlier
+> measurements and proposal below are retained as historical context.
+
 # CR-R27-08 — batch the admin user list's per-row reads (N+1)
 
 - **Paths:** `apps/api/src/modules/admin/users/admin-users.service.ts`

@@ -1,10 +1,25 @@
-# R27 shared change requests
+# R27 shared change requests — current G1 continuation
 
-R27 owns only its harness, reports and evidence (see `../ALLOWLIST.md`). Every
-runtime, route, configuration, schema or CI change below belongs to another
-owner and is applied only by the coordinator in a serialized integration
-stage, or by that owner under a recorded lease. Nothing here is applied on
-`feat/r27-performance-capacity`.
+Runtime and shared changes require the exact leases in `../G1_HANDOFF.json`;
+R27 owns its measurement harness and evidence. On PR #173, CR-R27-01/02/03/05/08
+are implemented within their recorded leases, and CR-R27-07/09 supply the
+isolated CI/browser harness. Their G1 baseline/candidate measurements are in
+`../../../performance/post-r18/FINDINGS.md`. Use the source, run and artifact
+identities in `../ACCEPTANCE.md` to distinguish current evidence from history.
+
+CR-R27-04 (private HTTP cache policy) and CR-R27-06 (completed-booking index)
+remain proposals for their named owners. `CR-001-integration.md` specifies the
+remaining budget decisions, populated-provider query review, financial fixture
+and index work, and security/integration checks. No schema, migration, global
+HTTP middleware, central registry or performance threshold is changed by that
+request.
+
+## Historical proposal inventory
+
+The table below records the original pre-G1 proposals and evidence state. It
+does not describe the current applied state of the leased R27 repairs. The
+original patch copies are retained for audit; current application source and
+`G1_HANDOFF.json` determine the implemented files and allowed scope.
 
 | CR        | Target owner / path                                                              | Kind                    | Evidence state                                                     |
 | --------- | -------------------------------------------------------------------------------- | ----------------------- | ------------------------------------------------------------------ |

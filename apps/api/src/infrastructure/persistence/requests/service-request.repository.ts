@@ -103,7 +103,7 @@ export class ServiceRequestRepository {
     return tx ?? this.prisma.client;
   }
 
-  listForSeeker(
+  async listForSeeker(
     args: { seekerUserId: string; status?: ServiceRequestStatus; take: number; cursor?: string },
     tx?: PrismaTx,
   ): Promise<ServiceRequestWithCategory[]> {
@@ -112,7 +112,7 @@ export class ServiceRequestRepository {
       deletedAt: null,
       ...(args.status ? { status: args.status } : {}),
     };
-    return this.db(tx).serviceRequest.findMany({
+    const rows = (await this.db(tx).serviceRequest.findMany({
       where,
       take: args.take,
       ...(args.cursor ? { cursor: { id: args.cursor }, skip: 1 } : {}),
@@ -135,19 +135,22 @@ export class ServiceRequestRepository {
           take: 1,
           select: { id: true, status: true, updatedAt: true },
         },
-        // Sprint 7.12 — relational bid count, scoped to non-WITHDRAWN
-        // non-deleted bids so the UI label matches the "visible bids"
-        // the seeker actually sees in BidsScreen. One extra Postgres
-        // aggregate per row, no application-side join.
-        _count: {
-          select: {
-            bids: {
-              where: { deletedAt: null, status: { not: 'WITHDRAWN' } },
-            },
-          },
-        },
       },
-    }) as Promise<ServiceRequestWithCategory[]>;
+    })) as ServiceRequestWithCategory[];
+    if (rows.length === 0) return rows;
+    // Aggregate only the authorized page. The relational _count generated a
+    // whole-Bid aggregate before joining this small page (CR-R27-05).
+    const counts = await this.db(tx).bid.groupBy({
+      by: ['requestId'],
+      where: {
+        requestId: { in: rows.map((row) => row.id) },
+        deletedAt: null,
+        status: { not: 'WITHDRAWN' },
+      },
+      _count: { _all: true },
+    });
+    const byRequest = new Map(counts.map((row) => [row.requestId, row._count._all]));
+    return rows.map((row) => ({ ...row, _count: { bids: byRequest.get(row.id) ?? 0 } }));
   }
 
   // Provider-side feed. Returns only OPEN_FOR_BIDS rows, scoped away
