@@ -14,7 +14,7 @@ Historical R18 release NO-GO remains separate. Unnumbered PR #156 is merged.
 | R23 | Observability, privacy-safe diagnostics and incident detection                     | 1    | SANDBOX_ACCEPTED         | feat/r23-observability-incidents   | #163 |
 | R24 | Money application API and module wiring; freeze adapter integration boundaries     | 2    | READY_TO_START           | feat/r24-money-api-integration     | —    |
 | R25 | Realtime multi-instance activation and reconnect recovery                          | 2    | READY_TO_START           | feat/r25-realtime-multi-instance   | —    |
-| R26 | Application security and effective authorization hardening                         | 2    | READY_TO_START           | feat/r26-application-security      | —    |
+| R26 | Application security and effective authorization hardening                         | 2    | READY_TO_START           | feat/r26-application-security      | #174 |
 | R27 | Measured startup, bundle and database performance                                  | 2    | READY_TO_START           | feat/r27-performance-capacity      | #162 |
 | R28 | Authorized hosted topology, infrastructure and release inputs                      | 2    | READY_TO_START           | feat/r28-hosted-platform           | —    |
 | R29 | (pending package)                                                                  | 3    | RESERVED_PENDING_PACKAGE | —                                  | —    |
@@ -31,3 +31,5 @@ Historical R18 release NO-GO remains separate. Unnumbered PR #156 is merged.
 Wave 1 `SANDBOX_ACCEPTED` covers the certified integrated technical boundaries and disposable real services. Hosted, policy and release decisions remain separate.
 Wave 2 `READY_TO_START` releases the verified G1 prerequisite; it does not claim implementation or acceptance. R27 provisional PR #162 was merged before G1; it is not accepted Wave 2 delivery.
 R29–R38 remain reserved in this bounded G1 task. See `gates/g1/DECISION.md` and `waves/WAVE_02.md`.
+
+R26 implementation is in Draft PR #174, with exact extensions/leases in the manifest. Owner-merged #172 released the other assigned lanes; this R26 review does not revoke or accept their work.

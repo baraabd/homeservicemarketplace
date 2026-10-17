@@ -122,6 +122,15 @@ export class UserRepository {
       .then(() => undefined);
   }
 
+  listRoleNamesForUsers(userIds: string[], tx?: PrismaTx) {
+    if (userIds.length === 0) return Promise.resolve([]);
+    // Same membership semantics as listRoles, bounded to the displayed page.
+    return this.db(tx).userRole.findMany({
+      where: { userId: { in: userIds } },
+      select: { userId: true, role: { select: { name: true } } },
+    });
+  }
+
   listRoles(userId: string, tx?: PrismaTx) {
     return this.db(tx).userRole.findMany({
       where: { userId },

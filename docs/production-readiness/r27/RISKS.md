@@ -1,3 +1,78 @@
+# R27 current risks — 2026-10-17
+
+This section supersedes historical pre-G1 readiness statements below. G1 is
+accepted and READY_TO_START. R27 source and the complete afec37ae disposable
+measurement/browser run are verified; budget, combined-wave and release
+acceptance remain separate.
+
+1. **Timing comparability:** run 39032727959 used an Intel Xeon Platinum 8573C
+   baseline and an AMD EPYC 7763 candidate. Both have 4 logical CPUs / 15.6 GiB,
+   but elapsed-time differences are hardware-confounded. The comparator now
+   emits this advisory separately from source-identity checks. Shared-VM and
+   time effects remain even when CPU models match.
+2. **Mixed performance:** bundle/query structure improves, but production warm
+   UI and transitions have higher medians in several groups. Desktop EN admin
+   warm UI is 154.36 / 211.84 ms and transition 82.57 / 126.08 ms; readiness is
+   1051 / 1200 ms. Workload peak RSS rises from 500.0–503.2 to 523.3–539.5 MiB.
+   Ready RSS moves in the opposite direction from the earlier diagnostic run.
+   These are qualified observations, not proven causal regressions or universal
+   speed/memory improvement. The complete tables retain all observations.
+3. **Unapproved budgets:** the unchanged checker records 47 PASS / 4 FAIL:
+   seeker requests 6/5, provider feed 13/10, provider bookings 12/7 and the
+   financial Booking scan. Provider costs use unchanged populated-page source;
+   historical ceilings came from empty pages. CR-001 has concrete proposed
+   edits for owner review and unmeasured projection directions. Do not remove
+   guards, simplify fixtures or raise limits merely to obtain green.
+4. **Unrepresentative financial/users data:** amplification contains 10836
+   requests, 43344 bids and 5418 bookings, but only 15 users / 12 profiles and
+   zero completed-booking results. Full populated nonfinancial cursor walks
+   pass; financial hydration, stable/mutating pagination and index benefit
+   remain unproved. The three-query financial ceiling also needs populated
+   validation. The migration owner must choose/test an index and forward path.
+5. **Private HTTP cache policy:** 15/17 sampled private reads lack an explicit
+   directive. Ten asserted API negatives and same-context browser account
+   switching pass; three ETag observations are informational. These do not
+   establish cross-tab sign-out, live role/grant revocation or a global no-store
+   policy. CR04/CR001 require the HTTP/security owner's early default and
+   success/error/private-media/public-exception tests.
+6. **Measured sample limits:** each browser group has n=3 and boot n=5, so no
+   tail estimates are claimed. The 192 UI observations cannot be pooled across
+   different roles/modes/projects. Warm closed-loop workloads have n=200 and
+   empirical tails only. CDP tracing adds overhead; compile categories overlap.
+   OS caches were not purged. No realtime/upload or hosted-capacity claim follows.
+7. **Fixture reset boundary:** browser setup clears only validated default
+   throttle keys in the identity-verified disposable Redis container, before
+   each serial project. Keep it outside timings/account-switch assertions and
+   overload recovery. Sessions/custom registration/cache keys remain; wrong
+   runners, containers, keys and command failures are rejected. Real login
+   throttles are unchanged, and overload recovery observes natural expiry.
+8. **Final CI:** the afec R27 matrix and CodeQL passed, but one separate main-CI
+   admin-review case timed out retrieving an OTP after a 200 login. Its root
+   cause is unproven; 14 other cases passed. The existing shared test, helper
+   and timeout are unchanged. Required final-successor CI must be inspected,
+   and any recurrence belongs to its owner with concrete logs. It is not
+   dismissed as a flake or resolved by the independent R27 PASS.
+9. **Evidence retention and ownership:** fresh ZIPs expire 2026-10-31; digests,
+   source identities, inspected screenshot paths and summary data are in Git.
+   Reproduce or download full artifacts before expiry. No merged coordinator
+   records or unmerged peers were imported; current develop/active ownership
+   must be reconciled in serialized coordinator integration.
+10. **Acceptance boundaries:** the complete isolated run does not mark G2,
+    SANDBOX_ACCEPTED for the whole product, HOSTED_ACCEPTED or RELEASE_ACCEPTED.
+    Merge, deployment, real funds, verification decisions and budget approval
+    remain owner actions. R16/R18 policy holds and all financial contracts are
+    unchanged. R37 owns representative hosted load and capacity evidence.
+
+---
+
+## Historical records retained for audit
+
+> **Historical continuation note:** R27 resumed from frozen source
+> `40cdac5c9ce6acaa8dedc0385984a807ae9a84d0` after verified owner merge of #171.
+> See `ALLOWLIST.md` and `G1_HANDOFF.json`. The earlier report below is historical
+> pre-G1 evidence. Its pending statements describe the earlier snapshot;
+> the current measurement and acceptance state are recorded above.
+
 # R27 — Risks, deviations and blockers
 
 | #   | Risk or deviation                                                                                                                                                          | Impact                                                                                                                                                                                                                 | Owner / next step                                                                                                          |

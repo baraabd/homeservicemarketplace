@@ -4,7 +4,6 @@ import { Logger as NestLogger, ValidationPipe, VersioningType } from '@nestjs/co
 import { NestFactory } from '@nestjs/core';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import cookieParser from 'cookie-parser';
-import express from 'express';
 import type {
   NextFunction as ExpressNext,
   Request as ExpressRequest,
@@ -15,6 +14,8 @@ import { Logger } from 'nestjs-pino';
 
 import { AppModule } from './app.module';
 import { AppConfigService } from './config/app-config.service';
+import { configuredCorsOrigins } from './infrastructure/http/cors-policy';
+import { buildRequestBodyParser } from './infrastructure/http/request-body';
 import { PERMISSIONS_POLICY, buildHelmetOptions } from './infrastructure/http/security-headers';
 import { RealtimeSocketAdapter } from './modules/realtime/realtime-socket.adapter';
 
@@ -38,9 +39,7 @@ async function bootstrap(): Promise<void> {
     const port = config.get('PORT');
     const frontendUrl = config.get('FRONTEND_URL');
     const extraOrigins = config.get('CORS_ORIGINS');
-    const origins = Array.from(
-      new Set([...(frontendUrl ? [frontendUrl] : []), ...extraOrigins].filter(Boolean)),
-    );
+    const origins = configuredCorsOrigins(frontendUrl, extraOrigins);
 
     // D-1 — trusted reverse proxies. Express only derives `req.ip` from
     // X-Forwarded-For when `trust proxy` is set, and setting it to `true`
@@ -94,17 +93,15 @@ async function bootstrap(): Promise<void> {
     app.use(cookieParser());
     // R21 — signed delivery feedback is verified over the exact provider
     // bytes, so the JSON parser must not touch this route first.
-    app.use('/v1/mail/feedback', express.raw({ type: '*/*', limit: '256kb' }));
     // Sprint 7.x — media-upload PUT route. The body is the binary
     // file, not JSON, so the default body-parser would reject it.
     // express.raw() captures it as a Buffer for the LocalDiskStorage
     // adapter. Cap matches MAX_BYTES_PER_FILE in
     // apps/api/src/infrastructure/storage/content-type.ts so the
     // signed-URL contract and the body parser stay in sync.
-    app.use('/v1/media/uploads', express.raw({ type: '*/*', limit: '10mb' }));
     // JSON parser for everything else. Mounted AFTER the raw parser
     // so the raw mounts win for upload and feedback paths.
-    app.use(express.json({ limit: '1mb' }));
+    app.use(buildRequestBodyParser());
 
     // Production with no explicit allowlist → block all cross-origin requests.
     // Dev with no allowlist → reflect the request origin (local convenience).

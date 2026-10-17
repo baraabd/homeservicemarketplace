@@ -4,11 +4,16 @@
 set -euo pipefail
 cd "$(dirname "$0")/../../.."
 container=hsm-r27-perf-postgres
-docker inspect "$container" >/dev/null
+# Validate BEFORE dropdb. Never read/copy/overwrite a developer environment.
+node --input-type=module <<'NODE'
+import { existsSync } from 'node:fs';
+import { assertLaneService } from './scripts/perf/post-r18/lib/lane-env.mjs';
+if (existsSync('.env')) throw new Error('R27 reset requires a fresh worktree without a root .env');
+assertLaneService('postgres');
+NODE
+export DATABASE_URL='postgresql://r27:r27-local-only@127.0.0.1:54397/hsm_r27_perf'
 docker exec "$container" dropdb -U r27 --if-exists --force hsm_r27_perf
 docker exec "$container" createdb -U r27 hsm_r27_perf
-# The database scripts read DATABASE_URL from the worktree's root .env.
-grep -q '127.0.0.1:54397/hsm_r27_perf' .env || { echo 'root .env does not point at the lane database' >&2; exit 1; }
 pnpm --filter @homeservicemarketplace/database migrate:deploy
 pnpm --filter @homeservicemarketplace/database seed >/dev/null
 echo 'lane database recreated, migrated and seeded'

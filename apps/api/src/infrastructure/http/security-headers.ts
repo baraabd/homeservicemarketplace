@@ -17,9 +17,9 @@ export interface SecurityHeaderInput {
   hstsPreload: boolean;
 }
 
-// The API serves JSON and nothing else — no HTML, no inline scripts, no
-// styles, no images, no frames. That makes its CSP the easy case: deny
-// everything. A response that somehow renders in a browser (a reflected error
+// The API serves JSON and authorized media bytes, never application HTML.
+// Media previews are rendered by the SPA, with its own document policy.
+// Deny active content on API responses. A response that renders as a document (a reflected error
 // page, a mistyped Content-Type) can then load no scripts and phone nothing
 // home. `frame-ancestors 'none'` blocks framing without relying on the older
 // X-Frame-Options.
@@ -74,7 +74,7 @@ export function buildHelmetOptions(input: SecurityHeaderInput): HelmetOptions {
             directives: CSP_DIRECTIVES,
             reportOnly: input.cspMode === 'report-only',
           },
-    // helmet emits HSTS only over TLS, so a plaintext local run is unaffected.
+    // Helmet emits this header on responses; browsers honor HSTS over HTTPS.
     // max-age is small by default — this is the one header whose mistakes
     // cannot be withdrawn, so it gets a ramp rather than a value.
     hsts:
