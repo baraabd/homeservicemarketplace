@@ -1,0 +1,178 @@
+{
+  "schema": "hsm.platform-inputs/v1",
+  "status": "CONFIGURATION_ONLY",
+  "frozenBaseSha": "40cdac5c9ce6acaa8dedc0385984a807ae9a84d0",
+  "environment": "staging",
+  "target": {
+    "provider": null,
+    "accountId": null,
+    "region": null,
+    "hostId": null,
+    "dnsZoneId": null,
+    "registryHost": null,
+    "registryRepositories": {
+      "api": null,
+      "migrator": null,
+      "web": null
+    },
+    "secretStoreId": null,
+    "operatorApprovalRef": null,
+    "spendApprovalRef": null,
+    "monthlyCostCeiling": {
+      "amount": null,
+      "currency": null
+    }
+  },
+  "release": null,
+  "services": {
+    "postgres": {
+      "majorVersion": 16,
+      "resourceId": null,
+      "host": null,
+      "database": null,
+      "schema": "public",
+      "tls": "require-strict",
+      "apiRole": null,
+      "migratorRole": null,
+      "apiPrivileges": {
+        "superuser": false,
+        "createDatabase": false,
+        "createRole": false,
+        "replication": false,
+        "bypassRls": false,
+        "schemaOwner": false,
+        "relationOwner": false,
+        "schemaCreate": false,
+        "migratorMembership": false,
+        "migrationHistoryWrite": false,
+        "truncate": false
+      },
+      "migratorPrivileges": {
+        "superuser": false,
+        "createDatabase": false,
+        "createRole": false,
+        "replication": false,
+        "bypassRls": false,
+        "ddlOnlyInApplicationSchema": true
+      },
+      "privilegeEvidenceRef": null
+    },
+    "redis": {
+      "majorVersion": 7,
+      "resourceId": null,
+      "host": null,
+      "dedicated": true,
+      "tls": true,
+      "auth": "password-default-user",
+      "aclEvidenceRef": null
+    },
+    "storage": {
+      "authority": "infra/production/storage/storage-plan.json",
+      "publicBucket": null,
+      "portfolioStagingBucket": null,
+      "restrictedBucket": null,
+      "accessEvidenceRef": null
+    },
+    "smtp": {
+      "provider": null,
+      "host": null,
+      "port": 587,
+      "tlsMode": "starttls-required",
+      "senderDomain": null,
+      "deliveryEvidenceRef": null
+    },
+    "clamav": {
+      "resourceId": null,
+      "host": null,
+      "port": 3310,
+      "exposure": "private",
+      "verdictEvidenceRef": null
+    },
+    "mongo": {
+      "enabled": false
+    }
+  },
+  "runtime": {
+    "apiReplicas": 1,
+    "workerPlacement": {
+      "outbox": "api",
+      "outboxCleanup": "api",
+      "evidenceScan": "api",
+      "verificationExpiry": "api",
+      "publicMediaCleanup": "api",
+      "evidenceRetention": "dist/evidence-retention.worker.js",
+      "disputeMaintenance": "dist/dispute-maintenance.worker.js"
+    },
+    "containerStopGraceSeconds": 30,
+    "outboxShutdownGraceMs": 20000
+  },
+  "network": {
+    "externalNetwork": null,
+    "publicListeners": ["https-edge:443"],
+    "apiBind": "127.0.0.1",
+    "webBind": "127.0.0.1",
+    "databasePublicAccess": false,
+    "redisPublicAccess": false,
+    "managementPublicAccess": false,
+    "trustProxyHops": 1,
+    "boundaryEvidenceRef": null
+  },
+  "secrets": {
+    "delivery": "external-immutable-files",
+    "apiSnapshotId": null,
+    "migrationSnapshotId": null,
+    "serializedRotation": true,
+    "rotationLockEvidenceRef": null
+  },
+  "provenance": {
+    "registryEvidenceRef": null,
+    "apiAttestationRef": null,
+    "migratorAttestationRef": null,
+    "webAttestationRef": null
+  },
+  "isolation": {
+    "production": {
+      "databaseResourceId": null,
+      "redisResourceId": null,
+      "storageBuckets": []
+    },
+    "restore": {
+      "targetRef": null,
+      "databaseResourceId": null,
+      "redisResourceId": null,
+      "storageBuckets": [],
+      "networkId": null,
+      "approvalRef": null,
+      "outboundDelivery": "disabled"
+    },
+    "hostedTests": {
+      "targetRef": null,
+      "approvalRef": null,
+      "sprints": ["R35", "R37"]
+    }
+  },
+  "recovery": {
+    "decision": "PROPOSED",
+    "postgres": {
+      "method": "base-backup-and-continuous-wal",
+      "retentionDays": 7,
+      "rpoSeconds": 300,
+      "rtoSeconds": 14400
+    },
+    "storage": {
+      "versioning": "Enabled",
+      "retentionAuthority": "infra/production/storage/storage-plan.json"
+    },
+    "ownerApprovalRef": null,
+    "restoreEvidenceRef": null
+  },
+  "policy": {
+    "liveMoneyEnabled": false,
+    "verification": "preserve",
+    "workAccess": "preserve",
+    "demoProviders": false,
+    "adminGrants": false,
+    "disputeMode": "off",
+    "evidenceRetentionMode": "off"
+  }
+}
