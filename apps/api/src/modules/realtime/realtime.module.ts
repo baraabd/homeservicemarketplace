@@ -26,8 +26,8 @@ import { RealtimeGateway } from './realtime.gateway';
     RealtimeEventsPublisher,
     RealtimeGateway,
     ConversationParticipantGate,
-    // D-4: resolves CURRENT roles + provider status at handshake so room
-    // membership is never decided by a stale JWT claim.
+    // Current roles, grants and provider capabilities are resolved again at
+    // sensitive delivery/subscription and periodic connection rechecks.
     RealtimeIdentityResolver,
   ],
   exports: [RealtimeEventsPublisher, RealtimeGateway],

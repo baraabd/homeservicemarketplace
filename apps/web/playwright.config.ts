@@ -102,6 +102,11 @@ export default defineConfig({
     ...(process.env.HSM_STARTUP_PERFORMANCE === 'isolated-ci'
       ? []
       : ['**/startup-performance.real-api.spec.ts']),
+    // R25 owns two real API processes and its disposable database/Redis.
+    // The required r25-realtime CI job runs this with its isolated verifier.
+    ...(process.env.HSM_R25_REALTIME === 'isolated-ci'
+      ? []
+      : ['**/r25-realtime-recovery.real-api.spec.ts']),
     // Platform-specific baselines; see VISUAL_REFERENCE_RUN above.
     ...(VISUAL_REFERENCE_RUN ? [] : ['**/prototype-reference.spec.ts']),
     // Evidence-writing visual gate; see PHASE5_RUN above.

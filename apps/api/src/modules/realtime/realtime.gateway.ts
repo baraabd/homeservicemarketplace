@@ -1,4 +1,4 @@
-import { Logger, UseFilters } from '@nestjs/common';
+import { ArgumentsHost, Catch, Logger, OnModuleDestroy, UseFilters } from '@nestjs/common';
 import {
   ConnectedSocket,
   MessageBody,
@@ -11,7 +11,6 @@ import {
   WsException,
   BaseWsExceptionFilter,
 } from '@nestjs/websockets';
-import { ArgumentsHost, Catch } from '@nestjs/common';
 import type { Server, Socket } from 'socket.io';
 import type {
   RealtimeConnectionAck,
@@ -25,14 +24,28 @@ import { TokenService, AccessTokenClaims } from '../iam/authentication/services/
 import { SessionValidationService } from '../iam/authentication/services/session-validation.service';
 import { ACCESS_COOKIE } from '../iam/authentication/helpers/cookies';
 import { ConversationParticipantGate } from './conversation-participant.gate';
+import type { ConversationReceipt } from './conversation-participant.gate';
 import {
   RealtimeIdentityResolver,
   hasAdminAccess,
   providerMayJoinMarketplaceRooms,
 } from './realtime-identity.resolver';
+import {
+  MAX_REALTIME_CONNECTIONS_PER_INSTANCE,
+  MAX_REALTIME_PAYLOAD_BYTES,
+  realtimeOriginAllowed,
+  realtimeTransport,
+} from './realtime-socket.adapter';
 
-// Catches WsException + plain Error in the gateway scope so the
-// socket sees a stable `error` payload instead of a raw stack trace.
+export const MAX_CONVERSATION_ROOMS = 32;
+export const MAX_PENDING_REALTIME_DELIVERIES = 512;
+export const MAX_PENDING_DELIVERIES_PER_SOCKET = 16;
+const MAX_PENDING_DELIVERY_BYTES = 16 * 1024 * 1024;
+const DELIVERY_CONCURRENCY = 8;
+const SESSION_RECHECK_INTERVAL_MS = 10_000;
+const LOCAL_LEASE_VALIDITY_MS = 30_000;
+const INTERNAL_DELIVERY_EVENT = 'hsm.realtime.delivery.v1';
+
 @Catch()
 class GatewayExceptionFilter extends BaseWsExceptionFilter {
   private readonly log = new Logger('RealtimeGateway.exception');
@@ -42,9 +55,7 @@ class GatewayExceptionFilter extends BaseWsExceptionFilter {
       exception instanceof WsException
         ? ((exception.getError() as { code?: string })?.code ?? 'WS_ERROR')
         : 'WS_ERROR';
-    if (!(exception instanceof WsException)) {
-      this.log.warn({ msg: 'gateway.exception', err: String(exception) });
-    }
+    if (!(exception instanceof WsException)) this.log.warn({ msg: 'gateway.exception' });
     client.emit('error', { code });
   }
 }
@@ -52,68 +63,55 @@ class GatewayExceptionFilter extends BaseWsExceptionFilter {
 interface SocketData {
   userId: string;
   sessionId: string;
-  /** CURRENT roles, resolved from the database at handshake — not the JWT claim. */
+  /** The ORIGINAL signed credential; never substitute the database's new jti. */
+  jti: string;
+  expiresAt: number;
+  leaseValidUntil: number;
   roles: string[];
+  permissions: string[];
   providerProfileId: string | null;
   providerStatus: string | null;
   joinedRooms: string[];
-  /** R12 — conversation rooms joined on the PROVIDER side; left on access loss. */
   providerConversationRooms?: string[];
+  subscriptionBusy: boolean;
+  subscriptionWindowAt: number;
+  subscriptionCount: number;
 }
 
-// Room name helpers — one definition, used by both the join path and the
-// eviction path so a rename can never desynchronise them.
+interface Delivery {
+  client: Socket;
+  room: string;
+  event: RealtimeEvent;
+  bytes: number;
+}
+
 export const userRoom = (userId: string): string => `user:${userId}`;
 export const sessionRoom = (sessionId: string): string => `session:${sessionId}`;
 export const providerRoom = (providerProfileId: string): string => `provider:${providerProfileId}`;
 export const ADMIN_ROOM = 'admin';
-// R12 — every socket subscribed to a conversation on the provider side of
-// `providerProfileId` also sits here, so losing provider access can find it.
 export const providerConversationsRoom = (providerProfileId: string): string =>
   `provider-conversations:${providerProfileId}`;
 
-// Socket.IO gateway.
-//
-// ── D-4: what was wrong ──────────────────────────────────────────────────────
-// The handshake did a STATELESS `tokens.verifyAccessToken(token)` and nothing
-// more. Consequences:
-//
-//   1. A revoked session (logout, logout-all, password reset, refresh
-//      rotation) could still open a NEW socket, because nothing consulted the
-//      Session row — the REST surface and the realtime surface disagreed about
-//      whether the credential was alive.
-//   2. A globally suspended user could still open a new socket, for the same
-//      reason.
-//   3. `admin` room membership was decided by the JWT `roles` claim, so a
-//      revoked admin stayed in the admin broadcast room until their token
-//      expired.
-//   4. `provider:{id}` was joined whenever a ProviderProfile row EXISTED,
-//      regardless of status — DRAFT / PENDING_REVIEW / SUSPENDED / REJECTED
-//      providers received marketplace fan-out that REST would have refused
-//      them at ProviderActiveGuard.
-//   5. Nothing disconnected an ALREADY-CONNECTED socket after any of those
-//      mutations. A socket authenticated once and then received events
-//      forever; there is no per-message re-auth to catch up later.
-//
-// ── What it does now ─────────────────────────────────────────────────────────
-// The handshake runs the SAME authoritative check REST runs
-// (SessionValidationService.assertSessionActive), then resolves CURRENT roles
-// and provider status from the database (RealtimeIdentityResolver), and joins
-// only server-owned rooms the resolved facts justify.
-//
-// Already-connected sockets are evicted from SecurityEventsBus subscriptions
-// registered in afterInit(). Eviction uses Socket.IO's adapter-aware
-// `disconnectSockets` / `socketsLeave`, which the Redis adapter fans out to
-// every instance — so a logout served by pod A kills the socket held by pod B.
-//
-// Mutations stay on REST. The gateway never accepts business writes.
+/** REST remains the business authority. Server-side Redis delivery is an
+ * internal signal: EACH receiving replica authorizes its local recipients
+ * before writing a packet. Ordinary room broadcasts would bypass async auth
+ * on the receiving replica after a missed revocation notification. */
 @UseFilters(new GatewayExceptionFilter())
-@WebSocketGateway({
-  cors: { origin: true, credentials: true },
-  transports: ['websocket', 'polling'],
-})
-export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGatewayDisconnect {
+@WebSocketGateway({ transports: ['websocket', 'polling'] })
+export class RealtimeGateway
+  implements OnGatewayInit, OnGatewayConnection, OnGatewayDisconnect, OnModuleDestroy
+{
   private readonly log = new Logger(RealtimeGateway.name);
+  private readonly clients = new Map<string, Socket>();
+  private readonly expiryTimers = new Map<string, NodeJS.Timeout>();
+  private readonly pendingBySocket = new Map<string, number>();
+  private readonly busySockets = new Set<string>();
+  private readonly deliveries: Delivery[] = [];
+  private pendingBytes = 0;
+  private activeDeliveries = 0;
+  private pendingHandshakes = 0;
+  private recheckTimer?: NodeJS.Timeout;
+  private recheckRunning = false;
 
   @WebSocketServer()
   server!: Server;
@@ -129,71 +127,53 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
 
   afterInit(server: Server): void {
     this.server = server;
-    const flagOn = this.config.get('REALTIME_SOCKET_IO');
-    this.log.log(`Socket.IO gateway initialised (REALTIME_SOCKET_IO=${flagOn ? 'on' : 'off'})`);
+    server.on(INTERNAL_DELIVERY_EVENT, (room: unknown, event: unknown) => {
+      this.enqueueLocal(room, event);
+    });
     this.subscribeToSecurityEvents();
+    this.recheckTimer = setInterval(
+      () => void this.recheckConnections(),
+      SESSION_RECHECK_INTERVAL_MS,
+    );
+    this.recheckTimer.unref();
+    this.log.log('Socket.IO initialized; connection state always recovers through authorized REST');
   }
 
-  // ── Post-commit enforcement ────────────────────────────────────────────────
-  // Registered once at init. Every handler is adapter-aware, so it reaches
-  // sockets on OTHER instances too.
+  onModuleDestroy(): void {
+    if (this.recheckTimer) clearInterval(this.recheckTimer);
+    for (const timer of this.expiryTimers.values()) clearTimeout(timer);
+    this.expiryTimers.clear();
+    for (const client of this.clients.values()) client.disconnect(true);
+    this.clients.clear();
+    this.deliveries.length = 0;
+    this.pendingBytes = 0;
+    this.pendingBySocket.clear();
+  }
+
   private subscribeToSecurityEvents(): void {
     this.securityEvents.onSessionRevoked(async ({ sessionId }) => {
-      // Single-session logout: kill only that session's sockets. The user's
-      // other devices stay connected.
-      await this.disconnectRoom(sessionRoom(sessionId), 'session-revoked');
+      await this.disconnectRoom(sessionRoom(sessionId));
     });
-
-    this.securityEvents.onAllSessionsRevoked(async ({ userId, reason }) => {
-      // logout-all / password reset / account suspension: every socket the
-      // user holds, on every instance.
-      await this.disconnectRoom(userRoom(userId), reason);
+    this.securityEvents.onAllSessionsRevoked(async ({ userId }) => {
+      await this.disconnectRoom(userRoom(userId));
     });
-
     this.securityEvents.onRolesChanged(async ({ userId }) => {
-      // Roles are resolved at handshake, so a role change cannot be applied
-      // in place. Every role mutation also revokes the user's sessions, so the
-      // correct action is to drop the sockets and make them re-handshake with
-      // a freshly issued session.
-      await this.disconnectRoom(userRoom(userId), 'roles-changed');
+      await this.disconnectRoom(userRoom(userId));
     });
-
-    this.securityEvents.onProviderStatusChanged(async ({ userId, providerProfileId, status }) => {
-      if (providerMayJoinMarketplaceRooms(status)) return; // promotion to ACTIVE: nothing to revoke
-
-      // Withdraw marketplace access WITHOUT killing the user's session: a
-      // suspended provider who is also a customer keeps their Customer
-      // access, which is a separate axis. Evicting the room (rather than
-      // disconnecting) is what makes that distinction real.
-      await this.leaveRoom(providerRoom(providerProfileId), 'provider-status-changed');
-      // R12 — and the booking conversations this provider was receiving as the
-      // provider. Rooms joined as a customer, on other bookings, are kept.
+    this.securityEvents.onProviderStatusChanged(async ({ providerProfileId, status }) => {
+      if (providerMayJoinMarketplaceRooms(status)) return;
+      await this.leaveRoom(providerRoom(providerProfileId));
       await this.leaveProviderConversations(providerProfileId);
-      this.log.log({
-        msg: 'socket.provider-room.evicted',
-        providerProfileId,
-        status,
-        userId: userId ?? undefined,
-      });
     });
   }
 
-  private async disconnectRoom(room: string, reason: string): Promise<void> {
+  private async disconnectRoom(room: string): Promise<void> {
     if (!this.server) return;
     try {
-      // `true` closes the underlying connection rather than just the
-      // namespace, so the client cannot keep the socket alive.
       await this.server.in(room).disconnectSockets(true);
-      this.log.log({ msg: 'socket.room.disconnected', room, reason });
-    } catch (err) {
-      // Never rethrow: the database mutation that triggered this already
-      // committed and REST is already enforcing it.
-      this.log.warn({
-        msg: 'socket.room.disconnect.failed',
-        room,
-        reason,
-        err: (err as Error).message,
-      });
+    } catch {
+      // The mutation already committed. Per-delivery DB auth is the backstop.
+      this.log.warn({ msg: 'socket.room.disconnect.failed' });
     }
   }
 
@@ -204,228 +184,402 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
       const sockets = await this.server.in(marker).fetchSockets();
       for (const socket of sockets) {
         const data = socket.data as Partial<SocketData>;
-        for (const room of data.providerConversationRooms ?? []) socket.leave(room);
-        socket.leave(marker);
+        for (const room of data.providerConversationRooms ?? []) await socket.leave(room);
+        await socket.leave(marker);
       }
-    } catch (err) {
-      this.log.warn({
-        msg: 'socket.provider-conversations.leave.failed',
-        providerProfileId,
-        err: (err as Error).message,
-      });
+    } catch {
+      this.log.warn({ msg: 'socket.provider-conversations.leave.failed' });
     }
   }
 
-  private async leaveRoom(room: string, reason: string): Promise<void> {
+  private async leaveRoom(room: string): Promise<void> {
     if (!this.server) return;
     try {
       await this.server.in(room).socketsLeave(room);
-    } catch (err) {
-      this.log.warn({
-        msg: 'socket.room.leave.failed',
-        room,
-        reason,
-        err: (err as Error).message,
-      });
+    } catch {
+      this.log.warn({ msg: 'socket.room.leave.failed' });
     }
   }
 
-  // ── Handshake ──────────────────────────────────────────────────────────────
+  private transportReady(): boolean {
+    return Boolean(
+      this.config.get('REALTIME_SOCKET_IO') && realtimeTransport(this.server)?.isReady(),
+    );
+  }
+
   async handleConnection(client: Socket): Promise<void> {
-    // Feature flag — when off, every connection is closed at the handshake so
-    // an operator can disable the realtime channel without redeploying.
-    if (!this.config.get('REALTIME_SOCKET_IO')) {
-      client.emit('error', { code: 'REALTIME_DISABLED' });
-      client.disconnect(true);
-      return;
+    if (!this.config.get('REALTIME_SOCKET_IO')) return this.reject(client, 'REALTIME_DISABLED');
+    if (!this.transportReady()) return this.reject(client, 'REALTIME_UNAVAILABLE');
+    if (
+      !realtimeOriginAllowed(
+        this.config,
+        client.handshake.headers.origin,
+        Boolean(client.handshake.headers.cookie),
+      )
+    ) {
+      return this.reject(client, 'AUTH_INVALID_CREDENTIALS');
     }
-
-    let claims: AccessTokenClaims;
+    // Increment before the first await so concurrent handshakes cannot evade
+    // the per-process budget while their database checks are in flight.
+    if (this.clients.size + this.pendingHandshakes >= MAX_REALTIME_CONNECTIONS_PER_INSTANCE) {
+      return this.reject(client, 'REALTIME_CONNECTION_LIMIT');
+    }
+    this.pendingHandshakes += 1;
     try {
-      const token = extractAccessToken(client);
-      if (!token) throw new Error('missing token');
-      // Stateless half: signature, issuer, audience, and expiry. TokenService
-      // pins iss/aud; `verify` enforces exp.
-      claims = this.tokens.verifyAccessToken(token);
-      if (!claims?.sub || !claims?.sid || !claims?.jti) throw new Error('incomplete claims');
+      await this.establishConnection(client);
     } catch {
-      // Stable code on the wire; no internal detail leaks. The rejection path
-      // never logs the token, cookie value, or claims.
-      this.rejectHandshake(client);
-      return;
+      this.reject(client, 'AUTH_INVALID_CREDENTIALS');
+    } finally {
+      this.pendingHandshakes -= 1;
     }
+  }
 
-    // Stateful half — the SAME authority REST uses. A revoked/expired/rotated
-    // session, or a suspended/deleted/deactivated owner, is refused here
-    // exactly as it would be on a REST call. Fails closed on infrastructure
-    // errors.
-    try {
-      await this.sessionValidation.assertSessionActive({
-        userId: claims.sub,
-        sessionId: claims.sid,
-        jti: claims.jti,
-      });
-    } catch {
-      this.rejectHandshake(client);
-      return;
+  private async establishConnection(client: Socket): Promise<void> {
+    const token = extractAccessToken(client);
+    if (!token || token.length > 8_192) throw new Error('Invalid credential');
+    const claims: AccessTokenClaims = this.tokens.verifyAccessToken(token);
+    if (
+      !claims?.sub ||
+      !claims.sid ||
+      !claims.jti ||
+      !Number.isSafeInteger(claims.exp) ||
+      claims.exp * 1000 <= Date.now()
+    ) {
+      throw new Error('Invalid credential');
     }
-
-    // CURRENT authorization facts, from the database — never the JWT claim.
-    let identity;
-    try {
-      identity = await this.identities.resolve(claims.sub);
-    } catch (err) {
-      // Fail closed: without current roles we cannot decide room membership,
-      // and guessing would mean either over- or under-granting.
-      this.log.warn({
-        msg: 'socket.identity.resolve.failed',
-        err: (err as Error).message,
-      });
-      this.rejectHandshake(client);
-      return;
+    await this.sessionValidation.assertSessionActive({
+      userId: claims.sub,
+      sessionId: claims.sid,
+      jti: claims.jti,
+    });
+    const identity = await this.identities.resolve(claims.sub);
+    const transport = realtimeTransport(this.server);
+    if (!transport?.isReady()) return this.reject(client, 'REALTIME_UNAVAILABLE');
+    if (!(await transport.reserve(claims.sub, client.id))) {
+      return this.reject(
+        client,
+        transport.isReady() ? 'REALTIME_CONNECTION_LIMIT' : 'REALTIME_UNAVAILABLE',
+      );
     }
 
     const data: SocketData = {
       userId: claims.sub,
       sessionId: claims.sid,
+      jti: claims.jti,
+      expiresAt: claims.exp * 1000,
+      leaseValidUntil: Date.now() + LOCAL_LEASE_VALIDITY_MS,
       roles: identity.roles,
+      permissions: identity.permissions,
       providerProfileId: identity.providerProfileId,
       providerStatus: identity.providerStatus,
       joinedRooms: [],
+      subscriptionBusy: false,
+      subscriptionWindowAt: Date.now(),
+      subscriptionCount: 0,
     };
-    (client.data as SocketData) = data;
-
-    // ── Server-owned room joins ──────────────────────────────────────────────
-    // The wire never carries a `join` command for these.
-    const join = async (room: string): Promise<void> => {
-      await client.join(room);
-      data.joinedRooms.push(room);
-    };
-
-    // Personal room — every authenticated socket.
-    await join(userRoom(claims.sub));
-    // Session room — the eviction target for a single-session logout.
-    await join(sessionRoom(claims.sid));
-
-    // Provider marketplace room — ONLY for a currently ACTIVE profile. A
-    // DRAFT / PENDING_REVIEW / SUSPENDED / REJECTED provider connects fine
-    // (they may still use Customer features and view their own status) but
-    // receives no marketplace fan-out.
-    if (identity.providerProfileId && providerMayJoinMarketplaceRooms(identity.providerStatus)) {
-      await join(providerRoom(identity.providerProfileId));
+    client.data = data;
+    try {
+      // Close the rotation/logout race while the role/grant and reservation
+      // lookups were pending. Every later packet independently checks again.
+      await this.assertSocketSession(client);
+      if (!client.connected || !this.transportReady()) throw new Error('Connection unavailable');
+      const join = async (room: string): Promise<void> => {
+        await client.join(room);
+        data.joinedRooms.push(room);
+      };
+      await join(userRoom(data.userId));
+      await join(sessionRoom(data.sessionId));
+      if (identity.providerProfileId && identity.mayViewMarketplace) {
+        await join(providerRoom(identity.providerProfileId));
+      }
+      if (hasAdminAccess(identity.roles, identity.permissions)) await join(ADMIN_ROOM);
+      this.clients.set(client.id, client);
+      const timer = setTimeout(
+        () => this.reject(client, 'AUTH_INVALID_CREDENTIALS'),
+        Math.min(data.expiresAt - Date.now(), 2_147_483_647),
+      );
+      timer.unref();
+      this.expiryTimers.set(client.id, timer);
+      const ack: RealtimeConnectionAck & {
+        recovery: { mode: 'rest'; required: true; maxWindow: number };
+      } = {
+        userId: data.userId,
+        joinedRooms: data.joinedRooms,
+        recovery: { mode: 'rest', required: true, maxWindow: 200 },
+      };
+      client.emit('connection.ack', ack);
+    } catch {
+      await transport.release(data.userId, client.id);
+      this.reject(client, 'AUTH_INVALID_CREDENTIALS');
     }
-
-    // Admin room — ONLY for a user who currently holds the admin role.
-    if (hasAdminAccess(identity.roles)) {
-      await join(ADMIN_ROOM);
-    }
-
-    const ack: RealtimeConnectionAck = {
-      userId: claims.sub,
-      joinedRooms: data.joinedRooms,
-    };
-    client.emit('connection.ack', ack);
-    this.log.log({ msg: 'socket.connected', userId: claims.sub, rooms: data.joinedRooms });
   }
 
-  private rejectHandshake(client: Socket): void {
-    client.emit('error', { code: 'AUTH_INVALID_CREDENTIALS' });
+  private reject(client: Socket, code: string): void {
+    client.emit('error', { code });
     client.disconnect(true);
+    this.handleDisconnect(client);
   }
 
   handleDisconnect(client: Socket): void {
+    this.clients.delete(client.id);
+    const timer = this.expiryTimers.get(client.id);
+    if (timer) clearTimeout(timer);
+    this.expiryTimers.delete(client.id);
     const data = client.data as Partial<SocketData> | undefined;
     if (data?.userId) {
-      this.log.log({ msg: 'socket.disconnected', userId: data.userId });
+      void realtimeTransport(this.server)
+        ?.release(data.userId, client.id)
+        .catch(() => undefined);
     }
   }
 
-  // ── Client-initiated subscription ──────────────────────────────────────────
+  private async assertSocketSession(client: Socket): Promise<void> {
+    const data = client.data as Partial<SocketData> | undefined;
+    if (
+      !data?.userId ||
+      !data.sessionId ||
+      !data.jti ||
+      !data.expiresAt ||
+      data.expiresAt <= Date.now() ||
+      !data.leaseValidUntil ||
+      data.leaseValidUntil <= Date.now()
+    ) {
+      throw new Error('Invalid credential');
+    }
+    await this.sessionValidation.assertSessionActive({
+      userId: data.userId,
+      sessionId: data.sessionId,
+      jti: data.jti,
+    });
+    // A database wait can cross a deadline before the event-loop timer runs.
+    // Recheck the signed deadline immediately after that asynchronous gate.
+    if (data.expiresAt <= Date.now() || data.leaseValidUntil <= Date.now()) {
+      throw new Error('Invalid credential');
+    }
+  }
+
   @SubscribeMessage('subscribe:conversation')
   async handleSubscribeConversation(
     @ConnectedSocket() client: Socket,
     @MessageBody() body: SubscribeToConversationPayload,
   ): Promise<{ ok: true; room: string } | { ok: false; code: string }> {
     const data = client.data as SocketData | undefined;
-    if (!data?.userId || !data?.sessionId) {
+    if (!data?.userId || !data.sessionId || !data.jti) {
       throw new WsException({ code: 'AUTH_INVALID_CREDENTIALS' });
     }
-
-    // D-4 — revalidate the session on this security-sensitive event. The
-    // handshake proved the session was live when the socket opened; this
-    // proves it is STILL live now. Belt and braces with the revocation-driven
-    // disconnect above: if an eviction was ever missed (a Redis hiccup during
-    // fan-out), the socket still cannot subscribe to anything new.
-    try {
-      await this.sessionValidation.assertSessionActive({
-        userId: data.userId,
-        sessionId: data.sessionId,
-        // The handshake pinned this socket to one session; the jti it
-        // presented is the session's current one unless a rotation has since
-        // happened, in which case this socket must re-handshake.
-        jti: await this.currentJtiFor(data),
-      });
-    } catch {
-      client.disconnect(true);
-      return { ok: false, code: 'AUTH_INVALID_CREDENTIALS' };
-    }
-
-    const conversationId = (body?.conversationId ?? '').toString().trim();
-    if (!conversationId) {
+    if (!this.transportReady()) return { ok: false, code: 'REALTIME_UNAVAILABLE' };
+    const conversationId = body?.conversationId;
+    if (typeof conversationId !== 'string' || !/^[a-zA-Z0-9_-]{1,128}$/.test(conversationId)) {
       return { ok: false, code: 'VALIDATION_ERROR' };
     }
-    // R12 — the same rule REST applies to reading this conversation: a
-    // provider-side participant must still be allowed to manage bookings.
-    const receipt = await this.participantGate.mayReceiveConversation(data.userId, conversationId);
-    if (!receipt.allowed) {
-      // Same shape REST uses for cross-conversation reads.
-      this.log.warn({
-        msg: 'socket.subscribe.conversation.forbidden',
-        userId: data.userId,
-        conversationId,
-      });
-      return { ok: false, code: 'FORBIDDEN' };
+    if (Date.now() - data.subscriptionWindowAt >= 60_000) {
+      data.subscriptionWindowAt = Date.now();
+      data.subscriptionCount = 0;
+    }
+    if (data.subscriptionBusy || data.subscriptionCount >= 60) {
+      return { ok: false, code: 'REALTIME_RATE_LIMIT' };
     }
     const room = `conversation:${conversationId}`;
-    await client.join(room);
-    if (!data.joinedRooms.includes(room)) data.joinedRooms.push(room);
-    if (receipt.side === 'PROVIDER' && receipt.providerProfileId) {
-      const rooms = (data.providerConversationRooms ??= []);
-      if (!rooms.includes(room)) rooms.push(room);
-      await client.join(providerConversationsRoom(receipt.providerProfileId));
+    if (
+      !client.rooms.has(room) &&
+      data.joinedRooms.filter((name) => name.startsWith('conversation:')).length >=
+        MAX_CONVERSATION_ROOMS
+    ) {
+      return { ok: false, code: 'REALTIME_ROOM_LIMIT' };
     }
-    return { ok: true, room };
+    data.subscriptionCount += 1;
+    data.subscriptionBusy = true;
+    try {
+      await this.assertSocketSession(client);
+      const receipt = await this.conversationReceipt(data.userId, conversationId);
+      if (!receipt.allowed) return { ok: false, code: 'FORBIDDEN' };
+      await this.assertSocketSession(client);
+      if (!client.connected || !this.transportReady())
+        return { ok: false, code: 'REALTIME_UNAVAILABLE' };
+      await client.join(room);
+      if (!data.joinedRooms.includes(room)) data.joinedRooms.push(room);
+      if (receipt.side === 'PROVIDER' && receipt.providerProfileId) {
+        const rooms = (data.providerConversationRooms ??= []);
+        if (!rooms.includes(room)) rooms.push(room);
+        await client.join(providerConversationsRoom(receipt.providerProfileId));
+      }
+      return { ok: true, room };
+    } catch {
+      this.reject(client, 'AUTH_INVALID_CREDENTIALS');
+      return { ok: false, code: 'AUTH_INVALID_CREDENTIALS' };
+    } finally {
+      data.subscriptionBusy = false;
+    }
   }
 
-  // The socket does not retain the raw token, so the jti for the revalidation
-  // above is read back from the session row. A revoked/missing session yields
-  // a value that cannot match, and assertSessionActive rejects it.
-  private async currentJtiFor(data: SocketData): Promise<string> {
-    const jti = await this.participantGate.currentJtiForSession(data.sessionId);
-    return jti ?? '';
+  /** Also used by the bounded SSE stream. Identity comes from its authenticated
+   * request, never an event recipient or a client-supplied room. */
+  async mayReceiveEvent(userId: string, room: string, event: RealtimeEvent): Promise<boolean> {
+    if (event.userId !== null && event.userId !== userId) return false;
+    if (room.startsWith('conversation:')) {
+      return (await this.conversationReceipt(userId, room.slice(13))).allowed;
+    }
+    if (room === ADMIN_ROOM) {
+      const identity = await this.identities.resolve(userId);
+      return (
+        event.type === 'provider.status_changed' &&
+        hasAdminAccess(identity.roles, identity.permissions)
+      );
+    }
+    if (room.startsWith('provider:')) {
+      const identity = await this.identities.resolve(userId);
+      return identity.providerProfileId === room.slice(9) && identity.mayViewMarketplace;
+    }
+    if (room !== userRoom(userId) || event.userId !== userId) return false;
+    if (event.type === 'request.available')
+      return (await this.identities.resolve(userId)).mayViewMarketplace;
+    if (event.type === 'message.created') {
+      const id = (event.payload as { conversationId?: unknown } | null)?.conversationId;
+      return typeof id === 'string' && (await this.conversationReceipt(userId, id)).allowed;
+    }
+    // Notifications remain the owner's durable feed, including decisions that
+    // explain lost provider access; this mirrors NotificationsController.
+    return true;
   }
 
-  // Used by the publisher to broadcast a wire envelope into a room. The
-  // publisher is the only legitimate caller — gateway methods never publish to
-  // a foreign room from a client emit.
+  private async conversationReceipt(
+    userId: string,
+    conversationId: string,
+  ): Promise<ConversationReceipt> {
+    const receipt = await this.participantGate.mayReceiveConversation(userId, conversationId);
+    if (receipt.allowed && receipt.side === 'PROVIDER') {
+      // Provider REST also requires the provider role. A current capability
+      // cannot replace that role after it has been removed from the account.
+      const identity = await this.identities.resolve(userId);
+      if (!identity.roles.includes('provider')) return { allowed: false };
+    }
+    return receipt;
+  }
+
   emitToRoom(room: string, event: RealtimeEvent): void {
-    if (!this.server) return;
-    this.server.to(room).emit('realtime.event', event);
+    if (!this.transportReady() || !validEnvelope(room, event)) return;
+    this.enqueueLocal(room, event);
+    // serverSideEmit has no business acknowledgement: committed REST history
+    // handles loss, duplicate delivery, process death and recovery.
+    this.server.serverSideEmit(INTERNAL_DELIVERY_EVENT, room, event);
+  }
+
+  private enqueueLocal(room: unknown, event: unknown): void {
+    if (!this.transportReady() || !validEnvelope(room, event)) return;
+    const bytes = Buffer.byteLength(JSON.stringify(event));
+    for (const client of this.clients.values()) {
+      if (!client.connected || !client.rooms.has(room)) continue;
+      const pending = this.pendingBySocket.get(client.id) ?? 0;
+      if (
+        pending >= MAX_PENDING_DELIVERIES_PER_SOCKET ||
+        this.deliveries.length + this.activeDeliveries >= MAX_PENDING_REALTIME_DELIVERIES ||
+        this.pendingBytes + bytes > MAX_PENDING_DELIVERY_BYTES
+      ) {
+        this.reject(client, 'REALTIME_BACKPRESSURE');
+        continue;
+      }
+      this.pendingBySocket.set(client.id, pending + 1);
+      this.pendingBytes += bytes;
+      this.deliveries.push({ client, room, event: event as RealtimeEvent, bytes });
+    }
+    this.drainDeliveries();
+  }
+
+  private drainDeliveries(): void {
+    while (this.activeDeliveries < DELIVERY_CONCURRENCY) {
+      const index = this.deliveries.findIndex(
+        (delivery) => !this.busySockets.has(delivery.client.id),
+      );
+      if (index < 0) break;
+      const delivery = this.deliveries.splice(index, 1)[0]!;
+      this.busySockets.add(delivery.client.id);
+      this.activeDeliveries += 1;
+      void this.deliverAuthorized(delivery).finally(() => {
+        this.activeDeliveries -= 1;
+        this.busySockets.delete(delivery.client.id);
+        this.pendingBytes = Math.max(0, this.pendingBytes - delivery.bytes);
+        const remaining = (this.pendingBySocket.get(delivery.client.id) ?? 1) - 1;
+        if (remaining <= 0) this.pendingBySocket.delete(delivery.client.id);
+        else this.pendingBySocket.set(delivery.client.id, remaining);
+        this.drainDeliveries();
+      });
+    }
+  }
+
+  private async deliverAuthorized({ client, room, event }: Delivery): Promise<void> {
+    try {
+      if (!client.connected || !this.transportReady() || !client.rooms.has(room)) return;
+      const data = client.data as SocketData;
+      if (!(await this.mayReceiveEvent(data.userId, room, event))) {
+        if (room !== userRoom(data.userId)) await client.leave(room);
+        return;
+      }
+      // Last asynchronous gate before the packet: current DB session against
+      // the original signed token, including access-token expiration.
+      await this.assertSocketSession(client);
+      if (!client.connected || !this.transportReady() || !client.rooms.has(room)) return;
+      // Volatile events do not pile up in an unwritable Engine.IO transport;
+      // the bounded REST recovery cadence covers missed accelerations.
+      client.volatile.emit('realtime.event', event);
+    } catch {
+      this.reject(client, 'AUTH_INVALID_CREDENTIALS');
+    }
+  }
+
+  private async recheckConnections(): Promise<void> {
+    if (this.recheckRunning) return;
+    this.recheckRunning = true;
+    try {
+      const clients = [...this.clients.values()];
+      for (let offset = 0; offset < clients.length; offset += DELIVERY_CONCURRENCY) {
+        await Promise.all(
+          clients.slice(offset, offset + DELIVERY_CONCURRENCY).map(async (client) => {
+            try {
+              const data = client.data as SocketData;
+              if (!this.transportReady()) return this.reject(client, 'REALTIME_UNAVAILABLE');
+              await this.assertSocketSession(client);
+              if (!(await realtimeTransport(this.server)!.reserve(data.userId, client.id))) {
+                return this.reject(client, 'REALTIME_CONNECTION_LIMIT');
+              }
+              data.leaseValidUntil = Date.now() + LOCAL_LEASE_VALIDITY_MS;
+              const identity = await this.identities.resolve(data.userId);
+              if (!hasAdminAccess(identity.roles, identity.permissions))
+                await client.leave(ADMIN_ROOM);
+              if (data.providerProfileId && !identity.mayViewMarketplace) {
+                await client.leave(providerRoom(data.providerProfileId));
+              }
+              // Membership/capability is additionally checked on every packet.
+            } catch {
+              this.reject(client, 'AUTH_INVALID_CREDENTIALS');
+            }
+          }),
+        );
+      }
+    } finally {
+      this.recheckRunning = false;
+    }
   }
 }
 
-// Extract the access JWT from the handshake. Order matters: the explicit
-// transports (auth.token / Authorization) win over the cookie so a non-web
-// client with a real Bearer token isn't accidentally re-authenticated via a
-// stale browser cookie. The cookie path is the ONLY way web clients
-// authenticate — the access token lives in the httpOnly `hsm_at` cookie that
-// JS can't read, so the gateway must parse it from the handshake cookie header.
+function validEnvelope(room: unknown, event: unknown): room is string {
+  if (typeof room !== 'string' || room.length > 256 || !event || typeof event !== 'object')
+    return false;
+  const envelope = event as Partial<RealtimeEvent>;
+  if (envelope.v !== 1 || typeof envelope.type !== 'string') return false;
+  try {
+    return Buffer.byteLength(JSON.stringify(event)) <= MAX_REALTIME_PAYLOAD_BYTES;
+  } catch {
+    return false;
+  }
+}
+
+// Existing socket transport precedence is retained: explicit native tokens,
+// then bearer, then the browser's httpOnly access cookie. Origin is separately
+// validated even if an explicit token accompanies a cookie.
 function extractAccessToken(client: Socket): string | null {
   const auth = client.handshake.auth as { token?: unknown } | undefined;
-  if (typeof auth?.token === 'string' && auth.token.trim().length > 0) {
-    return auth.token.trim();
-  }
-  const header = client.handshake.headers['authorization'];
+  if (typeof auth?.token === 'string' && auth.token.trim().length > 0) return auth.token.trim();
+  const header = client.handshake.headers.authorization;
   if (typeof header === 'string' && header.toLowerCase().startsWith('bearer ')) {
     return header.slice('bearer '.length).trim() || null;
   }
@@ -438,15 +592,12 @@ function readCookie(cookieHeader: string | string[] | undefined, name: string): 
   for (const part of raw.split(';')) {
     const trimmed = part.trim();
     const eq = trimmed.indexOf('=');
-    if (eq < 0) continue;
-    const key = trimmed.slice(0, eq);
-    if (key !== name) continue;
+    if (eq < 0 || trimmed.slice(0, eq) !== name) continue;
     const value = trimmed.slice(eq + 1);
-    if (value.length === 0) return null;
+    if (!value) return null;
     try {
       return decodeURIComponent(value);
     } catch {
-      // Malformed cookie value — treat as absent rather than throw.
       return null;
     }
   }

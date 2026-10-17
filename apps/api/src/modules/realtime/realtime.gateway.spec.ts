@@ -5,12 +5,84 @@ import { SecurityEventsBus } from '../../shared/security-events/security-events.
 import type { SessionValidationService } from '../iam/authentication/services/session-validation.service';
 import type { TokenService } from '../iam/authentication/services/token.service';
 import type { ConversationParticipantGate } from './conversation-participant.gate';
-import type { RealtimeIdentityResolver } from './realtime-identity.resolver';
-import { RealtimeGateway } from './realtime.gateway';
+import { RealtimeIdentityResolver } from './realtime-identity.resolver';
+import {
+  MAX_CONVERSATION_ROOMS,
+  MAX_PENDING_DELIVERIES_PER_SOCKET,
+  RealtimeGateway,
+} from './realtime.gateway';
+import { REALTIME_TRANSPORT } from './realtime-socket.adapter';
+
+describe('R25 current database identity resolution', () => {
+  function identityFixture() {
+    const users = {
+      listRoles: jest
+        .fn()
+        .mockResolvedValue([
+          { role: { name: 'admin', deletedAt: null } },
+          { role: { name: 'provider', deletedAt: null } },
+        ]),
+    };
+    const profiles = {
+      findByUserId: jest.fn().mockResolvedValue({ id: 'profile-1', status: 'ACTIVE' }),
+    };
+    const roles = { listPermissionKeysForUser: jest.fn().mockResolvedValue(['user:read:any']) };
+    const capabilities = { can: jest.fn().mockResolvedValue(true) };
+    const resolver = new RealtimeIdentityResolver(
+      users as never,
+      profiles as never,
+      roles as never,
+      capabilities as never,
+    );
+    return { users, profiles, roles, capabilities, resolver };
+  }
+
+  it('re-reads role grants and provider capability for successive delivery checks without caching JWT claims', async () => {
+    const f = identityFixture();
+    expect(await f.resolver.resolve('user-1')).toMatchObject({
+      roles: ['admin', 'provider'],
+      permissions: ['user:read:any'],
+      mayViewMarketplace: true,
+    });
+    f.roles.listPermissionKeysForUser.mockResolvedValue([]);
+    f.capabilities.can.mockResolvedValue(false);
+    expect(await f.resolver.resolve('user-1')).toMatchObject({
+      roles: ['admin', 'provider'],
+      permissions: [],
+      providerStatus: 'ACTIVE',
+      mayViewMarketplace: false,
+    });
+    expect(f.users.listRoles).toHaveBeenCalledTimes(2);
+    expect(f.roles.listPermissionKeysForUser).toHaveBeenNthCalledWith(2, 'user-1');
+    expect(f.capabilities.can).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not let a deleted provider role survive through an otherwise active profile/capability', async () => {
+    const f = identityFixture();
+    f.users.listRoles.mockResolvedValue([{ role: { name: 'provider', deletedAt: new Date() } }]);
+    expect(await f.resolver.resolve('user-1')).toMatchObject({
+      roles: [],
+      providerStatus: 'ACTIVE',
+      mayViewMarketplace: false,
+    });
+  });
+
+  it('fails closed when the current permission authority is unavailable', async () => {
+    const f = identityFixture();
+    f.roles.listPermissionKeysForUser.mockRejectedValue(
+      new Error('permission authority unavailable'),
+    );
+    await expect(f.resolver.resolve('user-1')).rejects.toThrow('permission authority unavailable');
+  });
+});
 
 // Minimal Socket.IO Socket fake — only the surfaces the gateway touches during
 // connection / disconnect / subscribe:conversation.
 interface FakeSocket {
+  id: string;
+  connected: boolean;
+  rooms: Set<string>;
+  volatile: { emit(event: string, payload: unknown): void };
   handshake: { auth: Record<string, unknown>; headers: Record<string, string> };
   data: unknown;
   joined: string[];
@@ -18,12 +90,23 @@ interface FakeSocket {
   disconnected: boolean;
   emit(event: string, payload: unknown): void;
   join(room: string): Promise<void>;
+  leave(room: string): Promise<void>;
   disconnect(close?: boolean): void;
 }
 
+let socketSequence = 0;
 function makeSocket(token: string | undefined): FakeSocket {
   const s: FakeSocket = {
-    handshake: { auth: token === undefined ? {} : { token }, headers: {} },
+    id: `socket-${++socketSequence}`,
+    connected: true,
+    rooms: new Set(),
+    get volatile() {
+      return this;
+    },
+    handshake: {
+      auth: token === undefined ? {} : { token },
+      headers: { origin: 'http://localhost:5173' },
+    },
     data: undefined,
     joined: [],
     emitted: [],
@@ -33,9 +116,14 @@ function makeSocket(token: string | undefined): FakeSocket {
     },
     async join(room) {
       this.joined.push(room);
+      this.rooms.add(room);
+    },
+    async leave(room) {
+      this.rooms.delete(room);
     },
     disconnect() {
       this.disconnected = true;
+      this.connected = false;
     },
   };
   return s;
@@ -64,6 +152,13 @@ function makeServer(members: Record<string, FakeRemoteSocket[]> = {}) {
   const disconnected: Array<{ room: string; close: boolean }> = [];
   const left: string[] = [];
   const server = {
+    [REALTIME_TRANSPORT]: {
+      isReady: jest.fn().mockReturnValue(true),
+      reserve: jest.fn().mockResolvedValue(true),
+      release: jest.fn().mockResolvedValue(undefined),
+    },
+    on: jest.fn(),
+    serverSideEmit: jest.fn(),
     in(room: string) {
       return {
         async fetchSockets() {
@@ -98,13 +193,26 @@ interface Mocks {
   securityEvents: SecurityEventsBus;
 }
 
-const VALID_CLAIMS = { sub: 'u-1', sid: 'sess-1', jti: 'jti-1', roles: ['seeker'] };
+const VALID_CLAIMS = {
+  sub: 'u-1',
+  sid: 'sess-1',
+  jti: 'jti-1',
+  roles: ['seeker'],
+  exp: Math.floor(Date.now() / 1000) + 3600,
+};
 
 function makeMocks(over: Partial<Mocks> = {}): Mocks {
   return {
     tokens: { verifyAccessToken: jest.fn().mockReturnValue({ ...VALID_CLAIMS }) },
     config: {
-      get: jest.fn().mockImplementation((k) => (k === 'REALTIME_SOCKET_IO' ? true : null)),
+      get: jest
+        .fn()
+        .mockImplementation(
+          (k) =>
+            ({ REALTIME_SOCKET_IO: true, FRONTEND_URL: 'http://localhost:5173', CORS_ORIGINS: [] })[
+              k as 'REALTIME_SOCKET_IO'
+            ] ?? null,
+        ),
     },
     participantGate: {
       findProviderProfileId: jest.fn().mockResolvedValue(null),
@@ -116,17 +224,26 @@ function makeMocks(over: Partial<Mocks> = {}): Mocks {
     sessionValidation: { assertSessionActive: jest.fn().mockResolvedValue(undefined) },
     // Default identity: plain customer, no provider profile, no admin role.
     identities: {
-      resolve: jest
-        .fn()
-        .mockResolvedValue({ roles: ['customer'], providerProfileId: null, providerStatus: null }),
+      resolve: jest.fn().mockResolvedValue({
+        roles: ['customer'],
+        permissions: [],
+        mayViewMarketplace: false,
+        providerProfileId: null,
+        providerStatus: null,
+      }),
     },
     securityEvents: new SecurityEventsBus(),
     ...over,
   } as Mocks;
 }
 
+const createdGateways: RealtimeGateway[] = [];
+afterEach(() => {
+  for (const gateway of createdGateways.splice(0)) gateway.onModuleDestroy();
+});
+
 function makeGateway(m: Mocks): RealtimeGateway {
-  return new RealtimeGateway(
+  const gateway = new RealtimeGateway(
     m.tokens as unknown as TokenService,
     m.config as unknown as AppConfigService,
     m.participantGate as unknown as ConversationParticipantGate,
@@ -134,6 +251,9 @@ function makeGateway(m: Mocks): RealtimeGateway {
     m.identities as unknown as RealtimeIdentityResolver,
     m.securityEvents,
   );
+  gateway.server = makeServer().server as never;
+  createdGateways.push(gateway);
+  return gateway;
 }
 
 const revoked = () => new UnauthorizedException({ code: 'AUTH_INVALID_CREDENTIALS' });
@@ -352,6 +472,8 @@ describe('RealtimeGateway', () => {
       const m = makeMocks();
       m.identities.resolve.mockResolvedValue({
         roles: ['provider'],
+        permissions: [],
+        mayViewMarketplace: true,
         providerProfileId: 'prof-9',
         providerStatus: 'ACTIVE',
       });
@@ -388,6 +510,8 @@ describe('RealtimeGateway', () => {
       m.tokens.verifyAccessToken.mockReturnValue({ ...VALID_CLAIMS, roles: ['seeker'] });
       m.identities.resolve.mockResolvedValue({
         roles: ['admin'],
+        permissions: ['user:read:any'],
+        mayViewMarketplace: false,
         providerProfileId: null,
         providerStatus: null,
       });
@@ -527,6 +651,7 @@ describe('RealtimeGateway', () => {
       const m = makeMocks();
       const gw = makeGateway(m);
       gw.afterInit({
+        on: jest.fn(),
         in: () => ({
           disconnectSockets: async () => {
             throw new Error('adapter unavailable');
@@ -596,6 +721,13 @@ describe('RealtimeGateway', () => {
     // R12 — a provider-side participant is held to the REST provider rule.
     it('a provider-side subscription is recorded so losing provider access can find it', async () => {
       const m = makeMocks();
+      m.identities.resolve.mockResolvedValue({
+        roles: ['provider'],
+        permissions: [],
+        providerProfileId: 'prof-9',
+        providerStatus: 'ACTIVE',
+        mayViewMarketplace: true,
+      });
       m.participantGate.mayReceiveConversation.mockResolvedValue({
         allowed: true,
         side: 'PROVIDER',
@@ -639,3 +771,345 @@ describe('RealtimeGateway', () => {
 async function flush(): Promise<void> {
   await new Promise((r) => setImmediate(r));
 }
+
+describe('R25 realtime authorization and budgets', () => {
+  const event = (over: Record<string, unknown> = {}) => ({
+    v: 1 as const,
+    type: 'notification.created' as const,
+    userId: 'u-1',
+    occurredAt: new Date().toISOString(),
+    payload: { id: 'notification-1' },
+    ...over,
+  });
+  const packets = (socket: FakeSocket) =>
+    socket.emitted.filter((entry) => entry.event === 'realtime.event');
+  async function connected() {
+    const m = makeMocks();
+    const gw = makeGateway(m);
+    const sock = makeSocket('signed-jwt');
+    await gw.handleConnection(sock as never);
+    expect(sock.disconnected).toBe(false);
+    return { m, gw, sock };
+  }
+
+  it('keeps the original jti and rejects a rotated credential even if the session row names a new jti', async () => {
+    const { m, gw, sock } = await connected();
+    m.participantGate.currentJtiForSession.mockResolvedValue('rotated-jti');
+    m.sessionValidation.assertSessionActive.mockImplementation(async ({ jti }) => {
+      if (jti !== 'rotated-jti') throw revoked();
+    });
+    const result = await gw.handleSubscribeConversation(sock as never, { conversationId: 'c-1' });
+    expect(result).toEqual({ ok: false, code: 'AUTH_INVALID_CREDENTIALS' });
+    expect(m.participantGate.currentJtiForSession).not.toHaveBeenCalled();
+    expect(sock.data).toMatchObject({ jti: VALID_CLAIMS.jti, expiresAt: VALID_CLAIMS.exp * 1000 });
+    expect(JSON.stringify(sock.data)).not.toContain('signed-jwt');
+  });
+
+  it.each([undefined, NaN, Infinity, 1.5, 1])(
+    'rejects malformed or expired exp=%s before database authority',
+    async (exp) => {
+      const m = makeMocks();
+      m.tokens.verifyAccessToken.mockReturnValue({ ...VALID_CLAIMS, exp });
+      const gw = makeGateway(m);
+      const sock = makeSocket('jwt');
+      await gw.handleConnection(sock as never);
+      expect(sock.disconnected).toBe(true);
+      expect(m.sessionValidation.assertSessionActive).not.toHaveBeenCalled();
+    },
+  );
+
+  it('disconnects an idle socket at the ORIGINAL access-token expiry', async () => {
+    jest.useFakeTimers();
+    try {
+      const m = makeMocks();
+      m.tokens.verifyAccessToken.mockReturnValue({
+        ...VALID_CLAIMS,
+        exp: Math.floor(Date.now() / 1000) + 2,
+      });
+      const gw = makeGateway(m);
+      const sock = makeSocket('jwt');
+      await gw.handleConnection(sock as never);
+      expect(sock.disconnected).toBe(false);
+      await jest.advanceTimersByTimeAsync(2_100);
+      expect(sock.disconnected).toBe(true);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it.each(['https://attacker.invalid', 'null', 'http://localhost:5173.attacker.invalid'])(
+    'rejects browser Origin %s before parsing credentials',
+    async (origin) => {
+      const m = makeMocks();
+      const gw = makeGateway(m);
+      const sock = makeSocket(undefined);
+      sock.handshake.headers.cookie = 'hsm_at=jwt';
+      sock.handshake.headers.origin = origin;
+      await gw.handleConnection(sock as never);
+      expect(sock.disconnected).toBe(true);
+      expect(m.tokens.verifyAccessToken).not.toHaveBeenCalled();
+    },
+  );
+
+  it('rejects originless cookies but allows an originless explicit native bearer credential', async () => {
+    const m = makeMocks();
+    const gw = makeGateway(m);
+    const cookie = makeSocket(undefined);
+    cookie.handshake.headers.cookie = 'hsm_at=jwt';
+    delete cookie.handshake.headers.origin;
+    await gw.handleConnection(cookie as never);
+    expect(cookie.disconnected).toBe(true);
+    const native = makeSocket('jwt');
+    delete native.handshake.headers.origin;
+    await gw.handleConnection(native as never);
+    expect(native.disconnected).toBe(false);
+  });
+
+  it('refuses a socket when the registered adapter cannot reserve a cluster slot', async () => {
+    const m = makeMocks();
+    const gw = makeGateway(m);
+    const transport = (gw.server as unknown as ReturnType<typeof makeServer>['server'])[
+      REALTIME_TRANSPORT
+    ];
+    transport.reserve.mockResolvedValue(false);
+    const sock = makeSocket('jwt');
+    await gw.handleConnection(sock as never);
+    expect(sock.disconnected).toBe(true);
+    expect(sock.emitted).toContainEqual({
+      event: 'error',
+      payload: { code: 'REALTIME_CONNECTION_LIMIT' },
+    });
+    expect(sock.joined).toEqual([]);
+  });
+
+  it('requires a managed and healthy transport for new subscriptions and delivery', async () => {
+    const { gw, sock } = await connected();
+    const server = gw.server as unknown as ReturnType<typeof makeServer>['server'];
+    server[REALTIME_TRANSPORT].isReady.mockReturnValue(false);
+    gw.emitToRoom('user:u-1', event());
+    expect(await gw.handleSubscribeConversation(sock as never, { conversationId: 'c-1' })).toEqual({
+      ok: false,
+      code: 'REALTIME_UNAVAILABLE',
+    });
+    await flush();
+    expect(packets(sock)).toEqual([]);
+    expect(server.serverSideEmit).not.toHaveBeenCalled();
+  });
+
+  it('does not write a packet whose original expiry passed during the final database session check', async () => {
+    const { m, gw, sock } = await connected();
+    m.sessionValidation.assertSessionActive.mockImplementationOnce(async () => {
+      (sock.data as { expiresAt: number }).expiresAt = Date.now() - 1;
+    });
+    gw.emitToRoom('user:u-1', event());
+    await flush();
+    expect(packets(sock)).toEqual([]);
+    expect(sock.disconnected).toBe(true);
+  });
+
+  it('gives every connection an explicit REST snapshot recovery contract', async () => {
+    const { sock } = await connected();
+    expect(sock.emitted.find((item) => item.event === 'connection.ack')?.payload).toMatchObject({
+      recovery: { mode: 'rest', required: true, maxWindow: 200 },
+    });
+  });
+
+  it('does not join a legacy ACTIVE provider who lacks the current marketplace capability', async () => {
+    const m = makeMocks();
+    m.identities.resolve.mockResolvedValue({
+      roles: ['provider'],
+      permissions: [],
+      providerProfileId: 'prof-9',
+      providerStatus: 'ACTIVE',
+      mayViewMarketplace: false,
+    });
+    const gw = makeGateway(m);
+    const sock = makeSocket('jwt');
+    await gw.handleConnection(sock as never);
+    expect(sock.disconnected).toBe(false);
+    expect(sock.rooms.has('provider:prof-9')).toBe(false);
+  });
+
+  it('denies a current admin without the current read permission', async () => {
+    const m = makeMocks();
+    m.identities.resolve.mockResolvedValue({
+      roles: ['admin'],
+      permissions: [],
+      providerProfileId: null,
+      providerStatus: null,
+      mayViewMarketplace: false,
+    });
+    const gw = makeGateway(m);
+    const sock = makeSocket('jwt');
+    await gw.handleConnection(sock as never);
+    expect(sock.rooms.has('admin')).toBe(false);
+  });
+
+  it('rechecks admin permission before delivery even when the role and existing room survive', async () => {
+    const m = makeMocks();
+    m.identities.resolve.mockResolvedValue({
+      roles: ['admin'],
+      permissions: ['user:read:any'],
+      providerProfileId: null,
+      providerStatus: null,
+      mayViewMarketplace: false,
+    });
+    const gw = makeGateway(m);
+    const sock = makeSocket('jwt');
+    await gw.handleConnection(sock as never);
+    m.identities.resolve.mockResolvedValue({
+      roles: ['admin'],
+      permissions: [],
+      providerProfileId: null,
+      providerStatus: null,
+      mayViewMarketplace: false,
+    });
+    gw.emitToRoom('admin', event({ userId: null, type: 'provider.status_changed' }) as never);
+    await flush();
+    expect(packets(sock)).toEqual([]);
+    expect(sock.rooms.has('admin')).toBe(false);
+    expect(sock.disconnected).toBe(false);
+  });
+
+  it('denies provider marketplace events sent to the personal room after capability loss', async () => {
+    const { m, gw, sock } = await connected();
+    const identity = {
+      roles: ['provider'],
+      permissions: [],
+      providerProfileId: 'prof-9',
+      providerStatus: 'ACTIVE',
+      mayViewMarketplace: true,
+    };
+    m.identities.resolve.mockResolvedValue(identity);
+    gw.emitToRoom('user:u-1', event({ type: 'request.available' }) as never);
+    await flush();
+    expect(packets(sock)).toHaveLength(1);
+    m.identities.resolve.mockResolvedValue({ ...identity, mayViewMarketplace: false });
+    gw.emitToRoom('user:u-1', event({ type: 'request.available' }) as never);
+    await flush();
+    expect(packets(sock)).toHaveLength(1);
+    // The personal decision/history stream remains available.
+    gw.emitToRoom('user:u-1', event());
+    await flush();
+    expect(packets(sock)).toHaveLength(2);
+  });
+
+  it('revalidates an established conversation before delivery without relying on revocation fan-out', async () => {
+    const { m, gw, sock } = await connected();
+    m.participantGate.mayReceiveConversation.mockResolvedValue({ allowed: true, side: 'SEEKER' });
+    await gw.handleSubscribeConversation(sock as never, { conversationId: 'c-private' });
+    m.participantGate.mayReceiveConversation.mockResolvedValue({ allowed: false });
+    gw.emitToRoom(
+      'conversation:c-private',
+      event({ userId: null, type: 'message.created' }) as never,
+    );
+    await flush();
+    expect(packets(sock)).toEqual([]);
+    expect(sock.rooms.has('conversation:c-private')).toBe(false);
+  });
+
+  it('rejects logout that commits while conversation authorization is in flight', async () => {
+    const { m, gw, sock } = await connected();
+    m.participantGate.mayReceiveConversation.mockResolvedValue({ allowed: true, side: 'SEEKER' });
+    await gw.handleSubscribeConversation(sock as never, { conversationId: 'c-private' });
+    let release!: (value: { allowed: true; side: 'SEEKER' }) => void;
+    m.participantGate.mayReceiveConversation.mockReturnValue(
+      new Promise((resolve) => {
+        release = resolve;
+      }),
+    );
+    gw.emitToRoom(
+      'conversation:c-private',
+      event({ userId: null, type: 'message.created' }) as never,
+    );
+    m.sessionValidation.assertSessionActive.mockRejectedValue(revoked());
+    release({ allowed: true, side: 'SEEKER' });
+    await flush();
+    expect(packets(sock)).toEqual([]);
+    expect(sock.disconnected).toBe(true);
+  });
+
+  it('never forwards a foreign recipient through an otherwise valid room', async () => {
+    const { gw, sock } = await connected();
+    gw.emitToRoom('user:u-1', event({ userId: 'another-user' }) as never);
+    await flush();
+    expect(packets(sock)).toEqual([]);
+  });
+
+  it.each([{}, 123, ['c-1'], 'conversation:c-1', 'c'.repeat(129)])(
+    'validates untrusted conversation id before authority lookups (%p)',
+    async (conversationId) => {
+      const { m, gw, sock } = await connected();
+      expect(
+        await gw.handleSubscribeConversation(sock as never, { conversationId } as never),
+      ).toEqual({
+        ok: false,
+        code: 'VALIDATION_ERROR',
+      });
+      expect(m.participantGate.mayReceiveConversation).not.toHaveBeenCalled();
+    },
+  );
+
+  it('serializes concurrent subscriptions without exceeding room or lookup budgets', async () => {
+    const { m, gw, sock } = await connected();
+    m.participantGate.mayReceiveConversation.mockResolvedValue({ allowed: true, side: 'SEEKER' });
+    const results = await Promise.all(
+      Array.from({ length: 40 }, (_, index) =>
+        gw.handleSubscribeConversation(sock as never, { conversationId: `c-${index}` }),
+      ),
+    );
+    expect(results.filter((result) => result.ok)).toHaveLength(1);
+    expect(
+      results.filter((result) => !result.ok && result.code === 'REALTIME_RATE_LIMIT'),
+    ).toHaveLength(39);
+    expect(m.participantGate.mayReceiveConversation).toHaveBeenCalledTimes(1);
+    expect([...sock.rooms].filter((room) => room.startsWith('conversation:'))).toHaveLength(1);
+  });
+
+  it('bounds sequential conversation membership without accepting a client room name', async () => {
+    const { m, gw, sock } = await connected();
+    m.participantGate.mayReceiveConversation.mockResolvedValue({ allowed: true, side: 'SEEKER' });
+    for (let index = 0; index < MAX_CONVERSATION_ROOMS; index++) {
+      expect(
+        await gw.handleSubscribeConversation(sock as never, { conversationId: `c-${index}` }),
+      ).toEqual({
+        ok: true,
+        room: `conversation:c-${index}`,
+      });
+    }
+    expect(
+      await gw.handleSubscribeConversation(sock as never, { conversationId: 'one-too-many' }),
+    ).toEqual({
+      ok: false,
+      code: 'REALTIME_ROOM_LIMIT',
+    });
+    expect([...sock.rooms].filter((room) => room.startsWith('conversation:'))).toHaveLength(
+      MAX_CONVERSATION_ROOMS,
+    );
+  });
+
+  it('bounds slow authorization queues and closes a client instead of retaining unlimited packets', async () => {
+    const { m, gw, sock } = await connected();
+    let release!: () => void;
+    m.sessionValidation.assertSessionActive.mockReturnValue(
+      new Promise<void>((resolve) => {
+        release = resolve;
+      }),
+    );
+    for (let index = 0; index <= MAX_PENDING_DELIVERIES_PER_SOCKET + 1; index++)
+      gw.emitToRoom('user:u-1', event());
+    expect(sock.disconnected).toBe(true);
+    expect(sock.emitted).toContainEqual({
+      event: 'error',
+      payload: { code: 'REALTIME_BACKPRESSURE' },
+    });
+    const pending = gw as unknown as { deliveries: unknown[]; activeDeliveries: number };
+    expect(pending.deliveries.length + pending.activeDeliveries).toBeLessThanOrEqual(
+      MAX_PENDING_DELIVERIES_PER_SOCKET,
+    );
+    await Promise.resolve();
+    release?.();
+    await flush();
+    expect(packets(sock)).toEqual([]);
+  });
+});

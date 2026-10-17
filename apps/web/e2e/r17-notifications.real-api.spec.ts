@@ -340,49 +340,54 @@ test.describe('R17-B notifications — real API, PostgreSQL, Redis and two repli
     await expect(drawer.getByText(row.body)).toBeVisible();
   });
 
-  test('Arabic, right-to-left, at 360, 390 and 430, by keyboard', async ({
-    page,
-    context,
-  }, testInfo) => {
+  test('Arabic, right-to-left, at 360, 390 and 430, by keyboard', async ({ browser }, testInfo) => {
     const categoryId = await leafCategoryId();
-    const seeker = await registerSeeker('r17ba');
-    const provider = await workingProvider(categoryId, 'r17ba');
-    await scheduledBooking(seeker, provider, categoryId);
-
-    await applySession(context, seeker.jar);
-    await seedLanguage(page, 'ar');
     for (const width of [360, 390, 430]) {
-      await page.setViewportSize({ width, height: 844 });
-      await page.goto(`${WEB_A}/home`);
-      await expect(page.locator('html')).toHaveAttribute('dir', 'rtl');
-      await expect(page.getByTestId('seeker-notifications-bell')).toHaveAccessibleName(
-        'فتح الإشعارات، 1 غير مقروءة',
-      );
-      await openSeekerBell(page);
-      const drawer = page.getByTestId('notification-drawer');
-      await expect(drawer.getByText('الإشعارات', { exact: true })).toBeInViewport();
-      await expect(drawer.getByRole('button', { name: 'تعليم الكل كمقروء' })).toBeVisible();
-      await expect(drawer.getByRole('button', { name: 'إغلاق' })).toBeVisible();
-      const overflow = await page.evaluate(
-        () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
-      );
-      expect(overflow).toBeLessThanOrEqual(0);
-      // The arrival toast (Arabic copy) must sit wholly on screen.
-      const toasts = page.locator('[data-sonner-toast]');
-      await expect(toasts.first()).toBeVisible();
-      for (const box of await toasts.evaluateAll((els) =>
-        els.map((el) => {
-          const r = el.getBoundingClientRect();
-          return { left: r.left, right: r.right };
-        }),
-      )) {
-        expect(box.left, `toast left edge at ${width}px`).toBeGreaterThanOrEqual(0);
-        expect(box.right, `toast right edge at ${width}px`).toBeLessThanOrEqual(width);
+      // Each viewport observes its own new notification on a first visit.
+      // Reloading one account must not replay its already-presented toast.
+      const seeker = await registerSeeker('r17ba');
+      const provider = await workingProvider(categoryId, 'r17ba');
+      await scheduledBooking(seeker, provider, categoryId);
+
+      const context = await browser.newContext();
+      try {
+        const page = await context.newPage();
+        await applySession(context, seeker.jar);
+        await seedLanguage(page, 'ar');
+        await page.setViewportSize({ width, height: 844 });
+        await page.goto(`${WEB_A}/home`);
+        await expect(page.locator('html')).toHaveAttribute('dir', 'rtl');
+        await expect(page.getByTestId('seeker-notifications-bell')).toHaveAccessibleName(
+          'فتح الإشعارات، 1 غير مقروءة',
+        );
+        await openSeekerBell(page);
+        const drawer = page.getByTestId('notification-drawer');
+        await expect(drawer.getByText('الإشعارات', { exact: true })).toBeInViewport();
+        await expect(drawer.getByRole('button', { name: 'تعليم الكل كمقروء' })).toBeVisible();
+        await expect(drawer.getByRole('button', { name: 'إغلاق' })).toBeVisible();
+        const overflow = await page.evaluate(
+          () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+        );
+        expect(overflow).toBeLessThanOrEqual(0);
+        // The arrival toast (Arabic copy) must sit wholly on screen.
+        const toasts = page.locator('[data-sonner-toast]');
+        await expect(toasts.first()).toBeVisible();
+        for (const box of await toasts.evaluateAll((els) =>
+          els.map((el) => {
+            const r = el.getBoundingClientRect();
+            return { left: r.left, right: r.right };
+          }),
+        )) {
+          expect(box.left, `toast left edge at ${width}px`).toBeGreaterThanOrEqual(0);
+          expect(box.right, `toast right edge at ${width}px`).toBeLessThanOrEqual(width);
+        }
+        await testInfo.attach(`r17b-drawer-ar-${width}.png`, {
+          body: await page.screenshot(),
+          contentType: 'image/png',
+        });
+      } finally {
+        await context.close();
       }
-      await testInfo.attach(`r17b-drawer-ar-${width}.png`, {
-        body: await page.screenshot(),
-        contentType: 'image/png',
-      });
     }
   });
 
@@ -435,7 +440,7 @@ test.describe('R17-B notifications — real API, PostgreSQL, Redis and two repli
     const cookie = [...seeker.jar].map(([k, v]) => `${k}=${v}`).join('; ');
     const socket: Socket = io(D.url, {
       transports: ['websocket'],
-      extraHeaders: { Cookie: cookie },
+      extraHeaders: { Cookie: cookie, Origin: WEB_B },
       reconnection: false,
     });
     const received: Array<{ type: string; actorUserId: string | null; payload: { id: string } }> =

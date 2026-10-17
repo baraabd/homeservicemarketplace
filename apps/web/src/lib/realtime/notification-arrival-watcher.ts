@@ -41,6 +41,7 @@ import type {
 
 import { providerQueryKeys } from '../provider/query-keys';
 import { seekerQueryKeys } from '../seeker/query-keys';
+import { authRequestScope, isLocallySignedOut } from '../auth-session-boundary';
 import { dispatchInvalidations } from './use-realtime-socket';
 import {
   dispatchRealtimeSideEffects,
@@ -53,6 +54,8 @@ import {
   __clearAllNotificationBaselinesForTests,
   readNotificationBaseline,
   writeNotificationBaseline,
+  PRESENTATION_CAPACITY,
+  PRESENTATION_WINDOW_MS,
 } from './notification-baseline';
 
 // Threshold above which a single polling batch collapses to one
@@ -99,6 +102,13 @@ interface WatermarkState {
 
 const watermarks = new Map<string, WatermarkState>();
 
+function remember(state: WatermarkState, id: string): void {
+  state.seenIds.add(id);
+  while (state.seenIds.size > PRESENTATION_CAPACITY) {
+    state.seenIds.delete(state.seenIds.values().next().value!);
+  }
+}
+
 function watermarkKey(userId: string, experience: NotificationExperience): string {
   return `${experience}:${userId}`;
 }
@@ -136,6 +146,9 @@ export function useNotificationArrivalWatcher({
 
   useEffect(() => {
     if (!enabled || !currentUserId) return undefined;
+    let active = true;
+    const scope = authRequestScope();
+    const isCurrent = () => active && authRequestScope() === scope && !isLocallySignedOut();
 
     // Subscribe to every cache change for the matching notifications
     // root. React Query's `getQueryCache().subscribe` fires for ANY
@@ -154,7 +167,7 @@ export function useNotificationArrivalWatcher({
     const unsubscribe = cache.subscribe((event) => {
       // Only react to "data updated" events. Errors / mounts / etc.
       // are not relevant here.
-      if (event.type !== 'updated') return;
+      if (event.type !== 'updated' || event.action.type !== 'success' || !isCurrent()) return;
       const queryKey = event.query.queryKey;
       // We only care about the LIST queries (drawer feed). The
       // unread-count query is a separate key — counts alone don't
@@ -169,15 +182,20 @@ export function useNotificationArrivalWatcher({
       }
       const data = event.query.state.data as NotificationListResponse | undefined;
       if (!data || !Array.isArray(data.items)) return;
-      processNotificationBatch(data.items, currentUserId, experience, qc);
+      if (!getWatermark(currentUserId, experience).baselineSet) {
+        seedBaselineFromCache(qc, currentUserId, experience, isCurrent);
+        return;
+      }
+      processNotificationBatch(data.items, currentUserId, experience, qc, isCurrent);
     });
 
     // Seed baseline from whatever's already in the cache so the first
     // post-mount poll doesn't replay the entire backlog. If unread
     // notifications exist, emit ONE aggregate toast.
-    seedBaselineFromCache(qc, currentUserId, experience);
+    seedBaselineFromCache(qc, currentUserId, experience, isCurrent);
 
     return () => {
+      active = false;
       unsubscribe();
     };
   }, [enabled, currentUserId, experience, qc]);
@@ -194,6 +212,7 @@ function seedBaselineFromCache(
   qc: ReturnType<typeof useQueryClient>,
   userId: string,
   experience: NotificationExperience,
+  isCurrent: () => boolean,
 ): void {
   const wm = getWatermark(userId, experience);
   if (wm.baselineSet) return; // already seeded — happens on a quick re-mount
@@ -214,6 +233,9 @@ function seedBaselineFromCache(
   let totalUnread = 0;
   let newUnreadSinceBaseline = 0;
   let newestCreatedAt: string | null = null;
+  let hasLoadedList = false;
+  const baselineIds = new Set<string>();
+  const unreadIds: string[] = [];
 
   for (const query of lists) {
     const queryKey = query.queryKey;
@@ -227,8 +249,11 @@ function seedBaselineFromCache(
     }
     const data = query.state.data as NotificationListResponse | undefined;
     if (!data?.items) continue;
+    hasLoadedList = true;
     for (const n of data.items) {
-      wm.seenIds.add(n.id);
+      if (baselineIds.has(n.id)) continue;
+      baselineIds.add(n.id);
+      remember(wm, n.id);
       if (!wm.lastSeenCreatedAt || n.createdAt > wm.lastSeenCreatedAt) {
         wm.lastSeenCreatedAt = n.createdAt;
       }
@@ -240,10 +265,14 @@ function seedBaselineFromCache(
         // "New" = unread AND created after the last visit's cursor.
         if (prevCursor === null || n.createdAt > prevCursor) {
           newUnreadSinceBaseline += 1;
+          unreadIds.push(`immutable:notification:${n.id}`);
         }
       }
     }
   }
+  // Mounting before the first REST result is not an empty authoritative
+  // snapshot. Otherwise a delayed initial response replays the backlog.
+  if (!hasLoadedList) return;
   wm.baselineSet = true;
 
   // Advance the persisted cursor to the newest row we've now seen so
@@ -262,6 +291,9 @@ function seedBaselineFromCache(
       emitAggregateNotificationToast({
         experience,
         count: null,
+        userId,
+        dedupeKeys: unreadIds,
+        isCurrent,
         drawerDeepLink: experience === 'provider' ? '/provider/notifications' : '/home/profile',
       });
     }
@@ -274,6 +306,9 @@ function seedBaselineFromCache(
     emitAggregateNotificationToast({
       experience,
       count: newUnreadSinceBaseline,
+      userId,
+      dedupeKeys: unreadIds,
+      isCurrent,
       drawerDeepLink: experience === 'provider' ? '/provider/notifications' : '/home/profile',
     });
   }
@@ -288,6 +323,7 @@ function processNotificationBatch(
   userId: string,
   experience: NotificationExperience,
   qc: ReturnType<typeof useQueryClient>,
+  isCurrent: () => boolean,
 ): void {
   const wm = getWatermark(userId, experience);
   // Walk oldest-first so a multi-item batch processes in the same
@@ -300,15 +336,18 @@ function processNotificationBatch(
   const fresh: NotificationSummary[] = [];
   for (const n of ordered) {
     if (wm.seenIds.has(n.id)) continue;
-    if (wm.lastSeenCreatedAt && n.createdAt <= wm.lastSeenCreatedAt) {
+    if (
+      wm.lastSeenCreatedAt &&
+      Date.parse(wm.lastSeenCreatedAt) - Date.parse(n.createdAt) > PRESENTATION_WINDOW_MS
+    ) {
       // Older than the watermark AND not in seenIds (e.g. a backfill
       // / pagination loaded a historical row). Record it so we don't
       // re-process if the cache re-emits, but do not fire UX.
-      wm.seenIds.add(n.id);
+      remember(wm, n.id);
       continue;
     }
     fresh.push(n);
-    wm.seenIds.add(n.id);
+    remember(wm, n.id);
     if (!nextWatermark || n.createdAt > nextWatermark) {
       nextWatermark = n.createdAt;
     }
@@ -343,19 +382,24 @@ function processNotificationBatch(
   // the very first event after mount is branded correctly.
   setRealtimeExperience(experience);
 
-  if (fresh.length > AGGREGATE_BATCH_THRESHOLD) {
+  const unread = fresh.filter((notification) => notification.readAt === null);
+
+  if (unread.length > AGGREGATE_BATCH_THRESHOLD) {
     // Large batch → one aggregate toast + one UX trigger. Domain
     // invalidations already fired above so the user sees fresh data
     // the moment they tap through.
     emitAggregateNotificationToast({
       experience,
-      count: fresh.length,
+      count: unread.length,
+      userId,
+      dedupeKeys: unread.map((notification) => `immutable:notification:${notification.id}`),
+      isCurrent,
       drawerDeepLink: experience === 'provider' ? '/provider/notifications' : '/home/profile',
     });
   } else {
     // Small batch (1–3) → fire per-event toasts so the user sees the
     // specific copy ("Booking started", "Bid accepted", …).
-    for (const n of fresh) {
+    for (const n of unread) {
       const event: RealtimeEvent = {
         v: 1,
         type: 'notification.created',
@@ -364,7 +408,11 @@ function processNotificationBatch(
         occurredAt: n.createdAt,
         payload: n,
       };
-      dispatchRealtimeSideEffects(event, { currentUserId: userId });
+      dispatchRealtimeSideEffects(event, {
+        currentUserId: userId,
+        coordinateTabs: true,
+        isCurrent,
+      });
     }
   }
 

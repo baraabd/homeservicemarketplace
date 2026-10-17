@@ -1,0 +1,50 @@
+# Prepared disposable R25 infrastructure only. No fixed container/volume names.
+# Credentials must be newly generated for this test; never pass a working .env.
+name: hsm-r25-${R25_SESSION:?set a unique lowercase R25 session}
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: r25_test
+      POSTGRES_DB: hsm_r25_${R25_SESSION:?set a unique R25 session}
+      POSTGRES_PASSWORD: ${R25_DATABASE_PASSWORD:?generate a disposable password}
+    ports:
+      - '127.0.0.1:${R25_POSTGRES_PORT:-54325}:5432'
+    tmpfs:
+      - /var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U r25_test -d "$${POSTGRES_DB}"']
+      interval: 2s
+      timeout: 2s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    environment:
+      R25_REDIS_PASSWORD: ${R25_REDIS_PASSWORD:?generate a disposable password}
+    command:
+      - /bin/sh
+      - -ec
+      - exec redis-server --save '' --appendonly no --maxmemory 128mb --maxmemory-policy noeviction --requirepass "$${R25_REDIS_PASSWORD}"
+    ports:
+      - '127.0.0.1:${R25_REDIS_PORT:-56325}:6379'
+    tmpfs:
+      - /data
+    healthcheck:
+      test: ['CMD-SHELL', 'REDISCLI_AUTH="$${R25_REDIS_PASSWORD}" redis-cli ping']
+      interval: 2s
+      timeout: 2s
+      retries: 20
+
+  mailpit:
+    image: axllent/mailpit:v1.31.6
+    environment:
+      MP_SMTP_DISABLE_RDNS: 'true'
+      MP_DISABLE_VERSION_CHECK: 'true'
+      MP_MAX_MESSAGES: '500'
+    ports:
+      - '127.0.0.1:${R25_SMTP_PORT:-51025}:1025'
+      - '127.0.0.1:${R25_MAILPIT_PORT:-58025}:8025'
+    tmpfs:
+      - /data
