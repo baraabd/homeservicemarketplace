@@ -698,7 +698,7 @@
       "lane": 1,
       "branch": "feat/r24-money-api-integration",
       "owner": {
-        "lane": "R24 lane author (repository owner assigns session)",
+        "lane": "R24 owner-delegated session (root); exact delegation in r24/OWNERSHIP.md",
         "coordinator": "G1 delegated coordinator for baraabd"
       },
       "status": "READY_TO_START",
@@ -722,10 +722,51 @@
           "docs/production-readiness/r24/IMPLEMENTATION.md",
           "docs/production-readiness/r24/RISKS.md",
           "docs/production-readiness/r24/ROLLBACK.md",
-          "docs/production-readiness/r24/shared-change-requests/CR-001-integration.md"
+          "docs/production-readiness/r24/shared-change-requests/CR-001-integration.md",
+          "apps/api/src/modules/money/application/money-query.service.ts",
+          "apps/api/src/modules/money/application/money-query.service.spec.ts",
+          "apps/api/test/support/r24-money-http.fixture.ts",
+          "docs/production-readiness/r24/OWNERSHIP.md",
+          "docs/production-readiness/r24/fixtures/api-v1.json",
+          "docs/production-readiness/r24/SOURCE_MANIFEST.json"
         ],
         "prefixes": [],
-        "leases": []
+        "leases": [
+          {
+            "paths": [
+              "packages/database/prisma/schema.prisma",
+              "packages/database/prisma/migrations/20261017163000_r24_money_api_orchestration/migration.sql",
+              "packages/database/src/seed.ts",
+              "packages/contracts/src/money/api-contracts.ts",
+              "packages/contracts/src/money/index.ts",
+              "apps/api/src/app.module.ts",
+              "apps/api/src/modules/iam/audit/audit.service.ts",
+              "apps/api/src/modules/iam/audit/audit.service.spec.ts",
+              "apps/api/test/integration/r19-subscription-money.integration.spec.ts",
+              "apps/api/src/app.module.spec.ts",
+              ".github/scripts/merge-integrity.test.mjs",
+              "docs/production-readiness/baseline/MODEL_MIGRATION_INDEX.json"
+            ],
+            "kind": "SERIALIZED_R24_COORDINATOR_INTEGRATION",
+            "grantedBy": "baraabd's delegated coordinator; continuing owner authority and the R24 implementation request; exact assignment recorded before runtime edits on 2026-10-17",
+            "scope": "One additive R24 migration and five orchestration tables; six registered money capability definitions with zero automatic grants; published money API contracts; one AppModule-to-MoneyModule-to-existing-LedgerModule composition; bounded money audit identifiers; stronger topology, permission and migration-inventory regression assertions. No money backfill, account grants, live rails, environment, dependencies or workflow edits. Exact minimal patches and preserved invariants are recorded in r24/shared-change-requests/CR-001-integration.md.",
+            "expires": "The earliest of R24 PR closure, the G2 decision, or coordinator revocation",
+            "handoff": "Root is the single writer for these shared paths. Preserve accepted R19/R22/R23 authorities and prior support/ledger checks; integrate only owner-merged develop into the R24 branch by normal merge, preserve frozen G1 identity and peer records, then publish exact source evidence and release the lease before reassignment."
+          }
+        ]
+      },
+      "execution": {
+        "state": "IN_PROGRESS",
+        "startedAtUtc": "2026-10-17T15:55:11Z",
+        "worktree": "/workspace/scratch/3c602a5e36ee/homeservicemarketplace-r24",
+        "startHeadSha": "07c8e584c684111bfc80995c7efb0144cfb6161b",
+        "coordinationBaseSha": "07c8e584c684111bfc80995c7efb0144cfb6161b",
+        "frozenRuntimeSourceSha": "40cdac5c9ce6acaa8dedc0385984a807ae9a84d0",
+        "observedDevelopSha": "21089a5065169b78bea5e711a4839e1a467531dc",
+        "ownershipRecord": "docs/production-readiness/r24/OWNERSHIP.md",
+        "changeRequest": "docs/production-readiness/r24/shared-change-requests/CR-001-integration.md",
+        "integrationPolicy": "After the ownership commit, a normal merge of already owner-merged develop into this R24 branch is planned; preserve the frozen G1 base and all incoming peer records. No unmerged R25 import, rebase, force-push, merge to develop or deployment is authorized.",
+        "acceptance": "NOT_ASSERTED"
       },
       "requiredEvidence": [
         "docs/production-readiness/r24/IMPLEMENTATION.md",
@@ -736,7 +777,7 @@
         "Exact final-head CI and CodeQL; real-service evidence; limitations and rollback"
       ],
       "pr": null,
-      "scopeNote": "G1 publication identity verified; exact lane ownership released to the owner-assigned session. READY_TO_START is not implementation or acceptance. Complete requirements remain in gates/g1/prompts/R19-R28.md; preserve frozen source and all policy/external holds.",
+      "scopeNote": "G1 publication identity verified; R24 exact ownership and the serialized shared integration lease are recorded before runtime work in r24/OWNERSHIP.md and CR-001-integration.md. READY_TO_START preserves the accepted start barrier; execution.IN_PROGRESS is not implementation or acceptance. The G1 frozen runtime remains unchanged while a normal merge of already owner-merged develop into the R24 branch is planned. Complete requirements remain in gates/g1/prompts/R19-R28.md; preserve all policy/external holds.",
       "startBarrier": {
         "gate": "G1",
         "decision": "ACCEPTED",
