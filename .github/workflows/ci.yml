@@ -462,6 +462,8 @@ jobs:
         env:
           NODE_ENV: development
           PORT: '4010'
+          # Match signed local-storage URLs to the exact origin in the SPA CSP.
+          PUBLIC_API_URL: http://127.0.0.1:4010
       - name: Serve the built SPA
         # Started here rather than by playwright's webServer, which the config
         # omits entirely for a real-API run. `--host 127.0.0.1` is load-bearing:

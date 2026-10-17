@@ -182,6 +182,14 @@ test.beforeAll(async () => {
   };
   await cp(webRoot, web, { recursive: true, filter });
   await cp(path.join(repoRoot, 'packages/contracts'), contracts, { recursive: true, filter });
+  // The copied Vite source imports the shared build policy. Carry its exact
+  // dependency into this isolated workspace, as with contracts above.
+  const cspDirectory = path.join('scripts', 'production', 'security-app');
+  await mkdir(path.join(scratch, cspDirectory), { recursive: true });
+  await copyFile(
+    path.join(repoRoot, cspDirectory, 'web-csp.cjs'),
+    path.join(scratch, cspDirectory, 'web-csp.cjs'),
+  );
   for (const file of ['package.json', 'pnpm-workspace.yaml', 'tsconfig.base.json']) {
     await copyFile(path.join(repoRoot, file), path.join(scratch, file));
   }

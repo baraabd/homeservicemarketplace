@@ -50,3 +50,7 @@ G1 covers Wave 1 engineering/disposable-service acceptance. R18 NO-GO, hosted
 resource inputs, repository security-policy acceptance, commercial decisions,
 live funds and payouts remain independent holds. A reviewed revocation must
 reconcile gate, wave manifest and registry, preserving publication history.
+
+## R26 active review
+
+Draft PR #174 retains its recorded exact-file extensions and shared-file lease. R26 integrated the owner-merged #172 records at `07c8e584c684111bfc80995c7efb0144cfb6161b` without importing unmerged peer code. All other lane readiness and handoffs above remain authoritative.

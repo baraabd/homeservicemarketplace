@@ -2,6 +2,7 @@ import { defineConfig, loadEnv } from 'vite';
 import path from 'path';
 import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
+import { buildWebCsp, injectWebCsp } from '../../scripts/production/security-app/web-csp.cjs';
 
 // `VITE_API_URL` is baked into the client bundle at build time. If it is
 // missing during a production build, Vite silently replaces
@@ -23,11 +24,12 @@ export default defineConfig(({ mode, command }) => {
   }
   if (command === 'build' && apiUrl && !/^https?:\/\//i.test(apiUrl)) {
     throw new Error(
-      `VITE_API_URL must be an absolute http(s) URL (got: "${apiUrl}"). ` +
+      'VITE_API_URL must be an absolute http(s) URL. ' +
         'A relative or scheme-less value bakes into the bundle as-is and ' +
         'produces unresolvable XHRs at runtime.',
     );
   }
+  const documentPolicy = command === 'build' ? buildWebCsp(env) : null;
 
   return {
     plugins: [
@@ -35,6 +37,17 @@ export default defineConfig(({ mode, command }) => {
       // Tailwind is not being actively used – do not remove them
       react(),
       tailwindcss(),
+      ...(documentPolicy
+        ? [
+            {
+              name: 'r26-enforced-document-csp',
+              transformIndexHtml: {
+                order: 'post' as const,
+                handler: (html: string) => injectWebCsp(html, documentPolicy),
+              },
+            },
+          ]
+        : []),
     ],
     resolve: {
       alias: {
