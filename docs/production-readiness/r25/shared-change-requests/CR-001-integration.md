@@ -1,6 +1,16 @@
 # CR-001 — Serialize R25 shared-test and CI integration
 
-Status: **INTEGRATION_PENDING**. Requester: R25. Implementer/approver: Wave 2 coordinator. No shared-path lease is asserted or consumed by this lane.
+Status: **APPLIED — FINAL_CI_PENDING**. Requester: R25. The repository owner requested correction of R25 PR #175 on 2026-10-17; this follow-up applies the five shared-file integration changes under that task. The original lane proposal and its historical observations are retained below.
+
+## PR #175 integration follow-up — 2026-10-17
+
+All five named shared files are now updated. R12 retains every participant/standing assertion while its socket and transport doubles satisfy the original-credential contract. R17 uses an independent real account, booking and browser context per Arabic viewport, and its cookie client sends the existing allowed Origin. The dispute fixture deletes only its own Notification aggregate outbox rows before the associated notifications.
+
+R25 is excluded from ordinary and general real-API browser discovery and runs through the dedicated **R25 real replicas and recovery** job. Both `r18-acceptance` and `ci-gate` require that job. CI checks out the literal PR head with full history, creates fresh loopback service credentials, waits for an authenticated TCP database query and Mailpit readiness, invokes the existing fail-closed verifier, uploads only the current session's fixed-schema summary, and tears down only that session's stack.
+
+Executed local checks before publication: pinned Node 24.21.0/pnpm 10.32.1 frozen offline install with normal lifecycle; Prisma generation and all 70 existing migrations; database build/seed and API/E2E types; affected formatting/lint; R12 **40/40**, ordered R17 dispute **7/7** then R22 **21/21** on the same database without resetting its queue; verifier policy **29/29** and governance **158/158**. Actual Playwright discovery registers **1185** ordinary tests and **1467** general real-API tests with no R25 selection; explicit isolated desktop discovery selects exactly **one** R25 scenario. No assertions, retries or runtime authorization rules were relaxed.
+
+The full API suite, clean-commit replica acceptance and final remote CI are tracked separately in the PR body on their actual source identities. Results from the prior published head are historical evidence. This source update does not certify a passing check before it runs, grant G2/hosted acceptance, merge the PR or enable deployed realtime flags.
 
 ## Reason and exact paths
 
@@ -337,4 +347,4 @@ pnpm --filter @homeservicemarketplace/api exec jest test/integration/r22-outbox-
 - Review the declared load and auth failure evidence, synthetic EN/AR/RTL screenshots and keyboard/viewport assertions.
 - Require final combined-candidate CI, CodeQL, dependency and exact-tree/history secret scans. The coordinator alone updates central wave/registry acceptance after those checks; source-only success is not G2 acceptance.
 
-The lane's Draft PR must not be called merge-ready while these shared changes or their final evidence are outstanding. This request is concrete review material, not authorization to apply shared changes automatically.
+The lane's Draft PR must not be called merge-ready while these shared changes or their final evidence are outstanding. The original request was review material; the later owner request identified in the follow-up above authorizes this scoped correction.

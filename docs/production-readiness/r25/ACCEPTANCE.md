@@ -1,5 +1,13 @@
 # R25 acceptance record
 
+## Integration correction for PR #175 — 2026-10-17
+
+The owner-requested follow-up has applied the five CR-001 shared-test/CI changes. The dedicated **R25 real replicas and recovery** job is now required by both aggregate gates, with exact-head checkout, disposable services, authenticated TCP readiness, positive test counts and fixed-schema evidence. The changed shared fixtures preserve the original domain, credential and browser assertions. See [CR-001](shared-change-requests/CR-001-integration.md) for the applied scope and observed local checks.
+
+**Final combined-source verification is pending in this source record.** The PR body records the actual final commit, exact-source runner result and final GitHub checks after they execute. Earlier source identities and failed aggregate results below remain historical evidence and are not relabeled as results for this correction. Hosted operation and production activation remain separate acceptance steps.
+
+## Prior lane acceptance record
+
 ## Current classification
 
 The R25 implementation and its isolated real-service acceptance have executed successfully. Attempt `20261017083556600-f1ac8be4` is **SANDBOX_ACCEPTED** on the clean source identified below. The broad API run remains failed, and shared integration, final-PR CI/CodeQL, hosted operation and release acceptance are separate gates. The PR remains Draft while CR-001 or required remote evidence is outstanding.
