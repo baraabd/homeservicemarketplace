@@ -12,23 +12,43 @@ import { resolve } from 'node:path';
 
 export const REPO_ROOT = resolve(import.meta.dirname, '../../../..');
 
-function git(args) {
-  return execFileSync('git', args, { cwd: REPO_ROOT, encoding: 'utf8' }).trim();
+function git(args, { raw = false } = {}) {
+  const output = execFileSync('git', args, { cwd: REPO_ROOT, encoding: 'utf8' });
+  return raw ? output : output.trim();
 }
 
 export function sha256File(path) {
   return createHash('sha256').update(readFileSync(path)).digest('hex');
 }
 
+/** Preserve exact filenames and both rename paths from porcelain v1 -z. */
+export function dirtyPathsFromPorcelain(status) {
+  const records = status.split('\0');
+  const paths = [];
+  for (let index = 0; index < records.length; index++) {
+    const record = records[index];
+    if (!record) continue;
+    if (record.length < 4 || record[2] !== ' ')
+      throw new Error('invalid git porcelain status record');
+    paths.push(record.slice(3));
+    if (/[RC]/.test(record.slice(0, 2))) {
+      const source = records[++index];
+      if (!source) throw new Error('missing git rename/copy source path');
+      paths.push(source);
+    }
+  }
+  return [...new Set(paths)];
+}
+
 /** Source identity: commit, tree, dirty paths (names only) and lockfile hash. */
 export function sourceProvenance() {
-  const status = git(['status', '--porcelain']);
+  const status = git(['status', '--porcelain=v1', '-z'], { raw: true });
   return {
     commit: git(['rev-parse', 'HEAD']),
     tree: git(['rev-parse', 'HEAD^{tree}']),
     branch: git(['rev-parse', '--abbrev-ref', 'HEAD']),
     measurementHarnessCommit: process.env.R27_HARNESS_SHA ?? null,
-    dirtyPaths: status ? status.split('\n').map((line) => line.slice(3)) : [],
+    dirtyPaths: dirtyPathsFromPorcelain(status),
     lockfileSha256: sha256File(resolve(REPO_ROOT, 'pnpm-lock.yaml')),
   };
 }

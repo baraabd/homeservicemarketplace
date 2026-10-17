@@ -1,3 +1,26 @@
+# R27 continuation rollback — 2026-10-17
+
+The continuation changes only the dedicated browser/performance harness and
+its evidence. Revert its repair commit through a reviewed PR if needed; this
+restores the former test behavior and may restore the Arabic/throttle failure.
+Do not reset the assigned branch or undo another lane's work.
+
+The existing R27 runtime repairs can be reverted separately using the earlier
+procedure below: restore eager chart/map boundaries, prior optional-Mongo
+loading and list-query implementations through their owners. Expect the
+measured extra bundle/query work to return; retain authorization, schemas,
+financial history and source evidence. There is no migration to roll back.
+
+The new fixture helper contains no deployed runtime path or persistent schema
+change. It affects only verified disposable runner counters before project
+setup. No production Redis/session rollback or database restoration is needed.
+Never flush a shared Redis instance or reset the user's database to reproduce
+these tests. Preserve G1's accepted source and independent R16/R18 holds.
+
+---
+
+## Historical records retained for audit
+
 > **Current G1 continuation:** R27 resumed from frozen source
 > `40cdac5c9ce6acaa8dedc0385984a807ae9a84d0` after verified owner merge of #171.
 > See `ALLOWLIST.md` and `G1_HANDOFF.json`. The earlier report below is historical

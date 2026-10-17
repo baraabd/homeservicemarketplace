@@ -1,3 +1,53 @@
+# R27 current risks — 2026-10-17
+
+This section supersedes historical pre-G1 readiness statements below. G1 is
+READY_TO_START; this R27 continuation does not certify G2 or a release.
+
+1. The diagnostic browser matrix failed on an incorrect Arabic label and
+   cumulative loopback login counters. Both root causes and orphan response
+   promises are repaired; only new real CI can establish the complete matrix.
+2. The guarded fixture cleanup is setup-only and limited to R27 throttler
+   counters. It must remain serial and must never be moved into a measured
+   flow or overload recovery. It preserves session/custom registration/cache
+   state, refuses other runners/containers/key shapes and propagates failures.
+3. **Performance is mixed.** Retained bundle bytes and query work improve;
+   readiness RSS rises 196.5 to 203.0 MiB and workload peak RSS rises up to
+   537.8 MiB. The small completed desktop-English cold-UI sample is slower
+   (seeker 344 to 386 ms; admin 334 to 339 ms), and dashboard transition
+   median rises 61 to 104 ms. Deferred loading moves work; no universal speed
+   or memory improvement is asserted. Re-evaluate the complete new matrix.
+4. Proposed budgets remain unapproved and four checks fail (47 pass): seeker
+   requests6/5, provider available13/10, provider bookings12/7, and the
+   admin financial-bookings large scan. Do not remove guard reads or raise
+   limits solely for a green report. Provider ceilings were originally measured
+   on empty pages; current populated pages use unchanged runtime code. The
+   migration lane owns index work.
+5. Authenticated responses still lack an explicit private no-store header.
+   Existing cross-user/role/ETag/revocation negatives pass, but that does not
+   substitute for CR-R27-04's security-lane policy decision and integration.
+6. Amplification contains 10836 requests, 43344 bids and 5418 bookings but
+   only15 users and12 provider profiles. Financial-booking results were empty.
+   These fixtures cannot establish production capacity, broad admin scaling,
+   completed-booking pagination under mutation, or upload/realtime capacity.
+7. Baseline and candidate use the same harness/lock/configuration and hardware
+   class on separate shared GitHub VMs. OS/database caches are warm. Browser
+   observations number three per role/cache/project; boot five. Their tail
+   percentiles remain unreported. CPU/compile event categories may overlap.
+8. Artifacts have 14-day retention; download before expiry or rerun the exact
+   harness on its immutable source. Historical diagnostic ZIP digests are in
+   ACCEPTANCE. The comparator flags incomplete or mismatched evidence.
+9. The branch does not import the merged coordinator record solely to update
+   its documents, and does not consume unmerged peers. Its frozen base and
+   existing exact-file leases remain authoritative. The coordinator must
+   transcribe the R27 extension and resolve central integration separately.
+10. Merge, production deployment, real funds, verification decisions and
+    owner-approved performance budgets remain separate actions. R16/R18
+    decisions were neither inferred nor modified.
+
+---
+
+## Historical records retained for audit
+
 > **Current G1 continuation:** R27 resumed from frozen source
 > `40cdac5c9ce6acaa8dedc0385984a807ae9a84d0` after verified owner merge of #171.
 > See `ALLOWLIST.md` and `G1_HANDOFF.json`. The earlier report below is historical

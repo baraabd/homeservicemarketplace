@@ -74,6 +74,42 @@ export function assertLaneService(service) {
 }
 
 /**
+ * Isolate browser-project setup without altering the API's real login budget.
+ * The previous project's loopback counters are fixture state, not measured
+ * traffic. Never call this within a journey or overload/recovery experiment.
+ * Sessions, registration buckets and application caches are left intact.
+ */
+export function resetBrowserThrottleBuckets() {
+  if (process.env.GITHUB_ACTIONS !== 'true' || process.env.RUNNER_ENVIRONMENT !== 'github-hosted') {
+    throw new Error('browser fixture reset requires a disposable GitHub-hosted runner');
+  }
+  assertLaneService('redis');
+  const command = ['exec', 'hsm-r27-perf-redis', 'redis-cli', '-e', '--raw'];
+  const run = (args) =>
+    execFileSync('docker', [...command, ...args], {
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+  const keys = [
+    ...new Set(run(['--scan', '--pattern', 'rl:throttler:default:*']).split('\n').filter(Boolean)),
+  ];
+  // Nest hashes the controller/handler/name/tracker identity. Validate ALL
+  // returned keys before the first deletion; a different store fails closed.
+  if (keys.some((key) => !/^rl:throttler:default:[a-f0-9]{64}(?::blocked)?$/.test(key))) {
+    throw new Error('unexpected browser throttle key shape; no fixture keys deleted');
+  }
+  let removed = 0;
+  for (let offset = 0; offset < keys.length; offset += 100) {
+    const batch = keys.slice(offset, offset + 100);
+    const count = Number(run(['DEL', ...batch]).trim());
+    if (!Number.isInteger(count) || count < 0 || count > batch.length)
+      throw new Error('invalid browser fixture reset result');
+    removed += count;
+  }
+  return removed;
+}
+
+/**
  * Two profiles. `production` passes the API's production policy unchanged
  * (secure cookies, default throttles) and is used for boot timing, which needs
  * no session. `fixture` is the CI real-API profile (development mode,

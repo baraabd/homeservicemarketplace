@@ -1,3 +1,53 @@
+# Current G1-source findings — 2026-10-17
+
+These numbers come from retained workflow38982468755, frozen baseline
+`40cdac5c9ce6acaa8dedc0385984a807ae9a84d0`, candidate/harness
+`5fe27fdbfc63437d7315d2b3820c4345e6aed27f`. ZIP IDs/digests and limitations
+are in `docs/production-readiness/r27/ACCEPTANCE.md`. Later repaired-head
+runs must carry their own identities; these figures remain diagnostic history.
+
+| Metric                              | Baseline           | Candidate          | Interpretation                                           |
+| ----------------------------------- | ------------------ | ------------------ | -------------------------------------------------------- |
+| Seeker-home gzip JS                 | 369867 B           | 311655 B           | Deferred optional map: 15.74% fewer initial bytes        |
+| Admin gzip JS                       | 505808 B           | 380860 B           | Deferred charts: 24.70% fewer initial bytes              |
+| Complete admin charts journey       | 505808 B           | 507650 B           | Optional functionality is slightly larger overall        |
+| API readiness p50, n=5              | 1282 ms            | 1157 ms            | Shared-VM observation; no tail/SLO claim                 |
+| Readiness RSS p50                   | 196.5 MiB          | 203.0 MiB          | Memory increase, not an improvement                      |
+| Admin users statements, 5/15 items  | 22 / 52            | 10 / 10            | Eliminated measured N+1 enrichment                       |
+| Seeker amplified list p50           | 37.23 ms           | 11.47 ms           | Extra bounded query removes broad Bid scan               |
+| Seeker measured DB time             | 29.48 ms           | 3.27 ms            | Broad scan est.28896 rows becomes bounded est.136        |
+| Browser cold seeker, desktop EN n=3 | 344.23 ms          | 386.27 ms          | Slower diagnostic sample; do not infer bytes imply speed |
+| Browser cold admin, desktop EN n=3  | 333.79 ms          | 338.93 ms          | Mixed result                                             |
+| Browser warm seeker/admin           | 201.44 / 164.37 ms | 167.19 / 152.10 ms | Faster diagnostic medians                                |
+| Admin keyboard dashboard transition | 60.86 ms           | 103.61 ms          | Deferred work becomes visible on transition              |
+
+Three 200-request warm-list workloads completed with zero non-200 responses:
+
+| Profile, concurrency   | Baseline p50/p95/p99 ms  | Candidate p50/p95/p99 ms |
+| ---------------------- | ------------------------ | ------------------------ |
+| Normal, 2              | 34.87 / 45.31 / 53.75    | 8.17 / 10.08 / 14.22     |
+| Burst, 16              | 234.44 / 276.25 / 292.02 | 46.36 / 63.00 / 68.26    |
+| Post-burst recovery, 4 | 57.10 / 67.56 / 77.99    | 12.76 / 17.40 / 18.98    |
+
+Peak RSS increased from483.6–489.5 to521.8–537.8 MiB across these profiles.
+These empirical fixture tails are not hosted capacity. Independent default-
+policy overload returned100 successful plus50 rate-limited responses from150,
+then recovered naturally after about60.3 seconds on both sources.
+
+The request/bid/booking dataset is10836/43344/5418 rows. User/provider tables
+are15/12 rows. Query bounds and13 cache/authority negatives pass; the existing
+admin completed-booking scan remains. The proposed checker reports47 PASS,
+4 FAIL. See the current acceptance matrix; no proposal was silently approved.
+
+The diagnostic AR/mobile browser projects were incomplete. The new harness
+repairs their label, fixture counters and error handling. Use the comparison
+CLI for subsequent complete artifacts instead of quoting these diagnostic
+numbers as final repaired-head results.
+
+---
+
+## Historical records retained for audit
+
 # R27 findings — measured on 059c018 (2026-10-14)
 
 Source: `059c018576a75837d4dfb262ee49168d9217d881` (G0 base, approved for a

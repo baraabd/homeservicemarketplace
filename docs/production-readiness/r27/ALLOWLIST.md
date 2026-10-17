@@ -1,3 +1,25 @@
+# R27 continuation — 2026-10-17
+
+The owner requested execution of the R27 prompt. This task continues existing
+PR #173 from `5fe27fdbfc63437d7315d2b3820c4345e6aed27f` in a new isolated
+checkout on the assigned branch. Merged coordinator PR #172 at
+`07c8e584c684111bfc80995c7efb0144cfb6161b` records G1 as READY_TO_START.
+The frozen runtime base remains `40cdac5c9ce6acaa8dedc0385984a807ae9a84d0`.
+
+Before implementation, every repair/evidence path was checked against the
+existing exact-file authority and recorded in `G1_HANDOFF.json.continuation`.
+The browser subagent alone writes `apps/web/r27-tests/performance.real-api.spec.ts`;
+root alone writes the other listed files. No new shared runtime or CI lease
+is required for this repair. The earlier ownership record below is historical
+where it refers to the previous session/worktree or pending publication.
+
+The current failure is in the measurement harness: an incorrect Arabic
+accessible-name assertion, shared fixture login-throttle counters, and
+unobserved response promises. Fixture isolation changes happen before setup
+and outside page timing; real default-policy overload/recovery stays intact.
+
+---
+
 > **Single-writer reconciliation:** After the initial empty open-PR inventory,
 > coordinator PR #172 appeared at 2026-10-16T23:18:01Z, owning the G1 metadata.
 > R27 withdraws its eight metadata diffs completely; those exact files remain

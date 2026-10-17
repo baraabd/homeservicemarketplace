@@ -39,11 +39,13 @@ async function login(browser: Browser, account: Account): Promise<State> {
     await context.addInitScript(() => localStorage.setItem('hsm.lang', 'en'));
     const page = await context.newPage();
     await page.goto(WEB + '/login');
-    const verified = page.waitForResponse(
-      (r) => r.url() === REAL_API + '/v1/auth/verify-otp' && r.request().method() === 'POST',
-    );
-    await loginViaUi(page, account);
-    expect((await verified).status()).toBe(200);
+    const [verified] = await Promise.all([
+      page.waitForResponse(
+        (r) => r.url() === REAL_API + '/v1/auth/verify-otp' && r.request().method() === 'POST',
+      ),
+      loginViaUi(page, account),
+    ]);
+    expect(verified.status()).toBe(200);
     await expect(page).not.toHaveURL(/\/login/);
     // Retained in memory only; never upload cookies or storage state.
     return await context.storageState();
@@ -74,6 +76,18 @@ async function keyboard(page: Page, name: string) {
 
 test.beforeAll(async ({ browser }) => {
   isolatedTarget();
+  // Each project and replacement worker gets an isolated fixture budget.
+  // The helper verifies the disposable Redis identity and resets only its
+  // throttle counters, before registrations and outside measured intervals.
+  execFileSync(
+    process.execPath,
+    [
+      '--input-type=module',
+      '-e',
+      "import { resetBrowserThrottleBuckets } from './scripts/perf/post-r18/lib/lane-env.mjs'; resetBrowserThrottleBuckets();",
+    ],
+    { cwd: resolve('../..'), stdio: 'pipe' },
+  );
   seeker = await registerSeeker('r27-browser');
   admin = await registerSeeker('r27-browser-admin');
   // Disposable fixture only, matching the existing real-startup suite. This
@@ -121,12 +135,14 @@ test('cold/warm useful UI, compile events and authenticated keyboard transitions
           await cdp.send('Tracing.start', { categories: 'v8,devtools.timeline' });
           const path = role === 'admin' ? '/admin/users' : '/home';
           const expectedApi = role === 'admin' ? '/v1/admin/users' : '/v1/services';
-          const data = page.waitForResponse(
-            (r) => new URL(r.url()).pathname === expectedApi && r.request().method() === 'GET',
-          );
           const start = performance.now();
-          await page.goto(WEB + path);
-          expect((await data).status()).toBe(200);
+          const [data] = await Promise.all([
+            page.waitForResponse(
+              (r) => new URL(r.url()).pathname === expectedApi && r.request().method() === 'GET',
+            ),
+            page.goto(WEB + path),
+          ]);
+          expect(data.status()).toBe(200);
           const ready =
             role === 'admin'
               ? page.getByTestId('badge-account-status').first()
@@ -185,7 +201,7 @@ test('cold/warm useful UI, compile events and authenticated keyboard transitions
               ? 'لوحة التحكم'
               : 'Dashboard'
             : lang === 'ar'
-              ? 'حسابي'
+              ? 'ملفي'
               : 'Profile',
         );
         await expect(
@@ -221,6 +237,12 @@ test('cold/warm useful UI, compile events and authenticated keyboard transitions
           logicalCpus: os.cpus().length,
           memoryGiB: os.totalmem() / 2 ** 30,
         },
+        fixtureThrottleIsolation: {
+          phase: 'Before project setup and registrations, outside measured intervals',
+          redis: 'Identity-verified disposable R27 lane on a GitHub-hosted runner',
+          keyPattern: 'rl:throttler:default:*',
+          policy: 'Application login limits unchanged; sessions and application caches retained',
+        },
         limits:
           'Three observations per role/cache/project: no p95/p99. Real UI login/OTP before measurement; dependency installation/build excluded. Cold means fresh browser HTTP cache; OS/server/DB caches are warm. CDP tracing adds overhead. Compile event categories may overlap; do not sum them. Shared CI VM, no network shaping, no hosted capacity claim.',
         results,
@@ -246,11 +268,13 @@ test('same browser logout/account switch cannot reuse the prior admin authorizat
     if ((info.project.use.viewport?.width ?? 1440) < 1024) await keyboard(page, 'Open navigation');
     await keyboard(page, 'Sign out');
     await expect(page).toHaveURL(/\/login/);
-    const confirmed = page.waitForResponse(
-      (r) => r.url() === REAL_API + '/v1/auth/verify-otp' && r.request().method() === 'POST',
-    );
-    await loginViaUi(page, seeker);
-    expect((await confirmed).status()).toBe(200);
+    const [confirmed] = await Promise.all([
+      page.waitForResponse(
+        (r) => r.url() === REAL_API + '/v1/auth/verify-otp' && r.request().method() === 'POST',
+      ),
+      loginViaUi(page, seeker),
+    ]);
+    expect(confirmed.status()).toBe(200);
     await expect(page).not.toHaveURL(/\/login/);
     const status = await page.evaluate(
       async (origin) =>
@@ -330,13 +354,15 @@ if (process.env.R27_CANDIDATE === 'true' && MODE === 'production') {
       expect(blocked).toBeGreaterThan(0);
       const label = lang === 'ar' ? 'اسم العنوان (مثل: منزل)' : 'Label (e.g. Home)';
       await page.getByPlaceholder(label).fill('R27 map fallback');
-      const saved = page.waitForResponse(
-        (r) =>
-          r.url() === REAL_API + '/v1/me/addresses/' + seeker.addressId &&
-          r.request().method() === 'PATCH',
-      );
-      await keyboard(page, lang === 'ar' ? 'حفظ العنوان' : 'Save Address');
-      expect((await saved).status()).toBe(200);
+      const [saved] = await Promise.all([
+        page.waitForResponse(
+          (r) =>
+            r.url() === REAL_API + '/v1/me/addresses/' + seeker.addressId &&
+            r.request().method() === 'PATCH',
+        ),
+        keyboard(page, lang === 'ar' ? 'حفظ العنوان' : 'Save Address'),
+      ]);
+      expect(saved.status()).toBe(200);
       const actual = await api<{
         items: { id: string; label: string; lat: number; lng: number }[];
       }>(seeker.jar, '/v1/me/addresses');

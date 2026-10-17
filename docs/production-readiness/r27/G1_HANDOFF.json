@@ -142,5 +142,59 @@
       "alternateWeb": 5427,
       "note": "5328 belongs to R28 and is not used by R27."
     }
+  },
+  "continuation": {
+    "date": "2026-10-17",
+    "mode": "A — integration and bug fix",
+    "requestedBy": "baraabd; execute attached R27 sprint prompt",
+    "observedHead": "5fe27fdbfc63437d7315d2b3820c4345e6aed27f",
+    "observedTree": "9c1663bc42de4d5387091df7bedaeff307748e84",
+    "currentDevelop": "07c8e584c684111bfc80995c7efb0144cfb6161b",
+    "currentDevelopTree": "2a7146657a0c89874329768c7e3141fbe07dd0c7",
+    "publicationReconciliationPr": 172,
+    "publicationReconciliationMerged": true,
+    "startGate": "READY_TO_START",
+    "worktree": "/workspace/scratch/cd488937885e/hsm-r27",
+    "branch": "feat/r27-performance-capacity",
+    "ownership": "Continuation within the existing R27 exact-file handoff, recorded before repair writes. No lease reassignment or central record changes.",
+    "exactRepairAndEvidencePaths": [
+      "apps/web/r27-tests/performance.real-api.spec.ts",
+      "scripts/perf/post-r18/lib/lane-env.mjs",
+      "scripts/perf/post-r18/lib/runtime.test.mjs",
+      "scripts/perf/post-r18/lib/provenance.mjs",
+      "scripts/perf/post-r18/lib/lib.test.mjs",
+      "scripts/perf/post-r18/compare-reports.mjs",
+      "docs/performance/post-r18/FINDINGS.md",
+      "docs/performance/post-r18/README.md",
+      "docs/production-readiness/r27/G1_HANDOFF.json",
+      "docs/production-readiness/r27/ALLOWLIST.md",
+      "docs/production-readiness/r27/IMPLEMENTATION.md",
+      "docs/production-readiness/r27/ACCEPTANCE.md",
+      "docs/production-readiness/r27/RISKS.md",
+      "docs/production-readiness/r27/ROLLBACK.md"
+    ],
+    "writers": {
+      "browserHarness": "r27_code_review subagent, performance.real-api.spec.ts only",
+      "allOtherListedPaths": "root coordinator of this R27 continuation",
+      "comparisonHarness": "r27_code_review subagent, compare-reports.mjs and lib/lib.test.mjs only, after initial root provenance test edits"
+    },
+    "diagnosticRun": 38982468755,
+    "diagnosticArtifactIds": {
+      "baseline": 12081239887,
+      "candidate": 12081407762
+    },
+    "requiredRepairs": [
+      "Use the existing Arabic profile label while preserving exact accessible-name and keyboard assertions.",
+      "Reset only the verified disposable browser fixture throttle buckets before project setup, never during measurements or production-policy overload recovery.",
+      "Observe both response and action promises immediately so failed actions do not orphan response waiters.",
+      "Preserve leading status columns in git porcelain provenance.",
+      "Reconcile retained baseline/after reports with their real source and harness identities."
+    ],
+    "constraints": [
+      "No merge, rebase, force push, deployment or peer import.",
+      "Production login/default security limits stay unchanged.",
+      "Performance budgets remain proposals until owner approval.",
+      "Current final-head CI and real-browser evidence remain required."
+    ]
   }
 }

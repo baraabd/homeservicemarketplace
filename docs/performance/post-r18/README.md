@@ -1,3 +1,42 @@
+# R27 reproducible comparison — current continuation
+
+The measurement workflow executes the same harness against the immutable G1
+runtime source and the candidate source on separate disposable GitHub VMs.
+Read `docs/production-readiness/r27/ACCEPTANCE.md` for current status, exact
+identities, retained artifact digests, failed proposals and ownership.
+
+Download and extract the baseline/candidate artifacts from the same workflow
+run, then compare them with the pinned Node version:
+
+```bash
+node scripts/perf/post-r18/compare-reports.mjs \
+  --baseline /path/to/baseline-artifact \
+  --candidate /path/to/candidate-artifact \
+  --out-json /path/to/comparison.json
+```
+
+The tool rejects mixed source/tree identities within either directory,
+mismatched harness/lock/configuration/datasets, duplicate report cells, and
+unsupported schemas. It summarizes observed bundle, boot/RSS, query, page-size,
+workload and browser metrics. Missing browser projects/modes/repetitions remain
+pending, including when some screenshots exist. Build duration is never used
+as a page runtime metric, and n<20/n<100 cannot produce p95/p99 respectively.
+
+`check-budgets.mjs` separately evaluates unchanged **proposed** budgets.
+A nonzero result must remain a recorded finding until its owner resolves or
+explicitly approves the current-source contract. A comparator successfully
+writing JSON does not mean the sprint or release is accepted.
+
+Browser setup now clears only the verified disposable runner's hashed
+`rl:throttler:default:*` counters before each serial project; ordinary sessions,
+registration budgets and other caches remain. The real login limit stays
+10/minute, and no reset occurs during measured or overload/recovery flows.
+The existing production-policy overload harness still observes natural expiry.
+
+---
+
+## Historical records retained for audit
+
 # Post-R18 performance harness (R27)
 
 Measured evidence for startup, bundle and database performance. Every report
