@@ -72,3 +72,10 @@ d316a2f46270024b301c78bfa86d15e94e2350c9:.github/workflows/r13-validation.yml:ge
 # in docs/security/gitleaks-historical-baseline.md, section 12.
 9c5b3f36e2bd37558a2d0c7ef5873f5e6484ce0e:docs/production-readiness/post-r18/gates/g1/REQUIREMENTS.md:generic-api-key:12
 9c5b3f36e2bd37558a2d0c7ef5873f5e6484ce0e:docs/production-readiness/post-r18/gates/g1/prompts/R19-R28.md:generic-api-key:78
+
+# G2 — three authored compile-time idempotency identifiers, individually
+# reviewed in docs/security/gitleaks-historical-baseline.md, section 13.
+# Only these historical occurrences; the fixture now uses randomUUID().
+736208b70c211c5c1fe931f0a2f0f37c4d55d529:apps/api/test/support/g2-money-ports-consumer.fixture.ts:generic-api-key:53
+736208b70c211c5c1fe931f0a2f0f37c4d55d529:apps/api/test/support/g2-money-ports-consumer.fixture.ts:generic-api-key:74
+736208b70c211c5c1fe931f0a2f0f37c4d55d529:apps/api/test/support/g2-money-ports-consumer.fixture.ts:generic-api-key:105

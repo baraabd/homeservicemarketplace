@@ -82,7 +82,8 @@
       "20260501003603_rename_tables_to_pascal_case",
       "20260501010000_add_provider_profile_extensions",
       "20260502010000_add_disputes_and_settings",
-      "20261004150000_r15_ledger_foundation"
+      "20261004150000_r15_ledger_foundation",
+      "20261017220000_g2_completed_booking_read_index"
     ],
     "ConversationParticipant": [
       "20260501003603_rename_tables_to_pascal_case",

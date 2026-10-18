@@ -26,7 +26,10 @@ import type { Request, Response } from 'express';
 import { createReadStream } from 'node:fs';
 import { randomUUID } from 'node:crypto';
 
-import { LocalDiskStorageAdapter } from '../../infrastructure/storage/local-disk-storage.adapter';
+import {
+  LocalDiskStorageAdapter,
+  validateKey,
+} from '../../infrastructure/storage/local-disk-storage.adapter';
 import { PublicMediaLedgerService } from './public-media-ledger.service';
 import {
   STORAGE_PORT,
@@ -347,7 +350,13 @@ export class MediaController {
     const prefix = '/v1/media/files/';
     const idx = req.path.indexOf(prefix);
     const rawKey = idx >= 0 ? req.path.slice(idx + prefix.length) : '';
-    const key = decodeURIComponent(rawKey);
+    let key: string;
+    try {
+      key = decodeURIComponent(rawKey);
+      validateKey(key);
+    } catch {
+      throw new AppError('NOT_FOUND', 'File not found.', 404);
+    }
 
     // Sprint 9B — this route is @Public(), unauthenticated, and sets
     // `Cache-Control: public, immutable`. Identity evidence must therefore be
@@ -366,7 +375,12 @@ export class MediaController {
       throw new AppError('NOT_FOUND', 'File not found.', 404);
     }
 
-    if (isPortfolioStorageKey(key)) {
+    // Invalid keys inside a protected namespace must never fall through to
+    // generic public storage, even when they fail the portfolio classifier.
+    if (key.startsWith(PORTFOLIO_STAGING_PREFIX) || key.startsWith('portfolio/')) {
+      if (!isPortfolioStorageKey(key)) {
+        throw new AppError('NOT_FOUND', 'File not found.', 404);
+      }
       await servePortfolioMedia(res, await this.portfolioMedia.openPublic(key));
       return;
     }

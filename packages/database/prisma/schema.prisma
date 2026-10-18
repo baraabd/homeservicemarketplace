@@ -334,6 +334,9 @@ model Booking {
   @@index([providerId, status])
   @@index([requestId])
   @@index([seekerUserId, status])
+  // G2/R27 — measured completed-booking read. Keep the sort keys before
+  // deletedAt: the deletion-prefix alternative retained a sort on PG16.
+  @@index([status, updatedAt(sort: Desc), id(sort: Desc), deletedAt], map: "Booking_status_updatedAt_id_deletedAt_idx")
 }
 
 /// R11 — a seeker's review of the provider of ONE completed booking.

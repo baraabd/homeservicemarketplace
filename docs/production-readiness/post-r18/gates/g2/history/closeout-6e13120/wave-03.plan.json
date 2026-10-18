@@ -1,0 +1,96 @@
+{
+  "schemaVersion": 1,
+  "wave": 3,
+  "gate": "G2",
+  "status": "BLOCKED",
+  "frozenBaseSha": null,
+  "frozenTreeSha": null,
+  "registryTransition": "PENDING_CR_001",
+  "lanes": [
+    {
+      "id": "R29",
+      "title": "Stripe sandbox subscription collections, signed webhooks and refund adapter",
+      "branch": "feat/r29-stripe-sandbox-webhooks",
+      "status": "CONDITIONAL_G2",
+      "owner": "R29 lane author assigned by baraabd; one writer only",
+      "dependencies": [
+        "R24",
+        "R20",
+        "R22",
+        "R23"
+      ],
+      "exact": [
+        "apps/api/src/modules/money/adapters/stripe/stripe-bindings.spec.ts",
+        "apps/api/src/modules/money/adapters/stripe/stripe-bindings.ts",
+        "apps/api/src/modules/money/adapters/stripe/stripe-collection.adapter.spec.ts",
+        "apps/api/src/modules/money/adapters/stripe/stripe-collection.adapter.ts",
+        "apps/api/src/modules/money/adapters/stripe/stripe-refund.adapter.spec.ts",
+        "apps/api/src/modules/money/adapters/stripe/stripe-refund.adapter.ts",
+        "apps/api/src/modules/money/adapters/stripe/stripe-sandbox.config.spec.ts",
+        "apps/api/src/modules/money/adapters/stripe/stripe-sandbox.config.ts",
+        "apps/api/src/modules/money/webhooks/stripe/stripe-webhook.controller.spec.ts",
+        "apps/api/src/modules/money/webhooks/stripe/stripe-webhook.controller.ts",
+        "apps/api/src/modules/money/webhooks/stripe/stripe-webhook.module.ts",
+        "apps/api/src/modules/money/webhooks/stripe/stripe-webhook.service.spec.ts",
+        "apps/api/src/modules/money/webhooks/stripe/stripe-webhook.service.ts",
+        "docs/production-readiness/r29/ACCEPTANCE.md",
+        "docs/production-readiness/r29/IMPLEMENTATION.md",
+        "docs/production-readiness/r29/OWNERSHIP.md",
+        "docs/production-readiness/r29/RISKS.md",
+        "docs/production-readiness/r29/ROLLBACK.md",
+        "docs/production-readiness/r29/shared-change-requests/CR-001-sdk-api-pin.md",
+        "docs/production-readiness/r29/shared-change-requests/CR-002-raw-body-wiring.md",
+        "docs/production-readiness/r29/shared-change-requests/CR-003-inbox-binding.md",
+        "scripts/production/stripe-sandbox/verify-sandbox.cjs",
+        "scripts/production/stripe-sandbox/verify-sandbox.test.cjs"
+      ],
+      "leases": [],
+      "isolation": "REQUIRED_NOT_PROVISIONED",
+      "activation": "Accepted G2 source, merged publication, canonical registry synchronization and session handoff required."
+    },
+    {
+      "id": "R30",
+      "title": null,
+      "branch": null,
+      "status": "RESERVED_PENDING_PACKAGE",
+      "owner": null,
+      "dependencies": null,
+      "exact": [],
+      "leases": [],
+      "isolation": "NOT_ASSIGNED"
+    },
+    {
+      "id": "R31",
+      "title": null,
+      "branch": null,
+      "status": "RESERVED_PENDING_PACKAGE",
+      "owner": null,
+      "dependencies": null,
+      "exact": [],
+      "leases": [],
+      "isolation": "NOT_ASSIGNED"
+    },
+    {
+      "id": "R32",
+      "title": null,
+      "branch": null,
+      "status": "RESERVED_PENDING_PACKAGE",
+      "owner": null,
+      "dependencies": null,
+      "exact": [],
+      "leases": [],
+      "isolation": "NOT_ASSIGNED"
+    },
+    {
+      "id": "R33",
+      "title": null,
+      "branch": null,
+      "status": "RESERVED_PENDING_PACKAGE",
+      "owner": null,
+      "dependencies": null,
+      "exact": [],
+      "leases": [],
+      "isolation": "NOT_ASSIGNED"
+    }
+  ]
+}

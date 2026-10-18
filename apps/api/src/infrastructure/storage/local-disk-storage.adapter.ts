@@ -321,12 +321,12 @@ export function validateKey(key: string): void {
   if (key.length > 200) throw new Error('invalid-key');
   if (key.includes('\0')) throw new Error('invalid-key');
   if (key.startsWith('/') || key.startsWith('\\')) throw new Error('invalid-key');
-  // Block `..` segments anywhere in the path — also catches the
-  // already-decoded `%2e%2e` that Express would have URL-decoded
-  // before routing.
+  // Block aliases before filesystem normalization: empty segments collapse
+  // repeated slashes, and dot segments can change the selected namespace.
+  // This also catches already-decoded `%2e%2e` path traversal.
   const parts = key.split(/[\\/]/);
   for (const p of parts) {
-    if (p === '..' || p === '.') throw new Error('invalid-key');
+    if (!p || p === '..' || p === '.') throw new Error('invalid-key');
     // R20 — no dot-leading segment. Server-minted keys never have one, and
     // refusing them keeps storage-internal files (the root marker, evidence
     // staging directories) unaddressable from every route and adapter.

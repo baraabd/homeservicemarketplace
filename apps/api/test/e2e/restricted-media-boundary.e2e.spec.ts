@@ -1,7 +1,11 @@
-import { PortfolioMediaService } from '../../src/modules/media/portfolio-media.service';
+import {
+  PortfolioMediaService,
+  type PortfolioMediaStream,
+} from '../../src/modules/media/portfolio-media.service';
 import { Test } from '@nestjs/testing';
 import { APP_FILTER } from '@nestjs/core';
 import { CanActivate, INestApplication, VersioningType } from '@nestjs/common';
+import { Readable } from 'node:stream';
 import request from 'supertest';
 import express from 'express';
 
@@ -15,7 +19,9 @@ import { STORAGE_PORT } from '../../src/infrastructure/storage/storage.port';
 import { JwtAuthGuard } from '../../src/modules/iam/authentication/guards/jwt-auth.guard';
 import { CsrfGuard } from '../../src/modules/iam/authentication/guards/csrf.guard';
 import { AllExceptionsFilter } from '../../src/infrastructure/http/all-exceptions.filter';
+import { privateApiCacheControl } from '../../src/infrastructure/http/cache-control';
 import { AppConfigService } from '../../src/config/app-config.service';
+import { AppError } from '../../src/shared/errors/app-error';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Sprint 9B — the public media route must not touch restricted evidence.
@@ -53,10 +59,12 @@ class AllowAll implements CanActivate {
 const REAL_FILE = __filename;
 
 const permissiveLocal = {
-  absolutePathForKey: () => REAL_FILE,
-  fileExists: async () => true,
+  absolutePathForKey: jest.fn(() => REAL_FILE),
+  fileExists: jest.fn(async () => true),
   acceptUpload: jest.fn().mockResolvedValue(undefined),
 } as unknown as LocalDiskStorageAdapter;
+
+const portfolioOpenPublic = jest.fn<Promise<PortfolioMediaStream>, [string]>();
 
 async function bootApp(): Promise<INestApplication> {
   const moduleRef = await Test.createTestingModule({
@@ -64,11 +72,7 @@ async function bootApp(): Promise<INestApplication> {
     providers: [
       {
         provide: PortfolioMediaService,
-        useValue: {
-          openPublic: jest
-            .fn()
-            .mockRejectedValue(new Error('Portfolio requires a persisted approval.')),
-        },
+        useValue: { openPublic: portfolioOpenPublic },
       },
       { provide: STORAGE_PORT, useValue: { presignUpload: jest.fn() } },
       { provide: LocalDiskStorageAdapter, useValue: permissiveLocal },
@@ -120,6 +124,7 @@ async function bootApp(): Promise<INestApplication> {
 
   const app = moduleRef.createNestApplication({ logger: false });
   app.enableVersioning({ type: VersioningType.URI, defaultVersion: '1' });
+  app.use(privateApiCacheControl);
   // main.ts wires express.raw() on the upload route so req.body is a Buffer.
   app.use('/v1/media/uploads', express.raw({ type: '*/*', limit: '1mb' }));
   await app.init();
@@ -131,6 +136,10 @@ describe('GET /v1/media/files/* — restricted keys', () => {
 
   beforeAll(async () => {
     app = await bootApp();
+  });
+  beforeEach(() => {
+    portfolioOpenPublic.mockReset();
+    portfolioOpenPublic.mockRejectedValue(new AppError('NOT_FOUND', 'File not found.', 404));
   });
   afterAll(async () => {
     if (app) await app.close();
@@ -170,8 +179,64 @@ describe('GET /v1/media/files/* — restricted keys', () => {
     // The other half. A guard that fails safe by blocking everything is an
     // outage, and this route carries every seeker's request photos.
     const res = await request(app.getHttpServer()).get('/v1/media/files/requests/user-1/photo.jpg');
-    expect(res.status).not.toBe(404);
+    expect(res.status).toBe(200);
+    expect(res.headers['cache-control']).toBe('public, max-age=31536000, immutable');
+    expect(portfolioOpenPublic).not.toHaveBeenCalled();
   });
+
+  it.each([
+    'portfolio-staging//ref/photo.jpg',
+    'portfolio//ref/photo.jpg',
+    'portfolio-staging/ref//photo.jpg',
+    'portfolio/ref/photo.jpg/',
+    'portfolio-staging%2F%2Fref%2Fphoto.jpg',
+    'portfolio%2F%2Fref%2Fphoto.jpg',
+    'portfolio%2Fref%2F%2Fphoto.jpg',
+    'portfolio-staging/ref/photo%2E%2E.jpg',
+    'portfolio/ref/photo..jpg',
+  ])('refuses a malformed portfolio key before any storage read: %s', async (key) => {
+    // Empty segments alias protected bytes after local path normalization.
+    // Every malformed portfolio key must remain inside the moderation boundary,
+    // even when the storage adapter would happily open an existing file.
+    const res = await request(app.getHttpServer()).get(`/v1/media/files/${key}`);
+
+    expect(res.status).toBe(404);
+    expect(res.headers['cache-control']).toBe('private, no-store');
+    expect(portfolioOpenPublic).not.toHaveBeenCalled();
+    expect(permissiveLocal.absolutePathForKey).not.toHaveBeenCalled();
+    expect(permissiveLocal.fileExists).not.toHaveBeenCalled();
+  });
+
+  it.each(['portfolio-staging/ref/photo.jpg', 'portfolio/ref/photo.jpg'])(
+    'keeps canonical portfolio reads subject to persisted approval: %s',
+    async (key) => {
+      const res = await request(app.getHttpServer()).get(`/v1/media/files/${key}`);
+
+      expect(res.status).toBe(404);
+      expect(res.headers['cache-control']).toBe('private, no-store');
+      expect(portfolioOpenPublic).toHaveBeenCalledWith(key);
+      expect(permissiveLocal.absolutePathForKey).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each(['portfolio-staging/ref/photo.jpg', 'portfolio/ref/photo.jpg'])(
+    'serves approved canonical portfolio bytes without persistent caching: %s',
+    async (key) => {
+      const bytes = Buffer.from('approved-portfolio-bytes');
+      portfolioOpenPublic.mockResolvedValueOnce({
+        stream: Readable.from(bytes),
+        contentType: 'image/jpeg',
+      });
+
+      const res = await request(app.getHttpServer()).get(`/v1/media/files/${key}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body).toEqual(bytes);
+      expect(res.headers['cache-control']).toBe('private, no-store');
+      expect(portfolioOpenPublic).toHaveBeenCalledWith(key);
+      expect(permissiveLocal.absolutePathForKey).not.toHaveBeenCalled();
+    },
+  );
 
   it('does not over-block a public key that merely starts with the same letters', async () => {
     // `verificationsomething/` is not the restricted namespace. A bare

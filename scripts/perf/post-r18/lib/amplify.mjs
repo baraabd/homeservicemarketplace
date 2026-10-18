@@ -6,6 +6,9 @@
 // amounts, owners) with fresh ids, foreign keys remapped to the clone of the
 // same generation, idempotency keys cleared, and creation times spread over
 // 180 days so ordering and cursors see realistic spread.
+// Completed clones finish at the next day boundary, deliberately exercising
+// timestamp ties and the id tie-breaker. Every tenth completed generation is
+// soft-deleted. These are declared synthetic distributions, not production data.
 //
 // Limits, stated in the report: clones belong to the same few real users, so
 // per-user histories are heavy (a worst case for per-user lists) while the
@@ -84,6 +87,7 @@ export async function amplify(db, copies) {
       }),
     );
     const bookingCols = await columns(db, 'Booking');
+    const completedAt = `date_trunc('day', ${spread('mb.new_id')}) + INTERVAL '1 day'`;
     await db.query(
       cloneSql(
         'Booking',
@@ -96,7 +100,10 @@ export async function amplify(db, copies) {
           requestId: 'mr.new_id',
           bidId: 'mb.new_id',
           createdAt: spread('mb.new_id'),
-          updatedAt: spread('mb.new_id'),
+          updatedAt: `CASE WHEN src.status = 'COMPLETED' THEN ${completedAt} ELSE ${spread('mb.new_id')} END`,
+          deletedAt: `CASE WHEN src."deletedAt" IS NOT NULL THEN src."deletedAt"
+            WHEN src.status = 'COMPLETED' AND mb.k % 10 = 0 THEN ${completedAt} + INTERVAL '1 hour'
+            ELSE NULL END`,
         },
       ),
     );

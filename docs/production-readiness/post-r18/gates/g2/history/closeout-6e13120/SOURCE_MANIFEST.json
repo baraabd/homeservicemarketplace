@@ -1,0 +1,116 @@
+{
+  "schemaVersion": 1,
+  "repository": "baraabd/homeservicemarketplace",
+  "gate": "G2",
+  "wave": 2,
+  "nextWave": 3,
+  "decision": "BLOCKED",
+  "candidate": {
+    "sourceSha": "4e87bf03663fb3c72ffee983fdb70c2863e1ce8a",
+    "treeSha": "eaca9cdeab15e719570f7997c4fc3bbeb64e562e"
+  },
+  "frozenBaseSha": null,
+  "frozenTreeSha": null,
+  "coordinator": {
+    "branch": "coord/g2-wave2-closeout",
+    "ownershipCheckpointSha": "0ace2969f2572f3a3f20857a435790927304ddfb",
+    "authority": "Owner delegated G2 coordination on 2026-10-17; no merge/deployment or policy waiver."
+  },
+  "publication": {
+    "state": "DRAFT",
+    "acceptanceRecordCommitSha": null,
+    "verifiedMerge": false
+  },
+  "sourceArtifact": {
+    "runId": 39062646591,
+    "artifactId": 12111383568,
+    "zipSha256": "812b5d0f419f2f82d78998c7f60e1c5f490220f549c9f5078877d383f9b169b6",
+    "sourceTarSha256": "848708885ce0519088251d1426df161f52979621b05ce7580be09daf4cd68d8d",
+    "trackedBlobsVerified": 2573,
+    "treeRecomputed": true
+  },
+  "checks": {
+    "completeInventoryVerified": false,
+    "runId": 39062646647,
+    "observed": [
+      {
+        "name": "R25 real replicas and recovery",
+        "id": 117484531044,
+        "headSha": "4e87bf03663fb3c72ffee983fdb70c2863e1ce8a",
+        "status": "completed",
+        "conclusion": "failure",
+        "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39062646647/job/117484531044"
+      },
+      {
+        "name": "R18 functional completion acceptance",
+        "id": 117487828278,
+        "headSha": "4e87bf03663fb3c72ffee983fdb70c2863e1ce8a",
+        "status": "completed",
+        "conclusion": "failure",
+        "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39062646647/job/117487828278"
+      },
+      {
+        "name": "CI gate",
+        "id": 117487842451,
+        "headSha": "4e87bf03663fb3c72ffee983fdb70c2863e1ce8a",
+        "status": "completed",
+        "conclusion": "failure",
+        "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39062646647/job/117487842451"
+      }
+    ]
+  },
+  "mandatoryRequirements": [
+    {
+      "id": "G2-01",
+      "status": "BLOCKED",
+      "owner": "R28 lane / infrastructure owner",
+      "reason": "R28 source delivery and checked topology evidence are absent."
+    },
+    {
+      "id": "G2-02",
+      "status": "FAIL",
+      "owner": "R25 lane / coordinator",
+      "reason": "Actual merged-source R25 browser failed; both dependent aggregate gates failed."
+    },
+    {
+      "id": "G2-03",
+      "status": "PENDING",
+      "owner": "R24 and R26 / coordinator",
+      "reason": "Certify integrated money authorization and exact frozen contracts on the final candidate."
+    },
+    {
+      "id": "G2-04",
+      "status": "PENDING",
+      "owner": "R27 / performance and security owners",
+      "reason": "Resolve budget and shared cache/security requests without lowering unapproved thresholds."
+    },
+    {
+      "id": "G2-05",
+      "status": "PENDING",
+      "owner": "Coordinator / security owner",
+      "reason": "Fresh complete required-check inventory, CodeQL and artifacts on the final integrated candidate are not certified here."
+    }
+  ],
+  "contracts": {
+    "status": "INSPECTED_NOT_G2_ACCEPTED",
+    "version": "hsm.money.v1",
+    "sourceSha": "4e87bf03663fb3c72ffee983fdb70c2863e1ce8a",
+    "sha256": {
+      "apps/api/src/modules/money/ports/activation.port.ts": "5f9737d2204f0fffd5345a59b180b15043a28200d34536ba72c9cf7accbb921e",
+      "apps/api/src/modules/money/ports/collection.port.ts": "e96d707809410056356b50ff5086be7d8bc71693445fb752fcf090ac7b6e23d3",
+      "apps/api/src/modules/money/ports/finance-read.port.ts": "daa60c7398fa4b164375c0b7e294efa593d3f4217d4279220dcd3fb252c4bf80",
+      "apps/api/src/modules/money/ports/refund.port.ts": "8a4dbea61fc5c9d695ff166c5125d819d8f3acd974b8551e0343a53c8561be39"
+    },
+    "stripeApiVersion": null,
+    "stripeSdkVersion": null
+  },
+  "restrictions": {
+    "liveMoney": false,
+    "deploy": false,
+    "merge": false,
+    "accountGrants": false,
+    "spend": false,
+    "preserveG1": true,
+    "preserveR16R18Holds": true
+  }
+}

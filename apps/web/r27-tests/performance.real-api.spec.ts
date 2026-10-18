@@ -74,6 +74,47 @@ async function keyboard(page: Page, name: string) {
   await page.keyboard.press('Enter');
 }
 
+function expectNoStore(value: string | null | undefined) {
+  const directives = (value ?? '')
+    .toLowerCase()
+    .split(',')
+    .map((part) => part.trim());
+  // Existing private controllers may set no-store without repeating private.
+  expect(directives).toContain('no-store');
+  expect(directives).not.toContain('public');
+}
+
+async function privateRead(page: Page, path: string, headers: Record<string, string> = {}) {
+  return page.evaluate(
+    async ({ origin, path, headers }) => {
+      // Use the browser's normal cache behavior: a test-side no-store override
+      // would hide the very HTTP cache defect this acceptance check exercises.
+      const response = await fetch(origin + path, { credentials: 'include', headers });
+      return { status: response.status, cacheControl: response.headers.get('Cache-Control') };
+    },
+    { origin: REAL_API, path, headers },
+  );
+}
+
+async function recordAuthorityEvidence(info: TestInfo, name: string, result: unknown) {
+  await writeFile(
+    resolve(OUT, `${info.project.name}-${name}.json`),
+    JSON.stringify(
+      {
+        kind: 'r27-real-browser-authority',
+        mode: MODE,
+        project: info.project.name,
+        source: execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim(),
+        sourceTree: execFileSync('git', ['rev-parse', 'HEAD^{tree}'], { encoding: 'utf8' }).trim(),
+        harness: process.env.R27_HARNESS_SHA,
+        result,
+      },
+      null,
+      2,
+    ),
+  );
+}
+
 test.beforeAll(async ({ browser }) => {
   isolatedTarget();
   // Each project and replacement worker gets an isolated fixture budget.
@@ -291,6 +332,229 @@ test('same browser logout/account switch cannot reuse the prior admin authorizat
   // real browser login, never replay a revoked storage snapshot.
   adminState = await login(browser, admin);
 });
+
+// These assert the coordinator's candidate repair. The immutable G1 baseline
+// remains measured under its original expectations and is never relabeled.
+if (process.env.R27_CANDIDATE === 'true') {
+  test('private responses and early parser failures prohibit storage in the real API', async ({
+    browser,
+  }, info) => {
+    const context = await contextFor(browser, info, seekerState);
+    const anonymous = await browser.newContext();
+    const statuses: Array<{ path: string; status: number }> = [];
+    try {
+      const page = await context.newPage();
+      await page.goto(WEB + '/home');
+      for (const [path, status] of [
+        ['/v1/auth/me', 200],
+        ['/v1/me/requests?limit=1', 200],
+        ['/v1/me/bookings?limit=1', 200],
+        ['/v1/me/addresses', 200],
+        ['/v1/admin/users', 403],
+        ['/v1/r27-synthetic-missing-route', 404],
+      ] as const) {
+        const response = await privateRead(page, path);
+        expect(response.status).toBe(status);
+        expectNoStore(response.cacheControl);
+        statuses.push({ path, status: response.status });
+      }
+      const denied = await anonymous.request.get(REAL_API + '/v1/auth/me');
+      expect(denied.status()).toBe(401);
+      expectNoStore(denied.headers()['cache-control']);
+
+      // Browser-context HTTP reaches the real early parser without requiring
+      // a CORS header on a response emitted before the CORS middleware runs.
+      for (const [data, headers, status] of [
+        ['{', { 'Content-Type': 'application/json' }, 400],
+        [
+          JSON.stringify({ synthetic: 'x'.repeat(1024 * 1024) }),
+          { 'Content-Type': 'application/json' },
+          413,
+        ],
+        ['{}', { 'Content-Type': 'application/json', 'Content-Encoding': 'r27-unsupported' }, 415],
+      ] as const) {
+        const response = await anonymous.request.post(REAL_API + '/v1/auth/login', {
+          data,
+          headers,
+        });
+        expect(response.status()).toBe(status);
+        expectNoStore(response.headers()['cache-control']);
+      }
+      await recordAuthorityEvidence(info, 'private-cache', {
+        privateReads: statuses,
+        anonymousStatus: denied.status(),
+        earlyParserStatuses: [400, 413, 415],
+        noStore: true,
+        contradictoryPublicDirective: false,
+      });
+    } finally {
+      await context.close();
+      await anonymous.close();
+    }
+  });
+
+  test('real peer-tab logout removes private UI before another account can reuse the browser', async ({
+    browser,
+  }, info) => {
+    const context = await browser.newContext({
+      storageState: adminState,
+      viewport: info.project.use.viewport,
+    });
+    try {
+      await context.addInitScript(() => localStorage.setItem('hsm.lang', 'en'));
+      const active = await context.newPage();
+      const peer = await context.newPage();
+      for (const page of [active, peer]) {
+        await page.goto(WEB + '/admin/users');
+        await expect(page.getByTestId('badge-account-status').first()).toBeVisible();
+      }
+      if ((info.project.use.viewport?.width ?? 1440) < 1024) {
+        await keyboard(active, 'Open navigation');
+      }
+      const [loggedOut] = await Promise.all([
+        active.waitForResponse(
+          (response) =>
+            response.url() === REAL_API + '/v1/auth/logout' &&
+            response.request().method() === 'POST',
+        ),
+        keyboard(active, 'Sign out'),
+      ]);
+      expect(loggedOut.status()).toBe(204);
+      expectNoStore(loggedOut.headers()['cache-control']);
+      await expect(active).toHaveURL(/\/login/);
+      // No reload, synthetic storage event, injected cache reset or transport
+      // interception: the second document must observe the real logout event.
+      await expect(peer).toHaveURL(/\/login/);
+      await expect(peer.getByTestId('badge-account-status')).toHaveCount(0);
+      await expect(peer.getByRole('heading', { name: 'User directory' })).toHaveCount(0);
+      const ended = await privateRead(peer, '/v1/auth/me');
+      expect(ended.status).toBe(401);
+      expectNoStore(ended.cacheControl);
+
+      const [signedIn] = await Promise.all([
+        active.waitForResponse(
+          (response) =>
+            response.url() === REAL_API + '/v1/auth/verify-otp' &&
+            response.request().method() === 'POST',
+        ),
+        loginViaUi(active, seeker),
+      ]);
+      expect(signedIn.status()).toBe(200);
+      await expect(active).not.toHaveURL(/\/login/);
+      const switched = await privateRead(peer, '/v1/admin/users');
+      expect(switched.status).toBe(403);
+      expectNoStore(switched.cacheControl);
+      await expect(peer.getByTestId('badge-account-status')).toHaveCount(0);
+      await recordAuthorityEvidence(info, 'cross-tab-logout', {
+        simultaneousDocuments: 2,
+        logoutStatus: loggedOut.status(),
+        peerSessionStatus: ended.status,
+        switchedAdminReadStatus: switched.status,
+        peerPrivateRowsRemovedWithoutReload: true,
+      });
+    } finally {
+      await context.close();
+    }
+    // Logout revoked the fixture session, so later cases need a fresh login.
+    adminState = await login(browser, admin);
+  });
+
+  test('warm browser reads see a revoked permission immediately and recover after its exact restoration', async ({
+    browser,
+  }, info) => {
+    const context = await contextFor(browser, info, adminState);
+    try {
+      const page = await context.newPage();
+      const [warm] = await Promise.all([
+        page.waitForResponse(
+          (response) =>
+            new URL(response.url()).pathname === '/v1/admin/users' &&
+            response.request().method() === 'GET',
+        ),
+        page.goto(WEB + '/admin/users'),
+      ]);
+      expect(warm.status()).toBe(200);
+      expectNoStore(warm.headers()['cache-control']);
+      await expect(page.getByTestId('badge-account-status').first()).toBeVisible();
+      const warmedPath = new URL(warm.url()).pathname + new URL(warm.url()).search;
+      const etag = warm.headers().etag;
+      assert.ok(etag, 'The warmed real API response must supply an ETag for the conditional check');
+      const authority = await withDb(async (db) => {
+        const result = await db.query<{ roleId: string; permissionId: string }>(
+          `SELECT rp."roleId", rp."permissionId" FROM "RolePermission" rp
+           JOIN "Role" r ON r.id = rp."roleId"
+           JOIN "Permission" p ON p.id = rp."permissionId"
+           JOIN "UserRole" ur ON ur."roleId" = r.id
+           WHERE r.name = 'admin' AND r."deletedAt" IS NULL
+             AND p.key = 'user:read:any' AND ur."userId" = $1`,
+          [admin.userId],
+        );
+        expect(result.rows).toHaveLength(1);
+        return result.rows[0]!;
+      });
+      let removed: typeof authority | undefined;
+      try {
+        // This original fixture row exists only in isolatedTarget's disposable
+        // database. The harness is serial; restore exactly that row in finally.
+        removed = await withDb(async (db) => {
+          const result = await db.query<typeof authority>(
+            'DELETE FROM "RolePermission" WHERE "roleId" = $1 AND "permissionId" = $2 RETURNING "roleId", "permissionId"',
+            [authority.roleId, authority.permissionId],
+          );
+          return result.rows[0];
+        });
+        expect(removed).toEqual(authority);
+        // Keep the existing JWT, cookies and caches. A conditional request with
+        // the earlier real ETag must be forbidden, never a cached 200 or 304.
+        const denied = await privateRead(page, warmedPath, { 'If-None-Match': etag });
+        expect(denied.status).toBe(403);
+        expectNoStore(denied.cacheControl);
+        await page.getByRole('searchbox').fill(admin.email);
+        const [uiDenied] = await Promise.all([
+          page.waitForResponse((response) => {
+            const url = new URL(response.url());
+            return (
+              url.pathname === '/v1/admin/users' && url.searchParams.get('query') === admin.email
+            );
+          }),
+          keyboard(page, info.project.metadata.lang === 'ar' ? 'بحث' : 'Search'),
+        ]);
+        expect(uiDenied.status()).toBe(403);
+        await expect(page.getByRole('alert')).toContainText(
+          info.project.metadata.lang === 'ar'
+            ? 'ليس لديك صلاحية عرض هذه البيانات.'
+            : 'You do not have permission to view this information.',
+        );
+        await expect(page.getByTestId('badge-account-status')).toHaveCount(0);
+      } finally {
+        const originalRow = removed;
+        if (originalRow) {
+          await withDb(async (db) => {
+            const restored = await db.query(
+              'INSERT INTO "RolePermission" ("roleId", "permissionId") VALUES ($1, $2)',
+              [originalRow.roleId, originalRow.permissionId],
+            );
+            expect(restored.rowCount).toBe(1);
+          });
+        }
+      }
+      const restored = await privateRead(page, warmedPath);
+      expect(restored.status).toBe(200);
+      expectNoStore(restored.cacheControl);
+      await recordAuthorityEvidence(info, 'permission-revocation', {
+        beforeStatus: warm.status(),
+        revokedConditionalReadStatus: 403,
+        revokedUiReadStatus: 403,
+        restoredStatus: restored.status,
+        originalPermissionRowRestored: true,
+        sessionReplaced: false,
+        permissionCacheFlushed: false,
+      });
+    } finally {
+      await context.close();
+    }
+  });
+}
 
 if (process.env.R27_CANDIDATE === 'true' && MODE === 'production') {
   test('chart chunk failure preserves the real approval queue and recovery control', async ({

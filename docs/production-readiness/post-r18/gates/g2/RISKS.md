@@ -1,27 +1,22 @@
-# G2 risks and explicit limits
+# G2 — Risks and decisions
 
-The candidate is an immutable inspection snapshot, not an accepted baseline.
-R28 absence and R25's actual merged-source failure prevent approval. The published
-PR may have different checks from this snapshot; neither can certify the other.
+| ID                 | State / owner                                           | Concrete condition and treatment                                                                                                                                                                                      |
+| ------------------ | ------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| G2-CI-01           | INTEGRATION_PENDING / coordinator                       | Combined develop's R25 browser case failed; keep the failed source/run/artifact and diagnose/retest the actual repaired candidate. No flake waiver or timeout increase.                                               |
+| G2-R27-01          | POLICY_BLOCKED / performance decision owner             | Existing statement/time budgets are proposals. Populate financial pages, inspect plans and record a concrete calibrated decision; unchanged bounded query counts are not permission to raise a ceiling.               |
+| G2-R27-CURSOR      | INTEGRATION_PENDING / API and performance owner         | Financial ID cursor is re-resolved against mutable updatedAt. Concurrent sort-key changes can shift the boundary; an index cannot establish snapshot semantics. Measure honestly; no silent API contract change.      |
+| R28-HOSTED-01      | HOSTED_ENVIRONMENT_BLOCKED / owner and hosting operator | Account, region, DNS, registry, secret delivery, network, spend, recovery, test environment and rollout authority are absent. Checked declarations cannot prove actual grants, TLS, storage, mail, scan or restore.   |
+| R19-P2 / R16 / R18 | POLICY_BLOCKED / commercial and release owners          | Missing refund/entitlement/market/currency/fee/tax/price/verification policies; live rails and payouts remain off. Subscription revenue is not withdrawable provider earnings.                                        |
+| G2-PUBLICATION     | EXTERNAL_BLOCKED / owner                                | Review and verified merged gate publication are required before R32. The current task is explicitly forbidden to merge/deploy.                                                                                        |
+| W3-PACKAGES-01     | EXTERNAL_BLOCKED / program owner                        | R29/R30/R31/R33 packages are not reconciled in this intake; parallel #178 has separate conditional R29 metadata. Their placeholders own no executable files or branches; the known R32 package is held independently. |
+| R32-ORCHESTRATION  | NOT_STARTED / later R32 session                         | Confirmed-result participant invocation, atomic refund outbox delivery, query-first recovery and approved expiry/eligibility are future code. An additive interface/fixture is no refunded-payment proof.             |
 
-The source ZIP hash, individual blobs and tree were verified, but the local
-workspace is an exported source directory, not the owner's Git worktree or
-Claude Code session. Git transport failed because DNS was unavailable. Only
-Node 22.16.0 is available locally; the repository still pins Node 24.21.0 and
-pnpm 10.32.1. Supplemental built-in script tests are not pinned runtime acceptance.
-No frozen install, local hooks, application build, database or browser run is
-claimed. Final-head remote CI remains required and the PR stays Draft.
+## Technical limits
 
-Recorded merge metadata and partial check observations are not a complete live
-attestation. Structural validation cannot prove a user-supplied JSON claim true.
-Current remote pagination, source binding, artifacts and owner review remain
-mandatory. Unknown browser counts remain null, not zero or passing.
+The local PostgreSQL cluster inherited Asia/Riyadh from its host configuration. A separately retained full API run in a new database with that setting failed four assertions involving delayed outbox work, a legacy clock-skew control and work-access readiness. Standard CI/reference databases use UTC. A fresh task-only UTC database is used for comparable integrated evidence; the original failure is retained. Before hosted acceptance, verify UTC on the actual application/worker/pool sessions. A future multi-zone outbox/readiness change must address SQL clocks and timestamp defaults together and review existing ambiguous timestamps; changing only NOW() comparisons is not a complete correction. The separately fixed OTP boundary is covered in three zones and does not establish universal timezone independence for every model.
 
-Do not mistake the historical G1 READY_TO_START table for current execution state.
-The closeout is gate evidence alongside the sole SPRINT_REGISTRY authority.
-CR-001 must synchronize lifecycle state before a future handoff. Conditional
-file reservations grant no SDK, parsing, schema or cross-lane write permission.
+Local source checks are environment-specific; real-service summaries identify the exact worktree and source. R27's direct index experiment is separate from its verified Docker workflow. Timing comparisons must record runner/CPU/dataset and sample limits; no hosted capacity or universal latency percentage is promised. Baseline and candidate must use the same current harness without overlaying candidate runtime onto the baseline.
 
-R16 payout authority, R18 commercial/verification/branch-protection decisions,
-current security alert dispositions, actual hosting authority and all live-money
-requirements remain separately owned. This work resolves none by inference.
+The measured additive Booking index changes query access only; both actual generic and parameter-bound Prisma reads were inspected. Its build may take locks and consume storage on a hosted database, so deployment scheduling and any concurrent-build strategy require a separate operator decision. This task applies migrations only on isolated test databases.
+
+Early private/no-store is expected to reduce unintended private response storage. It retains authorized immutable public-media overrides and normal authorization checks. A header alone does not invalidate every previously cached response or prove all same-user conditional requests return 200; tests assert actual unauthorized requests never reuse private cached content.

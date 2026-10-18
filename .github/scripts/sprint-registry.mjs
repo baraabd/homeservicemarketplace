@@ -105,14 +105,15 @@ export function registryProblems(registry, statusIndex = null) {
       if (!sprint.owner) problems.push(`${id} needs an owner`);
       // A known lane may be planned while its start gate is explicitly blocked.
       // It owns no executable baseline until the separate gate is accepted.
+      const startGate = { 2: 'G1', 3: 'G2' }[sprint.wave];
       const awaitingGate =
         sprint.status === 'PLANNED' &&
         sprint.frozenBase === null &&
-        sprint.wave === 2 &&
-        sprint.startBarrier?.gate === 'G1' &&
+        startGate &&
+        sprint.startBarrier?.gate === startGate &&
         sprint.startBarrier?.decision === 'BLOCKED' &&
-        registry.gates?.G1 &&
-        registry.waveManifests?.['2'];
+        registry.gates?.[startGate] &&
+        registry.waveManifests?.[String(sprint.wave)];
       if (!awaitingGate && !SHA.test(sprint.frozenBase ?? ''))
         problems.push(`${id} needs a full frozen base SHA`);
       if (!Array.isArray(sprint.requiredEvidence) || !sprint.requiredEvidence.length) {
@@ -201,6 +202,7 @@ export async function verifyRegistry(root) {
   const registry = JSON.parse(await readFile(path.join(root, REGISTRY), 'utf8'));
   const index = await readFile(path.join(root, STATUS_INDEX), 'utf8');
   const problems = registryProblems(registry, index);
+  let g1;
   if (registry.gates?.G1 || registry.waveManifests?.['2']) {
     const expectedGate = 'docs/production-readiness/post-r18/gates/g1/SOURCE_MANIFEST.json';
     const expectedWave = 'docs/production-readiness/post-r18/waves/wave-02.plan.json';
@@ -209,6 +211,31 @@ export async function verifyRegistry(root) {
     const gate = JSON.parse(await readFile(path.join(root, expectedGate), 'utf8'));
     const wave = JSON.parse(await readFile(path.join(root, expectedWave), 'utf8'));
     problems.push(...waveGateProblems(gate, wave, registry));
+    g1 = gate;
+  }
+  // G2 is separately validated; adding records cannot silently bypass the G1
+  // contract or grant a future lane a base before its published start gate.
+  if (
+    registry.gates?.G2 ||
+    registry.waveManifests?.['3'] ||
+    registry.sprints?.some(
+      (sprint) => sprint.wave === 3 && sprint.status !== 'RESERVED_PENDING_PACKAGE',
+    )
+  ) {
+    const expectedGate = 'docs/production-readiness/post-r18/gates/g2/SOURCE_MANIFEST.json';
+    const expectedWave = 'docs/production-readiness/post-r18/waves/wave-03.plan.json';
+    if (registry.gates?.G2 !== expectedGate || registry.waveManifests?.['3'] !== expectedWave)
+      return [...problems, 'G2 records must use the canonical paths'];
+    const gate = JSON.parse(await readFile(path.join(root, expectedGate), 'utf8'));
+    const wave = JSON.parse(await readFile(path.join(root, expectedWave), 'utf8'));
+    problems.push(...waveGateProblems(gate, wave, registry));
+    if (
+      gate.decision === 'ACCEPTED' &&
+      (g1?.decision !== 'ACCEPTED' ||
+        g1.publication?.state !== 'MERGED' ||
+        !SHA.test(g1.publication?.acceptanceRecordCommitSha ?? ''))
+    )
+      problems.push('G2 acceptance requires the verified merged G1 prerequisite');
   }
   return problems;
 }
