@@ -497,6 +497,24 @@ for (const field of Object.keys(source().plan.services.postgres.migratorPrivileg
   });
 }
 
+for (const role of ['apiPrivileges', 'migratorPrivileges']) {
+  for (const field of ['databaseOwner', 'databaseCreate']) {
+    test(`database authority must be explicit: ${role}.${field}`, () => {
+      const { plan, edgePolicy, approvedOrigins } = fullDeclarations();
+      delete plan.services.postgres[role][field];
+      assert.throws(() => validatePlan(plan, { edgePolicy, approvedOrigins }));
+    });
+  }
+}
+
+test('database authority refinement rejects the previously reviewed template fingerprint', () => {
+  const { plan, edgePolicy } = source();
+  const expectedPlanSha256 = '00930548859d95781434fcd8727ce38775be9bdfe2d123f089639d150afdf8e3';
+  assert.throws(() => validatePlan(plan, { edgePolicy, expectedPlanSha256 }), {
+    code: 'R28_PLAN_HASH_MISMATCH',
+  });
+});
+
 const unsafeEdges = [
   ['legacy TLS', 'tls.minimumVersion', 'TLSv1.0'],
   ['certificate bypass', 'tls.certificateVerification', false],

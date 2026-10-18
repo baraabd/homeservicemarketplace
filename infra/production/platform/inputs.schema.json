@@ -304,6 +304,14 @@
                     "createDatabase": {
                       "const": false
                     },
+                    "databaseOwner": {
+                      "const": false,
+                      "description": "No direct, inherited or SET ROLE path to ownership of the application database."
+                    },
+                    "databaseCreate": {
+                      "const": false,
+                      "description": "No CREATE privilege on the application database, including PUBLIC, inherited and assumable-role grants; distinct from the CREATEDB role attribute."
+                    },
                     "createRole": {
                       "const": false
                     },
@@ -335,6 +343,8 @@
                   "required": [
                     "superuser",
                     "createDatabase",
+                    "databaseOwner",
+                    "databaseCreate",
                     "createRole",
                     "replication",
                     "bypassRls",
@@ -356,6 +366,14 @@
                     "createDatabase": {
                       "const": false
                     },
+                    "databaseOwner": {
+                      "const": false,
+                      "description": "No direct, inherited or SET ROLE path to ownership of the application database."
+                    },
+                    "databaseCreate": {
+                      "const": false,
+                      "description": "No CREATE privilege on the application database, including PUBLIC, inherited and assumable-role grants; migration DDL stays within the pre-created application schema."
+                    },
                     "createRole": {
                       "const": false
                     },
@@ -372,6 +390,8 @@
                   "required": [
                     "superuser",
                     "createDatabase",
+                    "databaseOwner",
+                    "databaseCreate",
                     "createRole",
                     "replication",
                     "bypassRls",

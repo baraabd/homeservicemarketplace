@@ -3,9 +3,17 @@
 ## This configuration-only change
 
 No infrastructure, database, account, DNS, bucket, image registry, secret or running
-application was changed by R28. No migration was added. Rollback of this lane is
-therefore a reviewed source revert of its 12 exact files; it requires no resource
-deletion, database rollback or credential invalidation.
+application was deployed by R28. No migration was added. The original 12-file
+configuration implementation and the later authorized source/CI repairs have
+separate commit identities. Roll back only the intended bounded source change;
+this requires no resource deletion, database rollback or credential invalidation.
+
+The 2026-10-18 successor changes nine existing files: three prepared platform
+files, their test file and five R28 evidence documents. A reviewed revert restores
+the earlier input schema and its fingerprint, but also restores its missing
+database-owner/database-CREATE declarations. Preserve that known limitation and
+the original denial tests; never present the older fingerprint as approval of the
+new contract. Review protected target copies separately before any later rollout.
 
 Before integration, the coordinator can decline the draft PR or supersede the
 prepared inputs with a reviewed corrective commit on the same R28 branch. After a
@@ -14,9 +22,13 @@ PR process. Do not reset a shared branch, force-push, delete peer work, pop anot
 session's stash or destroy shared volumes. Preserve acceptance history and the
 original/follow-up source identities.
 
-CR-001 has not changed the shared workflow, Compose overlay or applied edge. If
-the coordinator later integrates those changes, their rollback belongs to that
-integration commit and must preserve any peer changes in the same files.
+CR-001 sections 0 and 1 were applied by the separately authorized current-base/CI
+repair documented in PR_REPAIR_20261018.md. This successor does not revert those
+workflows or the OTP/realtime correctness repairs. Owner-merged G2 at
+`75bd688e7254b84316b32f82b0f6ee337249b977` also applies the API's 30-second Compose
+stop grace; preserve that baseline when reverting this nine-file successor.
+Selected edge/secret integration and actual shutdown evidence remain pending;
+any later integration has its own rollback and must preserve peer changes.
 
 ## A later authorized hosted rollout
 
