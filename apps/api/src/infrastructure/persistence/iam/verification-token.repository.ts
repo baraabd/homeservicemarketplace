@@ -30,18 +30,25 @@ export class VerificationTokenRepository {
 
   // Use the database clock at the conditional write, not a timestamp captured
   // before waiting for another transaction. Purpose and single-use are atomic.
-  async consume(tokenHash: string, purpose: TokenPurpose, tx?: PrismaTx): Promise<VerificationToken | null> {
+  // Prisma stores these timestamp-without-time-zone fields as UTC. Normalize
+  // the database clock so expiry and usedAt do not depend on the session zone.
+  async consume(
+    tokenHash: string,
+    purpose: TokenPurpose,
+    tx?: PrismaTx,
+  ): Promise<VerificationToken | null> {
     const rows = await this.db(tx).$queryRaw<VerificationToken[]>`
-      UPDATE "VerificationToken" SET "usedAt" = clock_timestamp()
+      UPDATE "VerificationToken" SET "usedAt" = (clock_timestamp() AT TIME ZONE 'UTC')
       WHERE "tokenHash" = ${tokenHash} AND "purpose"::text = ${purpose}
-        AND "usedAt" IS NULL AND "expiresAt" > clock_timestamp()
+        AND "usedAt" IS NULL AND "expiresAt" > (clock_timestamp() AT TIME ZONE 'UTC')
       RETURNING *`;
     return rows[0] ?? null;
   }
 
   invalidateAllForUser(userId: string, tx: PrismaTx): Promise<{ count: number }> {
     return tx.verificationToken.updateMany({
-      where: { userId, usedAt: null }, data: { usedAt: new Date() },
+      where: { userId, usedAt: null },
+      data: { usedAt: new Date() },
     });
   }
 
@@ -71,9 +78,9 @@ export class VerificationTokenRepository {
     maxAttempts = 5,
   ): Promise<VerificationToken | null> {
     const rows = await this.db(tx).$queryRaw<VerificationToken[]>`
-      UPDATE "VerificationToken" SET "usedAt" = clock_timestamp()
+      UPDATE "VerificationToken" SET "usedAt" = (clock_timestamp() AT TIME ZONE 'UTC')
       WHERE "challengeId" = ${challengeId} AND "tokenHash" = ${tokenHash}
-        AND "usedAt" IS NULL AND "expiresAt" > clock_timestamp()
+        AND "usedAt" IS NULL AND "expiresAt" > (clock_timestamp() AT TIME ZONE 'UTC')
         AND "attemptCount" < ${maxAttempts}
         AND "purpose" IN ('REGISTRATION_OTP', 'LOGIN_OTP')
       RETURNING *`;
@@ -84,12 +91,15 @@ export class VerificationTokenRepository {
   // and commit it before throwing. No extra pool connection is acquired while
   // holding the account lock; stale misses cannot change replaced challenges.
   async recordFailedAttempt(
-    challengeId: string, expectedHash: string, maxAttempts: number, tx?: PrismaTx,
+    challengeId: string,
+    expectedHash: string,
+    maxAttempts: number,
+    tx?: PrismaTx,
   ): Promise<VerificationToken | null> {
     const rows = await this.db(tx).$queryRaw<VerificationToken[]>`
       UPDATE "VerificationToken" SET "attemptCount" = "attemptCount" + 1
       WHERE "challengeId" = ${challengeId} AND "tokenHash" = ${expectedHash}
-        AND "usedAt" IS NULL AND "expiresAt" > clock_timestamp()
+        AND "usedAt" IS NULL AND "expiresAt" > (clock_timestamp() AT TIME ZONE 'UTC')
         AND "attemptCount" < ${maxAttempts}
         AND "purpose" IN ('REGISTRATION_OTP', 'LOGIN_OTP')
       RETURNING *`;
@@ -97,6 +107,8 @@ export class VerificationTokenRepository {
   }
 
   // One conditional write owns both rotation and its persistent resend limit.
+  // Prisma binds raw Date parameters as timestamptz; store the supplied instant
+  // as UTC instead of casting through the session timezone.
   async rotateLiveChallenge(
     challengeId: string,
     expectedHash: string,
@@ -106,10 +118,11 @@ export class VerificationTokenRepository {
   ): Promise<boolean> {
     const rows = await this.db(tx).$queryRaw<Array<{ id: string }>>`
       UPDATE "VerificationToken"
-      SET "tokenHash" = ${data.tokenHash}, "expiresAt" = ${data.expiresAt},
+      SET "tokenHash" = ${data.tokenHash},
+          "expiresAt" = (${data.expiresAt}::timestamptz AT TIME ZONE 'UTC'),
           "resendCount" = "resendCount" + 1
       WHERE "challengeId" = ${challengeId} AND "tokenHash" = ${expectedHash}
-        AND "usedAt" IS NULL AND "expiresAt" > clock_timestamp()
+        AND "usedAt" IS NULL AND "expiresAt" > (clock_timestamp() AT TIME ZONE 'UTC')
         AND "attemptCount" < ${limits.attempts} AND "resendCount" < ${limits.resends}
         AND "purpose" IN ('REGISTRATION_OTP', 'LOGIN_OTP')
       RETURNING "id"`;

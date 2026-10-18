@@ -1,5 +1,5 @@
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
-import mongoose, { Connection } from 'mongoose';
+import type { Connection } from 'mongoose';
 
 import { AppConfigService } from '../../config/app-config.service';
 import { retry } from '../../shared/retry/retry';
@@ -84,6 +84,9 @@ export class MongoService implements OnModuleInit, OnModuleDestroy {
       );
     }
 
+    // Disabled deployments must not pay to load the optional driver. Keep the
+    // missing-URI guard above the import, and the existing memoized retry below.
+    const { default: mongoose } = await import('mongoose');
     const conn = await retry(
       () =>
         mongoose

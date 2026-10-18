@@ -2,23 +2,31 @@
 
 import { execFileSync, spawn } from 'node:child_process';
 import { createWriteStream, existsSync, readFileSync } from 'node:fs';
+import { once } from 'node:events';
+import { createServer } from 'node:net';
 import { resolve } from 'node:path';
 
 import { REPO_ROOT } from './provenance.mjs';
-import { LANE, apiEnv } from './lane-env.mjs';
+import { LANE, apiEnv, assertLaneService } from './lane-env.mjs';
 
 export const API_MAIN = resolve(REPO_ROOT, 'apps/api/dist/main.js');
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-/** True when something already answers on the lane API port. */
+/** Detect even a non-HTTP listener; unexpected socket errors fail closed. */
 export async function portBusy(url = `${LANE.api}/health/live`) {
-  try {
-    await fetch(url, { signal: AbortSignal.timeout(500) });
-    return true;
-  } catch {
-    return false;
-  }
+  const target = new URL(url);
+  if (target.hostname !== '127.0.0.1') throw new Error('port probe must use loopback');
+  return new Promise((resolve, reject) => {
+    const server = createServer();
+    server.once('error', (error) => {
+      if (error.code === 'EADDRINUSE') resolve(true);
+      else reject(error);
+    });
+    server.listen({ host: target.hostname, port: Number(target.port), exclusive: true }, () => {
+      server.close((error) => (error ? reject(error) : resolve(false)));
+    });
+  });
 }
 
 /** Resident set size of a process in MiB, or null when it cannot be read. */
@@ -54,6 +62,8 @@ export async function startApi({
 } = {}) {
   if (!existsSync(API_MAIN))
     throw new Error('apps/api/dist/main.js is missing; build the API first');
+  assertLaneService('postgres');
+  assertLaneService('redis');
   if (await portBusy()) {
     throw new Error(`port ${LANE.apiPort} already answers; refusing to measure another process`);
   }
@@ -71,6 +81,12 @@ export async function startApi({
   });
   child.stdout.on('data', (d) => log?.write(d));
   child.stderr.on('data', (d) => log?.write(d));
+  try {
+    await once(child, 'spawn');
+  } catch (error) {
+    log?.end();
+    throw error;
+  }
 
   let liveMs = null;
   let readyMs = null;
@@ -124,7 +140,17 @@ export async function stopApi(handle) {
     while (child.exitCode === null && child.signalCode === null && Date.now() < deadline) {
       await sleep(50);
     }
+    if (child.exitCode === null && child.signalCode === null) {
+      child.kill('SIGKILL');
+      const killed = Date.now() + 5000;
+      while (child.exitCode === null && child.signalCode === null && Date.now() < killed) {
+        await sleep(50);
+      }
+      if (child.exitCode === null && child.signalCode === null) {
+        throw new Error('owned API child did not exit; refusing a subsequent measurement');
+      }
+    }
   }
   log?.end();
-  for (let i = 0; i < 100 && (await portBusy()); i += 1) await sleep(100);
+  // Do not wait for or kill another process that acquires the released port.
 }

@@ -39,13 +39,15 @@ jobs:
         run: |
           set -euo pipefail
           node scripts/runtime/toolchain.cjs
-          node --test infra/production/check-runtime.test.cjs infra/production/staging.test.cjs | tee controls.tap
+          node --test infra/production/check-runtime.test.cjs infra/production/staging.test.cjs scripts/production/platform/validate-plan.test.cjs | tee controls.tap
+          node scripts/production/platform/validate-plan.cjs --check | tee platform-plan.json
           git rev-parse HEAD > source-sha.txt
       - uses: actions/upload-artifact@v4
         with:
           name: staging-controls-${{ matrix.os }}
           path: |
             controls.tap
+            platform-plan.json
             source-sha.txt
           if-no-files-found: error
           retention-days: 7

@@ -2,16 +2,8 @@ import type { FactoryProvider } from '@nestjs/common';
 import type { Model } from 'mongoose';
 
 import { MongoService } from './mongo.service';
-import {
-  PROVIDER_PORTFOLIO_DRAFT_MODEL,
-  ProviderPortfolioDraftSchema,
-  type ProviderPortfolioDraftDoc,
-} from './schemas/provider-portfolio-draft.schema';
-import {
-  SERVICE_METADATA_DRAFT_MODEL,
-  ServiceMetadataDraftSchema,
-  type ServiceMetadataDraftDoc,
-} from './schemas/service-metadata-draft.schema';
+import type { ProviderPortfolioDraftDoc } from './schemas/provider-portfolio-draft.schema';
+import type { ServiceMetadataDraftDoc } from './schemas/service-metadata-draft.schema';
 
 export const SERVICE_METADATA_DRAFT_TOKEN = 'MONGO_MODEL_SERVICE_METADATA_DRAFT';
 export const PROVIDER_PORTFOLIO_DRAFT_TOKEN = 'MONGO_MODEL_PROVIDER_PORTFOLIO_DRAFT';
@@ -37,6 +29,8 @@ export const serviceMetadataDraftProvider: FactoryProvider<Promise<ServiceMetada
     // dial anything, and must not fail. Boot proceeds with a null model.
     if (!mongo.isEnabled()) return null;
     const conn = await mongo.connect();
+    const { SERVICE_METADATA_DRAFT_MODEL, ServiceMetadataDraftSchema } =
+      await import('./schemas/service-metadata-draft.schema');
     return conn.model<ServiceMetadataDraftDoc>(
       SERVICE_METADATA_DRAFT_MODEL,
       ServiceMetadataDraftSchema,
@@ -51,6 +45,8 @@ export const providerPortfolioDraftProvider: FactoryProvider<Promise<ProviderPor
     useFactory: async (mongo: MongoService) => {
       if (!mongo.isEnabled()) return null;
       const conn = await mongo.connect();
+      const { PROVIDER_PORTFOLIO_DRAFT_MODEL, ProviderPortfolioDraftSchema } =
+        await import('./schemas/provider-portfolio-draft.schema');
       return conn.model<ProviderPortfolioDraftDoc>(
         PROVIDER_PORTFOLIO_DRAFT_MODEL,
         ProviderPortfolioDraftSchema,

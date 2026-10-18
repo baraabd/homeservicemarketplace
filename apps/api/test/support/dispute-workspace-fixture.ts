@@ -148,7 +148,22 @@ export async function workspaceFixture(options: { authentication?: boolean } = {
           select: { id: true },
         })
       ).map((row) => row.id);
-      await db.outboxEvent.deleteMany({ where: { aggregateId: { in: [...ids, ...draftIds] } } });
+      // Capture ownership before deleting notifications, so their committed
+      // announcements cannot leak into a later suite's outbox worker run.
+      const notificationIds = (
+        await db.notification.findMany({
+          where: { userId: { in: Object.values(users) } },
+          select: { id: true },
+        })
+      ).map((row) => row.id);
+      await db.outboxEvent.deleteMany({
+        where: {
+          OR: [
+            { aggregateId: { in: [...ids, ...draftIds] } },
+            { aggregateType: 'Notification', aggregateId: { in: notificationIds } },
+          ],
+        },
+      });
       await db.auditEvent.deleteMany({ where: { userId: { in: Object.values(users) } } });
       await db.notification.deleteMany({ where: { userId: { in: Object.values(users) } } });
       await db.disputeNotificationPreference.deleteMany({

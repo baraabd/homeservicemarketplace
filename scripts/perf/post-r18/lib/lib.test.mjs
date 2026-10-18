@@ -1,5 +1,8 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
 import {
   attribute,
@@ -15,6 +18,25 @@ import {
 import { evaluateBundle, evaluateQueries } from './budgets.mjs';
 import { classifyStatements, scansOf, seqScanFindings, statementLabel } from './plans.mjs';
 import { percentile, summarize } from './stats.mjs';
+import { dirtyPathsFromPorcelain } from './provenance.mjs';
+import { compareReports, numericDelta, readReports } from '../compare-reports.mjs';
+
+test('provenance preserves unstaged status columns and unusual filenames', () => {
+  assert.deepEqual(
+    dirtyPathsFromPorcelain(' M scripts/perf/post-r18/api-boot.mjs\0?? spaced\nname.txt\0'),
+    ['scripts/perf/post-r18/api-boot.mjs', 'spaced\nname.txt'],
+  );
+  assert.deepEqual(dirtyPathsFromPorcelain(''), []);
+});
+
+test('provenance includes both sides of a rename without interpreting filename status text', () => {
+  assert.deepEqual(dirtyPathsFromPorcelain('R  new-name.txt\0old-name.txt\0 M new-name.txt\0'), [
+    'new-name.txt',
+    'old-name.txt',
+  ]);
+  assert.throws(() => dirtyPathsFromPorcelain('R  missing-source\0'), /missing git rename/);
+  assert.throws(() => dirtyPathsFromPorcelain('M malformed\0'), /invalid git porcelain/);
+});
 
 const s = (raw) => ({ raw, gzip: raw / 2, brotli: raw / 4 });
 const PNPM = '/repo/node_modules/.pnpm/recharts@2.15.2/node_modules/recharts/lib/index.js';
@@ -251,4 +273,197 @@ test('plan walking finds nested scans and filters by table size', () => {
   assert.equal(scans.length, 2);
   assert.deepEqual(seqScanFindings(scans, new Set(['Bid'])), ['Bid (est. 900 rows)']);
   assert.deepEqual(seqScanFindings(scans, new Set(['Booking'])), []);
+});
+
+// The fixture uses the retained JSON schemas: named bundle journeys,
+// per-phase query scenarios and raw browser rows (not invented percentiles).
+function comparisonFixture(commit = 'a') {
+  const source = {
+    commit: commit.repeat(40),
+    tree: commit.repeat(40),
+    measurementHarnessCommit: 'c'.repeat(40),
+    lockfileSha256: 'd'.repeat(64),
+  };
+  const common = { schemaVersion: 1, source };
+  const counts = { User: 15, ServiceRequest: 10836, Bid: 43344, Booking: 5418 };
+  const scenario = {
+    path: '/v1/admin/users',
+    status: 200,
+    items: 15,
+    statements: 52,
+    latency: summarize([4, 5, 6]),
+  };
+  return [
+    {
+      ...common,
+      kind: 'r27-bundle-report',
+      compression: { gzip: 1, brotli: 11 },
+      toolchain: { vite: '6.4.3' },
+      buildFlags: {},
+      overlays: [],
+      journeys: [{ name: 'admin', total: { js: { raw: 100, gzip: 50, brotli: 25 } } }],
+    },
+    {
+      ...common,
+      kind: 'r27-api-boot',
+      environment: { profile: 'production', workers: 'off' },
+      runs: [0, 1, 2].map((run) => ({
+        run,
+        cache: run ? 'warm-os-cache' : 'first-boot-in-session',
+        readyMs: 100 + run,
+        rssMiBAtReady: 200,
+      })),
+    },
+    {
+      ...common,
+      kind: 'r27-query-profile',
+      environment: { profile: 'fixture', repeatsPerScenario: 3 },
+      dataset: {
+        realApi: { seekers: 6, providers: 4 },
+        amplification: { copies: 300, rowCountsAfter: counts },
+      },
+      phases: { amplified: { rowCounts: counts, scenarios: { 'admin users': scenario } } },
+      pageSizeInvariance: {
+        'admin users': {
+          5: { items: 5, statements: 22 },
+          20: { items: 15, statements: 52 },
+          verdict: 'N+1',
+        },
+      },
+      workloads: [
+        {
+          name: 'normal',
+          concurrency: 2,
+          requests: 200,
+          cache: 'warm',
+          errorRate: 0,
+          latencyMs: summarize(Array(200).fill(4)),
+        },
+      ],
+    },
+    {
+      kind: 'r27-real-browser',
+      mode: 'production',
+      project: 'desktop-en',
+      source: source.commit,
+      sourceTree: source.tree,
+      harness: source.measurementHarnessCommit,
+      browser: '151',
+      viewport: { width: 1440, height: 900 },
+      results: ['seeker', 'admin'].flatMap((role) =>
+        [0, 1, 2].flatMap((repetition) => [
+          { role, repetition, cache: 'cold-browser', usefulUiMs: 200 },
+          { role, repetition, cache: 'warm-browser', usefulUiMs: 100 },
+          { role, repetition, keyboardTransitionMs: 50 },
+        ]),
+      ),
+    },
+  ];
+}
+
+test('comparison rejects mixed harnesses, source commits and lockfiles', () => {
+  const baseline = comparisonFixture();
+  for (const key of ['measurementHarnessCommit', 'commit', 'tree', 'lockfileSha256']) {
+    const candidate = comparisonFixture('b');
+    candidate[1].source = {
+      ...candidate[1].source,
+      [key]: 'e'.repeat(key === 'lockfileSha256' ? 64 : 40),
+    };
+    assert.throws(() => compareReports(baseline, candidate), /incomparable.*source/);
+  }
+  const candidate = comparisonFixture('b');
+  for (const report of candidate.slice(0, 3))
+    report.source.measurementHarnessCommit = 'e'.repeat(40);
+  candidate[3].harness = 'e'.repeat(40);
+  assert.throws(() => compareReports(baseline, candidate), /incomparable measurementHarnessCommit/);
+});
+
+test('comparison refuses changed datasets, schemas and workload concurrency', () => {
+  for (const change of [
+    (reports) => {
+      reports[2].dataset.amplification.copies = 301;
+    },
+    (reports) => {
+      reports[2].schemaVersion = 2;
+    },
+    (reports) => {
+      reports[2].workloads[0].concurrency = 16;
+    },
+  ]) {
+    const candidate = comparisonFixture('b');
+    change(candidate);
+    assert.throws(() => compareReports(comparisonFixture(), candidate), /incomparable|unsupported/);
+  }
+});
+
+test('CPU mismatches in core or browser reports warn without invalidating source evidence', () => {
+  const baseline = comparisonFixture();
+  for (const report of baseline)
+    report.host = report.kind === 'r27-real-browser' ? { cpu: 'CPU A' } : { cpuModel: 'CPU A' };
+  for (const changedReport of [0, 1, 2, 3]) {
+    const candidate = comparisonFixture('b');
+    for (const report of candidate)
+      report.host = report.kind === 'r27-real-browser' ? { cpu: 'CPU A' } : { cpuModel: 'CPU A' };
+    candidate[changedReport].host = changedReport === 3 ? { cpu: 'CPU B' } : { cpuModel: 'CPU B' };
+    const result = compareReports(baseline, candidate);
+    assert.equal(result.comparabilityWarnings.length, 1);
+    assert.match(result.comparabilityWarnings[0], /CPU A.*CPU B.*hardware-confounded/);
+    assert.deepEqual(result.provenanceWarnings, []);
+    assert.equal(result.status, 'MEASURED_NOT_RELEASE_ACCEPTED');
+    assert.equal(result.source.candidate.commit, 'b'.repeat(40));
+    assert.equal(result.boot.readyMs.candidate.n, 3);
+  }
+  const matching = compareReports(baseline, structuredClone(baseline));
+  assert.deepEqual(matching.comparabilityWarnings, []);
+  assert.match(matching.limits[0], /shared-VM.*even when CPU models match/);
+});
+
+test('partial locale/mode evidence remains pending and small samples have no tail percentiles', () => {
+  const result = compareReports(comparisonFixture(), comparisonFixture('b'));
+  assert.equal(result.browser.status, 'PENDING_INCOMPLETE_MATRIX');
+  assert.ok(result.browser.missing.some((key) => key.includes('/development/mobile-ar/')));
+  assert.equal(result.boot.readyMs.baseline.n, 3);
+  assert.equal('p95' in result.boot.readyMs.baseline, false);
+  assert.equal(
+    'p99' in
+      result.browser.cells['production/desktop-en']['admin/cold-browser'].usefulUiMs.baseline,
+    false,
+  );
+  assert.equal(result.workloads.normal.latencyMs.baseline.p99, 4);
+});
+
+test('comparison discovers nested retained-schema JSON and ignores unrelated artifact JSON', () => {
+  const directory = mkdtempSync(join(tmpdir(), 'r27-compare-'));
+  try {
+    mkdirSync(join(directory, 'browser'));
+    const reports = comparisonFixture();
+    reports[0].source.dirtyPaths = ['cripts/perf/post-r18/api-boot-profile.mjs'];
+    reports.forEach((report, index) =>
+      writeFileSync(
+        join(directory, index === 3 ? 'browser/desktop-en.json' : `${index}.json`),
+        JSON.stringify(report),
+      ),
+    );
+    writeFileSync(join(directory, 'unrelated.json'), JSON.stringify({ kind: 'other' }));
+    const result = compareReports(readReports(directory), comparisonFixture('b'));
+    assert.equal(result.bundle.admin['total/js'].brotli.baseline, 25);
+    assert.equal(result.queries.amplified['admin users'].statements.baseline, 52);
+    assert.equal(result.pageScaling['admin users']['20'].items.baseline, 15);
+    assert.match(result.provenanceWarnings[0], /historical porcelain/);
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test('numeric deltas preserve zeros and unknowns without invented percentages', () => {
+  assert.deepEqual(numericDelta(0, 5), { baseline: 0, candidate: 5, delta: 5 });
+  assert.deepEqual(numericDelta(0, 0), { baseline: 0, candidate: 0, delta: 0 });
+  assert.deepEqual(numericDelta(null, 5), { baseline: null, candidate: 5 });
+  assert.deepEqual(numericDelta(5, Number.NaN), { baseline: 5, candidate: null });
+  assert.deepEqual(numericDelta(10, 5), {
+    baseline: 10,
+    candidate: 5,
+    delta: -5,
+    deltaPercent: -50,
+  });
 });

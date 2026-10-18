@@ -1,5 +1,5 @@
 import { io, type Socket } from 'socket.io-client';
-import type { RealtimeEvent } from '@homeservicemarketplace/contracts';
+import type { RealtimeConnectionAck, RealtimeEvent } from '@homeservicemarketplace/contracts';
 
 // Sprint 7.0 (refined) — thin Socket.IO client wrapper.
 //
@@ -20,6 +20,7 @@ import type { RealtimeEvent } from '@homeservicemarketplace/contracts';
 // and it is server-authorised.
 
 let activeSocket: Socket | null = null;
+let clearActiveHandshake: (() => void) | null = null;
 
 function resolveSocketUrl(): string {
   const fromEnv = import.meta.env.VITE_API_URL?.trim();
@@ -36,7 +37,9 @@ export interface OpenRealtimeSocketOptions {
   // Optional override (tests / local probes).
   url?: string;
   onConnect?: () => void;
+  onReady?: (ack: RealtimeConnectionAck) => void;
   onDisconnect?: (reason: string) => void;
+  onConnectError?: (error: Error & { data?: { code?: string } }) => void;
   onEvent?: (event: RealtimeEvent) => void;
 }
 
@@ -44,26 +47,76 @@ export function openRealtimeSocket(opts: OpenRealtimeSocketOptions): Socket {
   closeRealtimeSocket();
   const sock = io(opts.url ?? resolveSocketUrl(), {
     autoConnect: false,
-    reconnection: true,
-    reconnectionAttempts: Infinity,
-    // Cap backoff at 30s so a flaky network doesn't spin the CPU.
-    reconnectionDelay: 1000,
-    reconnectionDelayMax: 30_000,
-    transports: ['websocket', 'polling'],
+    // One owner of retry/backoff: the authenticated recovery hook. Running
+    // Socket.IO's loop as well would double retries during an outage.
+    reconnection: false,
+    timeout: 10_000,
+    // WebSocket-only needs no sticky-session routing. The optional polling
+    // upgrade mode requires the proxy's documented sticky-session policy.
+    transports:
+      import.meta.env.VITE_REALTIME_TRANSPORTS === 'polling,websocket'
+        ? ['polling', 'websocket']
+        : ['websocket'],
     withCredentials: true,
-    auth: () => ({ token: opts.getToken() ?? '' }),
+    // Socket.IO invokes an auth *callback*. Returning an object here leaves
+    // the namespace handshake waiting forever (including cookie sessions).
+    auth: (callback) => callback({ token: opts.getToken() ?? '' }),
   });
 
-  sock.on('connect', () => opts.onConnect?.());
-  sock.on('disconnect', (reason) => opts.onDisconnect?.(reason));
-  sock.on('realtime.event', (event: RealtimeEvent) => opts.onEvent?.(event));
+  let handshakeTimer: ReturnType<typeof setTimeout> | undefined;
+  let ready = false;
+  clearActiveHandshake = () => {
+    clearTimeout(handshakeTimer);
+    ready = false;
+  };
+  sock.on('connect', () => {
+    ready = false;
+    clearTimeout(handshakeTimer);
+    handshakeTimer = setTimeout(() => {
+      opts.onConnectError?.(
+        Object.assign(new Error('Realtime authorization timed out'), {
+          data: { code: 'ACK_TIMEOUT' },
+        }),
+      );
+      sock.disconnect();
+    }, 5_000);
+    opts.onConnect?.();
+  });
+  sock.on('connection.ack', (value: unknown) => {
+    const ack = value as Partial<RealtimeConnectionAck> | null;
+    if (
+      !ack ||
+      typeof ack.userId !== 'string' ||
+      ack.userId.length > 128 ||
+      !Array.isArray(ack.joinedRooms) ||
+      ack.joinedRooms.length > 40 ||
+      !ack.joinedRooms.every((room) => typeof room === 'string' && room.length <= 128)
+    ) {
+      sock.disconnect();
+      return;
+    }
+    ready = true;
+    clearTimeout(handshakeTimer);
+    opts.onReady?.(ack as RealtimeConnectionAck);
+  });
+  sock.on('disconnect', (reason) => {
+    ready = false;
+    clearTimeout(handshakeTimer);
+    opts.onDisconnect?.(reason);
+  });
+  sock.on('connect_error', (error) => opts.onConnectError?.(error));
+  sock.on('realtime.event', (event: RealtimeEvent) => {
+    if (ready) opts.onEvent?.(event);
+  });
 
-  sock.connect();
   activeSocket = sock;
+  sock.connect();
   return sock;
 }
 
 export function closeRealtimeSocket(): void {
+  clearActiveHandshake?.();
+  clearActiveHandshake = null;
   if (activeSocket) {
     activeSocket.removeAllListeners();
     activeSocket.disconnect();
@@ -89,9 +142,21 @@ export async function subscribeToConversation(
 ): Promise<SubscribeConversationAck> {
   const sock = activeSocket;
   if (!sock || !sock.connected) return { ok: false, code: 'NOT_CONNECTED' };
+  if (!/^[A-Za-z0-9_-]{1,64}$/.test(conversationId)) {
+    return { ok: false, code: 'INVALID_CONVERSATION' };
+  }
   return new Promise((resolve) => {
-    sock.emit('subscribe:conversation', { conversationId }, (ack: SubscribeConversationAck) =>
-      resolve(ack ?? { ok: false, code: 'NO_ACK' }),
-    );
+    // The server may disappear after emit. A bounded acknowledgement also
+    // bounds Socket.IO's ack callback queue while REST remains available.
+    sock
+      .timeout(5_000)
+      .emit(
+        'subscribe:conversation',
+        { conversationId },
+        (error: Error | null, ack?: SubscribeConversationAck) =>
+          resolve(
+            error ? { ok: false, code: 'ACK_TIMEOUT' } : (ack ?? { ok: false, code: 'NO_ACK' }),
+          ),
+      );
   });
 }

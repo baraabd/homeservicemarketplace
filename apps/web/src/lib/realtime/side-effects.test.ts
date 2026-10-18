@@ -9,6 +9,7 @@ import {
   __resetNotificationTargetHandlerForTests,
   setNotificationTargetHandler,
 } from './notification-target-handler';
+import { __clearPresentationClaimsForTests } from './notification-baseline';
 
 // Sprint 7.5.1 — side-effects bridge tests.
 // Sprint 7.6 — anti-echo gate via envelope.actorUserId.
@@ -69,6 +70,181 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.useRealTimers();
+  __clearPresentationClaimsForTests();
+  vi.unstubAllGlobals();
+});
+
+describe('G2 real notification summaries paired with booking socket events', () => {
+  const transitions = [
+    ['IN_PROGRESS', 'BOOKING_IN_PROGRESS'],
+    ['COMPLETED', 'BOOKING_COMPLETED'],
+    ['CANCELLED', 'BOOKING_CANCELLED'],
+  ] as const;
+
+  function coordinate() {
+    let queue = Promise.resolve();
+    vi.stubGlobal('navigator', {
+      locks: {
+        request: (_key: string, _options: unknown, callback: () => void) => {
+          queue = queue.then(callback);
+          return queue;
+        },
+      },
+    });
+    return () => queue;
+  }
+
+  function booking(to: string, actorUserId = 'provider', bookingId = 'booking-1') {
+    return event('booking.status_changed', { bookingId, to }, { actorUserId });
+  }
+
+  function summary(to: string, type: string, includeMetadata: boolean) {
+    // The real REST contract deliberately has no actorUserId.
+    return event('notification.created', {
+      id: 'notification-1',
+      type,
+      resourceType: 'BOOKING',
+      resourceId: 'booking-1',
+      metadata: includeMetadata ? { to } : null,
+    });
+  }
+
+  for (const [to, type] of transitions) {
+    for (const order of ['socket-first', 'rest-first'] as const) {
+      for (const includeMetadata of [true, false]) {
+        it(`presents ${to} once across tabs (${order}, metadata=${includeMetadata}) and learns the durable id`, async () => {
+          const flush = coordinate();
+          const socket = booking(to);
+          const rest = summary(to, type, includeMetadata);
+          const pair = order === 'socket-first' ? [socket, rest] : [rest, socket];
+          for (const candidate of pair) {
+            // Separate documents have independent in-memory maps but share
+            // origin storage and the browser's exclusive Web Lock.
+            __resetSideEffectsForTests();
+            dispatchRealtimeSideEffects(candidate, {
+              currentUserId: 'seeker',
+              coordinateTabs: true,
+            });
+          }
+          await flush();
+          expect(toastSuccess.mock.calls.length + toastDefault.mock.calls.length).toBe(1);
+          expect(triggerSpy).toHaveBeenCalledTimes(1);
+
+          __resetSideEffectsForTests();
+          dispatchRealtimeSideEffects(
+            { ...rest, actorUserId: 'provider' },
+            { currentUserId: 'seeker', coordinateTabs: true },
+          );
+          await flush();
+          expect(triggerSpy).toHaveBeenCalledTimes(1);
+        });
+      }
+    }
+  }
+
+  it('preserves two known actors, different transitions and different bookings across tabs', async () => {
+    const flush = coordinate();
+    for (const candidate of [
+      booking('IN_PROGRESS', 'provider-a'),
+      booking('IN_PROGRESS', 'provider-b'),
+      booking('COMPLETED', 'provider-a'),
+      booking('IN_PROGRESS', 'provider-a', 'booking-2'),
+    ]) {
+      __resetSideEffectsForTests();
+      dispatchRealtimeSideEffects(candidate, {
+        currentUserId: 'seeker',
+        coordinateTabs: true,
+      });
+    }
+    await flush();
+    expect(toastSuccess).toHaveBeenCalledTimes(4);
+    expect(triggerSpy).toHaveBeenCalledTimes(4);
+  });
+
+  for (const order of ['rest-first', 'rest-between', 'rest-last'] as const) {
+    it(`preserves two known actors when the missing-actor summary is ${order}`, async () => {
+      const flush = coordinate();
+      const first = booking('COMPLETED', 'provider-a');
+      const second = booking('COMPLETED', 'provider-b');
+      const rest = summary('COMPLETED', 'BOOKING_COMPLETED', true);
+      const candidates =
+        order === 'rest-first'
+          ? [rest, first, rest, first, second]
+          : order === 'rest-between'
+            ? [first, rest, first, rest, second]
+            : [first, second, rest];
+      for (const candidate of candidates) {
+        __resetSideEffectsForTests();
+        dispatchRealtimeSideEffects(candidate, {
+          currentUserId: 'seeker',
+          coordinateTabs: true,
+        });
+      }
+      await flush();
+      expect(triggerSpy).toHaveBeenCalledTimes(2);
+      // Replays must not recreate an already matched presentation marker.
+      for (const candidate of [rest, first, second]) {
+        __resetSideEffectsForTests();
+        dispatchRealtimeSideEffects(candidate, {
+          currentUserId: 'seeker',
+          coordinateTabs: true,
+        });
+      }
+      await flush();
+      expect(triggerSpy).toHaveBeenCalledTimes(2);
+    });
+  }
+
+  it('keeps missing-actor correlation isolated to the current recipient', async () => {
+    const flush = coordinate();
+    dispatchRealtimeSideEffects(booking('COMPLETED'), {
+      currentUserId: 'seeker-a',
+      coordinateTabs: true,
+    });
+    dispatchRealtimeSideEffects(summary('COMPLETED', 'BOOKING_COMPLETED', true), {
+      currentUserId: 'seeker-b',
+      coordinateTabs: true,
+    });
+    await flush();
+    expect(triggerSpy).toHaveBeenCalledTimes(2);
+  });
+
+  it('retires the matching REST marker when the durable socket notification bridges its actor', async () => {
+    const flush = coordinate();
+    const rest = summary('COMPLETED', 'BOOKING_COMPLETED', true);
+    const attributed = { ...rest, actorUserId: 'provider-a' };
+    for (const candidate of [
+      rest,
+      attributed,
+      booking('COMPLETED', 'provider-a'),
+      rest,
+      attributed,
+      booking('COMPLETED', 'provider-b'),
+    ]) {
+      __resetSideEffectsForTests();
+      dispatchRealtimeSideEffects(candidate, {
+        currentUserId: 'seeker',
+        coordinateTabs: true,
+      });
+    }
+    await flush();
+    expect(triggerSpy).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not correlate an unrelated notification type with a booking transition', async () => {
+    const flush = coordinate();
+    dispatchRealtimeSideEffects(booking('COMPLETED'), {
+      currentUserId: 'seeker',
+      coordinateTabs: true,
+    });
+    __resetSideEffectsForTests();
+    dispatchRealtimeSideEffects(summary('', 'UNRECOGNIZED', false), {
+      currentUserId: 'seeker',
+      coordinateTabs: true,
+    });
+    await flush();
+    expect(triggerSpy).toHaveBeenCalledTimes(2);
+  });
 });
 
 describe('dispatchRealtimeSideEffects', () => {

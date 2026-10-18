@@ -7,8 +7,12 @@ RUN node scripts/runtime/toolchain.cjs && pnpm install --frozen-lockfile
 ARG SOURCE_SHA=unknown
 ARG VITE_API_URL
 ARG VITE_PROVIDER_ONBOARDING_V2=false
+ARG VITE_CSP_MEDIA_ORIGINS
+ARG VITE_CSP_UPLOAD_ORIGINS
 ENV VITE_API_URL=${VITE_API_URL} \
-    VITE_PROVIDER_ONBOARDING_V2=${VITE_PROVIDER_ONBOARDING_V2}
+    VITE_PROVIDER_ONBOARDING_V2=${VITE_PROVIDER_ONBOARDING_V2} \
+    VITE_CSP_MEDIA_ORIGINS=${VITE_CSP_MEDIA_ORIGINS} \
+    VITE_CSP_UPLOAD_ORIGINS=${VITE_CSP_UPLOAD_ORIGINS}
 RUN node apps/web/scripts/check-image-build.mjs
 RUN pnpm --filter @homeservicemarketplace/web build
 # Public build identity only, generated alongside this exact static bundle.

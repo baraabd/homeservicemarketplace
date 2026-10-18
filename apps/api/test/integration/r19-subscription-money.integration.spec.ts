@@ -630,7 +630,22 @@ d('R19 - subscription confirmation, ledger posting and periods (real Postgres)',
         ],
       },
     });
-    expect(moneyPermissions).toEqual([]);
+    // R24 registers its exact capability catalog without enabling a live
+    // caller. This preserves and explicitly checks the original no-grant
+    // invariant; R24's synthetic grant/financial fixtures use a separate DB.
+    expect(moneyPermissions.map((row: { key: string }) => row.key).sort()).toEqual([
+      'money:purchase:self',
+      'money:read:self',
+      'money:receipt:review',
+      'money:refund:request:self',
+      'money:refund:review',
+      'money:review:read',
+    ]);
+    expect(
+      await prisma.rolePermission.count({
+        where: { permissionId: { in: moneyPermissions.map((row: { id: string }) => row.id) } },
+      }),
+    ).toBe(0);
     // No live role holds the ledger capabilities. The R15 suite grants them to
     // its own fixture role (an it- id) while it runs, in the same database.
     const ledgerGrants = await prisma.rolePermission.count({

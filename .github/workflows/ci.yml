@@ -278,6 +278,83 @@ jobs:
           retention-days: 7
           if-no-files-found: ignore
 
+  # R25 runs separately from ordinary browser discovery because it owns two
+  # API processes, two production web builds and a disposable service stack.
+  # Both aggregate gates require its positive, source-bound acceptance result.
+  r25-realtime:
+    name: R25 real replicas and recovery
+    runs-on: ubuntu-latest
+    needs: verify
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v5
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Prepare disposable R25 credentials
+        run: |
+          node <<'NODE'
+          const fs = require('node:fs');
+          const { randomBytes } = require('node:crypto');
+          const session = `ci_${process.env.GITHUB_RUN_ID}_${process.env.GITHUB_RUN_ATTEMPT}`;
+          const password = randomBytes(24).toString('hex');
+          const redis = randomBytes(24).toString('hex');
+          for (const value of [password, redis]) console.log(`::add-mask::${value}`);
+          const values = {
+            R25_SESSION: session,
+            R25_DATABASE_PASSWORD: password,
+            R25_REDIS_PASSWORD: redis,
+            REDIS_PASSWORD: redis,
+            DATABASE_URL: `postgresql://r25_test:${password}@127.0.0.1:54325/hsm_r25_${session}`,
+          };
+          fs.appendFileSync(process.env.GITHUB_ENV, Object.entries(values).map(([k,v]) => `${k}=${v}\n`).join(''));
+          NODE
+      - name: Start only the disposable R25 stack
+        run: docker compose -f infra/production/realtime/compose.test.yml up -d --wait
+      - name: Wait for the published R25 database and mail service
+        # pg_isready may see initdb's temporary Unix-socket server. Prove that
+        # the authenticated host TCP connection serves a query before Prisma.
+        env:
+          PGPASSWORD: ${{ env.R25_DATABASE_PASSWORD }}
+          PGCONNECT_TIMEOUT: '2'
+        run: |
+          set -euo pipefail
+          for _ in $(seq 1 30); do
+            if psql -h 127.0.0.1 -p 54325 -U r25_test -d "hsm_r25_$R25_SESSION" -Atqc 'SELECT 1' >/dev/null 2>&1 &&
+               curl --fail --silent --max-time 2 http://127.0.0.1:58025/readyz >/dev/null 2>&1; then
+              echo 'R25 database and mail service are ready on their published ports'
+              exit 0
+            fi
+            sleep 1
+          done
+          echo '::error::R25 disposable services did not become ready'
+          exit 1
+      - name: Generate Prisma for the disposable database
+        run: pnpm --filter @homeservicemarketplace/database generate
+      - name: Install the pinned browser
+        run: pnpm --filter @homeservicemarketplace/web exec playwright install --with-deps chromium
+      - name: Verify isolation policy
+        run: node --test scripts/production/realtime/verify-replicas.test.cjs
+      - name: Verify the committed source against two API processes
+        run: node scripts/production/realtime/verify-replicas.cjs --run
+      - name: Preserve fixed-schema evidence
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: r25-realtime-summary
+          path: apps/web/test-results/r25-${{ env.R25_SESSION }}/*/summary.json
+          if-no-files-found: error
+          retention-days: 14
+      - name: Stop only the R25 stack
+        if: ${{ always() && env.R25_SESSION != '' }}
+        run: docker compose -f infra/production/realtime/compose.test.yml down
+
   # ── the approved design, measured ─────────────────────────────────────────
   # Sprint 09B.29 Phase 5B. The visual gate produced its evidence only on a
   # developer's machine, which meant the one check that can tell whether the
@@ -462,6 +539,8 @@ jobs:
         env:
           NODE_ENV: development
           PORT: '4010'
+          # Match signed local-storage URLs to the exact origin in the SPA CSP.
+          PUBLIC_API_URL: http://127.0.0.1:4010
       - name: Serve the built SPA
         # Started here rather than by playwright's webServer, which the config
         # omits entirely for a real-API run. `--host 127.0.0.1` is load-bearing:
@@ -2024,6 +2103,7 @@ jobs:
       - evidence-retention
       - dispute-workspace
       - browser-e2e
+      - r25-realtime
       - phase5-visual
       - phase5-real-api
       - admin-review-real-api
@@ -2072,6 +2152,7 @@ jobs:
       - evidence-retention
       - dispute-workspace
       - browser-e2e
+      - r25-realtime
       # The approved design is an acceptance criterion, so the check that
       # measures it blocks merges like any other.
       - phase5-visual

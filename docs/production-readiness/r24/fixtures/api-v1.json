@@ -1,0 +1,209 @@
+{
+  "contractVersion": "hsm.money.v1",
+  "purpose": "Synthetic contract examples for R24 and its R29/R30/R31/R32 integration boundaries; examples are not executed payment-rail evidence.",
+  "moneyScope": "Provider subscription payments to HSM only",
+  "currencyPolicy": "XTS and XXX are synthetic test values. No currency, decimal scale, price, tax, FX or payout policy is selected by R24.",
+  "httpConventions": {
+    "basePath": "/v1/money",
+    "identity": "The current authenticated user and current database grants determine actor and ownership.",
+    "commandHeaders": {
+      "Idempotency-Key": "example_purchase_command_0001",
+      "X-CSRF-Token": "<current-session-csrf-token>"
+    },
+    "idempotency": "One global key namespace, 16-128 ASCII letters/digits/underscore/hyphen, bound to actor, action, canonical request and immutable server authority. Replay repeats the original response. Fresh authorization still applies.",
+    "reservedInternalKeyPrefixes": ["r24_event_", "r24_process_", "r24_refund_result_"],
+    "identifierLimit": 64,
+    "amount": "Canonical nonnegative decimal-string minor units within PostgreSQL BIGINT; positive amounts are required for payment confirmation and refund requests.",
+    "pagination": {
+      "defaultLimit": 20,
+      "maximumLimit": 50,
+      "cursor": "Opaque, resource/owner/currency-bound keyset cursor whose anchor is verified against the authorized database scope."
+    }
+  },
+  "examples": [
+    {
+      "name": "Server-priced quote",
+      "method": "POST",
+      "path": "/v1/money/quotes",
+      "request": {
+        "contractVersion": "hsm.money.v1",
+        "planVersionId": "example-published-plan-version",
+        "method": "STRIPE"
+      },
+      "responseBody": {
+        "contractVersion": "hsm.money.v1",
+        "planVersionId": "example-published-plan-version",
+        "paymentMethod": "STRIPE",
+        "subtotal": { "amountMinor": "1000", "currency": "XTS" },
+        "discount": { "amountMinor": "0", "currency": "XTS" },
+        "total": { "amountMinor": "1000", "currency": "XTS" },
+        "couponId": null,
+        "expiresAt": "2026-10-17T20:15:00.000Z"
+      }
+    },
+    {
+      "name": "Create immutable purchase obligation",
+      "method": "POST",
+      "path": "/v1/money/intents",
+      "request": {
+        "contractVersion": "hsm.money.v1",
+        "planVersionId": "example-published-plan-version",
+        "method": "STRIPE"
+      },
+      "responseBody": {
+        "contractVersion": "hsm.money.v1",
+        "id": "example-intent",
+        "providerProfileId": "example-current-provider",
+        "planVersionId": "example-published-plan-version",
+        "method": "STRIPE",
+        "status": "CREATED",
+        "subtotal": { "amountMinor": "1000", "currency": "XTS" },
+        "discount": { "amountMinor": "0", "currency": "XTS" },
+        "total": { "amountMinor": "1000", "currency": "XTS" },
+        "expiresAt": "2026-10-17T20:15:00.000Z",
+        "createdAt": "2026-10-17T20:00:00.000Z"
+      }
+    },
+    {
+      "name": "Accept durable collection work",
+      "method": "POST",
+      "path": "/v1/money/intents/example-intent/attempts",
+      "request": { "contractVersion": "hsm.money.v1" },
+      "responseBody": {
+        "contractVersion": "hsm.money.v1",
+        "commandId": "example-command",
+        "resourceType": "COLLECTION",
+        "resourceId": "example-attempt",
+        "status": "ACCEPTED"
+      },
+      "meaning": "The response is the immutable command receipt. It does not claim confirmation, activation or a successful network outcome."
+    },
+    {
+      "name": "Read transport uncertainty without claiming financial success",
+      "method": "GET",
+      "path": "/v1/money/attempts/example-attempt",
+      "responseBody": {
+        "contractVersion": "hsm.money.v1",
+        "id": "example-attempt",
+        "paymentIntentId": "example-intent",
+        "attemptNo": 1,
+        "status": "STARTED",
+        "externalAttemptId": null,
+        "createdAt": "2026-10-17T20:00:01.000Z",
+        "dispatchStatus": "UNKNOWN"
+      },
+      "recovery": "POST /v1/money/attempts/example-attempt/resume with hsm.money.v1 retains the same durable attempt, obligation binding and provider idempotency key."
+    },
+    {
+      "name": "Request a refund without reserving or completing it",
+      "method": "POST",
+      "path": "/v1/money/refund-requests",
+      "request": {
+        "contractVersion": "hsm.money.v1",
+        "paymentConfirmationId": "example-confirmation",
+        "amount": { "amountMinor": "400", "currency": "XTS" },
+        "reasonCode": "REQUESTED"
+      },
+      "responseBody": {
+        "contractVersion": "hsm.money.v1",
+        "id": "example-refund-request",
+        "paymentConfirmationId": "example-confirmation",
+        "amount": { "amountMinor": "400", "currency": "XTS" },
+        "reasonCode": "REQUESTED",
+        "status": "PENDING_POLICY",
+        "refundId": null
+      }
+    },
+    {
+      "name": "Explicitly unavailable integration",
+      "statusCode": 503,
+      "responseBody": {
+        "success": false,
+        "error": {
+          "code": "DEPENDENCY_UNAVAILABLE",
+          "message": "This money operation is not configured.",
+          "details": { "reason": "MONEY_CONFIGURATION_UNAVAILABLE" }
+        }
+      },
+      "otherReasons": [
+        "MONEY_COLLECTION_UNAVAILABLE",
+        "MONEY_RECEIPT_UNAVAILABLE",
+        "MONEY_ACTIVATION_UNAVAILABLE",
+        "MONEY_REFUND_POLICY_UNAVAILABLE",
+        "MONEY_REFUND_ADAPTER_UNAVAILABLE",
+        "MONEY_LIVE_DISABLED"
+      ]
+    },
+    {
+      "name": "Conflicting reuse of a command key",
+      "statusCode": 409,
+      "responseBody": {
+        "success": false,
+        "error": {
+          "code": "CONFLICT",
+          "message": "The money command conflicts with stored state.",
+          "details": { "reason": "MONEY_IDEMPOTENCY_CONFLICT" }
+        }
+      }
+    },
+    {
+      "name": "Ledger-only currency-separated review projection",
+      "method": "GET",
+      "path": "/v1/money/review/financials?currency=XTS&asOf=2026-10-17T21:00:00.000Z",
+      "responseBody": {
+        "contractVersion": "hsm.money.v1",
+        "source": "LEDGER",
+        "totals": [
+          {
+            "currency": "XTS",
+            "captured": { "amountMinor": "1000", "currency": "XTS" },
+            "refunded": { "amountMinor": "400", "currency": "XTS" }
+          }
+        ],
+        "asOf": "2026-10-17T21:00:00.000Z"
+      }
+    }
+  ],
+  "normalizedEventPort": {
+    "exposure": "Internal adapter boundary; there is no public browser confirmation endpoint.",
+    "verificationOwner": "R29 verifies collection evidence; R30 verifies restricted manual receipt acceptance.",
+    "identity": "Adapter, mode and account scope the event and economic confirmation identities. A distinct event for the same previously processed confirmation must not repeat the financial or activation effect.",
+    "stripeExample": {
+      "contractVersion": "hsm.money.v1",
+      "adapterId": "example-contract-component",
+      "mode": "SANDBOX",
+      "accountReference": "example-synthetic-account",
+      "externalEventId": "example-event-delivery",
+      "externalConfirmationId": "example-economic-confirmation",
+      "externalOperationId": "example-provider-operation",
+      "paymentIntentId": "example-intent",
+      "paymentAttemptId": "example-attempt",
+      "source": "PROVIDER_WEBHOOK",
+      "amount": { "amountMinor": "1000", "currency": "XTS" },
+      "confirmedAt": "2026-10-17T20:01:00.000Z",
+      "receiptMediaAssetId": null,
+      "reviewerUserId": null
+    },
+    "manualMethods": ["SHAM_CASH", "SYRIATEL_CASH", "CASH_OFFICE"],
+    "manualSource": "MANUAL_REVIEW with authorized reviewer and durable owned, restricted, complete, CLEAN receipt metadata; externalOperationId is null.",
+    "failureRecovery": "Validated evidence commits as RECEIVED first. Missing or failed R31 participation rolls back the financial/period/coupon/audit/outbox transaction and leaves the inbox available for retry."
+  },
+  "activationPort": {
+    "owner": "R31",
+    "input": "The existing R19 provider, plan, confirmation, subscription and subscriptionPeriodId with exact period bounds.",
+    "transaction": "The caller PrismaTx is mandatory; no network call or separate commit. R31 deduplicates by the already-created subscriptionPeriodId and does not create another billing period.",
+    "default": "Explicitly unavailable; no successful no-op participant."
+  },
+  "refundPorts": {
+    "policyOwner": "R32",
+    "policy": "Current reviewer authority plus an explicitly configured transaction participant authorizes a named policy version before a reservation exists. R24 does not decide eligibility or entitlement consequences.",
+    "transportOwner": "R29/R30",
+    "dispatch": "The obligation, reservation, immutable mode/account binding and stable provider key commit before network transport.",
+    "finality": "A verified terminal observation is durable before the local compensation transaction. Only matching posted compensation can commit financial SUCCEEDED. Local recovery can finish from the stored evidence if the adapter later becomes unavailable."
+  },
+  "redaction": [
+    "No raw command envelope, request digest or internal ledger account binding in provider reads",
+    "No raw webhook payload, receipt body or transport credentials in audit metadata",
+    "No booking revenue included in subscription payment projections"
+  ]
+}

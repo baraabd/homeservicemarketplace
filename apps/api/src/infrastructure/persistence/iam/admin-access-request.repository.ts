@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { Prisma } from '@homeservicemarketplace/database';
 import type {
   AdminAccessRequest,
   AdminAccessRequestStatus,
@@ -74,8 +75,23 @@ export class AdminAccessRequestRepository {
   findLatestByUserId(userId: string, tx?: PrismaTx): Promise<AdminAccessRequest | null> {
     return this.db(tx).adminAccessRequest.findFirst({
       where: { userId },
-      orderBy: { createdAt: 'desc' },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
     });
+  }
+
+  findLatestStatusesByUserIds(
+    userIds: string[],
+    tx?: PrismaTx,
+  ): Promise<Array<{ userId: string; status: AdminAccessRequestStatus }>> {
+    if (userIds.length === 0) return Promise.resolve([]);
+    // DISTINCT ON bounds the wire result to one row per displayed user;
+    // do not fetch every historical request or its private justification.
+    return this.db(tx).$queryRaw`
+      SELECT DISTINCT ON ("userId") "userId", status
+      FROM "AdminAccessRequest"
+      WHERE "userId" IN (${Prisma.join(userIds)})
+      ORDER BY "userId", "createdAt" DESC, id DESC
+    `;
   }
 
   // Atomic decision write. Scoped to `status: 'PENDING'` so two reviewers

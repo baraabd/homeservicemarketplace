@@ -1,0 +1,86 @@
+{
+  "schemaVersion": 1,
+  "kind": "DERIVED_SAFE_SUMMARY",
+  "runId": 39062646647,
+  "artifactId": 12111448781,
+  "zipSha256": "1ce6534f4377fad0e3c6a8177b05ff09389a30693bc402be634b1843f84798a6",
+  "zipDigestVerified": true,
+  "attempt": "20261017193408059-828a2209",
+  "headSha": "4e87bf03663fb3c72ffee983fdb70c2863e1ce8a",
+  "treeSha": "eaca9cdeab15e719570f7997c4fc3bbeb64e562e",
+  "status": "INTEGRATION_PENDING",
+  "api": {
+    "suites": 1,
+    "passed": 13,
+    "failed": 0,
+    "skipped": 0,
+    "success": true
+  },
+  "browser": {
+    "exitCode": 1,
+    "timedOut": false,
+    "signal": null,
+    "passed": null,
+    "failed": null,
+    "skipped": null,
+    "assertion": "NOT_PUBLISHED"
+  },
+  "commands": [
+    {
+      "label": "migrations",
+      "exitCode": 0,
+      "timedOut": false,
+      "signal": null
+    },
+    {
+      "label": "database-build",
+      "exitCode": 0,
+      "timedOut": false,
+      "signal": null
+    },
+    {
+      "label": "seed",
+      "exitCode": 0,
+      "timedOut": false,
+      "signal": null
+    },
+    {
+      "label": "api-integration",
+      "exitCode": 0,
+      "timedOut": false,
+      "signal": null
+    },
+    {
+      "label": "api-build",
+      "exitCode": 0,
+      "timedOut": false,
+      "signal": null
+    },
+    {
+      "label": "web-typecheck",
+      "exitCode": 0,
+      "timedOut": false,
+      "signal": null
+    },
+    {
+      "label": "web-build-A",
+      "exitCode": 0,
+      "timedOut": false,
+      "signal": null
+    },
+    {
+      "label": "web-build-B",
+      "exitCode": 0,
+      "timedOut": false,
+      "signal": null
+    },
+    {
+      "label": "browser",
+      "exitCode": 1,
+      "timedOut": false,
+      "signal": null
+    }
+  ],
+  "configurationFingerprint": "5eae2bbfff7c8b63b5f86224af741aea17e944be04c487d0d66c7509edcb998d",
+  "cleanup": "owned process groups stopped"
+}

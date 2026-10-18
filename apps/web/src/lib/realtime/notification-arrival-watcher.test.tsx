@@ -40,6 +40,15 @@ vi.mock('./notification-ux', async () => {
 });
 
 beforeEach(() => {
+  // Contract double for the browser's atomic Web Lock. The separate R25
+  // coordination suite exercises asynchronous contention and denied storage.
+  vi.stubGlobal('navigator', {
+    ...navigator,
+    locks: {
+      request: (_name: string, _options: unknown, callback: () => void) =>
+        Promise.resolve(callback()),
+    },
+  });
   toastSuccess.mockClear();
   toastDefault.mockClear();
   triggerSpy.mockClear();
@@ -51,6 +60,7 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.useRealTimers();
+  vi.unstubAllGlobals();
 });
 
 // Mounts the watcher with the given user + initial notification list.
@@ -144,6 +154,59 @@ function setupExp(args: {
 }
 
 describe('NotificationArrivalWatcher — REGRESSION TARGET', () => {
+  it('R25 announces distinct notification ids at equal or out-of-order timestamps once', () => {
+    const handle = setup({ userId: 'u-1', initial: { items: [], nextCursor: null } });
+    const rows = [
+      notif({ id: 'same-time-1', resourceType: 'SYSTEM', createdAt: '2026-05-30T12:00:00Z' }),
+      notif({ id: 'same-time-2', resourceType: 'SYSTEM', createdAt: '2026-05-30T12:00:00Z' }),
+      notif({ id: 'late-commit', resourceType: 'SYSTEM', createdAt: '2026-05-30T11:59:59Z' }),
+    ];
+    for (const row of rows) handle.pushPoll({ items: [row], nextCursor: null });
+    expect(toastDefault).toHaveBeenCalledTimes(3);
+    handle.pushPoll({ items: rows, nextCursor: null });
+    expect(toastDefault).toHaveBeenCalledTimes(3);
+    handle.unmount();
+  });
+
+  it('R25 refreshes a newly observed read row without replaying a notification already read in another tab', () => {
+    const handle = setup({ userId: 'u-1', initial: { items: [], nextCursor: null } });
+    handle.pushPoll({
+      items: [
+        {
+          ...notif({ id: 'read-in-peer', createdAt: '2026-05-30T12:00:00Z' }),
+          readAt: '2026-05-30T12:01:00Z',
+        },
+      ],
+      nextCursor: null,
+    });
+    expect(toastDefault).not.toHaveBeenCalled();
+    expect(triggerSpy).not.toHaveBeenCalled();
+    handle.unmount();
+  });
+
+  it('R25 treats the first asynchronous REST response as a baseline, with one backlog hint', () => {
+    const qc = new QueryClient();
+    const Probe = () => {
+      useNotificationArrivalWatcher({ enabled: true, currentUserId: 'u-1' });
+      return null;
+    };
+    const view = render(
+      <QueryClientProvider client={qc}>
+        <Probe />
+      </QueryClientProvider>,
+    );
+    act(() => {
+      qc.setQueryData(['seeker', 'notifications', 'list', {}], {
+        items: [notif({ id: 'history', createdAt: '2026-05-30T12:00:00Z' })],
+        nextCursor: null,
+      });
+    });
+    expect(toastDefault).toHaveBeenCalledTimes(1);
+    expect(toastDefault.mock.calls[0][0]).toBe('You have new notifications');
+    view.unmount();
+    qc.clear();
+  });
+
   it('initial mount seeds the watermark — pre-existing notifications do NOT replay as INDIVIDUAL toasts', () => {
     // Sprint 7.12 — baseline storm protection. Two pre-existing
     // unread notifications produce AT MOST ONE aggregate toast (not

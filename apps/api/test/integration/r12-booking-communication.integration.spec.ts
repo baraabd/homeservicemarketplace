@@ -886,6 +886,7 @@ d('R12 - booking conversations (real HTTP, real Postgres)', () => {
         ConversationParticipantGate,
       } = require('../../src/modules/realtime/conversation-participant.gate');
       const { RealtimeGateway } = require('../../src/modules/realtime/realtime.gateway');
+      const { REALTIME_TRANSPORT } = require('../../src/modules/realtime/realtime-socket.adapter');
       const { SecurityEventsBus } = require('../../src/shared/security-events/security-events.bus');
       // The environment's defaults: VERIFICATION_ENFORCED and
       // WORK_ACCESS_ENFORCED are off (env.schema.ts).
@@ -901,21 +902,62 @@ d('R12 - booking conversations (real HTTP, real Postgres)', () => {
         { get: () => true } as never,
         gate,
         { assertSessionActive: async () => undefined } as never,
-        {} as never,
+        {
+          // Auth/role guards are outside this suite; the real participant and
+          // capability gate below still decides access to each conversation.
+          resolve: async (userId: string) => ({
+            roles: [PROFILES.some(([, id]) => id === userId) ? 'provider' : 'seeker'],
+            permissions: [],
+            providerProfileId: null,
+            providerStatus: null,
+            mayViewMarketplace: false,
+          }),
+        } as never,
         new SecurityEventsBus(),
       );
+      gateway.server = {
+        [REALTIME_TRANSPORT]: {
+          isReady: () => true,
+          reserve: async () => true,
+          release: async () => undefined,
+        },
+      } as never;
     });
 
     const socketOf = (userId: string) => {
       const joined: string[] = [];
-      return {
+      const rooms = new Set<string>();
+      // Start at the successful-handshake boundary with the original claim
+      // and a live lease; R25 separately exercises the real network handshake.
+      const socket = {
+        id: `r12-${userId}`,
+        connected: true,
+        rooms,
         joined,
-        data: { userId, sessionId: `${userId}-session`, joinedRooms: [] as string[] },
+        data: {
+          userId,
+          sessionId: `${userId}-session`,
+          jti: 'jti',
+          expiresAt: Date.now() + 60_000,
+          leaseValidUntil: Date.now() + 30_000,
+          joinedRooms: [] as string[],
+          subscriptionBusy: false,
+          subscriptionCount: 0,
+          subscriptionWindowAt: Date.now(),
+        },
         join: async (room: string) => {
           joined.push(room);
+          rooms.add(room);
         },
-        disconnect: () => undefined,
+        leave: async (room: string) => {
+          rooms.delete(room);
+        },
+        emit: () => undefined,
+        disconnect: () => {
+          socket.connected = false;
+        },
       };
+      return socket;
     };
     const subscribe = async (userId: string, conversationId: string) => {
       const sock = socketOf(userId);

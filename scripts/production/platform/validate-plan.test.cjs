@@ -1127,14 +1127,19 @@ for (const [name, symlinkFallback] of [
       fs.openSync = function (file, flags, ...rest) {
         // Simulate only this input's platform fallback; leave fs.constants intact.
         if (file === input && symlinkFallback) flags &= ~(fs.constants.O_NOFOLLOW || 0);
-        const descriptor = open.call(this, file, flags, ...rest);
+        // Model a replaced path entry with two real, valid JSON files. Opening
+        // the other file creates the same descriptor/path mismatch without a
+        // rename over an open file, which Windows can reject inside the fixture.
+        const openedPath = file === input && !symlinkFallback ? replacement : file;
+        const descriptor = open.call(this, openedPath, flags, ...rest);
         if (file === input) {
           inputDescriptor = descriptor;
           result.opened += 1;
           if (!symlinkFallback) {
-            // Both files contain valid JSON; only their inode identities differ.
-            fs.renameSync(replacement, input);
-            result.replaced = true;
+            const opened = fs.fstatSync(descriptor, { bigint: true });
+            const entry = fs.lstatSync(input, { bigint: true });
+            result.replaced = opened.isFile() && entry.isFile() &&
+              (opened.dev !== entry.dev || opened.ino !== entry.ino);
           }
         }
         return descriptor;

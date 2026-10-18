@@ -1,7 +1,10 @@
 import type { RealtimeEvent } from '@homeservicemarketplace/contracts';
+import { EventEmitter } from 'node:events';
 
 import type { RealtimeGateway } from './realtime.gateway';
 import { RealtimeEventsPublisher } from './realtime-events.publisher';
+import { RealtimeEventsController } from './realtime-events.controller';
+import { MAX_REALTIME_PAYLOAD_BYTES } from './realtime-socket.adapter';
 
 interface FakeGateway {
   emitToRoom: jest.Mock;
@@ -159,5 +162,319 @@ describe('RealtimeEventsPublisher', () => {
         actorUserId: 'sender-2',
       }),
     );
+  });
+});
+
+describe('R25 realtime event identity and SSE bounds', () => {
+  it('uses the same durable creation id on replay even after readAt changed', () => {
+    const gw = makeGateway();
+    const pub = new RealtimeEventsPublisher(gw as unknown as RealtimeGateway);
+    pub.publishFor('user-1', 'notification.created', {
+      id: 'durable-1',
+      createdAt: '2026-05-02T10:00:00.000Z',
+      readAt: null,
+    });
+    pub.publishFor('user-1', 'notification.created', {
+      id: 'durable-1',
+      createdAt: '2026-05-02T10:00:00.000Z',
+      readAt: '2026-05-02T10:01:00.000Z',
+    });
+    const first = gw.emitToRoom.mock.calls[0][1];
+    const replay = gw.emitToRoom.mock.calls[1][1];
+    expect(first.eventId).toMatch(/^[a-f0-9]{64}$/);
+    expect(replay.eventId).toBe(first.eventId);
+    expect(first.revision).toBe(Date.parse('2026-05-02T10:00:00.000Z'));
+  });
+
+  it('scopes immutable nested message identities to their conversation and recipient channel', () => {
+    const gw = makeGateway();
+    const pub = new RealtimeEventsPublisher(gw as unknown as RealtimeGateway);
+    const payload = {
+      conversationId: 'c-1',
+      message: { id: 'm-1', body: 'private', createdAt: '2026-05-02T10:00:00.000Z' },
+    };
+    pub.publishToRoom('conversation:c-1', 'message.created', payload);
+    pub.publishToRoom('conversation:c-1', 'message.created', payload);
+    pub.publishToRoom('conversation:c-2', 'message.created', { ...payload, conversationId: 'c-2' });
+    expect(gw.emitToRoom.mock.calls[0][1].eventId).toBe(gw.emitToRoom.mock.calls[1][1].eventId);
+    expect(gw.emitToRoom.mock.calls[0][1].eventId).not.toBe(gw.emitToRoom.mock.calls[2][1].eventId);
+  });
+
+  it('uses a persisted state revision deterministically without treating delivery time as a version', () => {
+    const gw = makeGateway();
+    const pub = new RealtimeEventsPublisher(gw as unknown as RealtimeGateway);
+    pub.publishFor('user-1', 'booking.status_changed', {
+      bookingId: 'b-1',
+      to: 'COMPLETED',
+      revision: 4,
+    });
+    pub.publishFor('user-1', 'booking.status_changed', {
+      to: 'COMPLETED',
+      revision: 4,
+      bookingId: 'b-1',
+    });
+    pub.publishFor('user-1', 'booking.status_changed', { bookingId: 'b-1', to: 'COMPLETED' });
+    expect(gw.emitToRoom.mock.calls[0][1].eventId).toBe(gw.emitToRoom.mock.calls[1][1].eventId);
+    expect(gw.emitToRoom.mock.calls[0][1].revision).toBe(4);
+    expect(gw.emitToRoom.mock.calls[2][1].revision).toBeUndefined();
+  });
+
+  it('drops oversized or unserializable payloads before SSE or Redis fan-out', () => {
+    const gw = makeGateway();
+    const pub = new RealtimeEventsPublisher(gw as unknown as RealtimeGateway);
+    const seen: RealtimeEvent[] = [];
+    const subscription = pub.subscribe('user-1').subscribe((event) => seen.push(event));
+    pub.publish(makeEvent({ payload: { data: 'x'.repeat(65_537) } }));
+    const cyclic: { self?: unknown } = {};
+    cyclic.self = cyclic;
+    pub.publish(makeEvent({ payload: cyclic }));
+    expect(seen).toEqual([]);
+    expect(gw.emitToRoom).not.toHaveBeenCalled();
+    subscription.unsubscribe();
+  });
+
+  it('registers listeners only on actual subscriptions and enforces per-user connection count', () => {
+    const gw = makeGateway();
+    const pub = new RealtimeEventsPublisher(gw as unknown as RealtimeGateway);
+    for (let index = 0; index < 100; index++) pub.subscribe('user-1');
+    const subscriptions = Array.from({ length: 6 }, () => pub.subscribe('user-1').subscribe());
+    const denied = jest.fn();
+    pub.subscribe('user-1').subscribe({ error: denied });
+    expect(denied).toHaveBeenCalledWith(
+      expect.objectContaining({ message: 'REALTIME_CONNECTION_LIMIT' }),
+    );
+    subscriptions[0].unsubscribe();
+    const accepted = pub.subscribe('user-1').subscribe({ error: denied });
+    expect(denied).toHaveBeenCalledTimes(1);
+    for (const subscription of subscriptions) subscription.unsubscribe();
+    accepted.unsubscribe();
+  });
+
+  it('checks the original subscriber authority before every SSE event and stops after revocation', async () => {
+    const gw = makeGateway();
+    const pub = new RealtimeEventsPublisher(gw as unknown as RealtimeGateway);
+    const allowed = jest.fn().mockResolvedValueOnce(true).mockResolvedValueOnce(false);
+    const seen: RealtimeEvent[] = [];
+    const error = jest.fn();
+    pub.subscribe('user-1', allowed).subscribe({ next: (event) => seen.push(event), error });
+    pub.publish(makeEvent());
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(seen).toHaveLength(1);
+    pub.publish(makeEvent());
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(error).toHaveBeenCalledWith(
+      expect.objectContaining({ message: 'AUTH_INVALID_CREDENTIALS' }),
+    );
+    expect(seen).toHaveLength(1);
+    pub.publish(makeEvent());
+    expect(allowed).toHaveBeenCalledTimes(2);
+  });
+
+  it('bounds an SSE subscriber whose authorization service has stalled', async () => {
+    const gw = makeGateway();
+    const pub = new RealtimeEventsPublisher(gw as unknown as RealtimeGateway);
+    let release!: (value: boolean) => void;
+    const pending = new Promise<boolean>((resolve) => {
+      release = resolve;
+    });
+    const seen = jest.fn();
+    const error = jest.fn();
+    pub.subscribe('user-1', () => pending).subscribe({ next: seen, error });
+    for (let index = 0; index < 20; index++) pub.publish(makeEvent());
+    expect(error).toHaveBeenCalledWith(
+      expect.objectContaining({ message: 'REALTIME_BACKPRESSURE' }),
+    );
+    release(true);
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(seen).not.toHaveBeenCalled();
+  });
+
+  it('bounds aggregate SSE work across separate users while their session authority is stalled', async () => {
+    const gw = makeGateway();
+    const pub = new RealtimeEventsPublisher(gw as unknown as RealtimeGateway);
+    let release!: (value: boolean) => void;
+    const pending = new Promise<boolean>((resolve) => {
+      release = resolve;
+    });
+    const subscriptions = Array.from({ length: 32 }, (_, index) => {
+      const userId = `user-${index}`;
+      const subscription = pub.subscribe(userId, () => pending).subscribe();
+      for (let packet = 0; packet < 16; packet++) pub.publish(makeEvent({ userId }));
+      return subscription;
+    });
+    const error = jest.fn();
+    pub.subscribe('overflow-user', () => pending).subscribe({ error });
+    pub.publish(makeEvent({ userId: 'overflow-user' }));
+    expect(error).toHaveBeenCalledWith(
+      expect.objectContaining({ message: 'REALTIME_BACKPRESSURE' }),
+    );
+    expect((pub as unknown as { pendingSse: number }).pendingSse).toBe(512);
+    release(true);
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(pub as unknown as { pendingSse: number; pendingSseBytes: number }).toMatchObject({
+      pendingSse: 0,
+      pendingSseBytes: 0,
+    });
+    for (const subscription of subscriptions) subscription.unsubscribe();
+  });
+});
+
+describe('R25 direct SSE response authorization and backpressure', () => {
+  const opened: Array<{ destroy(): void }> = [];
+
+  afterEach(() => {
+    for (const response of opened.splice(0)) response.destroy();
+    jest.useRealTimers();
+  });
+
+  function fixture(lifetimeSeconds = 60) {
+    const gateway = { emitToRoom: jest.fn(), mayReceiveEvent: jest.fn().mockResolvedValue(true) };
+    const publisher = new RealtimeEventsPublisher(gateway as unknown as RealtimeGateway);
+    const sessions = { assertSessionActive: jest.fn().mockResolvedValue(undefined) };
+    const tokens = {
+      verifyAccessToken: jest.fn().mockReturnValue({
+        sub: 'user-1',
+        sid: 'session-1',
+        jti: 'original-jti',
+        exp: Math.floor(Date.now() / 1000) + lifetimeSeconds,
+      }),
+    };
+    const response = Object.assign(new EventEmitter(), {
+      destroyed: false,
+      writableLength: 0,
+      status: jest.fn(),
+      setHeader: jest.fn(),
+      flushHeaders: jest.fn(),
+      write: jest.fn().mockReturnValue(true),
+      destroy: jest.fn(() => {
+        response.destroyed = true;
+        response.emit('close');
+      }),
+    });
+    opened.push(response);
+    const controller = new RealtimeEventsController(
+      publisher,
+      sessions as never,
+      tokens as never,
+      gateway as never,
+    );
+    const user = { id: 'user-1', sessionId: 'session-1', jti: 'original-jti', roles: [] };
+    const request = {
+      header: (name: string) =>
+        name === 'authorization' ? 'Bearer signed-original-token' : undefined,
+    };
+    const start = () => controller.events(user, request as never, response as never);
+    return { gateway, publisher, sessions, tokens, response, controller, user, request, start };
+  }
+
+  it('writes correctly framed events only after current recipient and original-session checks', async () => {
+    const f = fixture();
+    f.start();
+    f.publisher.publish(makeEvent());
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(f.sessions.assertSessionActive).toHaveBeenCalledWith({
+      userId: 'user-1',
+      sessionId: 'session-1',
+      jti: 'original-jti',
+    });
+    expect(f.gateway.mayReceiveEvent).toHaveBeenCalledWith(
+      'user-1',
+      'user:user-1',
+      expect.objectContaining({ eventId: expect.any(String) }),
+    );
+    expect(f.response.write.mock.calls[0][0]).toBe('retry: 15000\n\n');
+    expect(f.response.write.mock.calls[1][0]).toMatch(
+      /^id: [a-f0-9]{64}\nevent: notification.created\ndata: \{/,
+    );
+    expect(f.response.write.mock.calls[1][0]).toMatch(/\n\n$/);
+  });
+
+  it('hard-destroys an unwritable response and discards the upstream queue instead of waiting for drain', async () => {
+    const f = fixture();
+    f.response.write.mockReturnValueOnce(true).mockReturnValueOnce(false);
+    f.start();
+    f.publisher.publish(makeEvent());
+    f.publisher.publish(makeEvent());
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(f.response.destroy).toHaveBeenCalledTimes(1);
+    expect(f.response.write).toHaveBeenCalledTimes(2);
+    expect(
+      f.publisher as unknown as {
+        subscribers: number;
+        pendingSse: number;
+        pendingSseBytes: number;
+      },
+    ).toMatchObject({ subscribers: 0, pendingSse: 0, pendingSseBytes: 0 });
+    f.response.emit('drain');
+    f.publisher.publish(makeEvent());
+    expect(f.response.write).toHaveBeenCalledTimes(2);
+  });
+
+  it('enforces the response byte budget before adding a frame to an already buffered response', async () => {
+    const f = fixture();
+    f.start();
+    f.response.writableLength = MAX_REALTIME_PAYLOAD_BYTES - 10;
+    f.publisher.publish(makeEvent());
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(f.response.destroy).toHaveBeenCalledTimes(1);
+    expect(f.response.write).toHaveBeenCalledTimes(1);
+  });
+
+  it('hard-closes on original access expiry while a recipient check is pending and never flushes it later', async () => {
+    jest.useFakeTimers();
+    const f = fixture(1);
+    let release!: (allowed: boolean) => void;
+    f.gateway.mayReceiveEvent.mockReturnValue(
+      new Promise<boolean>((resolve) => {
+        release = resolve;
+      }),
+    );
+    f.start();
+    f.publisher.publish(makeEvent());
+    await jest.advanceTimersByTimeAsync(1_001);
+    expect(f.response.destroyed).toBe(true);
+    release(true);
+    await jest.advanceTimersByTimeAsync(0);
+    expect(f.sessions.assertSessionActive).not.toHaveBeenCalled();
+    expect(f.response.write).toHaveBeenCalledTimes(1);
+    expect((f.publisher as unknown as { pendingSse: number }).pendingSse).toBe(0);
+  });
+
+  it('blocks a packet if the original session is revoked after its recipient check', async () => {
+    const f = fixture();
+    f.sessions.assertSessionActive.mockRejectedValue(new Error('revoked'));
+    f.start();
+    f.publisher.publish(makeEvent());
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(f.response.destroyed).toBe(true);
+    expect(f.response.write).toHaveBeenCalledTimes(1);
+    expect(f.sessions.assertSessionActive).toHaveBeenCalledWith({
+      userId: 'user-1',
+      sessionId: 'session-1',
+      jti: 'original-jti',
+    });
+  });
+
+  it('detects idle session revocation on the bounded heartbeat without waiting for a business event', async () => {
+    jest.useFakeTimers();
+    const f = fixture();
+    f.start();
+    f.sessions.assertSessionActive.mockRejectedValue(new Error('revoked'));
+    await jest.advanceTimersByTimeAsync(10_001);
+    expect(f.response.destroyed).toBe(true);
+    expect(f.response.write).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects a credential whose original claims no longer match the guarded request before opening the response', () => {
+    const f = fixture();
+    f.tokens.verifyAccessToken.mockReturnValue({
+      sub: 'user-1',
+      sid: 'session-1',
+      jti: 'another-jti',
+      exp: Math.floor(Date.now() / 1000) + 60,
+    });
+    expect(f.start).toThrow();
+    expect(f.response.flushHeaders).not.toHaveBeenCalled();
+    expect(f.response.write).not.toHaveBeenCalled();
   });
 });

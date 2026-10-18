@@ -1,0 +1,66 @@
+{
+  "schemaVersion": 1,
+  "wave": 2,
+  "kind": "CLOSEOUT_OBSERVATION_NOT_START_AUTHORIZATION",
+  "sourceSha": "4e87bf03663fb3c72ffee983fdb70c2863e1ce8a",
+  "treeSha": "eaca9cdeab15e719570f7997c4fc3bbeb64e562e",
+  "historicalG1BaseSha": "40cdac5c9ce6acaa8dedc0385984a807ae9a84d0",
+  "decision": "BLOCKED",
+  "lanes": [
+    {
+      "id": "R24",
+      "branch": "feat/r24-money-api-integration",
+      "pr": 176,
+      "prUrl": "https://github.com/baraabd/homeservicemarketplace/pull/176",
+      "merged": true,
+      "sourceHeadSha": "22e25216f0b27ebdd0f6454842d43f35fafa8d34",
+      "mergeCommitSha": "820913a87c90fd283df58e00827bcc79a1e0ca39",
+      "integration": "PENDING",
+      "finding": "Merged money orchestration; combined R24/R26 effective authorization and frozen-port review remain to be certified."
+    },
+    {
+      "id": "R25",
+      "branch": "feat/r25-realtime-multi-instance",
+      "pr": 175,
+      "prUrl": "https://github.com/baraabd/homeservicemarketplace/pull/175",
+      "merged": true,
+      "sourceHeadSha": "3fdfddc6599fcd2f5d79b176c2e28471f327fe21",
+      "mergeCommitSha": "4e87bf03663fb3c72ffee983fdb70c2863e1ce8a",
+      "integration": "FAIL",
+      "finding": "Merged-source browser command exited 1; API integration passed 13/13. Assertion details were not published."
+    },
+    {
+      "id": "R26",
+      "branch": "feat/r26-application-security",
+      "pr": 174,
+      "prUrl": "https://github.com/baraabd/homeservicemarketplace/pull/174",
+      "merged": true,
+      "sourceHeadSha": "6bf2669700e80e1727549e17374db40f18111c77",
+      "mergeCommitSha": "6c599618f2a97407093b37ddfa93ad21a41ea7a1",
+      "integration": "PENDING",
+      "finding": "Merged HTTP/CSP hardening; preserve R24 integration and repository-wide security inventory qualifications."
+    },
+    {
+      "id": "R27",
+      "branch": "feat/r27-performance-capacity",
+      "pr": 173,
+      "prUrl": "https://github.com/baraabd/homeservicemarketplace/pull/173",
+      "merged": true,
+      "sourceHeadSha": "8be5ad3f5cc22f350388e2bec854e809e03b487d",
+      "mergeCommitSha": "21089a5065169b78bea5e711a4839e1a467531dc",
+      "integration": "PENDING",
+      "finding": "Merged measured optimizations; proposed budgets and integrated cache/security decisions remain open. PR 162 is historical."
+    },
+    {
+      "id": "R28",
+      "branch": "feat/r28-hosted-platform",
+      "pr": null,
+      "prUrl": null,
+      "merged": false,
+      "sourceHeadSha": null,
+      "mergeCommitSha": null,
+      "integration": "NOT_IMPLEMENTED",
+      "finding": "No R28 branch, implementation PR or evidence directory found in the inspected source. Hosting authority remains separate."
+    }
+  ]
+}

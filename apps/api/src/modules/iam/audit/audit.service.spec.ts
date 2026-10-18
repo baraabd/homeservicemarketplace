@@ -78,6 +78,52 @@ describe('AuditService', () => {
     expect(h.repo.write.mock.calls[0]![0].metadata).toEqual({});
   });
 
+  it.each([
+    'MONEY_COMMAND_ACCEPTED',
+    'MONEY_EXTERNAL_EVENT_PROCESSED',
+    'MONEY_REFUND_RESULT_RECORDED',
+  ] as const)(
+    'keeps R24 identifiers for %s while dropping money and external authority payloads',
+    async (type) => {
+      const h = makeHarness();
+      await h.svc.record({
+        type,
+        metadata: {
+          moneyCommandId: 'cmd-r24',
+          moneyAction: 'CREATE_INTENT',
+          paymentIntentId: 'intent-r24',
+          paymentAttemptId: 'attempt-r24',
+          moneyExternalEventId: 'event-r24',
+          paymentConfirmationId: 'confirmation-r24',
+          refundRequestId: 'request-r24',
+          refundId: 'refund-r24',
+          subscriptionId: 'subscription-r24',
+          subscriptionPeriodId: 'period-r24',
+          amountMinor: '9007199254740993',
+          accountReference: 'private-rail-account',
+          debitAccountId: 'private-ledger-account',
+          response: { authority: 'private' },
+          receiptContents: 'private receipt',
+          providerIdempotencyKey: 'private-key',
+          rawWebhook: 'private event',
+          signature: 'private signature',
+        },
+      });
+      expect(h.repo.write.mock.calls[0]![0].metadata).toEqual({
+        moneyCommandId: 'cmd-r24',
+        moneyAction: 'CREATE_INTENT',
+        paymentIntentId: 'intent-r24',
+        paymentAttemptId: 'attempt-r24',
+        moneyExternalEventId: 'event-r24',
+        paymentConfirmationId: 'confirmation-r24',
+        refundRequestId: 'request-r24',
+        refundId: 'refund-r24',
+        subscriptionId: 'subscription-r24',
+        subscriptionPeriodId: 'period-r24',
+      });
+    },
+  );
+
   it.each(['SUPPORT_TICKET_CREATED', 'SUPPORT_MESSAGE_SENT', 'ADMIN_SUPPORT_REPLIED'] as const)(
     'preserves support identifiers for %s without retaining message content',
     async (type) => {

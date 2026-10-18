@@ -191,6 +191,33 @@ const PERMISSIONS: PermissionSpec[] = [
   },
 ];
 
+// R24 definitions are deliberately separate from PERMISSIONS: the latter is
+// the source of the pre-existing admin role mapping. Registering a money
+// capability must never grant it to any real role, even after repeated seeds.
+const UNGRANTED_MONEY_PERMISSIONS: PermissionSpec[] = [
+  {
+    key: 'money:purchase:self',
+    description: 'Request server-priced purchases for the authenticated provider',
+  },
+  {
+    key: 'money:read:self',
+    description: 'Read the authenticated provider subscription money records',
+  },
+  {
+    key: 'money:refund:request:self',
+    description: 'Request review of a refund for an owned confirmed subscription payment',
+  },
+  { key: 'money:review:read', description: 'Read subscription money review projections' },
+  {
+    key: 'money:receipt:review',
+    description: 'Accept verified restricted subscription receipt evidence',
+  },
+  {
+    key: 'money:refund:review',
+    description: 'Invoke configured refund policy and transport orchestration',
+  },
+];
+
 const ROLE_PERMISSIONS: Record<string, string[]> = {
   customer: ['user:read:self', 'user:write:self'],
   provider: ['user:read:self', 'user:write:self'],
@@ -213,7 +240,7 @@ async function upsertRoles(tx: Prisma.TransactionClient): Promise<Map<string, st
 
 async function upsertPermissions(tx: Prisma.TransactionClient): Promise<Map<string, string>> {
   const idByKey = new Map<string, string>();
-  for (const spec of PERMISSIONS) {
+  for (const spec of [...PERMISSIONS, ...UNGRANTED_MONEY_PERMISSIONS]) {
     const perm = await tx.permission.upsert({
       where: { key: spec.key },
       update: { description: spec.description },
