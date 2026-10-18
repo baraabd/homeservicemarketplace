@@ -1,12 +1,14 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { readFile } from 'node:fs/promises';
-import { recordProblems, readinessProblems, readBundle } from './g2-record.mjs';
+import { recordProblems, readinessProblems, readHistoricalBundle } from './g2-record.mjs';
 
-const recorded = await readBundle();
+// These unchanged negative controls exercise the archived legacy format.
+// The active paths and both CLI modes are covered by g2-current-record.test.mjs.
+const recorded = await readHistoricalBundle();
 const clone = () => structuredClone(recorded);
 
-test('checked-in G2 records are consistent but do not authorize R29', () => {
+test('archived closeout records remain consistent and never authorize R29', () => {
   assert.deepEqual(recordProblems(recorded), []);
   assert.ok(readinessProblems(recorded).some((error) => /not authorized/u.test(error)));
 });

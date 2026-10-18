@@ -1,0 +1,11 @@
+{
+  "sourceCommit": "6e13120f140e973e793e9e1a7e76170dcb1850a0",
+  "scope": "Historical closeout only; not active gate acceptance",
+  "files": {
+    "SOURCE_MANIFEST.json": "d16b227a36897016c4f35879cd909c88219447eb",
+    "SPRINT_REGISTRY.json": "21a0fcf8159dfd05f9aa5b8743208c75bc7a6205",
+    "r25-summary.json": "c044719445ea2264e3fdebdaa6b023236e938ca5",
+    "wave-02.closeout.json": "d380f36007cd0d05fa14e90159f4f6bec3dbf230",
+    "wave-03.plan.json": "e28f1baf0e735d4f3e8065f7d0c00b97f1240011"
+  }
+}

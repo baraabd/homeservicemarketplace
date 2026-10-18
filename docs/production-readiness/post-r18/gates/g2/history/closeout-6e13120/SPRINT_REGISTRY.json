@@ -1,0 +1,1374 @@
+{
+  "schemaVersion": 1,
+  "program": "HomeServiceMarketplace post-R18 release sequence",
+  "idRange": {
+    "first": "R19",
+    "last": "R38"
+  },
+  "waveRule": "Four waves of five consecutive IDs (R19-R23, R24-R28, R29-R33, R34-R38); consistent with the coordinator prompt, which names R24 in Wave 2, R29-R33 in Wave 3 and R34-R38 at G4.",
+  "lastNumberedMilestone": {
+    "id": "R18",
+    "pr": 155,
+    "mergedAs": "059c018576a75837d4dfb262ee49168d9217d881",
+    "note": "Numbered milestone only. R18 decision remains NO-GO / R18_BLOCKED (docs/production-readiness/r18/GO_NO_GO.md); merge is not hosted production approval."
+  },
+  "unnumbered": [
+    {
+      "name": "Native-development recovery hotfix",
+      "pr": 156,
+      "branch": "fix/api-workspace-recovery",
+      "status": "MERGED",
+      "note": "Verified merged; remains unnumbered and is not G1 acceptance.",
+      "mergedAs": "c59b0e72503f09f4774d59c45c3c6f610ee394df"
+    }
+  ],
+  "sprints": [
+    {
+      "id": "R19",
+      "title": "Extend and certify the existing money authority; freeze shared financial contracts",
+      "titleSource": "gates/g1/prompts/R19-R28.md#r19",
+      "wave": 1,
+      "lane": 1,
+      "branch": "feat/r19-money-authority-contracts",
+      "owner": {
+        "lane": "R19 lane author (repository owner assigns session)",
+        "coordinator": "G1 delegated coordinator for baraabd"
+      },
+      "status": "SANDBOX_ACCEPTED",
+      "frozenBase": "059c018576a75837d4dfb262ee49168d9217d881",
+      "dependencies": [],
+      "legacyAliases": ["P36", "P42-foundation  "],
+      "ownedPaths": {
+        "exact": [
+          "apps/api/src/infrastructure/persistence/ledger/ledger.repository.ts",
+          "apps/api/src/modules/money/domain/subscription-activation.service.ts",
+          "apps/api/src/modules/money/ledger/ledger.module.ts",
+          "apps/api/src/modules/money/ledger/ledger.service.spec.ts",
+          "apps/api/src/modules/money/ledger/ledger.service.ts",
+          "apps/api/test/integration/r19-subscription-money.integration.spec.ts",
+          "apps/api/test/unit/r19-canonical-json-regression.spec.ts",
+          "apps/api/test/unit/r19-money-contract-fixtures.spec.ts",
+          "apps/api/test/unit/r19-money-wire.spec.ts",
+          "docs/production-readiness/r19/ACCEPTANCE.md",
+          "docs/production-readiness/r19/CONTRACT_CATALOG.md",
+          "docs/production-readiness/r19/IMPLEMENTATION.md",
+          "docs/production-readiness/r19/MONEY_AUTHORITY_MAP.md",
+          "docs/production-readiness/r19/RISKS.md",
+          "docs/production-readiness/r19/ROLLBACK.md",
+          "docs/production-readiness/r19/contract-fixtures/hsm.money.v1/activation-result.json",
+          "docs/production-readiness/r19/contract-fixtures/hsm.money.v1/confirmation-manual.json",
+          "docs/production-readiness/r19/contract-fixtures/hsm.money.v1/confirmation-webhook.json",
+          "docs/production-readiness/r19/contract-fixtures/hsm.money.v1/financial-projection.json",
+          "docs/production-readiness/r19/contract-fixtures/hsm.money.v1/payment-attempt.json",
+          "docs/production-readiness/r19/contract-fixtures/hsm.money.v1/payment-intent.json",
+          "docs/production-readiness/r19/contract-fixtures/hsm.money.v1/quote.json",
+          "docs/production-readiness/r19/contract-fixtures/hsm.money.v1/receipt-review.json",
+          "docs/production-readiness/r19/contract-fixtures/hsm.money.v1/reconciliation-exception.json",
+          "docs/production-readiness/r19/contract-fixtures/hsm.money.v1/refund-reservation.json",
+          "docs/production-readiness/r19/contract-fixtures/hsm.money.v1/refund.json",
+          "docs/production-readiness/r19/contract-fixtures/hsm.money.v1/subscription-period.json",
+          "docs/production-readiness/r19/shared-change-requests/CR-001-r15-no-backfill-namespace.md",
+          "docs/production-readiness/r19/shared-change-requests/CR-002-outbox-activation-event.md",
+          "docs/production-readiness/r19/shared-change-requests/CR-003-registry-allowlist.md",
+          "docs/production-readiness/r19/shared-change-requests/CR-004-canonical-json-corrective-follow-up.md",
+          "packages/contracts/src/money/financial-contracts.ts",
+          "packages/contracts/src/money/index.ts",
+          "packages/contracts/src/money/wire.ts"
+        ],
+        "prefixes": [],
+        "leases": []
+      },
+      "requiredEvidence": [
+        "docs/production-readiness/r19/IMPLEMENTATION.md",
+        "docs/production-readiness/r19/ACCEPTANCE.md",
+        "docs/production-readiness/r19/RISKS.md",
+        "docs/production-readiness/r19/ROLLBACK.md",
+        "All behavioral, negative and integration tests in the complete authoritative prompt",
+        "Exact final-head CI and CodeQL; real-service evidence; limitations and rollback"
+      ],
+      "pr": 159,
+      "scopeNote": "Accepted integrated Wave 1 source and disposable-service boundaries on the G1 frozen source; hosted, policy and release controls remain external. Publication is owner-merged as PR #171 and its immutable identity is verified.",
+      "changeRequests": [
+        {
+          "id": "CR-001",
+          "state": "MERGED",
+          "sourceCommit": "4d04e9113fe749973925bb9ca1c9b93d9faf0f0d"
+        },
+        {
+          "id": "CR-002",
+          "state": "MERGED",
+          "owner": "G1 coordinator and R19/R24/R31",
+          "gateDisposition": "PR #169 registers the real R17 inbox consumer; transaction, rollback and durable dedupe pass on the merged source. R31 entitlements and live callers remain later-lane work.",
+          "sourceCommit": "40cdac5c9ce6acaa8dedc0385984a807ae9a84d0"
+        },
+        {
+          "id": "CR-003",
+          "state": "MERGED",
+          "sourceCommit": "7da8316d9eb0d9ebbdf7b50406f078b6dc8a8023"
+        },
+        {
+          "id": "CR-004",
+          "state": "MERGED",
+          "sourceCommit": "cbb0ffb4eeb9998eddb1ec2f929d614920a76e15"
+        }
+      ],
+      "mergeEvidence": {
+        "implementation": {
+          "number": 159,
+          "title": "feat(r19): extend the money authority and freeze shared financial contracts",
+          "url": "https://github.com/baraabd/homeservicemarketplace/pull/159",
+          "head": "fcdf1deb1a34044b9253ebac8e0e308a69e7a667",
+          "branch": "feat/r19-money-authority-contracts",
+          "base": "develop",
+          "merged": true,
+          "mergeCommit": "4d04e9113fe749973925bb9ca1c9b93d9faf0f0d",
+          "mergedAt": "2026-10-14T05:57:27Z",
+          "author": "baraabd"
+        },
+        "followUps": [
+          {
+            "number": 166,
+            "title": "fix(r19): reject ambiguous canonical idempotency payloads",
+            "url": "https://github.com/baraabd/homeservicemarketplace/pull/166",
+            "head": "2b1a69930a01b8d52090667c4cfa98f09fe1014f",
+            "branch": "feat/r19-money-authority-contracts",
+            "base": "develop",
+            "merged": true,
+            "mergeCommit": "cbb0ffb4eeb9998eddb1ec2f929d614920a76e15",
+            "mergedAt": "2026-10-15T19:12:05Z",
+            "author": "baraabd"
+          },
+          {
+            "number": 169,
+            "title": "fix(g1): close Wave 1 source gaps and require missing runtime evidence",
+            "url": "https://github.com/baraabd/homeservicemarketplace/pull/169",
+            "head": "a93bdf6e5f6d403f6395f4c140fe52ff4ed319c4",
+            "branch": "coord/g1-wave1-remediation",
+            "base": "develop",
+            "merged": true,
+            "mergeCommit": "40cdac5c9ce6acaa8dedc0385984a807ae9a84d0",
+            "mergedAt": "2026-10-16T21:20:48Z",
+            "author": "baraabd"
+          }
+        ],
+        "verifiedCandidateSha": "40cdac5c9ce6acaa8dedc0385984a807ae9a84d0",
+        "decision": "SANDBOX_ACCEPTED"
+      },
+      "acceptance": {
+        "gate": "G1",
+        "sourceSha": "40cdac5c9ce6acaa8dedc0385984a807ae9a84d0",
+        "treeSha": "109b514fe9833a9aac3e8caecd7f9b14d4f61b3b",
+        "evidence": "docs/production-readiness/post-r18/gates/g1/ACCEPTANCE_EVIDENCE.json",
+        "scope": "Integrated Wave 1 technical/disposable-service boundaries; not hosted, commercial-policy or release acceptance."
+      }
+    },
+    {
+      "id": "R20",
+      "title": "Production storage, private media authorization and persistence",
+      "titleSource": "gates/g1/prompts/R19-R28.md#r20",
+      "wave": 1,
+      "lane": 2,
+      "branch": "feat/r20-storage-production",
+      "owner": {
+        "lane": "R20 lane author (repository owner assigns session)",
+        "coordinator": "G1 delegated coordinator for baraabd"
+      },
+      "status": "SANDBOX_ACCEPTED",
+      "frozenBase": "059c018576a75837d4dfb262ee49168d9217d881",
+      "dependencies": [],
+      "legacyAliases": ["P45  "],
+      "ownedPaths": {
+        "exact": [
+          "apps/api/src/infrastructure/storage/content-type.ts",
+          "apps/api/src/infrastructure/storage/image-signature.spec.ts",
+          "apps/api/src/infrastructure/storage/image-signature.ts",
+          "apps/api/src/infrastructure/storage/local-disk-restricted-storage.adapter.ts",
+          "apps/api/src/infrastructure/storage/local-disk-storage.adapter.spec.ts",
+          "apps/api/src/infrastructure/storage/local-disk-storage.adapter.ts",
+          "apps/api/src/infrastructure/storage/media-signature.spec.ts",
+          "apps/api/src/infrastructure/storage/media-signature.ts",
+          "apps/api/src/infrastructure/storage/portfolio-image-validation.spec.ts",
+          "apps/api/src/infrastructure/storage/portfolio-image-validation.ts",
+          "apps/api/src/infrastructure/storage/portfolio-storage-policy.ts",
+          "apps/api/src/infrastructure/storage/request-attachment-storage-policy.ts",
+          "apps/api/src/infrastructure/storage/restricted-erasure.spec.ts",
+          "apps/api/src/infrastructure/storage/restricted-object-storage.contract.spec.ts",
+          "apps/api/src/infrastructure/storage/restricted-object-storage.port.ts",
+          "apps/api/src/infrastructure/storage/s3-portfolio-storage.spec.ts",
+          "apps/api/src/infrastructure/storage/s3-restricted-storage.adapter.ts",
+          "apps/api/src/infrastructure/storage/s3-restricted-storage.stream-ownership.spec.ts",
+          "apps/api/src/infrastructure/storage/s3-storage-root.ts",
+          "apps/api/src/infrastructure/storage/s3-storage.adapter.ts",
+          "apps/api/src/infrastructure/storage/storage-diagnostics.spec.ts",
+          "apps/api/src/infrastructure/storage/storage-diagnostics.ts",
+          "apps/api/src/infrastructure/storage/storage-doctor.ts",
+          "apps/api/src/infrastructure/storage/storage-inventory.ts",
+          "apps/api/src/infrastructure/storage/storage-root.spec.ts",
+          "apps/api/src/infrastructure/storage/storage-root.ts",
+          "apps/api/src/infrastructure/storage/storage.module.spec.ts",
+          "apps/api/src/infrastructure/storage/storage.module.ts",
+          "apps/api/src/infrastructure/storage/storage.port.ts",
+          "apps/api/test/integration/r20-storage/fixture/Dockerfile.minio",
+          "apps/api/test/integration/r20-storage/r20-mediated-read-s3.integration.spec.ts",
+          "apps/api/test/integration/r20-storage/r20-orphan-cleanup-s3.integration.spec.ts",
+          "apps/api/test/integration/r20-storage/r20-s3-fixture.ts",
+          "apps/api/test/integration/r20-storage/r20-s3-storage.integration.spec.ts",
+          "docs/production-readiness/r20/ACCEPTANCE.md",
+          "docs/production-readiness/r20/IMPLEMENTATION.md",
+          "docs/production-readiness/r20/RISKS.md",
+          "docs/production-readiness/r20/ROLLBACK.md",
+          "docs/production-readiness/r20/shared-change-requests/CR-R20-01-evidence-read-integrity-and-headers.md",
+          "docs/production-readiness/r20/shared-change-requests/CR-R20-02-env-root-marker-and-cdn.md",
+          "docs/production-readiness/r20/shared-change-requests/CR-R20-03-avatar-write-once-s3.md",
+          "docs/production-readiness/r20/shared-change-requests/CR-R20-04-ci-real-storage-job.md",
+          "docs/production-readiness/r20/shared-change-requests/CR-R20-05-staging-launcher-storage-checks.md",
+          "docs/production-readiness/r20/shared-change-requests/CR-R20-06-financial-receipt-storage-proposal.md",
+          "docs/production-readiness/r20/shared-change-requests/CR-R20-07-api-worker-credential-split.md",
+          "scripts/production/storage/storage-cli.test.cjs",
+          "scripts/production/storage/storage-doctor.cjs",
+          "scripts/production/storage/storage-inventory.cjs",
+          "scripts/production/storage/storage-plan.cjs",
+          "scripts/production/storage/storage-plan.test.cjs"
+        ],
+        "prefixes": [],
+        "leases": [
+          {
+            "paths": [
+              "infra/production/storage/README.md",
+              "infra/production/storage/aws/bucket-policy.private.json",
+              "infra/production/storage/aws/bucket-policy.public.json",
+              "infra/production/storage/aws/cors.upload.json",
+              "infra/production/storage/aws/encryption.private.json",
+              "infra/production/storage/aws/encryption.public.json",
+              "infra/production/storage/aws/iam-api.json",
+              "infra/production/storage/aws/iam-inventory.json",
+              "infra/production/storage/aws/iam-worker.json",
+              "infra/production/storage/aws/lifecycle.portfolio-staging.json",
+              "infra/production/storage/aws/lifecycle.public.json",
+              "infra/production/storage/aws/lifecycle.restricted.json",
+              "infra/production/storage/aws/public-access-block.json",
+              "infra/production/storage/storage-plan.json"
+            ],
+            "kind": "EXACT_INFRASTRUCTURE_FILES",
+            "grantedBy": "G1 delegated coordinator (owner instruction 2026-10-16)",
+            "scope": "Existing merged source inventory; no new lane write authorization.",
+            "expires": "G1 review; historical implementation closed",
+            "handoff": "Publish final head and evidence; coordinator must release ownership before reassignment."
+          }
+        ]
+      },
+      "requiredEvidence": [
+        "docs/production-readiness/r20/IMPLEMENTATION.md",
+        "docs/production-readiness/r20/ACCEPTANCE.md",
+        "docs/production-readiness/r20/RISKS.md",
+        "docs/production-readiness/r20/ROLLBACK.md",
+        "All behavioral, negative and integration tests in the complete authoritative prompt",
+        "Exact final-head CI and CodeQL; real-service evidence; limitations and rollback"
+      ],
+      "pr": 161,
+      "scopeNote": "Accepted integrated Wave 1 source and disposable-service boundaries on the G1 frozen source; hosted, policy and release controls remain external. Publication is owner-merged as PR #171 and its immutable identity is verified.",
+      "mergeEvidence": {
+        "implementation": {
+          "number": 161,
+          "title": "R20: production storage, private media authorization and persistence",
+          "url": "https://github.com/baraabd/homeservicemarketplace/pull/161",
+          "head": "620bc7f66c369f278a540df702aa1fe757fed874",
+          "branch": "feat/r20-storage-production",
+          "base": "develop",
+          "merged": true,
+          "mergeCommit": "5fe7d23877641d7ba5e1c915b670414a08a8087a",
+          "mergedAt": "2026-10-14T07:42:12Z",
+          "author": "baraabd"
+        },
+        "followUps": [],
+        "verifiedCandidateSha": "40cdac5c9ce6acaa8dedc0385984a807ae9a84d0",
+        "decision": "SANDBOX_ACCEPTED"
+      },
+      "acceptance": {
+        "gate": "G1",
+        "sourceSha": "40cdac5c9ce6acaa8dedc0385984a807ae9a84d0",
+        "treeSha": "109b514fe9833a9aac3e8caecd7f9b14d4f61b3b",
+        "evidence": "docs/production-readiness/post-r18/gates/g1/ACCEPTANCE_EVIDENCE.json",
+        "scope": "Integrated Wave 1 technical/disposable-service boundaries; not hosted, commercial-policy or release acceptance."
+      }
+    },
+    {
+      "id": "R21",
+      "title": "Production email delivery and durable feedback",
+      "titleSource": "gates/g1/prompts/R19-R28.md#r21",
+      "wave": 1,
+      "lane": 3,
+      "branch": "feat/r21-email-production",
+      "owner": {
+        "lane": "R21 lane author (repository owner assigns session)",
+        "coordinator": "G1 delegated coordinator for baraabd"
+      },
+      "status": "SANDBOX_ACCEPTED",
+      "frozenBase": "059c018576a75837d4dfb262ee49168d9217d881",
+      "dependencies": [],
+      "legacyAliases": ["P46  "],
+      "ownedPaths": {
+        "exact": [
+          "apps/api/src/infrastructure/mail/durable-mail.service.spec.ts",
+          "apps/api/src/infrastructure/mail/durable-mail.service.ts",
+          "apps/api/src/infrastructure/mail/email-delivery.repository.ts",
+          "apps/api/src/infrastructure/mail/feedback/feedback-signature.spec.ts",
+          "apps/api/src/infrastructure/mail/feedback/feedback-signature.ts",
+          "apps/api/src/infrastructure/mail/feedback/mail-feedback.controller.ts",
+          "apps/api/src/infrastructure/mail/feedback/mail-feedback.service.ts",
+          "apps/api/src/infrastructure/mail/in-memory-mail.adapter.ts",
+          "apps/api/src/infrastructure/mail/mail-envelope.cipher.spec.ts",
+          "apps/api/src/infrastructure/mail/mail-envelope.cipher.ts",
+          "apps/api/src/infrastructure/mail/mail-errors.spec.ts",
+          "apps/api/src/infrastructure/mail/mail-errors.ts",
+          "apps/api/src/infrastructure/mail/mail.dispatcher.ts",
+          "apps/api/src/infrastructure/mail/mail.metrics.ts",
+          "apps/api/src/infrastructure/mail/mail.module.spec.ts",
+          "apps/api/src/infrastructure/mail/mail.module.ts",
+          "apps/api/src/infrastructure/mail/mail.port.ts",
+          "apps/api/src/infrastructure/mail/mail.tokens.ts",
+          "apps/api/src/infrastructure/mail/nodemailer-mail.adapter.spec.ts",
+          "apps/api/src/infrastructure/mail/nodemailer-mail.adapter.ts",
+          "apps/api/src/infrastructure/mail/nodemailer-mail.tls.spec.ts",
+          "apps/api/src/infrastructure/mail/provider-status-email.handler.ts",
+          "apps/api/src/infrastructure/mail/templates/escape.ts",
+          "apps/api/src/infrastructure/mail/templates/mail-template.types.ts",
+          "apps/api/src/infrastructure/mail/templates/mail-templates.spec.ts",
+          "apps/api/src/infrastructure/mail/templates/mail-templates.ts",
+          "apps/api/test/integration/r21-durable-mail.integration.spec.ts",
+          "apps/api/test/integration/r21-mail-feedback.integration.spec.ts",
+          "docs/production-readiness/r21/ACCEPTANCE.md",
+          "docs/production-readiness/r21/IMPLEMENTATION.md",
+          "docs/production-readiness/r21/OWNERSHIP.md",
+          "docs/production-readiness/r21/RISKS.md",
+          "docs/production-readiness/r21/ROLLBACK.md",
+          "docs/production-readiness/r21/shared-change-requests/CR-R21-01-main-raw-feedback-body.md",
+          "docs/production-readiness/r21/shared-change-requests/CR-R21-02-register-provider-status-email-handler.md",
+          "docs/production-readiness/r21/shared-change-requests/CR-R21-03-deployment-config-and-docs.md",
+          "docs/production-readiness/r21/shared-change-requests/CR-R21-04-g1-schema-overlap-with-r19.md",
+          "scripts/production/email/check-sender-dns.cjs",
+          "scripts/production/email/email-tools.test.cjs",
+          "scripts/production/email/send-acceptance-probe.cjs"
+        ],
+        "prefixes": [],
+        "leases": [
+          {
+            "paths": ["infra/production/email/SENDER_DOMAIN.md"],
+            "kind": "EXACT_INFRASTRUCTURE_FILES",
+            "grantedBy": "G1 delegated coordinator (owner instruction 2026-10-16)",
+            "scope": "Existing merged source inventory; no new lane write authorization.",
+            "expires": "G1 review; historical implementation closed",
+            "handoff": "Publish final head and evidence; coordinator must release ownership before reassignment."
+          }
+        ]
+      },
+      "requiredEvidence": [
+        "docs/production-readiness/r21/IMPLEMENTATION.md",
+        "docs/production-readiness/r21/ACCEPTANCE.md",
+        "docs/production-readiness/r21/RISKS.md",
+        "docs/production-readiness/r21/ROLLBACK.md",
+        "All behavioral, negative and integration tests in the complete authoritative prompt",
+        "Exact final-head CI and CodeQL; real-service evidence; limitations and rollback"
+      ],
+      "pr": 160,
+      "scopeNote": "Accepted integrated Wave 1 source and disposable-service boundaries on the G1 frozen source; hosted, policy and release controls remain external. Publication is owner-merged as PR #171 and its immutable identity is verified.",
+      "mergeEvidence": {
+        "implementation": {
+          "number": 160,
+          "title": "R21: durable production email delivery and signed delivery feedback",
+          "url": "https://github.com/baraabd/homeservicemarketplace/pull/160",
+          "head": "7766253ebea0cda0f88883c037c8cd59d7849abd",
+          "branch": "feat/r21-email-production",
+          "base": "develop",
+          "merged": true,
+          "mergeCommit": "9308b56cf3ca9cdb85de28a9e88567636266efdf",
+          "mergedAt": "2026-10-14T07:59:18Z",
+          "author": "baraabd"
+        },
+        "followUps": [
+          {
+            "number": 164,
+            "title": "docs(r21): record runtime evidence for the wired feedback route",
+            "url": "https://github.com/baraabd/homeservicemarketplace/pull/164",
+            "head": "7aaf0026fb40641dcebc70f7a972f27279ed17bc",
+            "branch": "feat/r21-email-production",
+            "base": "develop",
+            "merged": true,
+            "mergeCommit": "5c82bdc88e15bf4c0a142a846c6565afcacfad66",
+            "mergedAt": "2026-10-14T10:22:14Z",
+            "author": "baraabd"
+          },
+          {
+            "number": 169,
+            "title": "fix(g1): close Wave 1 source gaps and require missing runtime evidence",
+            "url": "https://github.com/baraabd/homeservicemarketplace/pull/169",
+            "head": "a93bdf6e5f6d403f6395f4c140fe52ff4ed319c4",
+            "branch": "coord/g1-wave1-remediation",
+            "base": "develop",
+            "merged": true,
+            "mergeCommit": "40cdac5c9ce6acaa8dedc0385984a807ae9a84d0",
+            "mergedAt": "2026-10-16T21:20:48Z",
+            "author": "baraabd"
+          }
+        ],
+        "verifiedCandidateSha": "40cdac5c9ce6acaa8dedc0385984a807ae9a84d0",
+        "decision": "SANDBOX_ACCEPTED"
+      },
+      "acceptance": {
+        "gate": "G1",
+        "sourceSha": "40cdac5c9ce6acaa8dedc0385984a807ae9a84d0",
+        "treeSha": "109b514fe9833a9aac3e8caecd7f9b14d4f61b3b",
+        "evidence": "docs/production-readiness/post-r18/gates/g1/ACCEPTANCE_EVIDENCE.json",
+        "scope": "Integrated Wave 1 technical/disposable-service boundaries; not hosted, commercial-policy or release acceptance."
+      }
+    },
+    {
+      "id": "R22",
+      "title": "Outbox and worker execution reliability",
+      "titleSource": "gates/g1/prompts/R19-R28.md#r22",
+      "wave": 1,
+      "lane": 4,
+      "branch": "feat/r22-worker-outbox-reliability",
+      "owner": {
+        "lane": "R22 lane author (repository owner assigns session)",
+        "coordinator": "G1 delegated coordinator for baraabd"
+      },
+      "status": "SANDBOX_ACCEPTED",
+      "frozenBase": "059c018576a75837d4dfb262ee49168d9217d881",
+      "dependencies": [],
+      "legacyAliases": ["P47  "],
+      "ownedPaths": {
+        "exact": [
+          "apps/api/src/infrastructure/outbox/outbox-cleanup.job.ts",
+          "apps/api/src/infrastructure/outbox/outbox-replay.service.spec.ts",
+          "apps/api/src/infrastructure/outbox/outbox-replay.service.ts",
+          "apps/api/src/infrastructure/outbox/outbox.errors.spec.ts",
+          "apps/api/src/infrastructure/outbox/outbox.errors.ts",
+          "apps/api/src/infrastructure/outbox/outbox.handler.ts",
+          "apps/api/src/infrastructure/outbox/outbox.module.ts",
+          "apps/api/src/infrastructure/outbox/outbox.repository.ts",
+          "apps/api/src/infrastructure/outbox/outbox.retry.spec.ts",
+          "apps/api/src/infrastructure/outbox/outbox.retry.ts",
+          "apps/api/src/infrastructure/outbox/outbox.tokens.ts",
+          "apps/api/src/infrastructure/outbox/outbox.worker.spec.ts",
+          "apps/api/src/infrastructure/outbox/outbox.worker.ts",
+          "apps/api/test/integration/r22-outbox-process.integration.spec.ts",
+          "apps/api/test/integration/r22-outbox-reliability.integration.spec.ts",
+          "apps/api/test/integration/r22-outbox-replay.integration.spec.ts",
+          "apps/api/test/integration/r22-support/outbox-harness.ts",
+          "apps/api/test/integration/r22-support/outbox-worker-child.cjs",
+          "docs/production-readiness/r22/ACCEPTANCE.md",
+          "docs/production-readiness/r22/HANDLER_REGISTRATION_CONTRACT.md",
+          "docs/production-readiness/r22/IMPLEMENTATION.md",
+          "docs/production-readiness/r22/OWNERSHIP.md",
+          "docs/production-readiness/r22/RISKS.md",
+          "docs/production-readiness/r22/ROLLBACK.md",
+          "docs/production-readiness/r22/shared-change-requests/CR-01-audit-event-type.md",
+          "docs/production-readiness/r22/shared-change-requests/CR-02-env-keys.md",
+          "docs/production-readiness/r22/shared-change-requests/CR-03-replay-permission-seed.md",
+          "docs/production-readiness/r22/shared-change-requests/CR-04-ci-job.md",
+          "docs/production-readiness/r22/shared-change-requests/CR-05-metrics-and-image.md",
+          "scripts/production/workers/outbox-health.cjs",
+          "scripts/production/workers/outbox-replay.cjs",
+          "scripts/production/workers/outbox-replay.test.cjs"
+        ],
+        "prefixes": [],
+        "leases": [
+          {
+            "paths": [
+              "infra/production/workers/OUTBOX_PLAYBOOKS.md",
+              "infra/production/workers/outbox-worker.rules.yml"
+            ],
+            "kind": "EXACT_INFRASTRUCTURE_FILES",
+            "grantedBy": "G1 delegated coordinator (owner instruction 2026-10-16)",
+            "scope": "Existing merged source inventory; no new lane write authorization.",
+            "expires": "G1 review; historical implementation closed",
+            "handoff": "Publish final head and evidence; coordinator must release ownership before reassignment."
+          }
+        ]
+      },
+      "requiredEvidence": [
+        "docs/production-readiness/r22/IMPLEMENTATION.md",
+        "docs/production-readiness/r22/ACCEPTANCE.md",
+        "docs/production-readiness/r22/RISKS.md",
+        "docs/production-readiness/r22/ROLLBACK.md",
+        "All behavioral, negative and integration tests in the complete authoritative prompt",
+        "Exact final-head CI and CodeQL; real-service evidence; limitations and rollback"
+      ],
+      "pr": 158,
+      "scopeNote": "Accepted integrated Wave 1 source and disposable-service boundaries on the G1 frozen source; hosted, policy and release controls remain external. Publication is owner-merged as PR #171 and its immutable identity is verified.",
+      "mergeEvidence": {
+        "implementation": {
+          "number": 158,
+          "title": "R22: outbox and worker execution reliability",
+          "url": "https://github.com/baraabd/homeservicemarketplace/pull/158",
+          "head": "79617ff051efa69e49a4c7b8f4c446e9b04f3510",
+          "branch": "feat/r22-worker-outbox-reliability",
+          "base": "develop",
+          "merged": true,
+          "mergeCommit": "3e9fd3ad106639aa87780af8d3927d1d391cb355",
+          "mergedAt": "2026-10-14T05:57:06Z",
+          "author": "baraabd"
+        },
+        "followUps": [
+          {
+            "number": 165,
+            "title": "fix(r22): bound post-commit outbox publication and preserve committed effects",
+            "url": "https://github.com/baraabd/homeservicemarketplace/pull/165",
+            "head": "f0261e44e50b3f8c22c566daf7f491be0e684b58",
+            "branch": "feat/r22-worker-outbox-reliability",
+            "base": "develop",
+            "merged": true,
+            "mergeCommit": "ea318aee14a5d39b724da945b492b8dee3ae77e0",
+            "mergedAt": "2026-10-15T19:13:53Z",
+            "author": "baraabd"
+          },
+          {
+            "number": 169,
+            "title": "fix(g1): close Wave 1 source gaps and require missing runtime evidence",
+            "url": "https://github.com/baraabd/homeservicemarketplace/pull/169",
+            "head": "a93bdf6e5f6d403f6395f4c140fe52ff4ed319c4",
+            "branch": "coord/g1-wave1-remediation",
+            "base": "develop",
+            "merged": true,
+            "mergeCommit": "40cdac5c9ce6acaa8dedc0385984a807ae9a84d0",
+            "mergedAt": "2026-10-16T21:20:48Z",
+            "author": "baraabd"
+          }
+        ],
+        "verifiedCandidateSha": "40cdac5c9ce6acaa8dedc0385984a807ae9a84d0",
+        "decision": "SANDBOX_ACCEPTED"
+      },
+      "acceptance": {
+        "gate": "G1",
+        "sourceSha": "40cdac5c9ce6acaa8dedc0385984a807ae9a84d0",
+        "treeSha": "109b514fe9833a9aac3e8caecd7f9b14d4f61b3b",
+        "evidence": "docs/production-readiness/post-r18/gates/g1/ACCEPTANCE_EVIDENCE.json",
+        "scope": "Integrated Wave 1 technical/disposable-service boundaries; not hosted, commercial-policy or release acceptance."
+      }
+    },
+    {
+      "id": "R23",
+      "title": "Observability, privacy-safe diagnostics and incident detection",
+      "titleSource": "gates/g1/prompts/R19-R28.md#r23",
+      "wave": 1,
+      "lane": 5,
+      "branch": "feat/r23-observability-incidents",
+      "owner": {
+        "lane": "R23 lane author (repository owner assigns session)",
+        "coordinator": "G1 delegated coordinator for baraabd"
+      },
+      "status": "SANDBOX_ACCEPTED",
+      "frozenBase": "059c018576a75837d4dfb262ee49168d9217d881",
+      "dependencies": [],
+      "legacyAliases": ["P48  "],
+      "ownedPaths": {
+        "exact": [
+          "apps/api/src/infrastructure/logger/logger.module.spec.ts",
+          "apps/api/src/infrastructure/logger/logger.module.ts",
+          "apps/api/src/infrastructure/logger/logger.privacy.spec.ts",
+          "apps/api/src/infrastructure/logger/pino-http-options.ts",
+          "apps/api/src/infrastructure/logger/redaction.spec.ts",
+          "apps/api/src/infrastructure/logger/redaction.ts",
+          "apps/api/src/infrastructure/telemetry/dependency-diagnostics.spec.ts",
+          "apps/api/src/infrastructure/telemetry/dependency-diagnostics.ts",
+          "apps/api/src/infrastructure/telemetry/domain-metrics.spec.ts",
+          "apps/api/src/infrastructure/telemetry/domain-metrics.ts",
+          "apps/api/src/infrastructure/telemetry/http-telemetry.middleware.ts",
+          "apps/api/src/infrastructure/telemetry/label-bounds.spec.ts",
+          "apps/api/src/infrastructure/telemetry/label-bounds.ts",
+          "apps/api/src/infrastructure/telemetry/metrics-access.guard.spec.ts",
+          "apps/api/src/infrastructure/telemetry/metrics-access.guard.ts",
+          "apps/api/src/infrastructure/telemetry/metrics.controller.ts",
+          "apps/api/src/infrastructure/telemetry/metrics.module.ts",
+          "apps/api/src/infrastructure/telemetry/metrics.service.spec.ts",
+          "apps/api/src/infrastructure/telemetry/metrics.service.ts",
+          "apps/api/src/infrastructure/telemetry/span-pipeline.spec.ts",
+          "apps/api/src/infrastructure/telemetry/span-pipeline.ts",
+          "apps/api/src/infrastructure/telemetry/telemetry.service.spec.ts",
+          "apps/api/src/infrastructure/telemetry/telemetry.service.ts",
+          "apps/api/src/infrastructure/telemetry/trace-context.spec.ts",
+          "apps/api/src/infrastructure/telemetry/trace-context.ts",
+          "docs/production-readiness/r23/ACCEPTANCE.md",
+          "docs/production-readiness/r23/ALLOWLIST.md",
+          "docs/production-readiness/r23/IMPLEMENTATION.md",
+          "docs/production-readiness/r23/METRICS_CATALOG.md",
+          "docs/production-readiness/r23/RISKS.md",
+          "docs/production-readiness/r23/ROLLBACK.md",
+          "docs/production-readiness/r23/SLO.md",
+          "docs/production-readiness/r23/shared-change-requests/CR-01-request-id-and-error-log.md",
+          "docs/production-readiness/r23/shared-change-requests/CR-02-trace-export-configuration.md",
+          "docs/production-readiness/r23/shared-change-requests/CR-03-diagnostics-wiring.md",
+          "docs/production-readiness/r23/shared-change-requests/CR-04-boundary-adoption.md",
+          "docs/production-readiness/r23/shared-change-requests/CR-05-hosted-collection-and-ci.md",
+          "scripts/production/observability/alert-quality.cjs",
+          "scripts/production/observability/run-synthetic-alert.cjs",
+          "scripts/production/observability/synthetic-target.cjs",
+          "scripts/production/observability/test-receiver.cjs",
+          "scripts/production/observability/test-receiver.test.cjs"
+        ],
+        "prefixes": [],
+        "leases": [
+          {
+            "paths": [
+              "infra/production/observability/RUNBOOK.md",
+              "infra/production/observability/alertmanager/alertmanager.test.yml",
+              "infra/production/observability/compose.alert-test.yml",
+              "infra/production/observability/dashboards/hsm-api-overview.json",
+              "infra/production/observability/dashboards/hsm-platform-slo.json",
+              "infra/production/observability/prometheus/prometheus.test.yml",
+              "infra/production/observability/prometheus/rules/api-slo.rules.yml",
+              "infra/production/observability/prometheus/rules/platform.rules.yml",
+              "infra/production/observability/prometheus/tests/api-slo.test.yml",
+              "infra/production/observability/prometheus/tests/platform.test.yml"
+            ],
+            "kind": "EXACT_INFRASTRUCTURE_FILES",
+            "grantedBy": "G1 delegated coordinator (owner instruction 2026-10-16)",
+            "scope": "Existing merged source inventory; no new lane write authorization.",
+            "expires": "G1 review; historical implementation closed",
+            "handoff": "Publish final head and evidence; coordinator must release ownership before reassignment."
+          }
+        ]
+      },
+      "requiredEvidence": [
+        "docs/production-readiness/r23/IMPLEMENTATION.md",
+        "docs/production-readiness/r23/ACCEPTANCE.md",
+        "docs/production-readiness/r23/RISKS.md",
+        "docs/production-readiness/r23/ROLLBACK.md",
+        "All behavioral, negative and integration tests in the complete authoritative prompt",
+        "Exact final-head CI and CodeQL; real-service evidence; limitations and rollback"
+      ],
+      "pr": 163,
+      "scopeNote": "Accepted integrated Wave 1 source and disposable-service boundaries on the G1 frozen source; hosted, policy and release controls remain external. Publication is owner-merged as PR #171 and its immutable identity is verified.",
+      "mergeEvidence": {
+        "implementation": {
+          "number": 163,
+          "title": "R23: observability, privacy-safe diagnostics and incident detection",
+          "url": "https://github.com/baraabd/homeservicemarketplace/pull/163",
+          "head": "66603ffb4521faf9b4c39bc21224dddd060a15dd",
+          "branch": "feat/r23-observability-incidents",
+          "base": "develop",
+          "merged": true,
+          "mergeCommit": "af662586a640e41d8438d0cb2dd69e8cbb0e172a",
+          "mergedAt": "2026-10-14T10:22:28Z",
+          "author": "baraabd"
+        },
+        "followUps": [
+          {
+            "number": 167,
+            "title": "fix(r23): align request correlation and redact exception query paths",
+            "url": "https://github.com/baraabd/homeservicemarketplace/pull/167",
+            "head": "f3f9ef491ac8d8296c655d0e010d8ad2a39e7cf5",
+            "branch": "feat/r23-observability-incidents",
+            "base": "develop",
+            "merged": true,
+            "mergeCommit": "54a69f78c0227a2f2b94df851a3ebb941348d8aa",
+            "mergedAt": "2026-10-15T21:13:47Z",
+            "author": "baraabd"
+          },
+          {
+            "number": 169,
+            "title": "fix(g1): close Wave 1 source gaps and require missing runtime evidence",
+            "url": "https://github.com/baraabd/homeservicemarketplace/pull/169",
+            "head": "a93bdf6e5f6d403f6395f4c140fe52ff4ed319c4",
+            "branch": "coord/g1-wave1-remediation",
+            "base": "develop",
+            "merged": true,
+            "mergeCommit": "40cdac5c9ce6acaa8dedc0385984a807ae9a84d0",
+            "mergedAt": "2026-10-16T21:20:48Z",
+            "author": "baraabd"
+          }
+        ],
+        "verifiedCandidateSha": "40cdac5c9ce6acaa8dedc0385984a807ae9a84d0",
+        "decision": "SANDBOX_ACCEPTED"
+      },
+      "acceptance": {
+        "gate": "G1",
+        "sourceSha": "40cdac5c9ce6acaa8dedc0385984a807ae9a84d0",
+        "treeSha": "109b514fe9833a9aac3e8caecd7f9b14d4f61b3b",
+        "evidence": "docs/production-readiness/post-r18/gates/g1/ACCEPTANCE_EVIDENCE.json",
+        "scope": "Integrated Wave 1 technical/disposable-service boundaries; not hosted, commercial-policy or release acceptance."
+      }
+    },
+    {
+      "id": "R24",
+      "title": "Money application API and module wiring; freeze adapter integration boundaries",
+      "titleSource": "gates/g1/prompts/R19-R28.md#r24",
+      "wave": 2,
+      "lane": 1,
+      "branch": "feat/r24-money-api-integration",
+      "owner": {
+        "lane": "R24 owner-delegated session (root); exact delegation in r24/OWNERSHIP.md",
+        "coordinator": "G1 delegated coordinator for baraabd"
+      },
+      "status": "READY_TO_START",
+      "frozenBase": "40cdac5c9ce6acaa8dedc0385984a807ae9a84d0",
+      "dependencies": ["R19", "R22", "R23"],
+      "legacyAliases": ["P37", "P42-foundation  "],
+      "ownedPaths": {
+        "exact": [
+          "apps/api/src/modules/money/api/money.controller.spec.ts",
+          "apps/api/src/modules/money/api/money.controller.ts",
+          "apps/api/src/modules/money/application/money-command.service.spec.ts",
+          "apps/api/src/modules/money/application/money-command.service.ts",
+          "apps/api/src/modules/money/money.module.spec.ts",
+          "apps/api/src/modules/money/money.module.ts",
+          "apps/api/src/modules/money/ports/activation.port.ts",
+          "apps/api/src/modules/money/ports/collection.port.ts",
+          "apps/api/src/modules/money/ports/finance-read.port.ts",
+          "apps/api/src/modules/money/ports/refund.port.ts",
+          "apps/api/test/integration/r24-money-api.integration.spec.ts",
+          "docs/production-readiness/r24/ACCEPTANCE.md",
+          "docs/production-readiness/r24/IMPLEMENTATION.md",
+          "docs/production-readiness/r24/RISKS.md",
+          "docs/production-readiness/r24/ROLLBACK.md",
+          "docs/production-readiness/r24/shared-change-requests/CR-001-integration.md",
+          "apps/api/src/modules/money/application/money-query.service.ts",
+          "apps/api/src/modules/money/application/money-query.service.spec.ts",
+          "apps/api/test/support/r24-money-http.fixture.ts",
+          "docs/production-readiness/r24/OWNERSHIP.md",
+          "docs/production-readiness/r24/fixtures/api-v1.json",
+          "docs/production-readiness/r24/SOURCE_MANIFEST.json"
+        ],
+        "prefixes": [],
+        "leases": [
+          {
+            "paths": [
+              "packages/database/prisma/schema.prisma",
+              "packages/database/prisma/migrations/20261017163000_r24_money_api_orchestration/migration.sql",
+              "packages/database/src/seed.ts",
+              "packages/contracts/src/money/api-contracts.ts",
+              "packages/contracts/src/money/index.ts",
+              "apps/api/src/app.module.ts",
+              "apps/api/src/modules/iam/audit/audit.service.ts",
+              "apps/api/src/modules/iam/audit/audit.service.spec.ts",
+              "apps/api/test/integration/r19-subscription-money.integration.spec.ts",
+              "apps/api/src/app.module.spec.ts",
+              ".github/scripts/merge-integrity.test.mjs",
+              "docs/production-readiness/baseline/MODEL_MIGRATION_INDEX.json"
+            ],
+            "kind": "SERIALIZED_R24_COORDINATOR_INTEGRATION",
+            "grantedBy": "baraabd's delegated coordinator; continuing owner authority and the R24 implementation request; exact assignment recorded before runtime edits on 2026-10-17",
+            "scope": "One additive R24 migration and five orchestration tables; six registered money capability definitions with zero automatic grants; published money API contracts; one AppModule-to-MoneyModule-to-existing-LedgerModule composition; bounded money audit identifiers; stronger topology, permission and migration-inventory regression assertions. No money backfill, account grants, live rails, environment, dependencies or workflow edits. Exact minimal patches and preserved invariants are recorded in r24/shared-change-requests/CR-001-integration.md.",
+            "expires": "The earliest of R24 PR closure, the G2 decision, or coordinator revocation",
+            "handoff": "Root is the single writer for these shared paths. Preserve accepted R19/R22/R23 authorities and prior support/ledger checks; integrate only owner-merged develop into the R24 branch by normal merge, preserve frozen G1 identity and peer records, then publish exact source evidence and release the lease before reassignment."
+          },
+          {
+            "paths": [
+              "apps/api/src/modules/iam/authorization/guards/permissions.guard.ts",
+              "apps/api/src/modules/iam/authorization/guards/permissions.guard.spec.ts"
+            ],
+            "kind": "SERIALIZED_R24_FRESH_PERMISSION_INTEGRATION",
+            "grantedBy": "baraabd's delegated coordinator; continuing owner authority and explicit request to complete R24 with green checks; bounded extension recorded 2026-10-17T16:36:36Z before these shared edits",
+            "scope": "Add money: to the existing PermissionsGuard sensitive-permission classification so both revocation and regrant use resolveFreshForUser. Add regression assertions for all six capabilities and stale denied/granted role cache states. Preserve existing guards, non-money cache policy, role grants and all prior sensitive classifications.",
+            "expires": "The earliest of R24 PR closure, the G2 decision, or coordinator revocation",
+            "handoff": "Root is the single writer. Real HTTP tests exposed four failures caused by stale token base roles and cached money grants; required current base roles are checked inside the owned Money services, while this exact shared patch fixes the existing guard's fresh permission boundary. No cache flush, replacement guard, global RolesGuard change or security relaxation."
+          },
+          {
+            "paths": ["apps/api/test/unit/seed-with-tx.spec.ts"],
+            "kind": "SERIALIZED_R24_SEED_REGRESSION_ALIGNMENT",
+            "grantedBy": "baraabd's delegated coordinator; continuing owner authority and explicit R24 green-check request; recorded 2026-10-17T16:48:10Z before the shared test edit",
+            "scope": "Update the obsolete count that assumed outbox:replay was the only ungranted catalog entry. Explicitly require all six published money capabilities to exist and to have zero role grants, retain outbox replay refusal and exact ordinary admin/customer/provider mappings. No seed behavior or security assertion is weakened.",
+            "expires": "The earliest of R24 PR closure, the G2 decision, or coordinator revocation",
+            "handoff": "Root is the single writer. The complete enabled API run exposed the old count (expected24,actual18 admin grants) after legitimate six-definition/no-grant registration. Align this test to the approved dark capability catalog and preserve the earlier assertions."
+          }
+        ]
+      },
+      "execution": {
+        "state": "IN_PROGRESS",
+        "startedAtUtc": "2026-10-17T15:55:11Z",
+        "worktree": "/workspace/scratch/3c602a5e36ee/homeservicemarketplace-r24",
+        "startHeadSha": "07c8e584c684111bfc80995c7efb0144cfb6161b",
+        "coordinationBaseSha": "07c8e584c684111bfc80995c7efb0144cfb6161b",
+        "frozenRuntimeSourceSha": "40cdac5c9ce6acaa8dedc0385984a807ae9a84d0",
+        "observedDevelopSha": "21089a5065169b78bea5e711a4839e1a467531dc",
+        "ownershipRecord": "docs/production-readiness/r24/OWNERSHIP.md",
+        "changeRequest": "docs/production-readiness/r24/shared-change-requests/CR-001-integration.md",
+        "integrationPolicy": "After the normal-hook ownership checkpoint, owner-merged develop was integrated into this R24 branch by normal merge, preserving frozen G1 source and incoming peer records. No unmerged R25 import, rebase, force-push, merge to develop or deployment.",
+        "acceptance": "NOT_ASSERTED",
+        "ownershipCommitSha": "60df8018ea9c76b1cda1c322fb279c7b9d7fde93",
+        "integratedDevelopSha": "21089a5065169b78bea5e711a4839e1a467531dc",
+        "integrationCommitSha": "65b2a0e59604931a4b8b87acb971c71afaaf9a74"
+      },
+      "requiredEvidence": [
+        "docs/production-readiness/r24/IMPLEMENTATION.md",
+        "docs/production-readiness/r24/ACCEPTANCE.md",
+        "docs/production-readiness/r24/RISKS.md",
+        "docs/production-readiness/r24/ROLLBACK.md",
+        "All behavioral, negative and integration tests in the complete authoritative prompt",
+        "Exact final-head CI and CodeQL; real-service evidence; limitations and rollback"
+      ],
+      "pr": null,
+      "scopeNote": "G1 publication identity verified; R24 exact ownership and the serialized shared integration lease are recorded before runtime work in r24/OWNERSHIP.md and CR-001-integration.md. READY_TO_START preserves the accepted start barrier; execution.IN_PROGRESS is not implementation or acceptance. The G1 frozen runtime remains unchanged while owner-merged develop has been integrated into the R24 branch by the recorded normal merge. Complete requirements remain in gates/g1/prompts/R19-R28.md; preserve all policy/external holds.",
+      "startBarrier": {
+        "gate": "G1",
+        "decision": "ACCEPTED",
+        "publication": "MERGED",
+        "acceptanceRecordCommitSha": "0568739096ceeaf0cfc79034626886e258fe4328",
+        "verificationRecord": "docs/production-readiness/post-r18/gates/g1/PUBLICATION_VERIFICATION.json"
+      }
+    },
+    {
+      "id": "R25",
+      "title": "Realtime multi-instance activation and reconnect recovery",
+      "titleSource": "gates/g1/prompts/R19-R28.md#r25",
+      "wave": 2,
+      "lane": 2,
+      "branch": "feat/r25-realtime-multi-instance",
+      "owner": {
+        "lane": "R25 lane author (repository owner assigns session)",
+        "coordinator": "G1 delegated coordinator for baraabd"
+      },
+      "status": "READY_TO_START",
+      "frozenBase": "40cdac5c9ce6acaa8dedc0385984a807ae9a84d0",
+      "dependencies": ["R22", "R23"],
+      "legacyAliases": ["P44  "],
+      "ownedPaths": {
+        "exact": [
+          "apps/api/src/modules/realtime/conversation-participant.gate.spec.ts",
+          "apps/api/src/modules/realtime/conversation-participant.gate.ts",
+          "apps/api/src/modules/realtime/realtime-events.controller.ts",
+          "apps/api/src/modules/realtime/realtime-events.publisher.spec.ts",
+          "apps/api/src/modules/realtime/realtime-events.publisher.ts",
+          "apps/api/src/modules/realtime/realtime-identity.resolver.ts",
+          "apps/api/src/modules/realtime/realtime-socket.adapter.spec.ts",
+          "apps/api/src/modules/realtime/realtime-socket.adapter.ts",
+          "apps/api/src/modules/realtime/realtime.gateway.spec.ts",
+          "apps/api/src/modules/realtime/realtime.gateway.ts",
+          "apps/api/src/modules/realtime/realtime.module.ts",
+          "apps/api/test/integration/r25-realtime-recovery.integration.spec.ts",
+          "apps/web/e2e/r25-realtime-recovery.real-api.spec.ts",
+          "apps/web/src/lib/realtime/booking-lifecycle.test.ts",
+          "apps/web/src/lib/realtime/booking-lifecycle.ts",
+          "apps/web/src/lib/realtime/notification-arrival-watcher.test.tsx",
+          "apps/web/src/lib/realtime/notification-arrival-watcher.ts",
+          "apps/web/src/lib/realtime/notification-baseline.test.ts",
+          "apps/web/src/lib/realtime/notification-baseline.ts",
+          "apps/web/src/lib/realtime/notification-target-handler.ts",
+          "apps/web/src/lib/realtime/notification-target.test.ts",
+          "apps/web/src/lib/realtime/notification-target.ts",
+          "apps/web/src/lib/realtime/notification-ux.test.ts",
+          "apps/web/src/lib/realtime/notification-ux.ts",
+          "apps/web/src/lib/realtime/realtime-experience.ts",
+          "apps/web/src/lib/realtime/realtime-i18n.ts",
+          "apps/web/src/lib/realtime/realtime-navigator.ts",
+          "apps/web/src/lib/realtime/side-effects.test.ts",
+          "apps/web/src/lib/realtime/side-effects.ts",
+          "apps/web/src/lib/realtime/socket-client.ts",
+          "apps/web/src/lib/realtime/use-realtime-socket.test.ts",
+          "apps/web/src/lib/realtime/use-realtime-socket.ts",
+          "docs/production-readiness/r25/ACCEPTANCE.md",
+          "docs/production-readiness/r25/IMPLEMENTATION.md",
+          "docs/production-readiness/r25/RISKS.md",
+          "docs/production-readiness/r25/ROLLBACK.md",
+          "docs/production-readiness/r25/shared-change-requests/CR-001-integration.md",
+          "scripts/production/realtime/verify-replicas.cjs",
+          "scripts/production/realtime/verify-replicas.test.cjs"
+        ],
+        "prefixes": [],
+        "leases": [
+          {
+            "paths": [
+              "infra/production/realtime/README.md",
+              "infra/production/realtime/compose.test.yml"
+            ],
+            "kind": "EXACT_INFRASTRUCTURE_FILES",
+            "grantedBy": "G1 delegated coordinator (owner instruction 2026-10-16)",
+            "scope": "Prepared file authoring only; no deployment. Effective only after accepted G1 publication.",
+            "expires": "G2 decision or earlier coordinator revocation",
+            "handoff": "Publish final head and evidence; coordinator must release ownership before reassignment."
+          }
+        ]
+      },
+      "requiredEvidence": [
+        "docs/production-readiness/r25/IMPLEMENTATION.md",
+        "docs/production-readiness/r25/ACCEPTANCE.md",
+        "docs/production-readiness/r25/RISKS.md",
+        "docs/production-readiness/r25/ROLLBACK.md",
+        "All behavioral, negative and integration tests in the complete authoritative prompt",
+        "Exact final-head CI and CodeQL; real-service evidence; limitations and rollback"
+      ],
+      "pr": null,
+      "scopeNote": "G1 publication identity verified; exact lane ownership released to the owner-assigned session. READY_TO_START is not implementation or acceptance. Complete requirements remain in gates/g1/prompts/R19-R28.md; preserve frozen source and all policy/external holds.",
+      "startBarrier": {
+        "gate": "G1",
+        "decision": "ACCEPTED",
+        "publication": "MERGED",
+        "acceptanceRecordCommitSha": "0568739096ceeaf0cfc79034626886e258fe4328",
+        "verificationRecord": "docs/production-readiness/post-r18/gates/g1/PUBLICATION_VERIFICATION.json"
+      }
+    },
+    {
+      "id": "R26",
+      "title": "Application security and effective authorization hardening",
+      "titleSource": "gates/g1/prompts/R19-R28.md#r26",
+      "wave": 2,
+      "lane": 3,
+      "branch": "feat/r26-application-security",
+      "owner": {
+        "lane": "R26 current delegated owner session",
+        "coordinator": "G1 delegated coordinator for baraabd"
+      },
+      "status": "READY_TO_START",
+      "frozenBase": "40cdac5c9ce6acaa8dedc0385984a807ae9a84d0",
+      "dependencies": ["R20", "R21", "R23"],
+      "legacyAliases": ["P49-security  "],
+      "ownedPaths": {
+        "exact": [
+          "apps/api/src/infrastructure/http/all-exceptions.filter.spec.ts",
+          "apps/api/src/infrastructure/http/all-exceptions.filter.ts",
+          "apps/api/src/infrastructure/http/deprecated-route.middleware.spec.ts",
+          "apps/api/src/infrastructure/http/deprecated-route.middleware.ts",
+          "apps/api/src/infrastructure/http/deprecated-routes.ts",
+          "apps/api/src/infrastructure/http/request-id.middleware.spec.ts",
+          "apps/api/src/infrastructure/http/request-id.middleware.ts",
+          "apps/api/src/infrastructure/http/security-headers.spec.ts",
+          "apps/api/src/infrastructure/http/security-headers.ts",
+          "apps/api/src/infrastructure/throttle/app-throttler.guard.ts",
+          "apps/api/src/infrastructure/throttle/rate-limit.module.ts",
+          "apps/api/src/infrastructure/throttle/rate-limit.store.spec.ts",
+          "apps/api/src/infrastructure/throttle/rate-limit.store.ts",
+          "apps/api/src/infrastructure/throttle/registration-throttle.service.spec.ts",
+          "apps/api/src/infrastructure/throttle/registration-throttle.service.ts",
+          "apps/api/src/shared/security-events/security-events.bus.ts",
+          "apps/api/src/shared/security-events/security-events.module.ts",
+          "apps/api/src/shared/security-events/security-events.spec.ts",
+          "apps/api/src/shared/security-events/security-events.ts",
+          "apps/api/test/integration/r26-authorization.integration.spec.ts",
+          "apps/web/e2e/r26-security.real-api.spec.ts",
+          "docs/production-readiness/r26/ACCEPTANCE.md",
+          "docs/production-readiness/r26/IMPLEMENTATION.md",
+          "docs/production-readiness/r26/RISKS.md",
+          "docs/production-readiness/r26/ROLLBACK.md",
+          "docs/production-readiness/r26/shared-change-requests/CR-001-integration.md",
+          "scripts/production/security-app/verify-boundaries.cjs",
+          "scripts/production/security-app/verify-boundaries.test.cjs",
+          "apps/api/src/infrastructure/http/cors-policy.ts",
+          "apps/api/src/infrastructure/http/cors-policy.spec.ts",
+          "apps/api/src/infrastructure/http/request-body.ts",
+          "apps/api/src/infrastructure/http/request-body.spec.ts",
+          "scripts/production/security-app/web-csp.cjs",
+          "docs/production-readiness/r26/OWNERSHIP.md"
+        ],
+        "prefixes": [],
+        "leases": [
+          {
+            "paths": [
+              "apps/api/src/main.ts",
+              "apps/web/vite.config.ts",
+              "apps/web/vercel.json",
+              "apps/web/nginx.conf",
+              "apps/web/playwright.config.ts",
+              "apps/web/playwright.r26.config.ts",
+              ".github/workflows/r26-security.yml",
+              "apps/web/Dockerfile",
+              "apps/web/startup-tests/startup.spec.ts",
+              "apps/web/e2e/provider-onboarding-v2-basics.spec.ts",
+              ".github/workflows/ci.yml"
+            ],
+            "kind": "SERIALIZED_R26_SECURITY_INTEGRATION",
+            "grantedBy": "Current delegated G1 coordinator under continuing owner authority; recorded before implementation",
+            "scope": "Only R26 request-boundary/CSP implementation and isolated acceptance wiring. No deployment, dependency, IAM permission, money-policy, peer-lane or unrelated design change.",
+            "expires": "R26 PR closure, G2 decision or earlier coordinator revocation",
+            "handoff": "Publish final head and scoped evidence; coordinator verifies no concurrent writer before reassignment."
+          }
+        ]
+      },
+      "requiredEvidence": [
+        "docs/production-readiness/r26/IMPLEMENTATION.md",
+        "docs/production-readiness/r26/ACCEPTANCE.md",
+        "docs/production-readiness/r26/RISKS.md",
+        "docs/production-readiness/r26/ROLLBACK.md",
+        "All behavioral, negative and integration tests in the complete authoritative prompt",
+        "Exact final-head CI and CodeQL; real-service evidence; limitations and rollback"
+      ],
+      "pr": 174,
+      "scopeNote": "G1 publication and all assigned lane starts remain as owner-merged #172. R26 implementation is in Draft PR #174 under its recorded exact shared-file lease; final checks and external security/hosted evidence remain required. No implementation or release acceptance inferred.",
+      "startBarrier": {
+        "gate": "G1",
+        "decision": "ACCEPTED",
+        "publication": "MERGED",
+        "acceptanceRecordCommitSha": "0568739096ceeaf0cfc79034626886e258fe4328",
+        "verificationRecord": "docs/production-readiness/post-r18/gates/g1/PUBLICATION_VERIFICATION.json"
+      },
+      "execution": {
+        "state": "IN_PROGRESS",
+        "startedAtUtc": "2026-10-16T23:08:21.661691+00:00",
+        "coordinationBaseSha": "0568739096ceeaf0cfc79034626886e258fe4328",
+        "frozenRuntimeSourceSha": "40cdac5c9ce6acaa8dedc0385984a807ae9a84d0"
+      }
+    },
+    {
+      "id": "R27",
+      "title": "Measured startup, bundle and database performance",
+      "titleSource": "gates/g1/prompts/R19-R28.md#r27",
+      "wave": 2,
+      "lane": 4,
+      "branch": "feat/r27-performance-capacity",
+      "owner": {
+        "lane": "R27 lane author (repository owner assigns session)",
+        "coordinator": "G1 delegated coordinator for baraabd"
+      },
+      "status": "READY_TO_START",
+      "frozenBase": "40cdac5c9ce6acaa8dedc0385984a807ae9a84d0",
+      "dependencies": ["R20", "R23"],
+      "legacyAliases": ["P49-performance  "],
+      "ownedPaths": {
+        "exact": [
+          "apps/api/test/integration/r27-query-bounds.integration.spec.ts",
+          "apps/web/e2e/r27-cache-authority.real-api.spec.ts",
+          "apps/web/src/app/performance/route-timing.test.ts",
+          "apps/web/src/app/performance/route-timing.ts",
+          "docs/performance/post-r18/FINDINGS.md",
+          "docs/performance/post-r18/README.md",
+          "docs/performance/post-r18/WORKLOAD_PROFILES.md",
+          "docs/performance/post-r18/api-boot-baseline.json",
+          "docs/performance/post-r18/api-boot-profile.json",
+          "docs/performance/post-r18/bundle-after-cr01-cr02.json",
+          "docs/performance/post-r18/bundle-baseline.json",
+          "docs/performance/post-r18/query-profile-baseline.json",
+          "docs/production-readiness/r27/ACCEPTANCE.md",
+          "docs/production-readiness/r27/ALLOWLIST.md",
+          "docs/production-readiness/r27/IMPLEMENTATION.md",
+          "docs/production-readiness/r27/RISKS.md",
+          "docs/production-readiness/r27/ROLLBACK.md",
+          "docs/production-readiness/r27/shared-change-requests/CR-001-integration.md",
+          "docs/production-readiness/r27/shared-change-requests/CR-R27-01-admin-dashboard-charts/AdminRouteContent.tsx",
+          "docs/production-readiness/r27/shared-change-requests/CR-R27-01-admin-dashboard-charts/README.md",
+          "docs/production-readiness/r27/shared-change-requests/CR-R27-01-admin-dashboard-charts/patch.diff",
+          "docs/production-readiness/r27/shared-change-requests/CR-R27-02-address-map-leaflet/README.md",
+          "docs/production-readiness/r27/shared-change-requests/CR-R27-02-address-map-leaflet/SavedAddressesPage.tsx",
+          "docs/production-readiness/r27/shared-change-requests/CR-R27-02-address-map-leaflet/patch.diff",
+          "docs/production-readiness/r27/shared-change-requests/CR-R27-03-mongo-conditional-load/README.md",
+          "docs/production-readiness/r27/shared-change-requests/CR-R27-04-private-no-store-default/README.md",
+          "docs/production-readiness/r27/shared-change-requests/CR-R27-05-request-bid-count/README.md",
+          "docs/production-readiness/r27/shared-change-requests/CR-R27-06-booking-completed-index/README.md",
+          "docs/production-readiness/r27/shared-change-requests/CR-R27-07-ci-harness-tests/README.md",
+          "docs/production-readiness/r27/shared-change-requests/CR-R27-08-admin-users-n-plus-one/README.md",
+          "docs/production-readiness/r27/shared-change-requests/README.md",
+          "scripts/perf/post-r18/api-boot-profile.mjs",
+          "scripts/perf/post-r18/api-boot.mjs",
+          "scripts/perf/post-r18/budgets.proposed.json",
+          "scripts/perf/post-r18/bundle-report.mjs",
+          "scripts/perf/post-r18/check-budgets.mjs",
+          "scripts/perf/post-r18/compose.r27.yml",
+          "scripts/perf/post-r18/lane-db-reset.sh",
+          "scripts/perf/post-r18/lib/amplify.mjs",
+          "scripts/perf/post-r18/lib/api-process.mjs",
+          "scripts/perf/post-r18/lib/budgets.mjs",
+          "scripts/perf/post-r18/lib/bundle-graph.mjs",
+          "scripts/perf/post-r18/lib/db.mjs",
+          "scripts/perf/post-r18/lib/exit-on-ipc.cjs",
+          "scripts/perf/post-r18/lib/fixtures.mjs",
+          "scripts/perf/post-r18/lib/http.mjs",
+          "scripts/perf/post-r18/lib/lane-env.mjs",
+          "scripts/perf/post-r18/lib/lib.test.mjs",
+          "scripts/perf/post-r18/lib/plans.mjs",
+          "scripts/perf/post-r18/lib/provenance.mjs",
+          "scripts/perf/post-r18/lib/stats.mjs",
+          "scripts/perf/post-r18/query-profile.mjs"
+        ],
+        "prefixes": [],
+        "leases": []
+      },
+      "requiredEvidence": [
+        "docs/production-readiness/r27/IMPLEMENTATION.md",
+        "docs/production-readiness/r27/ACCEPTANCE.md",
+        "docs/production-readiness/r27/RISKS.md",
+        "docs/production-readiness/r27/ROLLBACK.md",
+        "All behavioral, negative and integration tests in the complete authoritative prompt",
+        "Exact final-head CI and CodeQL; real-service evidence; limitations and rollback"
+      ],
+      "pr": 162,
+      "scopeNote": "G1 publication identity verified; exact lane ownership released to the owner-assigned session. READY_TO_START is not implementation or acceptance. Complete requirements remain in gates/g1/prompts/R19-R28.md; preserve frozen source and all policy/external holds.",
+      "startBarrier": {
+        "gate": "G1",
+        "decision": "ACCEPTED",
+        "publication": "MERGED",
+        "acceptanceRecordCommitSha": "0568739096ceeaf0cfc79034626886e258fe4328",
+        "verificationRecord": "docs/production-readiness/post-r18/gates/g1/PUBLICATION_VERIFICATION.json"
+      }
+    },
+    {
+      "id": "R28",
+      "title": "Authorized hosted topology, infrastructure and release inputs",
+      "titleSource": "gates/g1/prompts/R19-R28.md#r28",
+      "wave": 2,
+      "lane": 5,
+      "branch": "feat/r28-hosted-platform",
+      "owner": {
+        "lane": "R28 lane author (repository owner assigns session)",
+        "coordinator": "G1 delegated coordinator for baraabd"
+      },
+      "status": "READY_TO_START",
+      "frozenBase": "40cdac5c9ce6acaa8dedc0385984a807ae9a84d0",
+      "dependencies": ["R20", "R21", "R22", "R23"],
+      "legacyAliases": ["P50-platform", "P49-edge  "],
+      "ownedPaths": {
+        "exact": [
+          "docs/production-readiness/r28/ACCEPTANCE.md",
+          "docs/production-readiness/r28/IMPLEMENTATION.md",
+          "docs/production-readiness/r28/RISKS.md",
+          "docs/production-readiness/r28/ROLLBACK.md",
+          "docs/production-readiness/r28/shared-change-requests/CR-001-integration.md",
+          "scripts/production/platform/validate-plan.cjs",
+          "scripts/production/platform/validate-plan.test.cjs"
+        ],
+        "prefixes": [],
+        "leases": [
+          {
+            "paths": [
+              "infra/production/edge/README.md",
+              "infra/production/edge/edge-policy.json",
+              "infra/production/platform/README.md",
+              "infra/production/platform/inputs.schema.json",
+              "infra/production/platform/topology.json"
+            ],
+            "kind": "EXACT_INFRASTRUCTURE_FILES",
+            "grantedBy": "G1 delegated coordinator (owner instruction 2026-10-16)",
+            "scope": "Prepared file authoring only; no deployment. Effective only after accepted G1 publication.",
+            "expires": "G2 decision or earlier coordinator revocation",
+            "handoff": "Publish final head and evidence; coordinator must release ownership before reassignment."
+          }
+        ]
+      },
+      "requiredEvidence": [
+        "docs/production-readiness/r28/IMPLEMENTATION.md",
+        "docs/production-readiness/r28/ACCEPTANCE.md",
+        "docs/production-readiness/r28/RISKS.md",
+        "docs/production-readiness/r28/ROLLBACK.md",
+        "All behavioral, negative and integration tests in the complete authoritative prompt",
+        "Exact final-head CI and CodeQL; real-service evidence; limitations and rollback"
+      ],
+      "pr": null,
+      "scopeNote": "G1 publication identity verified; exact lane ownership released to the owner-assigned session. READY_TO_START is not implementation or acceptance. Complete requirements remain in gates/g1/prompts/R19-R28.md; preserve frozen source and all policy/external holds.",
+      "startBarrier": {
+        "gate": "G1",
+        "decision": "ACCEPTED",
+        "publication": "MERGED",
+        "acceptanceRecordCommitSha": "0568739096ceeaf0cfc79034626886e258fe4328",
+        "verificationRecord": "docs/production-readiness/post-r18/gates/g1/PUBLICATION_VERIFICATION.json"
+      }
+    },
+    {
+      "id": "R29",
+      "title": null,
+      "titleSource": "PENDING_PACKAGE: SPRINT_PLAN.json and this lane prompt were not provided",
+      "wave": 3,
+      "lane": 1,
+      "branch": null,
+      "owner": null,
+      "status": "RESERVED_PENDING_PACKAGE",
+      "frozenBase": null,
+      "dependencies": null,
+      "legacyAliases": [],
+      "ownedPaths": null,
+      "requiredEvidence": null,
+      "pr": null,
+      "scopeNote": "Payment confirmation producer consumed through R24 (coordinator prompt, Mode 3.4); Wave 3 assigns Stripe and webhooks to one owner and manual UI to another, without stating which ID is which."
+    },
+    {
+      "id": "R30",
+      "title": null,
+      "titleSource": "PENDING_PACKAGE: SPRINT_PLAN.json and this lane prompt were not provided",
+      "wave": 3,
+      "lane": 2,
+      "branch": null,
+      "owner": null,
+      "status": "RESERVED_PENDING_PACKAGE",
+      "frozenBase": null,
+      "dependencies": null,
+      "legacyAliases": [],
+      "ownedPaths": null,
+      "requiredEvidence": null,
+      "pr": null,
+      "scopeNote": "Payment confirmation producer consumed through R24 (coordinator prompt, Mode 3.4); see R29."
+    },
+    {
+      "id": "R31",
+      "title": null,
+      "titleSource": "PENDING_PACKAGE: SPRINT_PLAN.json and this lane prompt were not provided",
+      "wave": 3,
+      "lane": 3,
+      "branch": null,
+      "owner": null,
+      "status": "RESERVED_PENDING_PACKAGE",
+      "frozenBase": null,
+      "dependencies": null,
+      "legacyAliases": [],
+      "ownedPaths": null,
+      "requiredEvidence": null,
+      "pr": null,
+      "scopeNote": "Subscription activation (coordinator prompt, Mode 3.4)."
+    },
+    {
+      "id": "R32",
+      "title": null,
+      "titleSource": "PENDING_PACKAGE: SPRINT_PLAN.json and this lane prompt were not provided",
+      "wave": 3,
+      "lane": 4,
+      "branch": null,
+      "owner": null,
+      "status": "RESERVED_PENDING_PACKAGE",
+      "frozenBase": null,
+      "dependencies": null,
+      "legacyAliases": [],
+      "ownedPaths": null,
+      "requiredEvidence": null,
+      "pr": null,
+      "scopeNote": "Refund orchestration (coordinator prompt, Mode 3.4)."
+    },
+    {
+      "id": "R33",
+      "title": null,
+      "titleSource": "PENDING_PACKAGE: SPRINT_PLAN.json and this lane prompt were not provided",
+      "wave": 3,
+      "lane": 5,
+      "branch": null,
+      "owner": null,
+      "status": "RESERVED_PENDING_PACKAGE",
+      "frozenBase": null,
+      "dependencies": null,
+      "legacyAliases": [],
+      "ownedPaths": null,
+      "requiredEvidence": null,
+      "pr": null,
+      "scopeNote": "Financial UI (coordinator prompt, Mode 3.4)."
+    },
+    {
+      "id": "R34",
+      "title": null,
+      "titleSource": "PENDING_PACKAGE: SPRINT_PLAN.json and this lane prompt were not provided",
+      "wave": 4,
+      "lane": 1,
+      "branch": null,
+      "owner": null,
+      "status": "RESERVED_PENDING_PACKAGE",
+      "frozenBase": null,
+      "dependencies": null,
+      "legacyAliases": [],
+      "ownedPaths": null,
+      "requiredEvidence": null,
+      "pr": null,
+      "scopeNote": "Reconciliation (coordinator prompt, Mode 4)."
+    },
+    {
+      "id": "R35",
+      "title": null,
+      "titleSource": "PENDING_PACKAGE: SPRINT_PLAN.json and this lane prompt were not provided",
+      "wave": 4,
+      "lane": 2,
+      "branch": null,
+      "owner": null,
+      "status": "RESERVED_PENDING_PACKAGE",
+      "frozenBase": null,
+      "dependencies": null,
+      "legacyAliases": [],
+      "ownedPaths": null,
+      "requiredEvidence": null,
+      "pr": null,
+      "scopeNote": "Product certification (coordinator prompt, Mode 4)."
+    },
+    {
+      "id": "R36",
+      "title": null,
+      "titleSource": "PENDING_PACKAGE: SPRINT_PLAN.json and this lane prompt were not provided",
+      "wave": 4,
+      "lane": 3,
+      "branch": null,
+      "owner": null,
+      "status": "RESERVED_PENDING_PACKAGE",
+      "frozenBase": null,
+      "dependencies": null,
+      "legacyAliases": [],
+      "ownedPaths": null,
+      "requiredEvidence": null,
+      "pr": null,
+      "scopeNote": "Restore (coordinator prompt, Mode 4)."
+    },
+    {
+      "id": "R37",
+      "title": null,
+      "titleSource": "PENDING_PACKAGE: SPRINT_PLAN.json and this lane prompt were not provided",
+      "wave": 4,
+      "lane": 4,
+      "branch": null,
+      "owner": null,
+      "status": "RESERVED_PENDING_PACKAGE",
+      "frozenBase": null,
+      "dependencies": null,
+      "legacyAliases": [],
+      "ownedPaths": null,
+      "requiredEvidence": null,
+      "pr": null,
+      "scopeNote": "Hosted tests (coordinator prompt, Mode 4)."
+    },
+    {
+      "id": "R38",
+      "title": null,
+      "titleSource": "PENDING_PACKAGE: SPRINT_PLAN.json and this lane prompt were not provided",
+      "wave": 4,
+      "lane": 5,
+      "branch": null,
+      "owner": null,
+      "status": "RESERVED_PENDING_PACKAGE",
+      "frozenBase": null,
+      "dependencies": null,
+      "legacyAliases": [],
+      "ownedPaths": null,
+      "requiredEvidence": null,
+      "pr": null,
+      "scopeNote": "Release tooling; final sign-off cannot precede R34-R37 results (coordinator prompt, Mode 4)."
+    }
+  ],
+  "observations": [
+    {
+      "observedAt": "2026-10-14",
+      "by": "coordinator session",
+      "note": "Lanes R20-R23 are running in other sessions on this machine from the same frozen base 059c018. Their records stay RESERVED_PENDING_PACKAGE until the owner supplies SPRINT_PLAN.json titles and allowlists; branch names alone are not used as titles.",
+      "worktrees": {
+        "R20": "feat/r20-storage-production (no commits yet)",
+        "R21": "feat/r21-email-production (no commits yet)",
+        "R22": "feat/r22-worker-outbox-reliability (pushed; 2 commits)",
+        "R23": "feat/r23-observability-incidents (1 commit, not pushed)"
+      },
+      "collisionCheck": "R22 and R23 change no Prisma schema, migration, manifest, lockfile, AppModule, config or CI file; no conflict with the R19 schema lease. R22 adds infra/production/workers/* (coordinator-owned by default; its lease is not visible here). R22 keeps OutboxRepository.enqueue unchanged (R19 depends on it); R19 CR-002 (outbox.tokens.ts) should be resolved with R22 at G1."
+    },
+    {
+      "observedAt": "2026-10-16T08:27:22.122Z",
+      "by": "G1 delegated coordinator",
+      "note": "Complete R19-R28 prompts recovered and verified; every required implementation/corrective PR merged. G1 BLOCKED on remaining source/evidence gaps. Historical G0 records retained; no retroactive approval of simultaneous R19/R21 schema leases."
+    },
+    {
+      "observedAt": "2026-10-16T08:27:22.122Z",
+      "by": "G1 delegated coordinator",
+      "note": "Complete R19-R28 prompts recovered and verified; every required implementation/corrective PR merged. G1 BLOCKED on remaining source/evidence gaps. Historical G0 records retained; no retroactive approval of simultaneous R19/R21 schema leases."
+    },
+    {
+      "observedAt": "2026-10-16T21:41:51.823662+00:00",
+      "by": "G1 acceptance-publication coordinator",
+      "note": "PR #169 merged; actual post-merge evidence verified. Wave 1 SANDBOX_ACCEPTED. Frozen Wave 2 source assigned, but all lanes held until separate owner-reviewed acceptance publication is merged and verified."
+    },
+    {
+      "observedAt": "2026-10-16T23:01:54Z",
+      "by": "G1 post-merge publication coordinator",
+      "note": "Owner merged PR #171 at 0568739096ceeaf0cfc79034626886e258fe4328. Subsequent verification proves frozen-source ancestry and identical reviewed/merged record trees. Conditional exact Wave 2 ownership takes effect for assigned sessions; READY_TO_START does not accept implementation or authorize deployment. Evidence: gates/g1/PUBLICATION_VERIFICATION.json."
+    },
+    {
+      "observedAt": "2026-10-16T23:08:21.661691+00:00",
+      "by": "G1 delegated coordinator / R26 owner",
+      "note": "Owner-merged #170/#171 verified. R26 alone authorized with exact shared-file lease and unchanged frozen runtime source. Other lanes retain handoff holds; no release acceptance inferred."
+    },
+    {
+      "observedAt": "2026-10-16T23:43:56.210794+00:00",
+      "by": "R26 delegated owner / serialized coordinator reconciliation",
+      "note": "Owner-merged #172 advanced develop to 07c8e584c684111bfc80995c7efb0144cfb6161b during R26 checks. Preserve its all-lane readiness and immutable publication records; retain only R26 exact ownership/extensions and active PR #174. Runtime and all unmerged R27 source remain unchanged by this integration."
+    }
+  ],
+  "gates": {
+    "G1": "docs/production-readiness/post-r18/gates/g1/SOURCE_MANIFEST.json"
+  },
+  "waveManifests": {
+    "2": "docs/production-readiness/post-r18/waves/wave-02.plan.json"
+  }
+}
