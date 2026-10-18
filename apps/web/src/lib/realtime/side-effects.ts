@@ -110,6 +110,15 @@ export function dispatchRealtimeSideEffects(
   }
   const eventId = (event as RealtimeEvent & { eventId?: string }).eventId;
   if (eventId) keys.push(`immutable:event:${eventId}`);
+  const pairedAliases = missingActorBookingAliases(
+    event,
+    actorUserId,
+    event.type === 'notification.created' && payload?.id
+      ? `immutable:notification:${payload.id}`
+      : eventId
+        ? `immutable:event:${eventId}`
+        : undefined,
+  );
   const now = nowMs();
   const duplicate = keys.some((alias) => {
     const last = seen.get(`${options.currentUserId ?? ''}:${alias}`);
@@ -128,6 +137,7 @@ export function dispatchRealtimeSideEffects(
       void presentNotificationOnce({
         userId: options.currentUserId,
         keys,
+        ...pairedAliases,
         isCurrent: options.isCurrent,
         present: () => undefined,
       });
@@ -139,6 +149,7 @@ export function dispatchRealtimeSideEffects(
     void presentNotificationOnce({
       userId: options.currentUserId,
       keys,
+      ...pairedAliases,
       isCurrent: options.isCurrent,
       present: () => emitRealtimeSideEffect(event),
     });
@@ -375,6 +386,69 @@ function readActorUserId(event: RealtimeEvent): string | null {
   return null;
 }
 
+function notificationBookingStatus(payload: NotificationSummaryLike): string {
+  const explicit = payload.metadata?.to;
+  if (typeof explicit === 'string') return explicit;
+  switch (payload.type) {
+    case 'BOOKING_IN_PROGRESS':
+      return 'IN_PROGRESS';
+    case 'BOOKING_COMPLETED':
+      return 'COMPLETED';
+    case 'BOOKING_CANCELLED':
+      return 'CANCELLED';
+    default:
+      return payload.type ?? '';
+  }
+}
+
+// REST notification summaries do not expose actorUserId. Their durable
+// notification id may arrive before the socket's notification.created
+// envelope, so that envelope cannot be the only bridge to the booking
+// transition. Pair the attributed and unattributed forms in either order.
+// Two known actors still have distinct primary keys: each checks only the
+// missing-actor counterpart, never another attributed transition alias.
+function missingActorBookingAliases(
+  event: RealtimeEvent,
+  actorUserId: string | null,
+  identityKey: string | undefined,
+) {
+  let bookingId: string | null | undefined;
+  let status: string | undefined;
+  if (event.type === 'booking.status_changed') {
+    const payload = event.payload as Partial<BookingStatusChangedRealtimePayload> | undefined;
+    bookingId = payload?.bookingId;
+    status = payload?.to;
+  } else if (event.type === 'notification.created') {
+    const payload = event.payload as NotificationSummaryLike | undefined;
+    if (payload?.resourceType === 'BOOKING') {
+      bookingId = payload.resourceId;
+      status = notificationBookingStatus(payload);
+    }
+  }
+  if (
+    !bookingId ||
+    (status !== 'IN_PROGRESS' && status !== 'COMPLETED' && status !== 'CANCELLED')
+  ) {
+    return {};
+  }
+  const transition = `booking:${bookingId}:${status}`;
+  return actorUserId === null
+    ? {
+        pairedSource: {
+          counterpartKey: `attributed:${transition}`,
+          claimKey: `unattributed:${transition}`,
+          identityKey,
+        },
+      }
+    : {
+        pairedSource: {
+          counterpartKey: `unattributed:${transition}`,
+          claimKey: `attributed:${transition}`,
+          identityKey,
+        },
+      };
+}
+
 // Returns null for events we don't dedupe — those skip the side-
 // effects path entirely. Sprint 7.6 added the actor to every key so
 // two distinct actors producing the same {resource, transition}
@@ -407,17 +481,7 @@ function buildDedupeKey(event: RealtimeEvent, actorUserId: string | null): strin
     case 'notification.created': {
       const p = event.payload as NotificationSummaryLike | undefined;
       if (p?.resourceType === 'BOOKING' && p.resourceId) {
-        const to =
-          (p.metadata as { to?: string } | null | undefined)?.to ??
-          // Sprint 7.x: BOOKING_COMPLETED / BOOKING_CANCELLED notifications
-          // do not carry an explicit `metadata.to` (the backend writes
-          // requestId/providerId only), so the type itself disambiguates
-          // distinct transitions on the same booking. Falling back to
-          // `type` keeps the dedupe matching the paired
-          // booking.status_changed event for COMPLETED/CANCELLED and
-          // still separates two distinct transitions on the same row.
-          p.type ??
-          '';
+        const to = notificationBookingStatus(p);
         return `booking:${p.resourceId}:${to}:${actorSuffix}`;
       }
       // Sprint 7.10 — BID_ACCEPTED notifications use the bid id as
