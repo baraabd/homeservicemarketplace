@@ -1,4 +1,15 @@
-# Wave 2 — verified G1 publication, ready to start
+# Wave 2 — historical G1 start grant and current closeout
+
+## Current closeout
+
+G2 is **BLOCKED** on inspection source
+`4e87bf03663fb3c72ffee983fdb70c2863e1ce8a`, tree
+`eaca9cdeab15e719570f7997c4fc3bbeb64e562e`. See
+[the Wave 2 closeout](wave-02.closeout.json) and [G2 blockers](../gates/g2/BLOCKERS.md).
+R24-R27 are merged, but the actual integrated R25 browser run failed and R28
+implementation/evidence is absent. This is not an accepted Wave 3 baseline.
+
+## Historical verified G1 publication
 
 Frozen runtime source: `40cdac5c9ce6acaa8dedc0385984a807ae9a84d0`.
 Frozen runtime tree: `109b514fe9833a9aac3e8caecd7f9b14d4f61b3b`.
@@ -51,6 +62,10 @@ resource inputs, repository security-policy acceptance, commercial decisions,
 live funds and payouts remain independent holds. A reviewed revocation must
 reconcile gate, wave manifest and registry, preserving publication history.
 
-## R26 active review
+## Historical R26 review
 
-Draft PR #174 retains its recorded exact-file extensions and shared-file lease. R26 integrated the owner-merged #172 records at `07c8e584c684111bfc80995c7efb0144cfb6161b` without importing unmerged peer code. All other lane readiness and handoffs above remain authoritative.
+At G1 publication, Draft PR #174 held the recorded exact-file extensions and
+shared-file lease. It subsequently merged; the G2 closeout above records current
+execution state. R26 had integrated owner-merged #172 at
+`07c8e584c684111bfc80995c7efb0144cfb6161b` without importing unmerged peer code.
+The historical G1 start grant is not current Wave 2 completion or G2 acceptance.
