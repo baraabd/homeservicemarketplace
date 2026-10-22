@@ -168,6 +168,18 @@ hosted journeys/load. None was run against an external target by this lane.
 
 ## Handoff and approval boundary
 
+### 2026-10-22 PR #181 test-only repair
+
+The existing PR coordination record assigns exactly
+`apps/api/test/integration/r11-reviews-reputation.integration.spec.ts` for the
+integration failure in run `39149960222`. The owner renewed the repair request
+on 2026-10-22. IMPLEMENTATION.md records the single-author assignment, listener
+ownership correction and failure-draining behavior. Root updates the five
+existing R28 evidence documents; the PR now has ten authored paths against the
+same base. No further shared workflow, application or infrastructure change is
+added. Preserve the original failed run and require fresh source/CI evidence;
+the external requirements and prior database refinement below remain unchanged.
+
 ### 4. Database privilege contract refinement — successor handoff
 
 The request and exact three-file successor infrastructure assignment were

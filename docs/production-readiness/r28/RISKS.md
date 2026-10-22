@@ -30,6 +30,15 @@ Infrastructure readiness would not independently close those policy gates.
 
 ## Validation limits
 
+PR #181's first published head failed the real-database R11 concurrent-review
+fixture. The 2026-10-22 repair gives its loopback listener suite lifetime and
+drains all nine concurrent batches before reporting rejection. It preserves
+every functional assertion and the full request concurrency. Controlled
+transport/helper probes establish only those harness properties; repeated real
+PostgreSQL execution and the new final-head CI provide integration evidence.
+Neither test-harness success nor technical CI supplies missing hosted authority
+or promotes G2. ACCEPTANCE.md and the PR ledger distinguish those results.
+
 The initial publication exposed missing post-G1 R26/R27 harness files. The
 separately authorized current-base integration in PR_REPAIR_20261018.md resolved
 that historical blocker and added explicit R28 CI coverage. It is not a current

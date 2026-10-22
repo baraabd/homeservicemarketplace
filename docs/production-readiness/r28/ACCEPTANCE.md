@@ -5,6 +5,74 @@ The 2026-10-18 successor is scoped and assigned in IMPLEMENTATION.md. Historical
 counts below are retained as original evidence; they are not fresh test results
 for a newer commit. The final-head PR ledger records current source acceptance.
 
+## 2026-10-22 PR #181 repair verification
+
+Starting head: `4bcc1f35cea4def95dd40a752f30bd69c3c3dd50`; unchanged integrated
+base: `75bd688e7254b84316b32f82b0f6ee337249b977`. The exact additional test file
+and current ten-path PR scope are recorded in IMPLEMENTATION.md. This section
+records newly executed checks; the 2026-10-18 results below remain historical.
+
+The original failing integration run is
+[39149960222 / job 117742289029](https://github.com/baraabd/homeservicemarketplace/actions/runs/39149960222/job/117742289029):
+6,504 passed, 2 failed, 81 skipped; 342 suites passed, 1 failed, 13 skipped.
+The first failure was `read ECONNRESET` during twelve simultaneous reviews;
+the following test's cleanup failed on the review-to-booking foreign key.
+The dependent R18 acceptance and CI gate also failed. That run is not replaced
+or relabeled as successful evidence.
+
+The repair used isolated Node **24.21.0** and pnpm **10.32.1**, verified against
+the official Node SHA-256 and repository-pinned pnpm SHA-512. Installation used
+the unchanged lockfile: six workspaces, 1,166 packages. The existing ignored
+`@parcel/watcher` and `unrs-resolver` build-script warnings remain. Prisma's
+initial default-schema discovery warning was followed by successful generation
+through the repository's guarded explicit-schema command.
+
+| Executed check                                                                                                                                                                           | Actual result                                                                                                                       |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| `pnpm install --frozen-lockfile --store-dir /tmp/hsm-pr181-pnpm-store --reporter=append-only`                                                                                            | PASS; dependency manifests and lockfile unchanged                                                                                   |
+| `pnpm --filter @homeservicemarketplace/database generate`                                                                                                                                | PASS; Prisma 6.12.0 client and separate-process native-engine verification                                                          |
+| `pnpm --filter @homeservicemarketplace/api typecheck`                                                                                                                                    | PASS; includes the edited integration test and tuple inference                                                                      |
+| `pnpm --filter @homeservicemarketplace/api build`                                                                                                                                        | PASS; database/contracts dependency builds and Nest build                                                                           |
+| `pnpm exec eslint apps/api/test/integration/r11-reviews-reputation.integration.spec.ts --max-warnings=0`                                                                                 | PASS; zero warnings                                                                                                                 |
+| `node --test --test-reporter=tap scripts/production/platform/validate-plan.test.cjs .github/scripts/*.test.mjs`                                                                          | **692 passed**, zero failed/cancelled/skipped/TODO: 353 R28 and 339 governance                                                      |
+| `node --test --test-reporter=tap /tmp/hsm-pr181-probes/r11-transport-helper.cjs`                                                                                                         | **7 passed**, zero failed/cancelled/skipped/TODO; controlled transport/helper verification described below                          |
+| `pnpm --filter @homeservicemarketplace/database migrate:deploy` and `pnpm --filter @homeservicemarketplace/database seed`                                                                | PASS against a fresh disposable PostgreSQL 16.14 database; no existing external database used                                       |
+| `RUN_DB_INTEGRATION=1 pnpm --filter @homeservicemarketplace/api exec jest --runTestsByPath test/integration/r11-reviews-reputation.integration.spec.ts --json --outputFile=<run-report>` | **Three independent runs, each 62 passed / 0 failed / 0 skipped**, with normal Jest configuration and unchanged request concurrency |
+| Runtime pin, production-governance and release-baseline CLI checks                                                                                                                       | PASS; no acceptance or wave promotion                                                                                               |
+| `node scripts/production/platform/validate-plan.cjs --check`                                                                                                                             | PASS, same fingerprint, CONFIGURATION_ONLY / HOSTED_ENVIRONMENT_BLOCKED and nine blocker groups                                     |
+
+The PostgreSQL 16.14 runtime came from integrity-verified
+`@embedded-postgres/linux-x64@16.14.0-beta.17`, ran as an unprivileged OS account,
+and listened only on an ephemeral loopback port. Its generated test credentials
+are not stored in the repository or this evidence. The database-owner test role
+has no superuser, CREATEDB, CREATEROLE or replication attribute; this disposable
+fixture is not evidence of the prepared hosted API/migrator privilege policy.
+R11 reports are `/tmp/hsm-pr181-probes/r11-postgres-{1,2,3}.json`. These are three
+repetitions of the same 62 cases, not 186 distinct tests.
+
+The controlled probe extracts and transpiles the actual edited helper using
+locked TypeScript 5.9.3, and uses the installed Supertest 7.2.2. An initially
+unbound server closes on the first response while eleven other barrier-held
+handlers are active. A suite-bound server survives three rounds of twelve
+concurrent requests on the same port: one suite listen, zero request-owned
+closes, and 36 HTTP 201 responses. Five further cases verify every original
+rejection reason, draining an unfinished successful sibling, input-order
+results, twelve concurrent thenables consumed once each, and an empty batch.
+This reproduces premature listener ownership/closure, not a promise that the
+exact ECONNRESET errno is deterministic on every machine.
+
+Initial sandbox process/listener attempts did not complete behavioral
+verification. The same commands succeeded with approved subprocess/loopback
+execution. Scoped formatting, `git diff --check` and normal commit hooks are
+required before publication; their final status, source tree, published SHA and
+fresh GitHub CI/CodeQL results belong in the PR ledger. The prior failed head's
+other green checks do not validate the new source.
+
+No Docker, full local Redis/SMTP/browser stack or hosted target was used for
+this repair. The existing unchanged remote workflows provide those technical
+checks on the published head/integration merge. Hosted requirements remain
+external; the PR remains Draft and G2 remains BLOCKED.
+
 ## 2026-10-18 successor verification
 
 Starting source: `e197e943bca78859976f0495b388f376cb4c0136`, tree

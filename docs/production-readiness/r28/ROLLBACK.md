@@ -1,5 +1,15 @@
 # R28 — Rollback and stop conditions
 
+## 2026-10-22 test-harness repair
+
+The PR #181 repair adds one test path to the earlier nine-file diff. Its bounded
+commit changes the R11 integration fixture and the existing R28 evidence only.
+If necessary, revert that repair through a reviewed corrective commit while
+preserving the earlier database-owner/CREATE contract. Reverting it reintroduces
+request-owned listener closure and early-rejection cleanup races; it does not
+change any deployed application, database schema or stored data. Rerun the
+unchanged R11 real-database suite and final-head CI after a source revert.
+
 ## This configuration-only change
 
 No infrastructure, database, account, DNS, bucket, image registry, secret or running

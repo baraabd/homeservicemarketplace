@@ -1,5 +1,43 @@
 # R28 — Authorized hosted topology and release inputs
 
+## 2026-10-22 PR #181 integration-test repair
+
+Delivery mode: **Mode A — Integration and Bug-Fix Mode**. The owner requested
+repair of PR #181. Its existing 2026-10-18 coordination record already assigns
+the exact additional test path below; this repair completes that assignment.
+The starting head is `4bcc1f35cea4def95dd40a752f30bd69c3c3dd50`, with unchanged
+base `75bd688e7254b84316b32f82b0f6ee337249b977`. The isolated checkout is
+`/workspace/scratch/9f756efb75e6/hsm-pr181`, initially clean with no stash.
+
+The failed CI run `39149960222`, integration job `117742289029`, reported
+`read ECONNRESET` in the twelve-concurrent-review case, followed by a
+review-to-booking foreign-key failure in the next case's cleanup. Its original
+6,504 passed / 2 failed / 81 skipped result is retained as failed evidence.
+R18 acceptance and CI gate failed because they require that integration job.
+
+The fixture initialized an unbound Nest HTTP server. Locked Supertest 7.2.2
+lets the first request bind and later close such a server, even while sibling
+requests are active. In addition, `Promise.all` can reject before peers finish,
+allowing fixture cleanup to race remaining requests or database operations.
+
+A single delegated author owns
+`apps/api/test/integration/r11-reviews-reputation.integration.spec.ts`; root
+owns the five existing R28 evidence documents. The fixture now binds one
+ephemeral loopback listener with `app.listen(0, '127.0.0.1')`; existing
+`app.close()` owns teardown. All nine concurrent batches await settlement of
+every operation before propagating all original rejection reasons in an
+`AggregateError`. Successful values retain their input order and tuple types.
+Request concurrency, round counts, assertions, guards, constraints, cleanup
+scope and timeouts are unchanged.
+
+The total authored PR diff is the original nine-file successor below plus this
+one test file: **ten paths**. This repair changes no application source,
+schema, migration, dependency, lockfile, workflow, platform fingerprint or
+hosted authority. Earlier nine-file/851-test records are historical checkpoints.
+Fresh local verification belongs in ACCEPTANCE.md; final published SHA/tree and
+remote runs belong in the PR description after publication. G2 remains BLOCKED,
+and the PR remains Draft pending the existing hosted/integration requirements.
+
 ## 2026-10-18 successor scope and coordination record
 
 The owner renewed the R28 implementation request on 2026-10-18. The continuing
@@ -32,8 +70,8 @@ The successor coordinator assigns exactly three prepared infrastructure files:
 `infra/production/platform/inputs.schema.json`, and
 `infra/production/platform/README.md`. A single delegated author handles these
 three files. Root handles the five existing R28 evidence documents and
-`scripts/production/platform/validate-plan.test.cjs`. These nine paths are the
-complete follow-up write allowlist; no new shared-glue, Compose, workflow, database-schema,
+`scripts/production/platform/validate-plan.test.cjs`. These nine paths were the
+complete write allowlist at that checkpoint; no new shared-glue, Compose, workflow, database-schema,
 application, lockfile, edge or central-registry lease is granted. This assignment
 ends at handoff of the final source/evidence or earlier owner revocation.
 
@@ -126,8 +164,9 @@ The older copy at the frozen runtime base predates the acceptance publication;
 it is not substituted for the later approved ownership record. This table records
 the original implementation, not the full current PR diff. The authorized repair
 in PR_REPAIR_20261018.md later added ten paths, including two shared workflows and
-six OTP/realtime source/test files. The current successor changes only its nine
-paths identified above. Compose/Docker, the staging launcher, central registry,
+six OTP/realtime source/test files. The 2026-10-18 successor changed its nine
+paths; the 2026-10-22 repair adds the single test path identified above.
+Compose/Docker, the staging launcher, central registry,
 app entrypoints, package manifests, lockfile and migrations are unchanged by this
 successor.
 
@@ -214,7 +253,8 @@ CR-001 records those applied dispositions alongside the remaining requests.
 Both the frozen G1 source and starting integrated develop are ancestors of the
 starting head. The successor additionally integrates owner-merged develop
 `75bd688e7254b84316b32f82b0f6ee337249b977`; it is not waiting for the superseded
-integration approval. Its authored diff against this base remains exactly nine files.
+integration approval. Its authored diff was nine files at that checkpoint; the
+2026-10-22 test repair makes the current PR diff exactly ten files.
 
 ## Source identity convention
 
