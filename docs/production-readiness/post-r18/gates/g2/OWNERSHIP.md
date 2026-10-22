@@ -1,5 +1,17 @@
 # G2 coordinator ownership
 
+## PR183 exact prose finding follow-up — 2026-10-23
+
+Before edits, root extends its sole-writer repair lease to `.gitleaksignore`,
+`docs/security/gitleaks-historical-baseline.md`,
+`docs/production-readiness/post-r18/gates/g2/prompts/R36.md`,
+`docs/production-readiness/post-r18/gates/g2/PROMPT_PROVENANCE.md`, and the
+already-owned `IMPLEMENTATION.md` and `OWNERSHIP.md`. CI job 120122846166
+identified one ordinary requirements-prose match. Review and record that exact
+historical fingerprint, preserve normalized prompt text through whitespace-only
+layout, and verify the unchanged scanner still detects new canaries. No rule,
+scan scope, failure policy or path exclusion is authorized.
+
 ## PR183 merged-source repair — 2026-10-23
 
 The owner's request to repair PR183 and unblock G2 authorizes root as the sole

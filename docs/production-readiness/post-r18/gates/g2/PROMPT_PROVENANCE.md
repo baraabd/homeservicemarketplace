@@ -23,9 +23,13 @@ Each file includes its complete non-negotiable execution contract and sprint-spe
 | [R33](prompts/R33.md) | 1524–1619      | `f757972f2ca21a24242f47493decc2b11d33bb22c1786f82b442dc222fb0c3d4` | `fb155770529b05a930cd84f1a295eef386352377cdf1de57ef1e406e13313869` |
 | [R34](prompts/R34.md) | 1625–1720      | `5a714cc80e88fcd61c535292dfedf19c61cc5ab7abff6467875258a7abb7a33f` | `0cbf271facd297a8a5e2fd084e35885ed1bacaf2dbc3f81668aca40af8a675d2` |
 | [R35](prompts/R35.md) | 1726–1823      | `5df2dc429d8c4b9bd68315cd331030a6d6cd71c938f21729b073a0eb081b128c` | `b419b21bb58ee981110160cae508adeb4a5847b715d75a4eb257f80d5f4d5dad` |
-| [R36](prompts/R36.md) | 1829–1923      | `6f646f4edb341168f3669fa68dd72708bb885adbe6e00256cd64594c87eb9a9c` | `947a95eddd98c6eb13436b21c872cf80e439036874d3e9520260ed375c412f78` |
+| [R36](prompts/R36.md) | 1829–1923      | `6f646f4edb341168f3669fa68dd72708bb885adbe6e00256cd64594c87eb9a9c` | `bd473885d2dbfbe4ce19bdb4f96ae909532c277b73f3cccee19203204a710b09` |
 | [R37](prompts/R37.md) | 1929–2024      | `a908512ffa771c8d0b03482c30c41ad34a823120b5e8bfc5ab7ea10edae45a57` | `f5fddfeb274f63969b8e73a19e927815c072616714f1a72d0052b4d431fc555e` |
 | [R38](prompts/R38.md) | 2030–2128      | `4c4f3c8ccb5c4023bd8f4c77d86c17871f6dfdfc0cc6f36d816b75c4217eafdd` | `abdf8f3eab8270175be34c9b0880f616474251563b3bb8e352d8710abc487a61` |
+
+R36 item 1 now uses a Markdown continuation newline. Normalized text and the
+original source-extract digest are unchanged; the retained-file digest records
+that whitespace-only correction to an ordinary-prose scanner false positive.
 
 ## Gate and ownership boundaries
 

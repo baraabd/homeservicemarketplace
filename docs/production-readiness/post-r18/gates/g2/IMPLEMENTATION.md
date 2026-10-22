@@ -2,6 +2,17 @@
 
 ## PR183 merged-source correction — 2026-10-23
 
+Remote follow-up at `7843ed58f638b7db925b3541e922fc30d0887947` passed the
+R27 baseline, candidate, repair-baseline and unchanged-budget/comparison jobs,
+as well as the API build checks, authentication lifecycle, R26 security and
+governance. The security scanner then identified one ordinary-prose match in
+the restored R36 prompt. The separately documented review in
+`docs/security/gitleaks-historical-baseline.md` section 14 adds only its exact
+historical fingerprint and a whitespace-only prompt continuation. Normalized
+instructions are unchanged, and two fresh scanner canaries still fail as
+required. This follow-up requires its own exact-head CI before acceptance;
+the prior measurements are not relabelled as final-source evidence.
+
 The review head `172776d24bed770440bfb2f4ef702bbff9510b89` merged PR182 with
 the earlier G2 work but retained overlapping implementations. CI reported nine
 API build diagnostics, an unused test fixture, and a stale PR Final SHA.
