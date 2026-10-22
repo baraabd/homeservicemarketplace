@@ -1,0 +1,430 @@
+{
+  "schemaVersion": 1,
+  "sprint": "R30",
+  "title": "Manual subscription payment rails and protected receipt review",
+  "branch": "feat/r30-manual-payment-review",
+  "status": "LOCAL_POST_MEASUREMENT_CORRECTION_PASSED_REMOTE_PENDING",
+  "runtimeStatus": "NOT_IMPLEMENTED",
+  "gate": "G2",
+  "gateDecision": "BLOCKED",
+  "preparationDate": "2026-10-22",
+  "preparationBaseSha": "96e92825f9b65cf124317f43b55ce42fc97f5b49",
+  "preparationBaseTreeSha": "68f4e926eabeb37bb70382c62b75272cf67bd02c",
+  "approvedExecutionBaseSha": null,
+  "approvedExecutionTreeSha": null,
+  "finalPublishedIdentity": {
+    "location": "English Draft PR body and production-governance-source artifact",
+    "status": "SUCCESSOR_EVIDENCE_PENDING",
+    "note": "The final commit/tree is recorded outside this hashed source after normal hooks and publication."
+  },
+  "prompt": {
+    "path": "docs/production-readiness/r30/PROMPT.md",
+    "suppliedDate": "2026-10-18",
+    "originalBytes": 12334,
+    "originalSha256": "b5812e133c542f7b1f1f02854d4a4a4678874ef473c4e8d7090a9499ba283e85",
+    "retainedSha256": "844e92e01fa40161750ac608678ed7d9758ed72a253cf06618194701ed25ef3e",
+    "formatting": "Original content retained; repository formatter may normalize Markdown whitespace.",
+    "retainedBytes": 12335
+  },
+  "toolchain": {
+    "node": "24.21.0",
+    "pnpm": "10.32.1",
+    "prisma": "6.12.0",
+    "frozenInstallExitCode": 0,
+    "guardedGenerateExitCode": 0,
+    "machineWideVersionChanged": false,
+    "lockfileChanged": false
+  },
+  "conditionalRegistration": {
+    "status": "PREPARED_FOR_REVIEW",
+    "sprintStatus": "PLANNED",
+    "waveLaneStatus": "BLOCKED",
+    "canonicalOwnedFiles": 70,
+    "runtimeLeases": [],
+    "peerRecordsPreserved": true
+  },
+  "g2PrerequisiteRepair": {
+    "status": "POST_MEASUREMENT_CORRECTION_IMPLEMENTED_LOCAL_PASSED_REMOTE_PENDING",
+    "originalProposedQueryLimits": [5, 10, 7, 3],
+    "budgetFileModified": false,
+    "policyApproval": null,
+    "leaseRecord": "docs/production-readiness/r30/OWNERSHIP.md",
+    "r30RuntimeAuthorized": false,
+    "priorSourceMeasurement": {
+      "sourceSha": "70b7225727d89df0fd040b00ebd37c09383e7d30",
+      "treeSha": "68f4e926eabeb37bb70382c62b75272cf67bd02c",
+      "runId": 39801354824,
+      "jobId": 119902596450,
+      "artifactId": 12435857950,
+      "zipSha256": "b98ae9b6cab5f69939570dfa3a99532acf4aec925f054e713b3a818ce400befa",
+      "budgetEvaluator": {
+        "exitCode": 1,
+        "passed": 48,
+        "failed": 4,
+        "scenarioCounts": [6, 13, 12, 9]
+      },
+      "scope": "Historical PR181 head with exact preparation base tree; not changed-source evidence."
+    },
+    "comparisonRepair": {
+      "path": ".github/workflows/r27-performance.yml",
+      "scope": "Add immutable PR-base repair-baseline with the final candidate harness; retain original G1/candidate jobs and strict comparator.",
+      "baselineSha": "96e92825f9b65cf124317f43b55ce42fc97f5b49",
+      "lockfileSha256": "38c763b2348edacd22c88f61d7efbae67455ca92e5fb23320e3a5543e0a9d7c4",
+      "comparatorModified": false,
+      "harnessSourceModified": false,
+      "requiredFinalStatus": "OBSERVED_COMPLETE_MATRIX",
+      "requiredMissingGroups": 0,
+      "priorG1Comparison": {
+        "runId": 39801354824,
+        "artifactId": 12436780241,
+        "zipSha256": "cc0c226d2dacc32bd468e56ffd2ce854b086ee0a2138b97af49c8b24aabcb105",
+        "exitCode": 1,
+        "reason": "incomparable lockfileSha256 after owner-merged security upgrades"
+      },
+      "finalMeasurements": "PENDING_PUBLICATION"
+    },
+    "firstPublishedCandidate": {
+      "prNumber": 182,
+      "sourceSha": "1a319133d387dd6747bfd412503f4458573cf10e",
+      "treeSha": "af041d3817c8ae0aaeab2b6b8833380b44540cb3",
+      "r27RunId": 39834776701,
+      "candidateArtifactId": 12451177878,
+      "candidateZipSha256": "6e6009bda9b8b22e9e2a23147c9b0c07d1518e6a8f0840c87b92420e3506f5d0",
+      "budgetEvaluator": {
+        "exitCode": 1,
+        "passed": 50,
+        "failed": 2,
+        "amplifiedScenarioCounts": [5, 10, 7, 3],
+        "failures": [
+          "provider bookings: large ServiceRequest sequential scan",
+          "admin financial bookings: large ServiceRequest sequential scan"
+        ],
+        "estimatedRequestRows": 10836
+      },
+      "ci": {
+        "successfulWorkflows": 11,
+        "successfulChecks": 37,
+        "officialCodeQLCheckId": 120021624217,
+        "officialCodeQLAppId": 57789,
+        "officialCodeQLAnnotations": 0
+      },
+      "sourceArtifact": {
+        "runId": 39834776565,
+        "artifactId": 12448889945,
+        "zipSha256": "80ffe345052de05a24853b59ec2ba13f1c8d621695614485ab1bcf29c66757bf",
+        "files": 2640,
+        "reconstructedTree": "af041d3817c8ae0aaeab2b6b8833380b44540cb3"
+      },
+      "repairComparison": {
+        "exitCode": 0,
+        "browserStatus": "OBSERVED_COMPLETE_MATRIX",
+        "pairedGroups": 48,
+        "missingGroups": 0,
+        "timingLimitation": "Intel/AMD host mismatch; hardware-confounded timing deltas"
+      },
+      "scope": "Historical first published source only; its green CI does not waive two failed artifact-level budgets or prove the corrective successor."
+    }
+  },
+  "governanceFixture": {
+    "path": ".github/scripts/g2-current-record.test.mjs",
+    "reproducedBefore": {
+      "passed": 63,
+      "failed": 1,
+      "reason": "R30: inconsistent Wave 3 bases in synthetic acceptedDouble"
+    },
+    "afterFullSuite": {
+      "passed": 340,
+      "failed": 0,
+      "skipped": 0,
+      "exitCode": 0
+    },
+    "productionValidatorModified": false
+  },
+  "verifiedSourceDigests": [
+    {
+      "path": "apps/api/src/modules/money/ports/activation.port.ts",
+      "sha256": "5f9737d2204f0fffd5345a59b180b15043a28200d34536ba72c9cf7accbb921e"
+    },
+    {
+      "path": "apps/api/src/modules/money/ports/collection.port.ts",
+      "sha256": "e96d707809410056356b50ff5086be7d8bc71693445fb752fcf090ac7b6e23d3"
+    },
+    {
+      "path": "apps/api/src/modules/money/ports/finance-read.port.ts",
+      "sha256": "daa60c7398fa4b164375c0b7e294efa593d3f4217d4279220dcd3fb252c4bf80"
+    },
+    {
+      "path": "apps/api/src/modules/money/ports/refund.port.ts",
+      "sha256": "36b8db533189f787fdb8cef89c69f43eac39dc020d582d69904438c1bdc39dfb"
+    },
+    {
+      "path": "apps/api/src/modules/money/application/money-command.service.ts",
+      "sha256": "c49c31e7b5ded89b1b18d09bd4f3a6c29116f0610093faecb31822afca88846e"
+    },
+    {
+      "path": "apps/api/src/modules/money/money.module.ts",
+      "sha256": "5defc241c2a93218dc4943f26f23eef55b1824bd72e7d4080f31d359bdd3e7c5"
+    },
+    {
+      "path": "apps/api/src/infrastructure/storage/restricted-object-storage.port.ts",
+      "sha256": "44a60daf2337a135161c117b1ecc76893a651433c637bc79f6bc3bc493d212eb"
+    },
+    {
+      "path": "apps/api/src/infrastructure/storage/local-disk-restricted-storage.adapter.ts",
+      "sha256": "43dffc8fbd7f45a8fb5a7e28bb6c4cd91dd075b9b62c194a0d6865b82ff02c0f"
+    },
+    {
+      "path": "apps/api/src/infrastructure/storage/s3-restricted-storage.adapter.ts",
+      "sha256": "a41bc062fa0f901a6eac11834f5feb16dbb94ceeff408db78097d62d6b7ed60c"
+    },
+    {
+      "path": "apps/api/src/modules/provider/verification/media/evidence-keys.ts",
+      "sha256": "c1e1022e2e03cce1c0bbe71a4cbe38f899952a890582fff95db0a1d0ec4c420e"
+    },
+    {
+      "path": "apps/api/src/modules/provider/verification/media/evidence-scan.service.ts",
+      "sha256": "12c888fa959535b36c04648e585765433e2c9943651a382bdee820d1b8a18e96"
+    },
+    {
+      "path": "apps/api/src/modules/provider/verification/media/evidence-cleanup.service.ts",
+      "sha256": "8e133a638522df8976eb730baded482404803ca6e406661e389e82395ff304ce"
+    },
+    {
+      "path": "apps/api/src/modules/provider/verification/media/clamav-scanner.adapter.ts",
+      "sha256": "d90f3ea6877a2d9ee329faf3e5e2e5e20bf94174cac59dc98f8cd90387f037e8"
+    },
+    {
+      "path": "packages/database/prisma/schema.prisma",
+      "sha256": "09a67fe6add9c8acc69ad1b74490b6997de40fbb8d3d20cefa30dc6023f318d6"
+    },
+    {
+      "path": "packages/database/src/seed.ts",
+      "sha256": "591d3bdb22431a035aede8012723254f66ba3718c920656015c8c9fa5268beb9"
+    },
+    {
+      "path": "packages/contracts/src/money/wire.ts",
+      "sha256": "9d3de6c1fcfced28d3c539fc366a80476ef20fffb38a05a37dc7a652b74776f5"
+    },
+    {
+      "path": "packages/contracts/src/money/api-contracts.ts",
+      "sha256": "e22fc5ec3b361fca2edb99977f8c5f29ab037e2684d118309b1007c0eb2a2ec0"
+    },
+    {
+      "path": "scripts/perf/post-r18/budgets.proposed.json",
+      "sha256": "f88e7225cba5daece30877a4d98580b004e9684a2fdf8c11108819013e13afb8"
+    },
+    {
+      "path": "scripts/perf/post-r18/query-profile.mjs",
+      "sha256": "4e1049c81a65662e45f63942e2048355fb3fefed503d0c82f5c4f6fac7eec66c"
+    },
+    {
+      "path": "docs/production-readiness/post-r18/gates/g1/SOURCE_MANIFEST.json",
+      "sha256": "af3426ab11066bdc88818fbdcbef2ea853c83fb462fcdc5975d16880ef1d3eb1"
+    },
+    {
+      "path": "docs/production-readiness/post-r18/gates/g2/SOURCE_MANIFEST.json",
+      "sha256": "730fffe9c67f9d50a4196051f75ae2a979f529b30d7d76495d817e875d382a27"
+    },
+    {
+      "path": "docs/production-readiness/post-r18/gates/g2/ACCEPTANCE_EVIDENCE.json",
+      "sha256": "4bca096d21e15de66630553ba9fc5de85ac5a5de86e6f916b79c798f036f639f"
+    },
+    {
+      "path": "docs/production-readiness/post-r18/waves/wave-02.closeout.json",
+      "sha256": "3b76f9fe25f4dee56aa2f29414e560abd417e5121b5cbb39c4e8b7cda443a9d7"
+    }
+  ],
+  "checks": {
+    "dependencyAudit": {
+      "exitCode": 0,
+      "vulnerabilities": 0
+    },
+    "productionDependencyAudit": {
+      "exitCode": 0,
+      "vulnerabilities": 0
+    },
+    "apiChecks": {
+      "lintExitCode": 0,
+      "typecheckExitCode": 0,
+      "buildExitCode": 0,
+      "defaultSuite": {
+        "exitCode": 0,
+        "passed": 4873,
+        "failed": 0,
+        "skipped": 1750,
+        "passedSuites": 265,
+        "skippedSuites": 92,
+        "environment": "Existing reusable-verify.yml test placeholders; real-service gates remain off for this default suite.",
+        "firstInvocation": "Aborted on missing required DATABASE_URL/JWT_ACCESS_SECRET; corrected command environment, no validator/test change."
+      }
+    },
+    "postgresEquivalence": {
+      "exitCode": 0,
+      "passed": 34,
+      "failed": 0,
+      "skipped": 0,
+      "scope": "First-candidate native PostgreSQL repository projection/cursor/count/namespace equivalence; successor checks pending; not R27 HTTP/browser evidence."
+    },
+    "r27ActualMeasurements": "PENDING",
+    "secretScan": "PENDING_COMMITTED_TREE_CHECKPOINT",
+    "finalHeadCi": "PENDING",
+    "officialCodeQL": "PENDING",
+    "targetedApiUnits": {
+      "exitCode": 0,
+      "passed": 74,
+      "failed": 0,
+      "skipped": 0
+    },
+    "precommitSecretScan": {
+      "exitCode": 0,
+      "findings": 0,
+      "files": 32,
+      "bytesScanned": 497029,
+      "scope": "Initial changed-file snapshot; excludes later comparison-workflow changes and is not the committed-tree scan."
+    },
+    "r27HarnessRegressions": {
+      "exitCode": 0,
+      "passed": 106,
+      "failed": 0,
+      "skipped": 0,
+      "sourceChanged": false
+    },
+    "r27WorkflowGuards": {
+      "exitCode": 0,
+      "passed": 14,
+      "failed": 0,
+      "yamlParsed": true,
+      "originalJobsSemanticsPreserved": true,
+      "actionlint": "UNAVAILABLE_NOT_RUN",
+      "permanentTestFileAdded": false
+    },
+    "postMeasurementCorrection": {
+      "status": "LOCAL_PASS_FINAL_HEAD_REMOTE_PENDING",
+      "paths": [
+        "apps/api/src/infrastructure/persistence/bookings/booking.repository.ts",
+        "apps/api/test/integration/g2-query-projections.integration.spec.ts"
+      ],
+      "requiredRegression": "Actual normalized generic plans reproduce prior-source large scans and use bounded primary-key request lookups after correction; preserve all equivalence cases.",
+      "priorSourceRedProof": {
+        "passed": 0,
+        "failed": 2,
+        "notSelectedExistingCases": 34,
+        "requestRows": 10217,
+        "bookingRows": 6416,
+        "bidRows": 42021,
+        "scope": "Added regression runs against unchanged production repository bytes from the first candidate; other working-tree evidence is not claimed as that complete historical commit. Test-side normalization is not native pg_stat_statements evidence.",
+        "productionSourceSha": "1a319133d387dd6747bfd412503f4458573cf10e"
+      },
+      "postgres": {
+        "exitCode": 0,
+        "passed": 36,
+        "failed": 0,
+        "skipped": 0,
+        "existingEquivalenceCases": 34,
+        "newPlanCases": 2
+      },
+      "targetedUnits": {
+        "exitCode": 0,
+        "passed": 74,
+        "failed": 0,
+        "skipped": 0
+      },
+      "fullPlans": {
+        "count": 12,
+        "pageLimits": [5, 20, 100],
+        "projections": ["provider", "financial"],
+        "modes": ["bound", "test-side-normalized-generic"],
+        "requestIndex": "ServiceRequest_pkey",
+        "requestEquality": "id = requestId",
+        "maximumEstimatedRequestRows": 1,
+        "largeSequentialScans": 0,
+        "smallRelationSequentialScansRetained": true
+      },
+      "scopedLintExitCode": 0,
+      "typecheckExitCode": 0,
+      "buildExitCode": 0,
+      "formatExitCode": 0,
+      "governance": {
+        "passed": 340,
+        "failed": 0,
+        "skipped": 0,
+        "exitCode": 0
+      },
+      "g2ConsistencyExitCode": 0,
+      "r30ReadinessExitCode": 1,
+      "r30ReadinessReason": "R30 is not authorized to start",
+      "taskDatabaseStopped": true,
+      "warnings": ["Existing ts-jest isolatedModules deprecation"],
+      "reports": [
+        {
+          "name": "g2-query-projections-final.json",
+          "sha256": "fd3464828c88ee81b0172a12e4939fe5dcd293b36e262d4d0fc50dba2eed84bd"
+        },
+        {
+          "name": "g2-generic-plans-final.json",
+          "sha256": "1ebdde063d340a05582a045dc45ec447662cadddb9209bc5a42196024b4fb916"
+        }
+      ]
+    },
+    "evidenceScope": "apiChecks, postgresEquivalence, dependency audits and initial harness/workflow checks are retained first-candidate results. postMeasurementCorrection records successor local checks; final-head CI, native R27 and artifact proof are recorded in the final PR body after publication."
+  },
+  "runtimeEvidence": {
+    "r30PostgresStorageClamav": "NOT_RUN",
+    "r30RealRoutes": "NOT_RUN",
+    "r30ArEnRtlMobileKeyboard": "NOT_RUN",
+    "r30Sandbox": "NOT_ACCEPTED",
+    "r30Hosted": "NOT_ACCEPTED",
+    "r30RealSettlement": "NOT_RUN"
+  },
+  "restrictions": {
+    "merge": false,
+    "deploy": false,
+    "liveMoney": false,
+    "accountGrants": false,
+    "externalSpend": false,
+    "preserveG1": true,
+    "preserveR16R18Holds": true
+  },
+  "evidenceFiles": [
+    "docs/production-readiness/r30/ACCEPTANCE.md",
+    "docs/production-readiness/r30/G2_REVIEW.md",
+    "docs/production-readiness/r30/IMPLEMENTATION.md",
+    "docs/production-readiness/r30/OWNERSHIP.md",
+    "docs/production-readiness/r30/PROMPT.md",
+    "docs/production-readiness/r30/PROPOSED_OWNERSHIP.json",
+    "docs/production-readiness/r30/RISKS.md",
+    "docs/production-readiness/r30/ROLLBACK.md",
+    "docs/production-readiness/r30/SOURCE_MANIFEST.json",
+    "docs/production-readiness/r30/VERIFICATION_PLAN.md",
+    "docs/production-readiness/r30/shared-change-requests/CR-001-g2-registration.md",
+    "docs/production-readiness/r30/shared-change-requests/CR-002-receipt-persistence.md",
+    "docs/production-readiness/r30/shared-change-requests/CR-003-private-evidence.md",
+    "docs/production-readiness/r30/shared-change-requests/CR-004-atomic-confirmation.md",
+    "docs/production-readiness/r30/shared-change-requests/CR-005-web-contracts.md"
+  ],
+  "g2ValidationEnvironment": {
+    "configuration": {
+      "purpose": "G2_QUERY_PROJECTION_REGRESSION_ONLY",
+      "postgresVersion": "16.15",
+      "host": "127.0.0.1",
+      "port": 54330,
+      "database": "hsm_r30_g2_test",
+      "role": "hsm_r30_g2_runner",
+      "superuser": false,
+      "osUser": "nobody",
+      "timezone": "UTC",
+      "authentication": "SCRAM-SHA-256",
+      "dataChecksums": true,
+      "transport": "loopback native PostgreSQL; not R27 Docker",
+      "node": "24.21.0",
+      "pnpm": "10.32.1",
+      "RUN_DB_INTEGRATION": "1"
+    },
+    "configurationSha256": "4a519daa54f88a34f314ab4b1888805f34226027838219f4771b1d55fba15bf5",
+    "migrationsApplied": true,
+    "seedApplied": true,
+    "r30ProductResourcesAssigned": false,
+    "privateEnvironmentCommitted": false,
+    "shutdown": "VERIFIED_STOPPED_AFTER_VALIDATION"
+  }
+}

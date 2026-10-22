@@ -1,8 +1,88 @@
 # G2 coordinator ownership
 
+## R30 conditional package registration — 2026-10-22
+
+The owner's standing delegation to prepare G2 coordination and review fixes,
+together with the supplied R30 package and renewed continuation request,
+authorizes this bounded successor registration on
+`feat/r30-manual-payment-review`, starting at
+`96e92825f9b65cf124317f43b55ce42fc97f5b49` (tree
+`68f4e926eabeb37bb70382c62b75272cf67bd02c`). Both prior G2 branches were observed
+at already-merged tips, and there was no open PR or R30 branch before reservation.
+
+Root is the accountable coordinator. Before any edits to the following four
+records, it grants `r30_readiness_audit` an exclusive preparation lease:
+
+- `docs/production-readiness/post-r18/SPRINT_REGISTRY.json`
+- `docs/production-readiness/post-r18/ACTIVE_STATUS.md`
+- `docs/production-readiness/post-r18/waves/WAVE_03.md`
+- `docs/production-readiness/post-r18/waves/wave-03.plan.json`
+
+Scope: register only the supplied R30 package and finite proposed paths using
+the existing `PLANNED` / blocked G2 schema. Preserve null frozen identities,
+empty startable lanes, peer records, existing acceptance history and policy
+holds. No validation code, budget, source acceptance or runtime authority may
+be changed under this lease. Root owns this lease record and final validation.
+The lease ends with the R30 review PR or explicit coordinator revocation.
+See `docs/production-readiness/r30/OWNERSHIP.md` for exact sprint evidence
+writers. This registration cannot authorize R30 application implementation,
+merge, deployment, external spend, role grants or live payments.
+
+### Root lease: accepted-record contract double
+
+After the R30 registration reproduced `R30: inconsistent Wave 3 bases` in the
+existing synthetic accepted-wave test (63 passed / 1 failed), the coordinator
+grants root `.github/scripts/g2-current-record.test.mjs` before its edit.
+Synchronize frozen identities for provided packages in the in-memory double,
+keep R30 held, and add its inconsistent-base rejection. No production validator,
+real gate record, budget or release authority may be relaxed. The lease expires
+with this successor review PR; see the R30 ownership record for its scope.
+
 ## Authority and identity
 
+### R30 prerequisite successor: bounded query-projection repair
+
+On 2026-10-22 the owner-delegated coordinator assigns
+`r30_governance_ui_audit` the exact eleven-file performance sub-lease recorded
+in `docs/production-readiness/r30/OWNERSHIP.md`, before its source edits.
+Scope: repair the existing G2 query-count findings under unchanged proposed
+ceilings 5/10/7/3 with page-bounded parameterized projections. Retain every
+fresh authorization, ownership, cursor, no-store and financial-value invariant.
+No budget, policy, schema, migration, package version, CI or guard changes are
+authorized. The lease expires at completion of the successor review PR or
+coordinator revocation. This is earlier-wave remediation, not R30 runtime
+authorization. Only measured real-service evidence may establish its result;
+owner budget approval and accepted G2 publication remain separate.
+
+### R30 prerequisite successor: comparable repair baseline
+
+Before editing, the owner-delegated coordinator grants
+`r30_readiness_audit` the single additional shared path
+`.github/workflows/r27-performance.yml`. The verified PR181 G1/candidate
+comparison rejects different lockfile hashes after the owner's merged security
+upgrades. Add a third `repair-baseline` measurement using the immutable PR base
+and the same final-head harness, with an explicit full-SHA input for manual
+runs. Reject missing, invalid, equal-head, non-ancestor, checkout-mismatched or
+dependency-mismatched repair baselines. Preserve the original G1 and candidate
+measurements, comparator, numeric budgets, assertions, pins, permissions,
+timeouts, isolated services and artifact provenance. This exact CI lease is
+separate from the eleven-file source lease above and expires with the successor
+review PR. Root verifies the unchanged comparator reports a complete matrix;
+neither its exit code alone nor a workflow success approves a performance policy
+or a G2 freeze. Temporary guard fixtures may be created outside the repository.
+
 Repository owner baraabd explicitly delegated complete G2 coordination, remediation and a review pull request in this conversation at 2026-10-17T20:06:42Z. The delegation authorizes preparation and required repairs; it does not authorize merge, deployment, live money, external spend, production grants or fictional acceptance. R32 starts only after G2 is approved and its publication identity is verified.
+
+The first R30 prerequisite candidate `1a319133d387dd6747bfd412503f4458573cf10e`
+produced 50 passing / 2 failing original R27 budget checks. Both booking-list
+generic plans scan the large `ServiceRequest` relation. Before its correction,
+the coordinator reassigns `r30_governance_ui_audit` the two existing leased paths
+`apps/api/src/infrastructure/persistence/bookings/booking.repository.ts` and
+`apps/api/test/integration/g2-query-projections.integration.spec.ts`, as detailed
+in the R30 measured-follow-up lease. Preserve complete correctness and add actual
+generic-plan regression evidence. No index, schema, dependency, planner setting,
+performance harness, comparator or budget relaxation is authorized. Root owns
+all publication/evidence mutations and requires fresh successor measurements.
 
 - Delivery mode: Mode A, integration and correctness.
 - Branch: `chore/g2-wave2-acceptance`.

@@ -30,6 +30,7 @@ const BOOKING_IN_PROGRESS_TYPE: NotificationType =
 import { BookingEventRepository } from '../../../infrastructure/persistence/bookings/booking-event.repository';
 import {
   BookingRepository,
+  type ProviderBookingListRow,
   type BookingWithProviderRelations,
   type ProviderBookingListRow,
 } from '../../../infrastructure/persistence/bookings/booking.repository';
@@ -89,7 +90,7 @@ export class ProviderBookingsService {
     if (query.cursor && !(await this.bookings.isCursorOwnedByProvider(query.cursor, profile.id))) {
       throw new AppError('VALIDATION_ERROR', 'Invalid cursor.', 400);
     }
-    const rows = await this.bookings.listForProvider({
+    const rows = await this.bookings.listForProviderSummary({
       providerId: profile.id,
       status: query.status,
       take: take + 1,

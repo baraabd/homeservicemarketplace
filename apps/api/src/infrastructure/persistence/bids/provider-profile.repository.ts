@@ -285,6 +285,35 @@ export class ProviderProfileRepository {
     });
   }
 
+  async findByUserIdForAvailableRequests(
+    userId: string,
+    tx?: PrismaTx,
+  ): Promise<ProviderAvailableRequestProfile | null> {
+    const rows = await this.db(tx).$queryRaw<
+      Array<Omit<ProviderAvailableRequestProfile, 'serviceCategories'> & { categoryIds: string[] }>
+    >(Prisma.sql`
+      SELECT profile."id", profile."userId", profile."serviceAreaLat",
+        profile."serviceAreaLng", profile."serviceAreaRadiusKm",
+        profile."serviceAreaCity", profile."serviceAreaCityKey",
+        ARRAY(
+          SELECT link."serviceCategoryId"
+          FROM "ProviderProfileServiceCategory" link
+          WHERE link."providerProfileId" = profile."id"
+          ORDER BY link."serviceCategoryId"
+        ) AS "categoryIds"
+      FROM "ProviderProfile" profile
+      WHERE profile."userId" = ${userId} AND profile."deletedAt" IS NULL
+      LIMIT 1
+    `);
+    const row = rows[0];
+    if (!row) return null;
+    const { categoryIds, ...profile } = row;
+    return {
+      ...profile,
+      serviceCategories: categoryIds.map((serviceCategoryId) => ({ serviceCategoryId })),
+    };
+  }
+
   findByUserIdWithCategories(
     userId: string,
     tx?: PrismaTx,

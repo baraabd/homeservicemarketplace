@@ -378,6 +378,7 @@ test('complete canonical contract double needs separate verified publication bef
   assert.ok(readinessProblems(acceptedDouble(false), 'R32').length > 0);
   assert.deepEqual(readinessProblems(acceptedDouble(), 'R32'), []);
   assert.ok(readinessProblems(acceptedDouble(), 'R29').length > 0);
+  assert.ok(readinessProblems(acceptedDouble(), 'R30').length > 0);
 });
 
 for (const [name, field, value] of [
