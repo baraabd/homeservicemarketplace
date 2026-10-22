@@ -202,10 +202,10 @@ it is not substituted for the later approved ownership record. This table record
 the original implementation, not the full current PR diff. The authorized repair
 in PR_REPAIR_20261018.md later added ten paths, including two shared workflows and
 six OTP/realtime source/test files. The 2026-10-18 successor changed its nine
-paths; the 2026-10-22 repair adds the single test path identified above.
-Compose/Docker, the staging launcher, central registry,
-app entrypoints, package manifests, lockfile and migrations are unchanged by this
-successor.
+paths; the 2026-10-22 test repair added one path for a ten-path checkpoint.
+The subsequent dependency repair adds the two manifests and lockfile assigned
+above, making thirteen current PR paths. Compose/Docker, the staging launcher,
+central registry, app entrypoints and migrations are unchanged by these repairs.
 
 Authoring was partitioned between the validator/evidence writer, one test writer,
 and one five-file infrastructure writer. The latter two released their files
@@ -249,8 +249,9 @@ branch was imported, no shared runtime was reused and no stash was popped.
 `hsm.platform-inputs/v1` and `hsm.edge-policy/v1` use a closed JSON Schema
 draft-2020-12 subset. `hsm.platform-validator/v1` implements only that checked-in
 subset and rejects unsupported keywords/references. It never retrieves a schema.
-The existing staging manifest stays `schemaVersion: 1`; there is no database
-schema, Prisma, dependency or public application-contract change.
+The existing staging manifest stays `schemaVersion: 1`. The validator
+implementation itself changes no database schema, Prisma dependency or public
+application contract; the separately assigned web dependency repair is above.
 
 `--check` opens a bounded regular JSON input once, then validates the path entry
 against the opened descriptor before reading. It rejects symlinks/entry replacement

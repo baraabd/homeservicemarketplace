@@ -362,7 +362,7 @@ from those actual jobs; it still does not prove an applied hosted platform/edge.
 Remote run/artifact IDs are retained in PR metadata to avoid creating a new source
 SHA merely by documenting the run that checked the old SHA.
 
-## Failures, warnings and unrun checks
+## Historical original-lane failures, warnings and unrun checks (2026-10-17/18)
 
 - Initial subprocess tests failed with executor `EPERM`; rerunning with authorized
   process access executed the real child CLI tests. They were not skipped or mocked
