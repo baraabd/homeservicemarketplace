@@ -775,7 +775,7 @@
         ]
       },
       "execution": {
-        "state": "MERGED_INTEGRATION_PENDING",
+        "state": "MERGED_INTEGRATION_ACCEPTED",
         "startedAtUtc": "2026-10-17T15:55:11Z",
         "worktree": "/workspace/scratch/3c602a5e36ee/homeservicemarketplace-r24",
         "startHeadSha": "07c8e584c684111bfc80995c7efb0144cfb6161b",
@@ -785,7 +785,7 @@
         "ownershipRecord": "docs/production-readiness/r24/OWNERSHIP.md",
         "changeRequest": "docs/production-readiness/r24/shared-change-requests/CR-001-integration.md",
         "integrationPolicy": "After the normal-hook ownership checkpoint, owner-merged develop was integrated into this R24 branch by normal merge, preserving frozen G1 source and incoming peer records. No unmerged R25 import, rebase, force-push, merge to develop or deployment.",
-        "acceptance": "INTEGRATION_PENDING",
+        "acceptance": "TECHNICALLY_ACCEPTED_PUBLICATION_PENDING",
         "ownershipCommitSha": "60df8018ea9c76b1cda1c322fb279c7b9d7fde93",
         "integratedDevelopSha": "21089a5065169b78bea5e711a4839e1a467531dc",
         "integrationCommitSha": "65b2a0e59604931a4b8b87acb971c71afaaf9a74",
@@ -794,7 +794,9 @@
         "gate": "G2",
         "gateRecord": "docs/production-readiness/post-r18/gates/g2/SOURCE_MANIFEST.json",
         "sourceHeadSha": "22e25216f0b27ebdd0f6454842d43f35fafa8d34",
-        "mergedAtUtc": "2026-10-17T19:28:16Z"
+        "mergedAtUtc": "2026-10-17T19:28:16Z",
+        "acceptedSourceSha": "72b4aaeb0a71d806b7fca7363dd9ca59bbcee644",
+        "acceptedTreeSha": "43e9c6a4e58cfb934b12789feeb38b588e1cb7c6"
       },
       "requiredEvidence": [
         "docs/production-readiness/r24/IMPLEMENTATION.md",
@@ -904,14 +906,16 @@
         "verificationRecord": "docs/production-readiness/post-r18/gates/g1/PUBLICATION_VERIFICATION.json"
       },
       "execution": {
-        "state": "MERGED_INTEGRATION_PENDING",
+        "state": "MERGED_INTEGRATION_ACCEPTED",
         "mergeCommitSha": "4e87bf03663fb3c72ffee983fdb70c2863e1ce8a",
         "pr": 175,
         "gate": "G2",
-        "acceptance": "INTEGRATION_PENDING",
+        "acceptance": "TECHNICALLY_ACCEPTED_PUBLICATION_PENDING",
         "gateRecord": "docs/production-readiness/post-r18/gates/g2/SOURCE_MANIFEST.json",
         "sourceHeadSha": "3fdfddc6599fcd2f5d79b176c2e28471f327fe21",
-        "mergedAtUtc": "2026-10-17T19:28:55Z"
+        "mergedAtUtc": "2026-10-17T19:28:55Z",
+        "acceptedSourceSha": "72b4aaeb0a71d806b7fca7363dd9ca59bbcee644",
+        "acceptedTreeSha": "43e9c6a4e58cfb934b12789feeb38b588e1cb7c6"
       }
     },
     {
@@ -1008,17 +1012,19 @@
         "verificationRecord": "docs/production-readiness/post-r18/gates/g1/PUBLICATION_VERIFICATION.json"
       },
       "execution": {
-        "state": "MERGED_INTEGRATION_PENDING",
+        "state": "MERGED_INTEGRATION_ACCEPTED",
         "startedAtUtc": "2026-10-16T23:08:21.661691+00:00",
         "coordinationBaseSha": "0568739096ceeaf0cfc79034626886e258fe4328",
         "frozenRuntimeSourceSha": "40cdac5c9ce6acaa8dedc0385984a807ae9a84d0",
         "mergeCommitSha": "6c599618f2a97407093b37ddfa93ad21a41ea7a1",
         "pr": 174,
         "gate": "G2",
-        "acceptance": "INTEGRATION_PENDING",
+        "acceptance": "TECHNICALLY_ACCEPTED_PUBLICATION_PENDING",
         "gateRecord": "docs/production-readiness/post-r18/gates/g2/SOURCE_MANIFEST.json",
         "sourceHeadSha": "6bf2669700e80e1727549e17374db40f18111c77",
-        "mergedAtUtc": "2026-10-17T15:28:40Z"
+        "mergedAtUtc": "2026-10-17T15:28:40Z",
+        "acceptedSourceSha": "72b4aaeb0a71d806b7fca7363dd9ca59bbcee644",
+        "acceptedTreeSha": "43e9c6a4e58cfb934b12789feeb38b588e1cb7c6"
       }
     },
     {
@@ -1112,14 +1118,16 @@
         "verificationRecord": "docs/production-readiness/post-r18/gates/g1/PUBLICATION_VERIFICATION.json"
       },
       "execution": {
-        "state": "MERGED_INTEGRATION_PENDING",
+        "state": "MERGED_INTEGRATION_ACCEPTED",
         "mergeCommitSha": "21089a5065169b78bea5e711a4839e1a467531dc",
         "pr": 173,
         "gate": "G2",
-        "acceptance": "INTEGRATION_PENDING",
+        "acceptance": "TECHNICALLY_ACCEPTED_PUBLICATION_PENDING",
         "gateRecord": "docs/production-readiness/post-r18/gates/g2/SOURCE_MANIFEST.json",
         "sourceHeadSha": "8be5ad3f5cc22f350388e2bec854e809e03b487d",
-        "mergedAtUtc": "2026-10-17T15:29:06Z"
+        "mergedAtUtc": "2026-10-17T15:29:06Z",
+        "acceptedSourceSha": "72b4aaeb0a71d806b7fca7363dd9ca59bbcee644",
+        "acceptedTreeSha": "43e9c6a4e58cfb934b12789feeb38b588e1cb7c6"
       }
     },
     {
@@ -1183,11 +1191,11 @@
         "verificationRecord": "docs/production-readiness/post-r18/gates/g1/PUBLICATION_VERIFICATION.json"
       },
       "execution": {
-        "state": "MERGED_INTEGRATION_PENDING",
+        "state": "MERGED_INTEGRATION_ACCEPTED",
         "gate": "G2",
         "ownershipRecord": "docs/production-readiness/post-r18/gates/g2/OWNERSHIP.md",
         "scope": "CONFIGURATION_ONLY checked plan under the R28 prompt; HOSTED_ENVIRONMENT_BLOCKED retained.",
-        "acceptance": "INTEGRATION_PENDING",
+        "acceptance": "TECHNICALLY_ACCEPTED_PUBLICATION_PENDING",
         "pr": 181,
         "integrationPolicy": "Initial #179 and corrective #181 are owner-merged. Current source96e928 is the successor G2 execution baseline; configuration-only scope and hosted blocker remain.",
         "sourceHeadSha": "70b7225727d89df0fd040b00ebd37c09383e7d30",
@@ -1198,7 +1206,9 @@
           "deliveryHeadSha": "60b64cd8216294d7476a7a22607ee56feb18dec4",
           "deliveryTreeSha": "a89d8cdf69f7fa368dc9ffb91fc1b241bdcc49b5",
           "integrationPolicy": "Initial twelve-file import uses exact peer60b64cd blobs. Coordinator PR #180 changes only its portable adversarial test fixture, with separately scoped verification; eleven other files and runtime remain exact. Peer branch unchanged; no merge or Wave3 release."
-        }
+        },
+        "acceptedSourceSha": "72b4aaeb0a71d806b7fca7363dd9ca59bbcee644",
+        "acceptedTreeSha": "43e9c6a4e58cfb934b12789feeb38b588e1cb7c6"
       },
       "correctivePr": 181
     },
@@ -1214,7 +1224,7 @@
         "coordinator": "Owner-delegated engineering coordinator for baraabd"
       },
       "status": "PLANNED",
-      "frozenBase": null,
+      "frozenBase": "72b4aaeb0a71d806b7fca7363dd9ca59bbcee644",
       "dependencies": ["R24", "R20", "R22", "R23"],
       "legacyAliases": ["P38", "P39", "P41-stripe-adapter"],
       "ownedPaths": {
@@ -1259,7 +1269,7 @@
       "scopeNote": "Stripe transport and signed intake implement the existing collection/refund ports and durable MoneyExternalEvent inbox. Existing MoneyCommandService owns attempts, confirmation and transaction boundaries; no parallel billing or ledger authority.",
       "startBarrier": {
         "gate": "G2",
-        "decision": "BLOCKED",
+        "decision": "ACCEPTED",
         "publication": "NOT_RELEASED",
         "sourceRecord": "docs/production-readiness/post-r18/gates/g2/SOURCE_MANIFEST.json"
       },
@@ -1278,7 +1288,7 @@
         "coordinator": "Owner-delegated engineering coordinator for baraabd"
       },
       "status": "PLANNED",
-      "frozenBase": null,
+      "frozenBase": "72b4aaeb0a71d806b7fca7363dd9ca59bbcee644",
       "dependencies": ["R24", "R20", "R21", "R22", "R23"],
       "legacyAliases": ["P40", "P41-manual-adapter"],
       "ownedPaths": {
@@ -1332,7 +1342,7 @@
       "scopeNote": "Manual adapters and receipt-review participant reuse R24 commands, immutable financial-evidence MediaAsset storage and existing outbox. A new review surface is composed through coordinator routes; no mock merchant details or receipt-as-confirmation shortcut.",
       "startBarrier": {
         "gate": "G2",
-        "decision": "BLOCKED",
+        "decision": "ACCEPTED",
         "publication": "NOT_RELEASED",
         "sourceRecord": "docs/production-readiness/post-r18/gates/g2/SOURCE_MANIFEST.json"
       },
@@ -1351,7 +1361,7 @@
         "coordinator": "Owner-delegated engineering coordinator for baraabd"
       },
       "status": "PLANNED",
-      "frozenBase": null,
+      "frozenBase": "72b4aaeb0a71d806b7fca7363dd9ca59bbcee644",
       "dependencies": ["R24", "R21", "R22", "R23"],
       "legacyAliases": ["P42"],
       "ownedPaths": {
@@ -1403,7 +1413,7 @@
       "scopeNote": "Plan-version authoring, the transaction-bound activation participant, lifecycle/usage and My Plan extend existing plan/subscription/period/usage persistence. Existing quote, confirmation and SubscriptionActivationService remain authorities; no replacement activation engine or purchase-to-work-access grant.",
       "startBarrier": {
         "gate": "G2",
-        "decision": "BLOCKED",
+        "decision": "ACCEPTED",
         "publication": "NOT_RELEASED",
         "sourceRecord": "docs/production-readiness/post-r18/gates/g2/SOURCE_MANIFEST.json"
       },
@@ -1422,7 +1432,7 @@
         "coordinator": "Owner-delegated engineering coordinator for baraabd"
       },
       "status": "PLANNED",
-      "frozenBase": null,
+      "frozenBase": "72b4aaeb0a71d806b7fca7363dd9ca59bbcee644",
       "dependencies": ["R24", "R22", "R23"],
       "legacyAliases": ["P41"],
       "ownedPaths": {
@@ -1464,7 +1474,7 @@
       "scopeNote": "Existing frozen refund policy, transport and confirmation-participant ports remain the boundary. Durable reservation/dispatch/compensation state is reused. The original 21-file R32 conditional package is retained; no unmerged adapter import or second ledger.",
       "startBarrier": {
         "gate": "G2",
-        "decision": "BLOCKED",
+        "decision": "ACCEPTED",
         "publication": "NOT_RELEASED",
         "sourceRecord": "docs/production-readiness/post-r18/gates/g2/SOURCE_MANIFEST.json"
       },
@@ -1483,7 +1493,7 @@
         "coordinator": "Owner-delegated engineering coordinator for baraabd"
       },
       "status": "PLANNED",
-      "frozenBase": null,
+      "frozenBase": "72b4aaeb0a71d806b7fca7363dd9ca59bbcee644",
       "dependencies": ["R24", "R20", "R23"],
       "legacyAliases": ["P43-ui"],
       "ownedPaths": {
@@ -1533,7 +1543,7 @@
       "scopeNote": "Reporting/export and UI compose existing MoneyFinanceReadPort and MoneyQueryService. Booking estimates stay distinct. Existing Admin FinancialsSection and Provider WalletScreen entrypoints remain coordinator-owned; frozen reconciliation exceptions are a read contract, not invented R34 implementation.",
       "startBarrier": {
         "gate": "G2",
-        "decision": "BLOCKED",
+        "decision": "ACCEPTED",
         "publication": "NOT_RELEASED",
         "sourceRecord": "docs/production-readiness/post-r18/gates/g2/SOURCE_MANIFEST.json"
       },

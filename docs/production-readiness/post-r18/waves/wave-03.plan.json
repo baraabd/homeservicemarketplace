@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "wave": 3,
   "startGate": "G2",
-  "baseSha": null,
+  "baseSha": "72b4aaeb0a71d806b7fca7363dd9ca59bbcee644",
   "status": "BLOCKED",
   "startableLanes": [],
   "blockedLanes": ["R29", "R30", "R31", "R32", "R33"],
@@ -23,7 +23,7 @@
         "coordinator": "Owner-delegated engineering coordinator for baraabd"
       },
       "status": "BLOCKED",
-      "frozenBaseSha": null,
+      "frozenBaseSha": "72b4aaeb0a71d806b7fca7363dd9ca59bbcee644",
       "dependencies": ["R24", "R20", "R22", "R23"],
       "exactFiles": [
         "apps/api/src/modules/money/adapters/stripe/stripe-bindings.ts",
@@ -61,7 +61,7 @@
         "Exact source/base/tree and contract/schema versions; checked command exit codes and test counts; source-bound artifacts; final-PR CI and official CodeQL; explicit skipped, blocked, sandbox and hosted states"
       ],
       "ownershipApproval": "CONDITIONAL_AFTER_VERIFIED_G2_PUBLICATION_AND_SESSION_ASSIGNMENT",
-      "blockedBy": ["G2_ACCEPTANCE_AND_VERIFIED_PUBLICATION", "EXACT_SESSION_ASSIGNMENT"],
+      "blockedBy": ["G2_VERIFIED_OWNER_MERGED_PUBLICATION", "EXACT_SESSION_ASSIGNMENT"],
       "isolatedRuntime": {
         "allocationStatus": "PLANNED_NOT_PROVISIONED",
         "composeProject": "hsm-r29-<session>",
@@ -92,7 +92,7 @@
         "coordinator": "Owner-delegated engineering coordinator for baraabd"
       },
       "status": "BLOCKED",
-      "frozenBaseSha": null,
+      "frozenBaseSha": "72b4aaeb0a71d806b7fca7363dd9ca59bbcee644",
       "dependencies": ["R24", "R20", "R21", "R22", "R23"],
       "exactFiles": [
         "apps/api/src/modules/money/adapters/manual/manual-collection.adapter.ts",
@@ -139,7 +139,7 @@
         "Exact source/base/tree and contract/schema versions; checked command exit codes and test counts; source-bound artifacts; final-PR CI and official CodeQL; explicit skipped, blocked, sandbox and hosted states"
       ],
       "ownershipApproval": "CONDITIONAL_AFTER_VERIFIED_G2_PUBLICATION_AND_SESSION_ASSIGNMENT",
-      "blockedBy": ["G2_ACCEPTANCE_AND_VERIFIED_PUBLICATION", "EXACT_SESSION_ASSIGNMENT"],
+      "blockedBy": ["G2_VERIFIED_OWNER_MERGED_PUBLICATION", "EXACT_SESSION_ASSIGNMENT"],
       "isolatedRuntime": {
         "allocationStatus": "PLANNED_NOT_PROVISIONED",
         "composeProject": "hsm-r30-<session>",
@@ -170,7 +170,7 @@
         "coordinator": "Owner-delegated engineering coordinator for baraabd"
       },
       "status": "BLOCKED",
-      "frozenBaseSha": null,
+      "frozenBaseSha": "72b4aaeb0a71d806b7fca7363dd9ca59bbcee644",
       "dependencies": ["R24", "R21", "R22", "R23"],
       "exactFiles": [
         "apps/api/src/modules/money/subscriptions/plan-version.service.ts",
@@ -215,7 +215,7 @@
         "Exact source/base/tree and contract/schema versions; checked command exit codes and test counts; source-bound artifacts; final-PR CI and official CodeQL; explicit skipped, blocked, sandbox and hosted states"
       ],
       "ownershipApproval": "CONDITIONAL_AFTER_VERIFIED_G2_PUBLICATION_AND_SESSION_ASSIGNMENT",
-      "blockedBy": ["G2_ACCEPTANCE_AND_VERIFIED_PUBLICATION", "EXACT_SESSION_ASSIGNMENT"],
+      "blockedBy": ["G2_VERIFIED_OWNER_MERGED_PUBLICATION", "EXACT_SESSION_ASSIGNMENT"],
       "isolatedRuntime": {
         "allocationStatus": "PLANNED_NOT_PROVISIONED",
         "composeProject": "hsm-r31-<session>",
@@ -246,7 +246,7 @@
         "coordinator": "Owner-delegated engineering coordinator for baraabd"
       },
       "status": "BLOCKED",
-      "frozenBaseSha": null,
+      "frozenBaseSha": "72b4aaeb0a71d806b7fca7363dd9ca59bbcee644",
       "dependencies": ["R24", "R22", "R23"],
       "exactFiles": [
         "apps/api/src/modules/money/refunds/refund-eligibility.policy.ts",
@@ -281,7 +281,7 @@
         "Exact source/base/tree and contract/schema versions; checked command exit codes and test counts; source-bound artifacts; final-PR CI and official CodeQL; explicit skipped, blocked, sandbox and hosted states"
       ],
       "ownershipApproval": "CONDITIONAL_AFTER_VERIFIED_G2_PUBLICATION_AND_SESSION_ASSIGNMENT",
-      "blockedBy": ["G2_ACCEPTANCE_AND_VERIFIED_PUBLICATION", "EXACT_SESSION_ASSIGNMENT"],
+      "blockedBy": ["G2_VERIFIED_OWNER_MERGED_PUBLICATION", "EXACT_SESSION_ASSIGNMENT"],
       "isolatedRuntime": {
         "allocationStatus": "PLANNED_NOT_PROVISIONED",
         "composeProject": "hsm-r32-<session>",
@@ -312,7 +312,7 @@
         "coordinator": "Owner-delegated engineering coordinator for baraabd"
       },
       "status": "BLOCKED",
-      "frozenBaseSha": null,
+      "frozenBaseSha": "72b4aaeb0a71d806b7fca7363dd9ca59bbcee644",
       "dependencies": ["R24", "R20", "R23"],
       "exactFiles": [
         "apps/api/src/modules/money/reporting/financial-report.service.ts",
@@ -355,7 +355,7 @@
         "Exact source/base/tree and contract/schema versions; checked command exit codes and test counts; source-bound artifacts; final-PR CI and official CodeQL; explicit skipped, blocked, sandbox and hosted states"
       ],
       "ownershipApproval": "CONDITIONAL_AFTER_VERIFIED_G2_PUBLICATION_AND_SESSION_ASSIGNMENT",
-      "blockedBy": ["G2_ACCEPTANCE_AND_VERIFIED_PUBLICATION", "EXACT_SESSION_ASSIGNMENT"],
+      "blockedBy": ["G2_VERIFIED_OWNER_MERGED_PUBLICATION", "EXACT_SESSION_ASSIGNMENT"],
       "isolatedRuntime": {
         "allocationStatus": "PLANNED_NOT_PROVISIONED",
         "composeProject": "hsm-r33-<session>",

@@ -1,5 +1,8 @@
 # Post-R18 active status index
 
+G2 technical acceptance: `72b4aaeb0a71d806b7fca7363dd9ca59bbcee644`; all 38 checks and required artifacts verified.
+PR #183 publication remains unmerged. Wave 3 and Wave 4 remain blocked.
+
 Authority: `SPRINT_REGISTRY.json`. Package recovery on 2026-10-22.
 G1 remains accepted and owner-published at its immutable frozen source. The active
 G2 source manifest controls the current integration decision and publication hold.
@@ -33,7 +36,7 @@ behind the separate G3 gate. No future lane is released by this preparation.
 
 Wave 1 `SANDBOX_ACCEPTED` retains G1 scope. Wave 2 `READY_TO_START` is the
 historical published G1 start contract, not its current implementation verdict.
-The status column preserves that machine contract. All five Wave 2 deliveries are now merged; their nested `execution` records and G2 successor evidence describe actual delivered source and pending integrated acceptance. R28 includes the corrective owner-merged PR #181. Retaining historical source identities does not treat
+The status column preserves that machine contract. All five Wave 2 deliveries are now merged; their nested `execution` records and G2 successor evidence describe actual delivered source and technically accepted integration pending G2 publication. R28 includes the corrective owner-merged PR #181. Retaining historical source identities does not treat
 old checks as proof of a newer build.
 
 The original full prompt pack for R29–R38 was recovered with its previously

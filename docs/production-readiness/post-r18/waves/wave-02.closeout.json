@@ -1,11 +1,11 @@
 {
   "schemaVersion": 1,
   "wave": 2,
-  "kind": "CLOSEOUT_OBSERVATION_NOT_START_AUTHORIZATION",
-  "sourceSha": "96e92825f9b65cf124317f43b55ce42fc97f5b49",
-  "treeSha": "68f4e926eabeb37bb70382c62b75272cf67bd02c",
+  "kind": "TECHNICAL_ACCEPTANCE_NOT_START_AUTHORIZATION",
+  "sourceSha": "72b4aaeb0a71d806b7fca7363dd9ca59bbcee644",
+  "treeSha": "43e9c6a4e58cfb934b12789feeb38b588e1cb7c6",
   "historicalG1BaseSha": "40cdac5c9ce6acaa8dedc0385984a807ae9a84d0",
-  "decision": "BLOCKED",
+  "decision": "ACCEPTED",
   "lanes": [
     {
       "id": "R24",
@@ -15,8 +15,8 @@
       "merged": true,
       "sourceHeadSha": "22e25216f0b27ebdd0f6454842d43f35fafa8d34",
       "mergeCommitSha": "820913a87c90fd283df58e00827bcc79a1e0ca39",
-      "integration": "PENDING",
-      "finding": "Owner-merged source verified; successor G2 integrated acceptance pending on its exact candidate."
+      "integration": "PASS",
+      "finding": "Exact-source integrated evidence accepted by G2; owner-reviewed publication remains pending."
     },
     {
       "id": "R25",
@@ -26,8 +26,8 @@
       "merged": true,
       "sourceHeadSha": "3fdfddc6599fcd2f5d79b176c2e28471f327fe21",
       "mergeCommitSha": "4e87bf03663fb3c72ffee983fdb70c2863e1ce8a",
-      "integration": "PENDING",
-      "finding": "Owner-merged source verified; successor G2 integrated acceptance pending on its exact candidate."
+      "integration": "PASS",
+      "finding": "Exact-source integrated evidence accepted by G2; owner-reviewed publication remains pending."
     },
     {
       "id": "R26",
@@ -37,8 +37,8 @@
       "merged": true,
       "sourceHeadSha": "6bf2669700e80e1727549e17374db40f18111c77",
       "mergeCommitSha": "6c599618f2a97407093b37ddfa93ad21a41ea7a1",
-      "integration": "PENDING",
-      "finding": "Owner-merged source verified; successor G2 integrated acceptance pending on its exact candidate."
+      "integration": "PASS",
+      "finding": "Exact-source integrated evidence accepted by G2; owner-reviewed publication remains pending."
     },
     {
       "id": "R27",
@@ -48,8 +48,8 @@
       "merged": true,
       "sourceHeadSha": "8be5ad3f5cc22f350388e2bec854e809e03b487d",
       "mergeCommitSha": "21089a5065169b78bea5e711a4839e1a467531dc",
-      "integration": "PENDING",
-      "finding": "Owner-merged source verified; successor G2 integrated acceptance pending on its exact candidate."
+      "integration": "PASS",
+      "finding": "Exact-source integrated evidence accepted by G2; owner-reviewed publication remains pending."
     },
     {
       "id": "R28",
@@ -59,12 +59,12 @@
       "merged": true,
       "sourceHeadSha": "70b7225727d89df0fd040b00ebd37c09383e7d30",
       "mergeCommitSha": "96e92825f9b65cf124317f43b55ce42fc97f5b49",
-      "integration": "PENDING",
-      "finding": "Owner-merged source verified; successor G2 integrated acceptance pending on its exact candidate.",
+      "integration": "PASS",
+      "finding": "Exact-source integrated evidence accepted by G2; owner-reviewed publication remains pending.",
       "earlierImplementationPr": 179,
       "scope": "CONFIGURATION_ONLY",
       "hostedAcceptance": false
     }
   ],
-  "qualification": "Individual merged lane identity is verified. The new coordinator repair has not yet been accepted. See G2 evidence and preserved historical closeout."
+  "qualification": "Five owner-merged source lanes verified as ancestors of the accepted candidate; complete exact-source integration evidence passed. R28 remains configuration-only. G2 publication is not merged."
 }

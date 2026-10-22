@@ -1,30 +1,29 @@
 {
   "schemaVersion": 1,
-  "classification": "MERGED_BASELINE_NOT_REPAIR_CANDIDATE",
-  "sourceSha": "96e92825f9b65cf124317f43b55ce42fc97f5b49",
-  "treeSha": "68f4e926eabeb37bb70382c62b75272cf67bd02c",
+  "classification": "VERIFIED_ACCEPTED_CANDIDATE",
+  "sourceSha": "72b4aaeb0a71d806b7fca7363dd9ca59bbcee644",
+  "treeSha": "43e9c6a4e58cfb934b12789feeb38b588e1cb7c6",
   "artifact": {
-    "artifactId": 12447007335,
-    "zipSha256": "3b4889621dfd2f6f8cf2701dc2dddbffb97ec05e6444e2a046683bf7b29a256a",
-    "innerArchiveSha256": "18e76c769d2a9232032e4a4d28214b051716f4a8fc3c795cfee8b643ed9802d6",
+    "sourceSha": "72b4aaeb0a71d806b7fca7363dd9ca59bbcee644",
+    "treeSha": "43e9c6a4e58cfb934b12789feeb38b588e1cb7c6",
+    "artifactId": 12465654343,
+    "runId": 39870749850,
+    "zipSha256": "3502e74ed784a8a9bbaf9ed9a64a23cd97d89a2ce90a920883e4f5599af01f1f",
+    "innerArchiveSha256": "80e62905ef11993b66d7653f530d86ac9d5794c7bfb7c349bc66ede36d78b5ea",
     "treeRecomputed": true,
-    "trackedBlobsVerified": 2624,
-    "runId": 39827670846,
-    "sourceSha": "96e92825f9b65cf124317f43b55ce42fc97f5b49",
-    "treeSha": "68f4e926eabeb37bb70382c62b75272cf67bd02c"
+    "trackedBlobsVerified": 2666
   },
   "blobMismatches": [],
-  "computedTree": "68f4e926eabeb37bb70382c62b75272cf67bd02c",
+  "computedTree": "43e9c6a4e58cfb934b12789feeb38b588e1cb7c6",
   "contracts": {
-    "sourceSha": "96e92825f9b65cf124317f43b55ce42fc97f5b49",
+    "sourceSha": "72b4aaeb0a71d806b7fca7363dd9ca59bbcee644",
     "version": "hsm.money.v1",
     "sha256": {
       "apps/api/src/modules/money/ports/activation.port.ts": "5f9737d2204f0fffd5345a59b180b15043a28200d34536ba72c9cf7accbb921e",
       "apps/api/src/modules/money/ports/collection.port.ts": "e96d707809410056356b50ff5086be7d8bc71693445fb752fcf090ac7b6e23d3",
       "apps/api/src/modules/money/ports/finance-read.port.ts": "daa60c7398fa4b164375c0b7e294efa593d3f4217d4279220dcd3fb252c4bf80",
       "apps/api/src/modules/money/ports/refund.port.ts": "36b8db533189f787fdb8cef89c69f43eac39dc020d582d69904438c1bdc39dfb"
-    },
-    "qualification": "Four exact port file digests derived from independently verified source archive; repeat on repair candidate."
+    }
   },
-  "method": "Downloaded in memory; verified ZIP SHA256 against GitHub metadata, inner gzip digest, every tracked Git blob and recomputed complete Git tree. No file extraction in initial audit."
+  "method": "Verified ZIP and inner archive digests, every archive file mode and Git blob against the exact source, and recomputed the complete Git tree using a separate temporary index."
 }

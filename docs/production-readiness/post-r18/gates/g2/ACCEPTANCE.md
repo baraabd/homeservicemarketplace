@@ -1,5 +1,37 @@
 # G2 — Acceptance evidence
 
+## Verified technical acceptance — 2026-10-22T23:38:30.107Z
+
+Candidate `72b4aaeb0a71d806b7fca7363dd9ca59bbcee644`, tree `43e9c6a4e58cfb934b12789feeb38b588e1cb7c6`, passed all 38 exact-source checks,
+including the independent official CodeQL result with zero annotations.
+The source ZIP and inner archive digests, all 2,666 tracked blobs and the
+reconstructed tree were independently verified. The four `hsm.money.v1` port
+digests remain unchanged. R25 real replica/recovery evidence, R26 real-cookie
+security evidence and inspected synthetic gallery/PDF screenshots, R27 complete
+comparable measurements with all original ceilings, and R28 Linux/Windows
+configuration controls are linked in the machine evidence record.
+
+The actual PostgreSQL/Redis API job passes 6,586 tests in
+347 suites with zero failures. Its 81 pre-existing gated tests are
+explicitly excluded from the pass count. Both projection suites execute all
+64 cases without skips, including isolated schemas and generic plans.
+The three separate compiled-worker recovery tests also pass.
+
+G2 is **technically ACCEPTED**. PR #183 is the separate review publication and
+has not been merged. Wave 3 remains BLOCKED until owner-reviewed merged
+publication is verified and lane sessions are explicitly assigned. Wave 4
+additionally requires G3; R38 final certification requires G4. R39 has no package
+in this registry. R28 hosted prerequisites and R16/R18 policy holds remain.
+
+Evidence: `SOURCE_MANIFEST.json`, `ACCEPTANCE_EVIDENCE.json`, and `evidence/`.
+No containing commit SHA, owner approval, hosted acceptance or lane execution
+is inferred from these results.
+
+## Historical implementation validation
+
+The following earlier local runs are retained as history; only the source-bound
+evidence above accepts the current candidate.
+
 ## Current scope
 
 This successor is implemented on the owner-merged base `96e92825f9b65cf124317f43b55ce42fc97f5b49` (tree `68f4e926eabeb37bb70382c62b75272cf67bd02c`). New-source integrated acceptance remains pending until the published candidate's required workflows and artifacts are independently verified. The active machine manifest is authoritative; historical PASS labels cannot release a wave.

@@ -1,20 +1,21 @@
 # G2 — Current blockers and closure owners
 
-The active decision is controlled by `SOURCE_MANIFEST.json`. This 2026-10-22 successor supersedes the earlier inspection record; its original text remains at execution base `96e92825f9b65cf124317f43b55ce42fc97f5b49` and must not be read as current implementation evidence.
+The authoritative `SOURCE_MANIFEST.json` records technical acceptance of
+`72b4aaeb0a71d806b7fca7363dd9ca59bbcee644` (tree `43e9c6a4e58cfb934b12789feeb38b588e1cb7c6`). All 38 exact-source checks and six required
+evidence categories passed. Earlier blocked records remain in Git history.
 
-| Item                            | Current observation                                                                                                                   | Owner and closure proof                                                                                                                     |
-| ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
-| Earlier combined CI/R25 failure | Resolved on merged baseline 96e928:30/30 checks and exact-source13API+1browser recovery pass.                                         | Coordinator must still verify the new repair candidate's complete CI and R25 artifact.                                                      |
-| R28 missing implementation      | Resolved: #179 and corrective #181 are merged; Linux/Windows controls each pass448 cases on the merged baseline.                      | New-candidate configuration evidence required. Hosted authority remains separate.                                                           |
-| Missing future packages         | Resolved as source preparation: complete original R29–R38 package hash matches G1 provenance.                                         | Coordinator validates conditional exact ownership; no future implementation is claimed.                                                     |
-| Four R27 statement ceilings     | Repair implemented; local projection oracle passes27 tests. Real HTTP/Redis/browser/planner measurements pending on published source. | Coordinator must prove unchanged5/10/7/3 ceilings and all other original budgets. No threshold waiver.                                      |
-| Historical R27 comparability    | Latest old experiment rejects mismatched lockfile digests.                                                                            | New explicit96e928baseline/candidate experiment uses identical lock and harness; oldG1 evidence remains failed/incomparable history.        |
-| Exact-source acceptance         | New full CI/officialCodeQL/source artifact/R24/R25/R26/R27/R28 evidence pending.                                                      | Coordinator records verified commit/tree/run/artifact identities, complete check inventory and all six categories.                          |
-| G2 publication                  | Not merged by this task; no Wave 3 start authorization.                                                                               | Owner approves/merges concrete reviewed publication; coordinator verifies resulting source, ancestry and postmerge checks before readiness. |
-| G3 / Wave 4                     | Not executed or accepted.                                                                                                             | R29–R33 implementations and actual integrated money flows must first satisfy G3; only then may R34–R38 start.                               |
+| Item                                     | State and remaining action                                                                                    | Owner                            |
+| ---------------------------------------- | ------------------------------------------------------------------------------------------------------------- | -------------------------------- |
+| API projections and isolated schema      | Fixed; actual PostgreSQL integration and query plans passed.                                                  | Closed by verified candidate     |
+| R27 checkout, comparability and ceilings | All three sources measured; original budgets and complete comparison passed.                                  | Closed by verified candidate     |
+| R36 scanner false positive               | Exact reviewed historical fingerprint only; current source/history scan passes and canary detection retained. | Closed by verified candidate     |
+| G3 source-artifact review finding        | Exact source/tree and complete provenance now required; twelve negative regressions pass.                     | Closed by verified candidate     |
+| G2 owner publication                     | PR #183 requires owner review/merge, followed by verified merged identity, ancestry and postmerge checks.     | Repository owner and coordinator |
+| Wave 3 sessions                          | R29–R33 remain blocked until verified G2 publication and explicit isolated writer/session assignments.        | Coordinator after publication    |
+| G3 / Wave 4                              | Actual R29–R33 implementations and integrated evidence must satisfy G3 before R34–R38 start.                  | Future coordinator               |
+| R39                                      | No supplied package or acceptance criteria exist in the current registry.                                     | Owner supplies scope             |
 
-## Continuing external and policy holds
-
-R28 hosted target/TLS/proxy/Redis/secret/resource evidence, R16 funding/payout authority, R18 owner decisions and repository-wide security/protection verification remain with their respective owners. G2's configuration-only R28 option does not authorize hosted resources, live money, permission grants or deployment.
-
-No passing local suite, stale artifact, copied PASS label or green measurement-only workflow releases a gate. The current workflow now requires both comparable complete measurements and the original candidate budget checks.
+R28 hosted target/TLS/proxy/Redis/secret/resource evidence, R16 payout authority,
+R18 owner decisions and repository-wide security/protection verification retain
+their existing holds. Configuration-only R28 acceptance does not grant hosting,
+live money, account changes, resource spending, deployment or release approval.
