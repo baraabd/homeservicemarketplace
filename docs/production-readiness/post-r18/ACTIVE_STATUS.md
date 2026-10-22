@@ -16,7 +16,7 @@ G1 remains accepted and owner-published at its immutable frozen source. G2 is **
 | R27 | Measured startup, bundle and database performance                                  | 2    | READY_TO_START           | feat/r27-performance-capacity      | #173 |
 | R28 | Authorized hosted topology, infrastructure and release inputs                      | 2    | READY_TO_START           | feat/r28-hosted-platform           | #179 |
 | R29 | (pending package)                                                                  | 3    | RESERVED_PENDING_PACKAGE | —                                  | —    |
-| R30 | (pending package)                                                                  | 3    | RESERVED_PENDING_PACKAGE | —                                  | —    |
+| R30 | Manual subscription payment rails and protected receipt review                     | 3    | PLANNED                  | feat/r30-manual-payment-review     | —    |
 | R31 | (pending package)                                                                  | 3    | RESERVED_PENDING_PACKAGE | —                                  | —    |
 | R32 | Refund eligibility, reservations and ambiguous-outcome recovery                    | 3    | PLANNED                  | feat/r32-refund-recovery           | —    |
 | R33 | (pending package)                                                                  | 3    | RESERVED_PENDING_PACKAGE | —                                  | —    |
@@ -32,6 +32,8 @@ Wave 1 `SANDBOX_ACCEPTED` retains G1 scope. Wave 2 `READY_TO_START` is the histo
 
 R28 Draft #179 supplies the selected checked platform/edge delivery. Its twelve files were imported exactly at the initial G2 source; PR #180 adds one coordinator-owned portable test-fixture correction, while the runtime reader and eleven other peer files remain unchanged. Coordinator CI/shutdown integration has separate exact leases. Parallel G2 Draft #178 remains a historical blocked closeout record and is not merged or overwritten. The absent hosting/registry/DNS/secrets/spend approvals remain `HOSTED_ENVIRONMENT_BLOCKED`. Local configuration validation cannot establish hosting or release acceptance.
 
-R32 is `PLANNED` from the exact supplied full prompt, with a null frozen base and held proposed ownership. R29/R30/R31/R33 and Wave 4 retain their unprovided-package reservations. Their shorthand scope notes are not invented authoritative titles or executable assignments.
+R30 is conditionally `PLANNED` from the exact supplied full prompt at `../r30/PROMPT.md`, on `feat/r30-manual-payment-review` with dependencies R24/R20/R21/R22/R23. Its 70 proposed lane/test/evidence paths are held for review, its frozen base remains null and its Wave 3 lane remains `BLOCKED`. This preparation records no shared runtime lease and grants no start before verified G2 approval/publication. See `../r30/shared-change-requests/CR-001-g2-registration.md`.
+
+R32 is `PLANNED` from the exact supplied full prompt, with a null frozen base and held proposed ownership. R29/R31/R33 and Wave 4 retain their unprovided-package reservations. Their shorthand scope notes are not invented authoritative titles or executable assignments.
 
 See `gates/g2/SOURCE_MANIFEST.json`, `gates/g2/OWNERSHIP.md` and `waves/WAVE_03.md`. R16/R18 live-money, payout, verification and release holds remain unchanged. No merge or deployment is performed.

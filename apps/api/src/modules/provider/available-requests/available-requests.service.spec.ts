@@ -9,6 +9,7 @@ import type { BidRepository } from '../../../infrastructure/persistence/bids/bid
 import type {
   ProviderProfileRepository,
   ProviderProfileWithCategories,
+  ProviderAvailableRequestProfile,
 } from '../../../infrastructure/persistence/bids/provider-profile.repository';
 import type {
   ServiceRequestRepository,
@@ -53,6 +54,7 @@ function makeProfile(
     headline: null,
     phoneNumber: null,
     serviceAreaCity: 'Riyadh',
+    serviceAreaCityKey: null,
     serviceAreaCountry: 'SA',
     serviceAreaLat: null,
     serviceAreaLng: null,
@@ -132,11 +134,23 @@ function makeMocks(
     catalog?: ServiceCategory[];
   } = {},
 ) {
+  const profile = args.profile === undefined ? makeProfile([]) : args.profile;
+  const feedProfile: ProviderAvailableRequestProfile | null = profile && {
+    id: profile.id,
+    userId: profile.userId,
+    serviceAreaCity: profile.serviceAreaCity,
+    serviceAreaCityKey: profile.serviceAreaCityKey,
+    serviceAreaLat: profile.serviceAreaLat,
+    serviceAreaLng: profile.serviceAreaLng,
+    serviceAreaRadiusKm: profile.serviceAreaRadiusKm,
+    serviceCategories: profile.serviceCategories.map(({ serviceCategoryId }) => ({
+      serviceCategoryId,
+    })),
+  };
   return {
     providers: {
-      findByUserIdWithCategories: jest
-        .fn()
-        .mockResolvedValue(args.profile === undefined ? makeProfile([]) : args.profile),
+      findByUserIdForAvailableRequests: jest.fn().mockResolvedValue(feedProfile),
+      findByUserIdWithCategories: jest.fn().mockResolvedValue(profile),
     } as unknown as ProviderProfileRepository,
     requests: {
       listAvailableForProvider: jest.fn().mockResolvedValue(args.rows ?? []),
@@ -177,6 +191,8 @@ describe('AvailableRequestsService.list', () => {
     expect(out.items).toHaveLength(2);
     expect(out.nextCursor).toBeNull();
     expect(out.items[0]).toMatchObject({ id: 'r1', bidsCount: 3 });
+    expect(m.providers.findByUserIdForAvailableRequests).toHaveBeenCalledWith('user-provider-1');
+    expect(m.providers.findByUserIdWithCategories).not.toHaveBeenCalled();
   });
 
   it('emits nextCursor when more rows exist beyond the page', async () => {
