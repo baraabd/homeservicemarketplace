@@ -223,9 +223,11 @@ export class BookingRepository {
     return this.db(tx)
       .$queryRaw<ProviderBookingListProjection[]>(
         Prisma.sql`
-        SELECT page.*, request."addressSnapshot", request."customServiceText",
+        SELECT page.id, page."requestId", page."bidId", page.status::text AS status,
+          page."scheduledAt", page."priceAmount", page.currency, page."createdAt", page."updatedAt",
+          request."addressSnapshot", request."customServiceText",
           category.id AS "categoryId", category.slug AS "categorySlug", category."labelEn" AS "categoryLabelEn",
-          category."labelAr" AS "categoryLabelAr", bid."pricingType", bid.note AS "bidNote",
+          category."labelAr" AS "categoryLabelAr", bid."pricingType"::text AS "pricingType", bid.note AS "bidNote",
           seeker.id AS "seekerId", seeker."firstName" AS "seekerFirstName"
         FROM (
           SELECT booking.* FROM "Booking" booking
@@ -647,7 +649,9 @@ type BookingListRequestProjection = Pick<ServiceRequest, 'addressSnapshot' | 'cu
     | { categoryId: null; categorySlug: null; categoryLabelEn: null; categoryLabelAr: null }
   );
 
-type ProviderBookingListProjection = Booking &
+// Built-in text preserves enum labels without cold-connection pg_type lookups
+// in the raw-query decoder. Predicate columns retain their indexed enum types.
+type ProviderBookingListProjection = Omit<ProviderBookingListRow, 'request' | 'bid' | 'seeker'> &
   BookingListRequestProjection & {
     pricingType: Bid['pricingType'];
     bidNote: Bid['note'];

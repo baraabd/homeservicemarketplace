@@ -1,5 +1,18 @@
 # G2 coordinator ownership
 
+## PR183 cold enum-decoding measurement correction — 2026-10-23
+
+Before edits, root retains the sole-writer lease for
+`apps/api/src/infrastructure/persistence/bookings/booking.repository.ts`,
+`apps/api/test/integration/g2-query-projections.integration.spec.ts`,
+`IMPLEMENTATION.md` and this ownership record. Exact candidate R27 artifact
+12466300374 measures seven application reads plus two PostgreSQL `pg_type`
+catalog reads while decoding enum output on a cold pooled connection. The
+unchanged ceiling correctly fails at nine. Project only consumed scalar fields
+and emit the two enum labels as built-in text, retaining their values and types
+at the application boundary. Add a real PostgreSQL wire-type/equivalence case.
+Do not alter counters, filters, budgets, comparator, pool settings or warm-up.
+
 ## PR183 seeker enum follow-up — 2026-10-23
 
 Before edits, root extends its sole-writer lease to

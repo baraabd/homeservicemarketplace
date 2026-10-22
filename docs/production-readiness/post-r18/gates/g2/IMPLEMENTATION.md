@@ -2,6 +2,25 @@
 
 ## PR183 merged-source correction — 2026-10-23
 
+The exact `c49bc75c07592135fc07538737fa9b652f309ab8` API job passes 6,585
+tests, including all 36 G2 and 27 R27 projection cases without skips. However,
+independently evaluating its R27 candidate artifact 12466300374 finds 51/52
+budgets passing and the provider-booking count at nine instead of seven.
+The report identifies seven application reads plus two `SELECT (no table)`
+calls whose plan reads `pg_type`. The earlier successful `7843ed58` measurement
+also has these two reads in its base phase, but its amplified phase has a warm
+decoder and records seven. This was cold pooled-connection enum decoding,
+not permission to relax a ceiling or relabel a failed measurement.
+
+The provider raw projection now enumerates only consumed scalar fields and
+returns its two enum labels (`status` and `pricingType`) as built-in PostgreSQL
+text. Stored enums, indexed predicates and application-visible values remain
+unchanged. A new actual-PostgreSQL regression wraps the emitted parameterized
+query with `pg_typeof` and requires text wire types while comparing every
+projected value with the original Prisma selector. Counters, query filters,
+warm-up, pool settings, budgets and comparator remain unchanged. The new real
+database regression and complete R27 measurement require fresh exact-head CI.
+
 Real-service job 120132134430 on `99703ddf7def463b935d48bd53f6422bced546d2`
 passed 6,584 tests and the financial generic-plan regression; the remaining
 isolated-schema case then reached the seeker's bid count and exposed the same
