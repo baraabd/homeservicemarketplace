@@ -1,5 +1,56 @@
 # G2 — Wave 2 acceptance repair and future-wave preparation
 
+## PR183 merged-source correction — 2026-10-23
+
+The review head `172776d24bed770440bfb2f4ef702bbff9510b89` merged PR182 with
+the earlier G2 work but retained overlapping implementations. CI reported nine
+API build diagnostics, an unused test fixture, and a stale PR Final SHA.
+The repair-baseline matrix also checked out the candidate instead of its
+independently validated base, so its identity assertion correctly failed.
+
+This correction shares one provider-profile query and one provider-booking
+query across their existing entry points. It removes duplicate types/imports,
+retains the category identifier and permitted seeker identifier in the internal
+projection, and aligns both independent Prisma reference suites with that
+projection. Existing response serializers, authorization, money values, cursor
+ordering, nullable relations and transaction forwarding remain authoritative.
+Both provider and financial lists use the bounded lateral request lookup, so
+the generic planner cannot expand request hydration into a large-table scan.
+The existing PostgreSQL plan regressions remain enabled.
+
+The R27 matrix now selects the actual immutable repair baseline. Four new
+workflow regressions exercise all three checkout selections and retain the
+ancestry, lockfile and unchanged-budget requirements. Neither numeric budgets
+nor the comparison implementation was edited.
+
+Local verification on Node 24.21.0 / pnpm 10.32.1:
+
+- `pnpm install --frozen-lockfile --offline --store-dir /tmp/hsm-g2-pnpm-store`
+  and guarded database `generate`: exit 0; dependency lock unchanged.
+- `pnpm --filter @homeservicemarketplace/api lint`, `typecheck`, and `build`:
+  exit 0. The original typecheck failure is retained in the task's scratch log.
+- `pnpm --filter @homeservicemarketplace/api exec jest --maxWorkers=4`:
+  267 suites passed; 4,887 tests passed; 93 service-gated suites / 1,779 tests
+  skipped by their pre-existing environment gates. No skip was added.
+- `node --test .github/scripts/*.test.mjs scripts/perf/post-r18/lib/*.test.mjs`:
+  575 passed, zero failed/skipped/cancelled.
+- Repository governance, release-baseline and R28 plan validators: exit 0;
+  the R28 result remains configuration-only with hosted prerequisites held.
+
+The first local Jest run lacked the CI configuration fixtures and exposed one
+stale merged mock assertion. After adding the same ignored synthetic environment
+used by CI and correcting the assertion to the actual narrow-profile method,
+the complete hermetic suite passed. A new disposable local PostgreSQL attempt
+was blocked by the executor's UID mapping before server initialization; no
+existing cluster was modified and no local database pass is claimed. Exact-head
+remote database, browser, performance and security evidence is still required.
+
+This publication repairs the review candidate; the active G2 acceptance record
+remains blocked until that evidence is verified. Owner-reviewed merged
+publication and lane assignments are separate start requirements. The current
+registry contains R29–R38 packages; R39 has no supplied package or acceptance
+criteria in this source and is not silently invented by this repair.
+
 ## Scope and authority
 
 The owner requested removal of the G2 blockers on 2026-10-22 so the next phase can begin. This is coordinator implementation, tests and review preparation on `coord/g2-wave3-start-gate`; it is not a new product sprint. The isolated checkout began at owner-merged `develop@96e92825f9b65cf124317f43b55ce42fc97f5b49`, tree `68f4e926eabeb37bb70382c62b75272cf67bd02c`. Mode A applies. Exact file leases were recorded in `OWNERSHIP.md` before every implementation slice. No branch of another session, stash, live database or unmerged peer source was consumed.

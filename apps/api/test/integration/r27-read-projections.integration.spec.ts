@@ -216,6 +216,7 @@ async function harness() {
         customServiceText: row.request.customServiceText,
         category: row.request.category
           ? {
+              id: row.request.category.id,
               slug: row.request.category.slug,
               labelEn: row.request.category.labelEn,
               labelAr: row.request.category.labelAr,
@@ -253,6 +254,7 @@ async function harness() {
         customServiceText: row.request.customServiceText,
         category: row.request.category
           ? {
+              id: row.request.category.id,
               slug: row.request.category.slug,
               labelEn: row.request.category.labelEn,
               labelAr: row.request.category.labelAr,

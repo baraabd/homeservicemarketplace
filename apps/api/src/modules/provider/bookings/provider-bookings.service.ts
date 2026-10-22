@@ -32,7 +32,6 @@ import {
   BookingRepository,
   type ProviderBookingListRow,
   type BookingWithProviderRelations,
-  type ProviderBookingListRow,
 } from '../../../infrastructure/persistence/bookings/booking.repository';
 import { ProviderProfileRepository } from '../../../infrastructure/persistence/bids/provider-profile.repository';
 import { TransactionRunner } from '../../../infrastructure/prisma/transaction.runner';

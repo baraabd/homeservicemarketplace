@@ -278,7 +278,7 @@ describe('ProviderBookingsService', () => {
           },
         },
         bid: { pricingType: full.bid.pricingType, note: full.bid.note },
-        seeker: { firstName: full.seeker.firstName },
+        seeker: { id: full.seeker.id, firstName: full.seeker.firstName },
       };
       const expected = await makeService(makeMocks({ listRows: [full] })).list(
         'user-provider-1',

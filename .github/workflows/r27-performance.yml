@@ -65,7 +65,7 @@ jobs:
       - name: Checkout immutable runtime under test
         uses: actions/checkout@v5
         with:
-          ref: ${{ matrix.source == 'baseline' && env.R27_BASELINE_SHA || env.R27_CANDIDATE_SHA }}
+          ref: ${{ matrix.source == 'baseline' && env.R27_BASELINE_SHA || matrix.source == 'repair-baseline' && env.R27_REPAIR_BASELINE_SHA || env.R27_CANDIDATE_SHA }}
           path: subject
           persist-credentials: false
       - name: Verify repair baseline checkout and dependency identity
@@ -163,7 +163,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Require both measurement jobs to succeed
+      - name: Require every measurement job to succeed
         env:
           MEASURE_RESULT: ${{ needs.measure.result }}
         run: test "$MEASURE_RESULT" = success

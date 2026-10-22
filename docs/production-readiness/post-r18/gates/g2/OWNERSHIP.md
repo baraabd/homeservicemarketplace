@@ -1,5 +1,35 @@
 # G2 coordinator ownership
 
+## PR183 merged-source repair — 2026-10-23
+
+The owner's request to repair PR183 and unblock G2 authorizes root as the sole
+writer for this correction, starting from
+`172776d24bed770440bfb2f4ef702bbff9510b89`. Earlier writer leases are closed;
+this task uses an isolated checkout and no delegated writers. Mode A applies.
+
+Exact repair paths:
+
+- `apps/api/src/infrastructure/persistence/bids/provider-profile.repository.ts`
+- `apps/api/src/infrastructure/persistence/bookings/booking.repository.ts`
+- `apps/api/src/infrastructure/persistence/bookings/booking-list-projections.repository.spec.ts`
+- `apps/api/src/modules/provider/available-requests/available-requests.service.spec.ts`
+- `apps/api/src/modules/provider/bookings/provider-bookings.service.ts`
+- `apps/api/src/modules/provider/bookings/provider-bookings.service.spec.ts`
+- `apps/api/test/integration/g2-query-projections.integration.spec.ts`
+- `apps/api/test/integration/r27-read-projections.integration.spec.ts`
+- `.github/workflows/r27-performance.yml`
+- `.github/scripts/r27-workflow.test.mjs`
+- `docs/production-readiness/post-r18/gates/g2/OWNERSHIP.md`
+- `docs/production-readiness/post-r18/gates/g2/IMPLEMENTATION.md`
+
+Reconcile duplicate read projections introduced by the PR182 merge, retaining
+both consumers and their regression suites, bounded generic plans, server
+authorization and cursor semantics. Correct repair-baseline checkout selection
+and test the workflow wiring. Keep original performance ceilings, comparator,
+G1 identity, dependency lock, schemas, migrations and all start barriers intact.
+Fresh exact-head CI is required. Publication to the existing review PR is
+authorized; merge, deployment and invented G2 acceptance are not.
+
 ## R30 conditional package registration — 2026-10-22
 
 The owner's standing delegation to prepare G2 coordination and review fixes,

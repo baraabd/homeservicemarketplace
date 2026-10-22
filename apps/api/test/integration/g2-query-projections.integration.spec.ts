@@ -59,7 +59,7 @@ dbDescribe('G2 bounded query projections (real PostgreSQL)', () => {
       },
     },
     bid: { select: { pricingType: true, note: true } },
-    seeker: { select: { firstName: true } },
+    seeker: { select: { id: true, firstName: true } },
   } satisfies Prisma.BookingSelect;
 
   const financialSelect = {

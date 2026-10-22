@@ -18,6 +18,7 @@ const row = {
   currency: 'SEK',
   addressSnapshot: { city: 'Test city', line1: 'Accepted booking address' },
   customServiceText: null,
+  categoryId: 'category',
   categorySlug: 'plumbing',
   categoryLabelEn: 'Plumbing',
   categoryLabelAr: 'سباكة',
@@ -52,7 +53,7 @@ describe('bounded booking list projections', () => {
       request: {
         addressSnapshot: row.addressSnapshot,
         customServiceText: null,
-        category: { slug: 'plumbing', labelEn: 'Plumbing', labelAr: 'سباكة' },
+        category: { id: 'category', slug: 'plumbing', labelEn: 'Plumbing', labelAr: 'سباكة' },
       },
       bid: { pricingType: 'HOURLY', note: 'Original bid note' },
       seeker: { id: 'seeker', firstName: 'Layla' },
@@ -89,7 +90,7 @@ describe('bounded booking list projections', () => {
       request: {
         addressSnapshot: row.addressSnapshot,
         customServiceText: null,
-        category: { slug: 'plumbing', labelEn: 'Plumbing', labelAr: 'سباكة' },
+        category: { id: 'category', slug: 'plumbing', labelEn: 'Plumbing', labelAr: 'سباكة' },
       },
       provider: {
         id: 'provider',
@@ -112,6 +113,7 @@ describe('bounded booking list projections', () => {
     client.$queryRaw.mockResolvedValue([
       {
         ...row,
+        categoryId: null,
         categorySlug: null,
         categoryLabelEn: null,
         categoryLabelAr: null,
