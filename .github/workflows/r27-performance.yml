@@ -4,6 +4,11 @@ on:
   pull_request:
     branches: ['develop']
   workflow_dispatch:
+    inputs:
+      repair_baseline_sha:
+        description: 'Full immutable repair baseline SHA for manual runs'
+        required: true
+        type: string
 
 permissions:
   contents: read
@@ -20,17 +25,18 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        source: [baseline, candidate]
+        source: [baseline, candidate, repair-baseline]
     defaults:
       run:
         working-directory: subject
     env:
       DATABASE_URL: postgresql://r27:r27-local-only@127.0.0.1:54397/hsm_r27_perf
       R27_HARNESS_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+      R27_REPAIR_BASELINE_SHA: ${{ github.event.pull_request.base.sha || inputs.repair_baseline_sha }}
       VITE_API_URL: http://127.0.0.1:4327
       E2E_REAL_API: http://127.0.0.1:4327
       E2E_MAILPIT: http://127.0.0.1:18027
-      R27_CANDIDATE: ${{ matrix.source == 'candidate' && 'true' || 'false' }}
+      R27_CANDIDATE: ${{ matrix.source != 'baseline' && 'true' || 'false' }}
     steps:
       - name: Checkout measurement harness
         uses: actions/checkout@v5
@@ -38,12 +44,29 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           path: harness
           persist-credentials: false
+          fetch-depth: ${{ matrix.source == 'repair-baseline' && '0' || '1' }}
+      - name: Validate immutable repair baseline
+        if: matrix.source == 'repair-baseline'
+        working-directory: harness
+        run: |
+          set -euo pipefail
+          [[ "$R27_REPAIR_BASELINE_SHA" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$R27_REPAIR_BASELINE_SHA" != "$R27_HARNESS_SHA" ]]
+          test "$(git rev-parse HEAD)" = "$R27_HARNESS_SHA"
+          git cat-file -e "${R27_REPAIR_BASELINE_SHA}^{commit}"
+          git merge-base --is-ancestor "$R27_REPAIR_BASELINE_SHA" "$R27_HARNESS_SHA"
       - name: Checkout immutable runtime under test
         uses: actions/checkout@v5
         with:
-          ref: ${{ matrix.source == 'baseline' && '40cdac5c9ce6acaa8dedc0385984a807ae9a84d0' || github.event.pull_request.head.sha || github.sha }}
+          ref: ${{ matrix.source == 'baseline' && '40cdac5c9ce6acaa8dedc0385984a807ae9a84d0' || matrix.source == 'repair-baseline' && env.R27_REPAIR_BASELINE_SHA || github.event.pull_request.head.sha || github.sha }}
           path: subject
           persist-credentials: false
+      - name: Verify repair baseline checkout and dependency identity
+        if: matrix.source == 'repair-baseline'
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$R27_REPAIR_BASELINE_SHA"
+          cmp --silent pnpm-lock.yaml ../harness/pnpm-lock.yaml
       - uses: pnpm/action-setup@v6
         with:
           package_json_file: subject/package.json
@@ -90,7 +113,7 @@ jobs:
           node scripts/perf/post-r18/bundle-report.mjs --label '${{ matrix.source }}' --out-json r27-evidence/bundle.json
           node scripts/perf/post-r18/api-boot.mjs --runs 5 --requests 30 --profile production --out-json r27-evidence/boot.json
           node scripts/perf/post-r18/api-boot-profile.mjs --out-json r27-evidence/boot-profile.json
-          node scripts/perf/post-r18/query-profile.mjs --copies 300 ${{ matrix.source == 'candidate' && '--assert-repairs' || '' }} --out-json r27-evidence/query.json
+          node scripts/perf/post-r18/query-profile.mjs --copies 300 ${{ matrix.source != 'baseline' && '--assert-repairs' || '' }} --out-json r27-evidence/query.json
       - name: Build and typecheck real browser harness
         run: |
           set -euo pipefail

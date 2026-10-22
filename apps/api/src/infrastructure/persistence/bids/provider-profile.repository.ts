@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
+import { Prisma } from '@homeservicemarketplace/database';
 import type {
-  Prisma,
   PrismaTx,
   ProviderProfile,
   ProviderAvailability,
@@ -99,6 +99,19 @@ export type ProviderProfileWithCategories = ProviderProfile & {
   // report the same thing without four chances to diverge.
   categoryApplications: { serviceCategory: ServiceCategory }[];
 };
+
+// The marketplace list only needs its owner's identity, matching area and
+// approved category links. Profile/detail responses retain PROFILE_INCLUDE.
+export type ProviderAvailableRequestProfile = Pick<
+  ProviderProfile,
+  | 'id'
+  | 'userId'
+  | 'serviceAreaLat'
+  | 'serviceAreaLng'
+  | 'serviceAreaRadiusKm'
+  | 'serviceAreaCity'
+  | 'serviceAreaCityKey'
+> & { serviceCategories: Pick<ProviderProfileServiceCategory, 'serviceCategoryId'>[] };
 
 const PROFILE_INCLUDE = {
   serviceCategories: { include: { serviceCategory: true } },
@@ -269,6 +282,35 @@ export class ProviderProfileRepository {
     return this.db(tx).providerProfile.findFirst({
       where: { userId, deletedAt: null },
     });
+  }
+
+  async findByUserIdForAvailableRequests(
+    userId: string,
+    tx?: PrismaTx,
+  ): Promise<ProviderAvailableRequestProfile | null> {
+    const rows = await this.db(tx).$queryRaw<
+      Array<Omit<ProviderAvailableRequestProfile, 'serviceCategories'> & { categoryIds: string[] }>
+    >(Prisma.sql`
+      SELECT profile."id", profile."userId", profile."serviceAreaLat",
+        profile."serviceAreaLng", profile."serviceAreaRadiusKm",
+        profile."serviceAreaCity", profile."serviceAreaCityKey",
+        ARRAY(
+          SELECT link."serviceCategoryId"
+          FROM "ProviderProfileServiceCategory" link
+          WHERE link."providerProfileId" = profile."id"
+          ORDER BY link."serviceCategoryId"
+        ) AS "categoryIds"
+      FROM "ProviderProfile" profile
+      WHERE profile."userId" = ${userId} AND profile."deletedAt" IS NULL
+      LIMIT 1
+    `);
+    const row = rows[0];
+    if (!row) return null;
+    const { categoryIds, ...profile } = row;
+    return {
+      ...profile,
+      serviceCategories: categoryIds.map((serviceCategoryId) => ({ serviceCategoryId })),
+    };
   }
 
   findByUserIdWithCategories(

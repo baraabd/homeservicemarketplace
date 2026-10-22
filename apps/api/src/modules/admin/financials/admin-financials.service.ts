@@ -12,7 +12,7 @@ import type {
 import { AppConfigService } from '../../../config/app-config.service';
 import {
   BookingRepository,
-  type BookingWithAdminRelations,
+  type AdminFinancialBookingListRow,
 } from '../../../infrastructure/persistence/bookings/booking.repository';
 import { ProviderProfileRepository } from '../../../infrastructure/persistence/bids/provider-profile.repository';
 
@@ -113,7 +113,10 @@ function applyFee(amount: number, feeBps: number): number {
   return Math.round((amount * feeBps) / BPS_DENOMINATOR);
 }
 
-function toBookingRow(row: BookingWithAdminRelations, feeBps: number): AdminFinancialsBookingRow {
+function toBookingRow(
+  row: AdminFinancialBookingListRow,
+  feeBps: number,
+): AdminFinancialsBookingRow {
   const platformFee = applyFee(row.priceAmount, feeBps);
   const snapshot = row.request.addressSnapshot as { city?: string };
   return {

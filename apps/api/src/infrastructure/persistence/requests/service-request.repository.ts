@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
+import { Prisma } from '@homeservicemarketplace/database';
 import type {
   BookingStatus,
-  Prisma,
   PrismaTx,
   ScheduleType,
   ServiceCategory,
@@ -112,7 +112,8 @@ export class ServiceRequestRepository {
       deletedAt: null,
       ...(args.status ? { status: args.status } : {}),
     };
-    const rows = (await this.db(tx).serviceRequest.findMany({
+    const db = this.db(tx);
+    const rows = await db.serviceRequest.findMany({
       where,
       take: args.take,
       ...(args.cursor ? { cursor: { id: args.cursor }, skip: 1 } : {}),
@@ -123,34 +124,55 @@ export class ServiceRequestRepository {
       orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
       include: {
         category: true,
-        // Sprint 7.x — latest non-deleted booking, projected narrowly
-        // (id / status / updatedAt only). The service maps this onto
-        // ServiceRequestSummary.activeBooking* so the seeker's Active
-        // Leads carousel renders the booking lifecycle status (e.g.
-        // "In Progress") even though the parent ServiceRequest stays
-        // at BID_ACCEPTED across the booking transitions.
-        bookings: {
-          where: { deletedAt: null },
-          orderBy: [{ updatedAt: 'desc' }, { id: 'desc' }],
-          take: 1,
-          select: { id: true, status: true, updatedAt: true },
-        },
       },
-    })) as ServiceRequestWithCategory[];
-    if (rows.length === 0) return rows;
-    // Aggregate only the authorized page. The relational _count generated a
-    // whole-Bid aggregate before joining this small page (CR-R27-05).
-    const counts = await this.db(tx).bid.groupBy({
-      by: ['requestId'],
-      where: {
-        requestId: { in: rows.map((row) => row.id) },
-        deletedAt: null,
-        status: { not: 'WITHDRAWN' },
-      },
-      _count: { _all: true },
     });
-    const byRequest = new Map(counts.map((row) => [row.requestId, row._count._all]));
-    return rows.map((row) => ({ ...row, _count: { bids: byRequest.get(row.id) ?? 0 } }));
+    if (rows.length === 0) return rows;
+    // Both enrichments start from the authorized page IDs. Keep the bounded
+    // Bid read from CR-R27-05, while sharing its round trip with the latest
+    // visible booking instead of loading another batched relation query.
+    const enrichments = await db.$queryRaw<
+      Array<{
+        requestId: string;
+        bidCount: bigint;
+        bookingId: string | null;
+        bookingStatus: BookingStatus | null;
+        bookingUpdatedAt: Date | null;
+      }>
+    >(Prisma.sql`
+      SELECT page."requestId",
+        (SELECT COUNT(*) FROM "Bid" bid
+          WHERE bid."requestId" = page."requestId"
+            AND bid."deletedAt" IS NULL AND bid."status" <> 'WITHDRAWN') AS "bidCount",
+        latest."id" AS "bookingId", latest."status" AS "bookingStatus",
+        latest."updatedAt" AS "bookingUpdatedAt"
+      FROM (VALUES ${Prisma.join(rows.map((row) => Prisma.sql`(${row.id})`))})
+        AS page("requestId")
+      LEFT JOIN LATERAL (
+        SELECT booking."id", booking."status", booking."updatedAt"
+        FROM "Booking" booking
+        WHERE booking."requestId" = page."requestId" AND booking."deletedAt" IS NULL
+        ORDER BY booking."updatedAt" DESC, booking."id" DESC
+        LIMIT 1
+      ) latest ON TRUE
+    `);
+    const byRequest = new Map(enrichments.map((row) => [row.requestId, row]));
+    return rows.map((row) => {
+      const extra = byRequest.get(row.id);
+      return {
+        ...row,
+        bookings:
+          extra?.bookingId && extra.bookingStatus && extra.bookingUpdatedAt
+            ? [
+                {
+                  id: extra.bookingId,
+                  status: extra.bookingStatus,
+                  updatedAt: extra.bookingUpdatedAt,
+                },
+              ]
+            : [],
+        _count: { bids: Number(extra?.bidCount ?? 0) },
+      };
+    });
   }
 
   // Provider-side feed. Returns only OPEN_FOR_BIDS rows, scoped away

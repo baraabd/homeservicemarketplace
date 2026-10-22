@@ -10,7 +10,7 @@ import type {
 import { BidRepository } from '../../../infrastructure/persistence/bids/bid.repository';
 import {
   ProviderProfileRepository,
-  type ProviderProfileWithCategories,
+  type ProviderAvailableRequestProfile,
 } from '../../../infrastructure/persistence/bids/provider-profile.repository';
 import {
   ServiceRequestRepository,
@@ -71,7 +71,7 @@ export class AvailableRequestsService {
     providerUserId: string,
     query: ProviderAvailableRequestsQuery,
   ): Promise<ProviderAvailableRequestListResponse> {
-    const profile = await this.providers.findByUserIdWithCategories(providerUserId);
+    const profile = await this.providers.findByUserIdForAvailableRequests(providerUserId);
     if (!profile) {
       // ProviderActiveGuard already proved a profile exists; this
       // covers the concurrent soft-delete race only.
@@ -174,7 +174,7 @@ export class AvailableRequestsService {
 function toSummary(
   row: ServiceRequestForProvider,
   bidsCount: number,
-  provider: ProviderProfileWithCategories,
+  provider: Pick<ProviderAvailableRequestProfile, 'serviceAreaLat' | 'serviceAreaLng'>,
 ): ProviderAvailableRequestSummary {
   const snapshot = row.addressSnapshot as unknown as {
     city: string;
