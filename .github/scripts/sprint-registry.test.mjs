@@ -52,6 +52,11 @@ for (const [name, change, pattern] of [
   [
     'an invented title on a reserved id',
     (r) => {
+      // The active package is now recovered; preserve the unknown-package
+      // negative input explicitly instead of making it depend on current work.
+      r.sprints[10].status = 'RESERVED_PENDING_PACKAGE';
+      r.sprints[10].branch = null;
+      r.sprints[10].ownedPaths = null;
       r.sprints[10].title = 'Something';
     },
     /must not carry an invented title/u,
@@ -257,6 +262,10 @@ async function withG2Records(mutate, assertion) {
   const wave2Path = 'docs/production-readiness/post-r18/waves/wave-02.plan.json';
   x.g1 = JSON.parse(await readFile(path.join(root, g1Path), 'utf8'));
   x.wave2 = JSON.parse(await readFile(path.join(root, wave2Path), 'utf8'));
+  const g3Path = 'docs/production-readiness/post-r18/gates/g3/SOURCE_MANIFEST.json';
+  const wave4Path = 'docs/production-readiness/post-r18/waves/wave-04.plan.json';
+  x.g3 = JSON.parse(await readFile(path.join(root, g3Path), 'utf8'));
+  x.wave4 = JSON.parse(await readFile(path.join(root, wave4Path), 'utf8'));
   mutate(x);
   const fixtureRoot = await mkdtemp(path.join(tmpdir(), 'hsm-g2-registry-fixture-'));
   try {
@@ -273,6 +282,8 @@ async function withG2Records(mutate, assertion) {
       [STATUS_INDEX, index],
       [G2_PATH, JSON.stringify(x.gate)],
       [WAVE3_PATH, JSON.stringify(x.wave)],
+      [g3Path, JSON.stringify(x.g3)],
+      [wave4Path, JSON.stringify(x.wave4)],
     ];
     for (const [file, content] of files) {
       await mkdir(path.dirname(path.join(fixtureRoot, file)), { recursive: true });
@@ -406,5 +417,75 @@ test('an accepted G2 file cannot bypass an unmerged G1 prerequisite', async () =
         ),
       );
     },
+  );
+});
+
+test('all recovered Wave 4 packages remain planned with null bases only behind G3', () => {
+  const r = clone();
+  // Explicit blocked preparation fixture survives a later honest G3 release.
+  // The separate active-reader test validates the current publication state.
+  for (const sprint of r.sprints.filter((entry) => entry.wave === 4))
+    Object.assign(sprint, {
+      status: 'PLANNED',
+      frozenBase: null,
+      startBarrier: { gate: 'G3', decision: 'BLOCKED' },
+    });
+  assert.deepEqual(registryProblems(r), []);
+  for (const sprint of r.sprints.filter((entry) => entry.wave === 4)) {
+    assert.equal(sprint.status, 'PLANNED');
+    assert.equal(sprint.frozenBase, null);
+    assert.equal(sprint.startBarrier.gate, 'G3');
+    sprint.startBarrier.gate = 'G2';
+    assert.ok(
+      registryProblems(r).some((problem) =>
+        problem.includes(`${sprint.id} needs a full frozen base`),
+      ),
+    );
+    sprint.startBarrier.gate = 'G3';
+  }
+});
+
+for (const [name, mutate] of [
+  [
+    'missing G3',
+    (x) => {
+      delete x.registry.gates.G3;
+    },
+  ],
+  [
+    'missing Wave 4',
+    (x) => {
+      delete x.registry.waveManifests['4'];
+    },
+  ],
+  [
+    'G2 substituted for G3',
+    (x) => {
+      x.registry.gates.G3 = G2_PATH;
+    },
+  ],
+  [
+    'Wave 3 substituted for Wave 4',
+    (x) => {
+      x.registry.waveManifests['4'] = WAVE3_PATH;
+    },
+  ],
+])
+  test(`the registry reader refuses ${name}`, async () => {
+    await withG2Records(mutate, async (fixtureRoot) => {
+      assert.ok(
+        (await verifyRegistry(fixtureRoot)).includes('G3 records must use the canonical paths'),
+      );
+    });
+  });
+
+test('R38 final evidence join is not a same-wave source-build dependency', () => {
+  const r = clone();
+  const r38 = r.sprints.find((sprint) => sprint.id === 'R38');
+  assert.deepEqual(r38.finalEvidenceJoin, ['R34', 'R35', 'R36', 'R37']);
+  assert.ok(r38.dependencies.every((id) => r.sprints.find((sprint) => sprint.id === id).wave < 4));
+  r38.dependencies.push('R34');
+  assert.ok(
+    registryProblems(r).some((problem) => /R38 may depend only on earlier waves/u.test(problem)),
   );
 });

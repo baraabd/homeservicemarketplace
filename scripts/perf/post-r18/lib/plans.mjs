@@ -51,6 +51,10 @@ export function seqScanFindings(scans, largeTables) {
 /** Short, stable label for a statement: its verb and the tables it names. */
 export function statementLabel(query) {
   const verb = (/^\s*(\w+)/.exec(query)?.[1] ?? '?').toUpperCase();
-  const tables = [...new Set([...query.matchAll(/"public"\."(\w+)"/g)].map((m) => m[1]))];
+  // Prisma's generated SQL qualifies public; parameterized repository SQL
+  // follows the connection's search_path. Label both without treating an
+  // enum cast as a table. This label never determines counts or plan verdicts.
+  const table = /\b(?:FROM|JOIN|UPDATE|INTO)\s+(?:(?:"\w+"|\w+)\.)?"(\w+)"/gi;
+  const tables = [...new Set([...query.matchAll(table)].map((m) => m[1]))];
   return `${verb} ${tables.join(',') || '(no table)'}`;
 }

@@ -31,6 +31,7 @@ import { BookingEventRepository } from '../../../infrastructure/persistence/book
 import {
   BookingRepository,
   type BookingWithProviderRelations,
+  type ProviderBookingListRow,
 } from '../../../infrastructure/persistence/bookings/booking.repository';
 import { ProviderProfileRepository } from '../../../infrastructure/persistence/bids/provider-profile.repository';
 import { TransactionRunner } from '../../../infrastructure/prisma/transaction.runner';
@@ -326,7 +327,7 @@ export class ProviderBookingsService {
   }
 }
 
-function toSummary(row: BookingWithProviderRelations): ProviderBookingSummary {
+function toSummary(row: ProviderBookingListRow): ProviderBookingSummary {
   const snapshot = row.request.addressSnapshot as unknown as AddressSnapshot;
   return {
     id: row.id,

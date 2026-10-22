@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
+import { Prisma } from '@homeservicemarketplace/database';
 import type {
-  Prisma,
   PrismaTx,
   ProviderProfile,
   ProviderAvailability,
@@ -99,6 +99,20 @@ export type ProviderProfileWithCategories = ProviderProfile & {
   // report the same thing without four chances to diverge.
   categoryApplications: { serviceCategory: ServiceCategory }[];
 };
+
+/** The marketplace needs category membership and matching coordinates, not
+ * profile presentation, pending applications or category catalogue details.
+ * This is a read projection, never a substitute for the capability guard. */
+export type ProviderMarketplaceProfile = Pick<
+  ProviderProfile,
+  | 'id'
+  | 'userId'
+  | 'serviceAreaLat'
+  | 'serviceAreaLng'
+  | 'serviceAreaRadiusKm'
+  | 'serviceAreaCity'
+  | 'serviceAreaCityKey'
+> & { serviceCategories: Pick<ProviderProfileServiceCategory, 'serviceCategoryId'>[] };
 
 const PROFILE_INCLUDE = {
   serviceCategories: { include: { serviceCategory: true } },
@@ -279,6 +293,31 @@ export class ProviderProfileRepository {
       where: { userId, deletedAt: null },
       include: PROFILE_INCLUDE,
     }) as Promise<ProviderProfileWithCategories | null>;
+  }
+
+  async findMarketplaceProfileByUserId(
+    userId: string,
+    tx?: PrismaTx,
+  ): Promise<ProviderMarketplaceProfile | null> {
+    const rows = await this.db(tx).$queryRaw<
+      (Omit<ProviderMarketplaceProfile, 'serviceCategories'> & { categoryIds: string[] })[]
+    >(Prisma.sql`
+      SELECT profile.id, profile."userId", profile."serviceAreaLat", profile."serviceAreaLng",
+        profile."serviceAreaRadiusKm", profile."serviceAreaCity", profile."serviceAreaCityKey",
+        ARRAY(SELECT link."serviceCategoryId"
+              FROM "ProviderProfileServiceCategory" link
+              WHERE link."providerProfileId" = profile.id
+              ORDER BY link."serviceCategoryId") AS "categoryIds"
+      FROM "ProviderProfile" profile
+      WHERE profile."userId" = ${userId} AND profile."deletedAt" IS NULL
+      LIMIT 1
+    `);
+    if (!rows[0]) return null;
+    const { categoryIds, ...profile } = rows[0];
+    return {
+      ...profile,
+      serviceCategories: categoryIds.map((serviceCategoryId) => ({ serviceCategoryId })),
+    };
   }
 
   findByIdWithCategories(id: string, tx?: PrismaTx): Promise<ProviderProfileWithCategories | null> {

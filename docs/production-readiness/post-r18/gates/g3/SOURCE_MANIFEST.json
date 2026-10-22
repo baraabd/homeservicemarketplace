@@ -1,0 +1,90 @@
+{
+  "schemaVersion": 1,
+  "gateId": "G3",
+  "decision": "BLOCKED",
+  "authority": "Owner-delegated coordinator preparation; future integration acceptance has not occurred",
+  "candidateSourceSha": null,
+  "candidateTreeSha": null,
+  "frozenBaseSha": null,
+  "frozenTreeSha": null,
+  "prerequisite": {
+    "gateId": "G2",
+    "record": "docs/production-readiness/post-r18/gates/g2/SOURCE_MANIFEST.json",
+    "frozenBaseSha": null,
+    "acceptanceRecordCommitSha": null
+  },
+  "acceptedSprints": [],
+  "mandatoryEvidence": [
+    {
+      "id": "combined-wave3-checks",
+      "status": "NOT_RUN",
+      "sourceSha": null,
+      "treeSha": null,
+      "reference": "docs/production-readiness/post-r18/gates/g3/REQUIREMENTS.md"
+    },
+    {
+      "id": "r29-real-stripe-sandbox",
+      "status": "NOT_RUN",
+      "sourceSha": null,
+      "treeSha": null,
+      "reference": "docs/production-readiness/post-r18/gates/g3/REQUIREMENTS.md"
+    },
+    {
+      "id": "r30-real-manual-review",
+      "status": "NOT_RUN",
+      "sourceSha": null,
+      "treeSha": null,
+      "reference": "docs/production-readiness/post-r18/gates/g3/REQUIREMENTS.md"
+    },
+    {
+      "id": "r31-atomic-subscription-entitlements",
+      "status": "NOT_RUN",
+      "sourceSha": null,
+      "treeSha": null,
+      "reference": "docs/production-readiness/post-r18/gates/g3/REQUIREMENTS.md"
+    },
+    {
+      "id": "r32-refund-ambiguity-recovery",
+      "status": "NOT_RUN",
+      "sourceSha": null,
+      "treeSha": null,
+      "reference": "docs/production-readiness/post-r18/gates/g3/REQUIREMENTS.md"
+    },
+    {
+      "id": "r33-financial-operations",
+      "status": "NOT_RUN",
+      "sourceSha": null,
+      "treeSha": null,
+      "reference": "docs/production-readiness/post-r18/gates/g3/REQUIREMENTS.md"
+    },
+    {
+      "id": "integrated-confirmation-activation-refund-outbox",
+      "status": "NOT_RUN",
+      "sourceSha": null,
+      "treeSha": null,
+      "reference": "docs/production-readiness/post-r18/gates/g3/REQUIREMENTS.md"
+    }
+  ],
+  "blockers": [
+    {
+      "id": "G3-WAVE3-NOT-IMPLEMENTED-AND-ACCEPTED",
+      "owner": "Future G3 coordinator and assigned R29-R33 writers",
+      "reason": "R29-R33 packages are prepared only. No combined real-adapter candidate, integration evidence, accepted G3 source or separately verified G3 publication exists."
+    }
+  ],
+  "publication": {
+    "branch": "coord/g3-wave4-start-gate",
+    "state": "NOT_PREPARED",
+    "acceptanceRecordCommitSha": null,
+    "verifiedMerge": false
+  },
+  "restrictions": {
+    "liveMoney": false,
+    "deploy": false,
+    "merge": false,
+    "accountGrants": false,
+    "spend": false,
+    "preserveG1": true,
+    "preserveR16R18Holds": true
+  }
+}

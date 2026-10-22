@@ -1,30 +1,20 @@
-# G2 blockers and closure owners
+# G2 — Current blockers and closure owners
 
-G2 is BLOCKED. The inspection SHA is not an approved Wave 3 execution SHA.
+The active decision is controlled by `SOURCE_MANIFEST.json`. This 2026-10-22 successor supersedes the earlier inspection record; its original text remains at execution base `96e92825f9b65cf124317f43b55ce42fc97f5b49` and must not be read as current implementation evidence.
 
-| ID | Verified gap | Closure owner and proof |
-| --- | --- | --- |
-| G2-01 | R28 implementation/evidence absent; no implementation branch or PR found | R28 author delivers its bounded source and checked topology. Infrastructure owner supplies separately approved target/account/region/cost inputs. Keep unauthorized hosted actions blocked. |
-| G2-02 | Merged R25 browser command exited 1 in CI 39062646647; R18 and CI aggregates failed | R25 owner reproduces privately, records a sanitized cause, repairs under exact lease, and proves the two-replica/browser run and both aggregates on the integrated candidate. |
-| G2-03 | Integrated R24/R26 money-boundary certification not completed by this review | Coordinator verifies existing effective authorization, confirmation/refund transaction boundaries and published-contract imports on the final candidate; use contract components for future lanes without claiming vendor acceptance. |
-| G2-04 | R27 budget/cache/security handoffs remain unresolved in its evidence | Performance/security owners disposition the concrete shared requests and approve budgets or implement validated improvements. A merged PR does not approve proposed thresholds. |
-| G2-05 | Complete final-candidate required-check and artifact inventory not certified | Coordinator/security owner verifies fresh CI and official CodeQL on the exact candidate, retains evidence and separates repository-wide alert inventory from diff-scoped results. |
+| Item                            | Current observation                                                                                                                   | Owner and closure proof                                                                                                                     |
+| ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| Earlier combined CI/R25 failure | Resolved on merged baseline 96e928:30/30 checks and exact-source13API+1browser recovery pass.                                         | Coordinator must still verify the new repair candidate's complete CI and R25 artifact.                                                      |
+| R28 missing implementation      | Resolved: #179 and corrective #181 are merged; Linux/Windows controls each pass448 cases on the merged baseline.                      | New-candidate configuration evidence required. Hosted authority remains separate.                                                           |
+| Missing future packages         | Resolved as source preparation: complete original R29–R38 package hash matches G1 provenance.                                         | Coordinator validates conditional exact ownership; no future implementation is claimed.                                                     |
+| Four R27 statement ceilings     | Repair implemented; local projection oracle passes27 tests. Real HTTP/Redis/browser/planner measurements pending on published source. | Coordinator must prove unchanged5/10/7/3 ceilings and all other original budgets. No threshold waiver.                                      |
+| Historical R27 comparability    | Latest old experiment rejects mismatched lockfile digests.                                                                            | New explicit96e928baseline/candidate experiment uses identical lock and harness; oldG1 evidence remains failed/incomparable history.        |
+| Exact-source acceptance         | New full CI/officialCodeQL/source artifact/R24/R25/R26/R27/R28 evidence pending.                                                      | Coordinator records verified commit/tree/run/artifact identities, complete check inventory and all six categories.                          |
+| G2 publication                  | Not merged by this task; no Wave 3 start authorization.                                                                               | Owner approves/merges concrete reviewed publication; coordinator verifies resulting source, ancestry and postmerge checks before readiness. |
+| G3 / Wave 4                     | Not executed or accepted.                                                                                                             | R29–R33 implementations and actual integrated money flows must first satisfy G3; only then may R34–R38 start.                               |
 
-## R25 observed failure, not a guessed diagnosis
+## Continuing external and policy holds
 
-Run: https://github.com/baraabd/homeservicemarketplace/actions/runs/39062646647
-Job: 117484531044. Attempt: `20261017193408059-828a2209`.
-Eight runner commands exited 0, including API integration 13/13; the browser
-command exited 1 without timeout or signal. The workflow deliberately retained
-raw browser details privately. The downloaded safe artifact does not name an
-assertion. A CSP, timing, authentication or networking cause is not established.
-Do not relax assertions, add retries, publish traces or disable the required job.
+R28 hosted target/TLS/proxy/Redis/secret/resource evidence, R16 funding/payout authority, R18 owner decisions and repository-wide security/protection verification remain with their respective owners. G2's configuration-only R28 option does not authorize hosted resources, live money, permission grants or deployment.
 
-## Publication and subsequent ownership
-
-After source blockers close, inspect the final owner-merged candidate, complete
-CR-001 and publish a reviewed acceptance record. Record its verified merge in a
-separate post-merge handoff. Only then issue READY_TO_START against the full
-frozen SHA. No current blocked report, green document test or conditional R29
-reservation releases that barrier. R30-R33 need their actual full packages and
-exact non-overlapping ownership; no branch or title is invented for them here.
+No passing local suite, stale artifact, copied PASS label or green measurement-only workflow releases a gate. The current workflow now requires both comparable complete measurements and the original candidate budget checks.

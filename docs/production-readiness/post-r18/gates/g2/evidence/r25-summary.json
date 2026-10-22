@@ -1,14 +1,15 @@
 {
   "schemaVersion": 1,
   "kind": "DERIVED_SAFE_SUMMARY",
-  "runId": 39062646647,
-  "artifactId": 12111448781,
-  "zipSha256": "1ce6534f4377fad0e3c6a8177b05ff09389a30693bc402be634b1843f84798a6",
+  "runId": 39827670971,
+  "artifactId": 12448385512,
+  "zipSha256": "3393bf0bc41668f1bda3dbb1ca31b641d14fe07ac6069885702c6d1dd12f2918",
   "zipDigestVerified": true,
-  "attempt": "20261017193408059-828a2209",
-  "headSha": "4e87bf03663fb3c72ffee983fdb70c2863e1ce8a",
-  "treeSha": "eaca9cdeab15e719570f7997c4fc3bbeb64e562e",
-  "status": "INTEGRATION_PENDING",
+  "attempt": "20261022180650437-871c74a2",
+  "headSha": "96e92825f9b65cf124317f43b55ce42fc97f5b49",
+  "treeSha": "68f4e926eabeb37bb70382c62b75272cf67bd02c",
+  "frozenBaseSha": "40cdac5c9ce6acaa8dedc0385984a807ae9a84d0",
+  "status": "SANDBOX_ACCEPTED",
   "api": {
     "suites": 1,
     "passed": 13,
@@ -17,70 +18,142 @@
     "success": true
   },
   "browser": {
-    "exitCode": 1,
+    "passed": 1,
+    "failed": 0,
+    "skipped": 0,
+    "flaky": 0,
+    "exitCode": 0,
     "timedOut": false,
-    "signal": null,
-    "passed": null,
-    "failed": null,
-    "skipped": null,
-    "assertion": "NOT_PUBLISHED"
+    "signal": null
   },
   "commands": [
     {
       "label": "migrations",
+      "command": ["pnpm", "--filter", "@homeservicemarketplace/database", "migrate:deploy"],
       "exitCode": 0,
+      "signal": null,
       "timedOut": false,
-      "signal": null
+      "durationMs": 2356
     },
     {
       "label": "database-build",
+      "command": ["pnpm", "--filter", "@homeservicemarketplace/database", "build"],
       "exitCode": 0,
+      "signal": null,
       "timedOut": false,
-      "signal": null
+      "durationMs": 5699
     },
     {
       "label": "seed",
+      "command": ["pnpm", "--filter", "@homeservicemarketplace/database", "seed"],
       "exitCode": 0,
+      "signal": null,
       "timedOut": false,
-      "signal": null
+      "durationMs": 793
     },
     {
       "label": "api-integration",
+      "command": [
+        "pnpm",
+        "--filter",
+        "@homeservicemarketplace/api",
+        "test",
+        "--runTestsByPath",
+        "test/integration/r25-realtime-recovery.integration.spec.ts",
+        "--json",
+        "--outputFile=/home/runner/work/homeservicemarketplace/homeservicemarketplace/apps/web/test-results/r25-ci_39827670971_1/20261022180650437-871c74a2/private/api-results.json"
+      ],
       "exitCode": 0,
+      "signal": null,
       "timedOut": false,
-      "signal": null
+      "durationMs": 19478
     },
     {
       "label": "api-build",
+      "command": ["pnpm", "--filter", "@homeservicemarketplace/api", "build"],
       "exitCode": 0,
+      "signal": null,
       "timedOut": false,
-      "signal": null
+      "durationMs": 24400
     },
     {
       "label": "web-typecheck",
+      "command": ["pnpm", "--filter", "@homeservicemarketplace/web", "typecheck"],
       "exitCode": 0,
+      "signal": null,
       "timedOut": false,
-      "signal": null
+      "durationMs": 17579
     },
     {
       "label": "web-build-A",
+      "command": [
+        "pnpm",
+        "--filter",
+        "@homeservicemarketplace/web",
+        "exec",
+        "vite",
+        "build",
+        "--outDir",
+        "/home/runner/work/homeservicemarketplace/homeservicemarketplace/apps/web/test-results/r25-ci_39827670971_1/20261022180650437-871c74a2/web-A"
+      ],
       "exitCode": 0,
+      "signal": null,
       "timedOut": false,
-      "signal": null
+      "durationMs": 9859
     },
     {
       "label": "web-build-B",
+      "command": [
+        "pnpm",
+        "--filter",
+        "@homeservicemarketplace/web",
+        "exec",
+        "vite",
+        "build",
+        "--outDir",
+        "/home/runner/work/homeservicemarketplace/homeservicemarketplace/apps/web/test-results/r25-ci_39827670971_1/20261022180650437-871c74a2/web-B"
+      ],
       "exitCode": 0,
+      "signal": null,
       "timedOut": false,
-      "signal": null
+      "durationMs": 9624
     },
     {
       "label": "browser",
-      "exitCode": 1,
+      "command": [
+        "pnpm",
+        "--filter",
+        "@homeservicemarketplace/web",
+        "exec",
+        "playwright",
+        "test",
+        "e2e/r25-realtime-recovery.real-api.spec.ts",
+        "--project=chromium-desktop",
+        "--retries=0",
+        "--reporter=json",
+        "--output=/home/runner/work/homeservicemarketplace/homeservicemarketplace/apps/web/test-results/r25-ci_39827670971_1/20261022180650437-871c74a2/private/browser-output"
+      ],
+      "exitCode": 0,
+      "signal": null,
       "timedOut": false,
-      "signal": null
+      "durationMs": 35478
     }
   ],
-  "configurationFingerprint": "5eae2bbfff7c8b63b5f86224af741aea17e944be04c487d0d66c7509edcb998d",
-  "cleanup": "owned process groups stopped"
+  "configurationFingerprint": "96926559180e55d647f21c99753b2eb893814c0dcd2f7a0167ac0c9d6afed8a2",
+  "apiBuild": {
+    "files": 949,
+    "sha256": "c49581acbc05dbc556ab566c8106746afcb9b9f627dd39df6958055f2576aa4e"
+  },
+  "webBuilds": {
+    "A": {
+      "files": 85,
+      "sha256": "034d957e114946c816a5cd870689915efeb9ef2ddfcee30c2268201ae33d64a4"
+    },
+    "B": {
+      "files": 85,
+      "sha256": "c431c7b5069d071102f9a0edb9a0f4264858ae9178a807b386bed68fce0bcc92"
+    }
+  },
+  "cleanup": "owned process groups stopped",
+  "derivation": "Browser exit/signal/timeout copied from actual browser command, never inferred from test counts."
 }

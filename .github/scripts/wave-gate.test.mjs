@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
-import { G2_REQUIRED_EVIDENCE, waveGateProblems } from './wave-gate.mjs';
+import { G2_REQUIRED_EVIDENCE, G3_REQUIRED_EVIDENCE, waveGateProblems } from './wave-gate.mjs';
 
 const read = async (file) =>
   JSON.parse(
@@ -385,6 +385,14 @@ function acceptedG2Fixture(published = true) {
     x.wave.blockedLanes = ['R29', 'R30', 'R31', 'R33'];
     x.wave.lanes[3].status = 'READY_TO_START';
     x.registry.sprints.find((sprint) => sprint.id === 'R32').status = 'READY_TO_START';
+    x.wave.lanes[3].ownershipApproval = 'APPROVED_AFTER_VERIFIED_G2_PUBLICATION';
+    x.registry.sprints.find((sprint) => sprint.id === 'R32').ownershipApproval =
+      x.wave.lanes[3].ownershipApproval;
+    x.wave.lanes[3].sessionAssignment = {
+      sessionId: 'synthetic-r32-session',
+      assignedBy: 'synthetic fixture coordinator',
+      assignedAt: '2026-10-22T00:00:00Z',
+    };
   }
   return x;
 }
@@ -409,6 +417,58 @@ test('published G2 starts only a complete package and retains the R28 hosted hol
   assert.deepEqual(x.wave.startableLanes, ['R32']);
   assert.equal(x.gate.externalBlockers[0].state, 'HOSTED_ENVIRONMENT_BLOCKED');
 });
+
+for (const [name, mutate] of [
+  [
+    'no assigned session',
+    (x) => {
+      x.wave.lanes[3].sessionAssignment = null;
+    },
+  ],
+  [
+    'blank session identity',
+    (x) => {
+      x.wave.lanes[3].sessionAssignment.sessionId = ' ';
+    },
+  ],
+  [
+    'missing assigning coordinator',
+    (x) => {
+      delete x.wave.lanes[3].sessionAssignment.assignedBy;
+    },
+  ],
+  [
+    'missing assignment timestamp',
+    (x) => {
+      delete x.wave.lanes[3].sessionAssignment.assignedAt;
+    },
+  ],
+  [
+    'conditional ownership',
+    (x) => {
+      x.wave.lanes[3].ownershipApproval =
+        'CONDITIONAL_AFTER_VERIFIED_G2_PUBLICATION_AND_SESSION_ASSIGNMENT';
+      x.registry.sprints.find((sprint) => sprint.id === 'R32').ownershipApproval =
+        x.wave.lanes[3].ownershipApproval;
+    },
+  ],
+  [
+    'different registry approval',
+    (x) => {
+      x.registry.sprints.find((sprint) => sprint.id === 'R32').ownershipApproval = 'CONDITIONAL';
+    },
+  ],
+])
+  test(`published G2 refuses ${name}`, () => {
+    const x = acceptedG2Fixture();
+    assert.deepEqual(problems(x), []);
+    mutate(x);
+    assert.ok(
+      problems(x).some((problem) =>
+        /approved ownership and exact writer assignment/u.test(problem),
+      ),
+    );
+  });
 
 for (const [name, make, mutate, pattern] of [
   [
@@ -765,4 +825,675 @@ test('G2 malformed records fail closed without throwing', () => {
   x.wave.lanes[3] = null;
   x.gate.mandatoryEvidence[0] = null;
   assert.ok(problems(x).includes('invalid Wave 3 lane record'));
+});
+
+const g3Initial = {
+  gate: await read('gates/g3/SOURCE_MANIFEST.json'),
+  wave: await read('waves/wave-04.plan.json'),
+  registry: await read('SPRINT_REGISTRY.json'),
+};
+
+// These contract doubles never execute services or grant real gate acceptance.
+function g3Fixture() {
+  const x = structuredClone(g3Initial);
+  Object.assign(x.gate, {
+    decision: 'BLOCKED',
+    candidateSourceSha: null,
+    candidateTreeSha: null,
+    frozenBaseSha: null,
+    frozenTreeSha: null,
+    acceptedSprints: [],
+    blockers: [{ id: 'SYNTHETIC', owner: 'fixture only', reason: 'not implemented' }],
+    prerequisite: {
+      gateId: 'G2',
+      record: x.registry.gates.G2,
+      frozenBaseSha: null,
+      acceptanceRecordCommitSha: null,
+    },
+    mandatoryEvidence: G3_REQUIRED_EVIDENCE.map((id) => ({
+      id,
+      status: 'NOT_RUN',
+      sourceSha: null,
+      treeSha: null,
+      reference: 'synthetic test reference',
+    })),
+    publication: {
+      branch: 'test/g3-fixture',
+      state: 'NOT_PREPARED',
+      acceptanceRecordCommitSha: null,
+      verifiedMerge: false,
+    },
+  });
+  Object.assign(x.wave, {
+    baseSha: null,
+    status: 'BLOCKED',
+    startableLanes: [],
+    blockedLanes: x.wave.lanes.map((lane) => lane.id),
+  });
+  for (const lane of x.wave.lanes) {
+    Object.assign(lane, { frozenBaseSha: null, status: 'BLOCKED' });
+    Object.assign(
+      x.registry.sprints.find((sprint) => sprint.id === lane.id),
+      {
+        status: 'PLANNED',
+        frozenBase: null,
+        startBarrier: { gate: 'G3', decision: 'BLOCKED' },
+      },
+    );
+  }
+  return x;
+}
+
+function acceptedG3Fixture(published = true) {
+  const x = g3Fixture();
+  const source = 'a'.repeat(40);
+  const tree = 'b'.repeat(40);
+  Object.assign(x.gate, {
+    decision: 'ACCEPTED',
+    candidateSourceSha: source,
+    candidateTreeSha: tree,
+    frozenBaseSha: source,
+    frozenTreeSha: tree,
+    blockers: [],
+    acceptedSprints: x.registry.sprints
+      .filter((sprint) => sprint.wave < 4)
+      .map((sprint) => sprint.id),
+    prerequisite: {
+      gateId: 'G2',
+      record: x.registry.gates.G2,
+      frozenBaseSha: 'c'.repeat(40),
+      acceptanceRecordCommitSha: 'd'.repeat(40),
+    },
+    publication: {
+      branch: 'test/g3-fixture',
+      state: published ? 'MERGED' : 'DRAFT_PENDING_OWNER_REVIEW',
+      acceptanceRecordCommitSha: published ? 'e'.repeat(40) : null,
+      verifiedMerge: published,
+    },
+    checks: {
+      completeInventoryVerified: true,
+      observed: [
+        'CI gate',
+        'Analyze JavaScript/TypeScript',
+        'Production governance',
+        'R18 functional completion acceptance',
+        'R25 real replicas and recovery',
+        'R27 comparable measurements and unchanged budgets',
+      ].map((name, index) => ({
+        name,
+        id: 100 + index,
+        headSha: source,
+        status: 'completed',
+        conclusion: 'success',
+      })),
+      officialCodeQL: {
+        id: 200,
+        headSha: source,
+        appSlug: 'github-advanced-security',
+        conclusion: 'success',
+        annotationsCount: 0,
+      },
+    },
+    sourceArtifact: { treeRecomputed: true, trackedBlobsVerified: 100, zipSha256: '1'.repeat(64) },
+    lanes: ['R29', 'R30', 'R31', 'R32', 'R33'].map((id, index) => ({
+      id,
+      branch: x.registry.sprints.find((sprint) => sprint.id === id).branch,
+      merged: true,
+      integration: 'PASS',
+      pr: 800 + index,
+      prUrl: `https://github.com/baraabd/homeservicemarketplace/pull/${800 + index}`,
+      sourceHeadSha: 'f'.repeat(40),
+      mergeCommitSha: '1'.repeat(40),
+    })),
+    integration: {
+      sourceSha: source,
+      treeSha: tree,
+      execution: 'REAL_REGISTERED_IMPLEMENTATIONS',
+      reference: 'synthetic contract only; never execution evidence',
+      participants: ['stripe', 'manual', 'activation', 'refund', 'finance-read'].map((id) => ({
+        id,
+        implementation: `synthetic ${id}`,
+        registrationReference: 'synthetic contract only',
+      })),
+      boundaries: [
+        'route-handler-discovery',
+        'atomic-rollback',
+        'retry-concurrency',
+        'post-commit-outbox',
+      ].map((id) => ({ id, status: 'PASS', reference: 'synthetic contract only' })),
+    },
+  });
+  x.gate.mandatoryEvidence.forEach((entry, index) =>
+    Object.assign(entry, {
+      status: 'PASS',
+      sourceSha: source,
+      treeSha: tree,
+      artifact: {
+        reference: 'synthetic test artifact',
+        sha256: '2'.repeat(64),
+        artifactId: 900 + index,
+        runId: 1000 + index,
+      },
+    }),
+  );
+  x.wave.baseSha = source;
+  if (published)
+    Object.assign(x.wave, {
+      status: 'READY_TO_START',
+      startableLanes: x.wave.lanes.map((lane) => lane.id),
+      blockedLanes: [],
+    });
+  for (const lane of x.wave.lanes) {
+    const sprint = x.registry.sprints.find((entry) => entry.id === lane.id);
+    lane.frozenBaseSha = sprint.frozenBase = source;
+    sprint.startBarrier.decision = 'ACCEPTED';
+    if (published) {
+      lane.status = sprint.status = 'READY_TO_START';
+      lane.ownershipApproval = sprint.ownershipApproval = 'APPROVED_AFTER_VERIFIED_G3_PUBLICATION';
+      lane.sessionAssignment = {
+        sessionId: `synthetic-${lane.id}`,
+        assignedBy: 'fixture coordinator',
+        assignedAt: '2026-10-22T00:00:00Z',
+      };
+    }
+  }
+  return x;
+}
+
+test('G3 preparation has no invented candidate and does not release Wave 4', () => {
+  assert.deepEqual(problems(g3Initial), []);
+  const blocked = g3Fixture();
+  assert.deepEqual(problems(blocked), []);
+  assert.equal(blocked.gate.candidateSourceSha, null);
+  assert.deepEqual(blocked.wave.startableLanes, []);
+});
+
+test('G3 contract double supports technical acceptance held for separate publication', () => {
+  assert.deepEqual(problems(acceptedG3Fixture(false)), []);
+  assert.deepEqual(problems(acceptedG3Fixture()), []);
+  assert.equal(acceptedG3Fixture(false).wave.status, 'BLOCKED');
+  assert.equal(acceptedG3Fixture().wave.r38Finalization.status, 'BLOCKED');
+});
+
+for (const [name, make, mutate, pattern] of [
+  [
+    'G2 substituted as the Wave 4 gate',
+    g3Fixture,
+    (x) => {
+      x.gate.gateId = 'G2';
+      x.wave.startGate = 'G2';
+    },
+    /invalid G3|G2 cannot release/u,
+  ],
+  [
+    'unknown decision',
+    g3Fixture,
+    (x) => {
+      x.gate.decision = 'GREEN';
+    },
+    /unsupported G3/u,
+  ],
+  [
+    'partial candidate',
+    g3Fixture,
+    (x) => {
+      x.gate.candidateSourceSha = 'a'.repeat(40);
+    },
+    /full distinct/u,
+  ],
+  [
+    'zero candidate',
+    g3Fixture,
+    (x) => {
+      x.gate.candidateSourceSha = '0'.repeat(40);
+      x.gate.candidateTreeSha = 'b'.repeat(40);
+    },
+    /full distinct/u,
+  ],
+  [
+    'commit used as tree',
+    g3Fixture,
+    (x) => {
+      x.gate.candidateSourceSha = x.gate.candidateTreeSha = 'a'.repeat(40);
+    },
+    /full distinct/u,
+  ],
+  [
+    'PASS without a candidate',
+    g3Fixture,
+    (x) => {
+      x.gate.mandatoryEvidence[0].status = 'PASS';
+    },
+    /actual candidate/u,
+  ],
+  [
+    'blocked source freeze',
+    g3Fixture,
+    (x) => {
+      x.gate.frozenBaseSha = 'a'.repeat(40);
+    },
+    /cannot freeze/u,
+  ],
+  [
+    'blocked acceptance label',
+    g3Fixture,
+    (x) => {
+      x.gate.acceptedSprints = ['R29'];
+    },
+    /cannot accept/u,
+  ],
+  [
+    'ownerless blocker',
+    g3Fixture,
+    (x) => {
+      delete x.gate.blockers[0].owner;
+    },
+    /identity, owner/u,
+  ],
+  [
+    'earlier prerequisite substitution',
+    g3Fixture,
+    (x) => {
+      x.gate.prerequisite.gateId = 'G1';
+    },
+    /canonical G2/u,
+  ],
+  [
+    'missing package',
+    g3Fixture,
+    (x) => {
+      x.wave.lanes.pop();
+    },
+    /five unique/u,
+  ],
+  [
+    'missing original source prompt',
+    g3Fixture,
+    (x) => {
+      delete x.wave.lanes[0].sourcePrompt;
+    },
+    /source prompt/u,
+  ],
+  [
+    'same-wave dependency',
+    g3Fixture,
+    (x) => {
+      x.wave.lanes[0].dependencies.push('R35');
+    },
+    /earlier waves/u,
+  ],
+  [
+    'duplicate exact file',
+    g3Fixture,
+    (x) => {
+      x.wave.lanes[0].exactFiles.push(x.wave.lanes[0].exactFiles[0]);
+    },
+    /conflicting Wave 4/u,
+  ],
+  [
+    'cross-lane writer collision',
+    g3Fixture,
+    (x) => {
+      x.wave.lanes[1].exactFiles.push(x.wave.lanes[0].exactFiles[0]);
+    },
+    /conflicting Wave 4/u,
+  ],
+  [
+    'unsafe exact path',
+    g3Fixture,
+    (x) => {
+      x.wave.lanes[0].exactFiles.push('../private');
+    },
+    /unsafe or non-exact/u,
+  ],
+  [
+    'prefix instead of exact file',
+    g3Fixture,
+    (x) => {
+      x.wave.lanes[0].exactFiles.push('apps/api/');
+    },
+    /unsafe or non-exact/u,
+  ],
+  [
+    'control character path',
+    g3Fixture,
+    (x) => {
+      x.wave.lanes[0].exactFiles.push('a\u0000.ts');
+    },
+    /unsafe or non-exact/u,
+  ],
+  [
+    'lease without publication prerequisite',
+    g3Fixture,
+    (x) => {
+      delete x.wave.lanes[2].leases[0].startPrerequisite;
+    },
+    /incomplete conditional/u,
+  ],
+  [
+    'lease without source prompt',
+    g3Fixture,
+    (x) => {
+      delete x.wave.lanes[2].leases[0].sourcePrompt;
+    },
+    /incomplete conditional/u,
+  ],
+  [
+    'lease released by G2',
+    g3Fixture,
+    (x) => {
+      x.wave.lanes[2].leases[0].startPrerequisite.gate = 'G2';
+    },
+    /incomplete conditional/u,
+  ],
+  [
+    'lease without handoff',
+    g3Fixture,
+    (x) => {
+      delete x.wave.lanes[2].leases[0].handoff;
+    },
+    /incomplete conditional/u,
+  ],
+  [
+    'incomplete evidence categories',
+    acceptedG3Fixture,
+    (x) => {
+      x.gate.mandatoryEvidence.pop();
+    },
+    /cannot be removed/u,
+  ],
+  [
+    'reordered evidence',
+    acceptedG3Fixture,
+    (x) => {
+      x.gate.mandatoryEvidence.reverse();
+    },
+    /cannot be removed/u,
+  ],
+  [
+    'wrong evidence source',
+    acceptedG3Fixture,
+    (x) => {
+      x.gate.mandatoryEvidence[0].sourceSha = 'f'.repeat(40);
+    },
+    /actual candidate/u,
+  ],
+  [
+    'wrong evidence tree',
+    acceptedG3Fixture,
+    (x) => {
+      x.gate.mandatoryEvidence[0].treeSha = 'f'.repeat(40);
+    },
+    /actual candidate/u,
+  ],
+  [
+    'failed evidence',
+    acceptedG3Fixture,
+    (x) => {
+      x.gate.mandatoryEvidence[0].status = 'FAIL';
+    },
+    /successful artifacts/u,
+  ],
+  [
+    'PASS without artifact identity',
+    acceptedG3Fixture,
+    (x) => {
+      delete x.gate.mandatoryEvidence[0].artifact;
+    },
+    /successful artifacts/u,
+  ],
+  [
+    'missing check inventory',
+    acceptedG3Fixture,
+    (x) => {
+      x.gate.checks.completeInventoryVerified = false;
+    },
+    /check inventory/u,
+  ],
+  [
+    'dropped required check',
+    acceptedG3Fixture,
+    (x) => {
+      x.gate.checks.observed.pop();
+    },
+    /check inventory/u,
+  ],
+  [
+    'duplicate check',
+    acceptedG3Fixture,
+    (x) => {
+      x.gate.checks.observed.push(x.gate.checks.observed[0]);
+    },
+    /check inventory/u,
+  ],
+  [
+    'cancelled check',
+    acceptedG3Fixture,
+    (x) => {
+      x.gate.checks.observed[0].conclusion = 'cancelled';
+    },
+    /check inventory/u,
+  ],
+  [
+    'skipped check',
+    acceptedG3Fixture,
+    (x) => {
+      x.gate.checks.observed[0].conclusion = 'skipped';
+    },
+    /check inventory/u,
+  ],
+  [
+    'wrong-source check',
+    acceptedG3Fixture,
+    (x) => {
+      x.gate.checks.observed[0].headSha = 'f'.repeat(40);
+    },
+    /check inventory/u,
+  ],
+  [
+    'unofficial CodeQL',
+    acceptedG3Fixture,
+    (x) => {
+      x.gate.checks.officialCodeQL.appSlug = 'self-report';
+    },
+    /official successful/u,
+  ],
+  [
+    'annotated CodeQL',
+    acceptedG3Fixture,
+    (x) => {
+      x.gate.checks.officialCodeQL.annotationsCount = 1;
+    },
+    /official successful/u,
+  ],
+  [
+    'unverified tree',
+    acceptedG3Fixture,
+    (x) => {
+      x.gate.sourceArtifact.treeRecomputed = false;
+    },
+    /archive and tree/u,
+  ],
+  [
+    'missing actual lane',
+    acceptedG3Fixture,
+    (x) => {
+      x.gate.lanes.pop();
+    },
+    /five-lane/u,
+  ],
+  [
+    'unmerged source lane',
+    acceptedG3Fixture,
+    (x) => {
+      x.gate.lanes[0].merged = false;
+    },
+    /five-lane/u,
+  ],
+  [
+    'wrong repository closeout',
+    acceptedG3Fixture,
+    (x) => {
+      x.gate.lanes[0].prUrl = 'https://github.com/unrelated/repo/pull/800';
+    },
+    /five-lane/u,
+  ],
+  [
+    'component double as integration',
+    acceptedG3Fixture,
+    (x) => {
+      x.gate.integration.execution = 'CONTRACT_DOUBLES';
+    },
+    /actual registered/u,
+  ],
+  [
+    'missing registered participant',
+    acceptedG3Fixture,
+    (x) => {
+      x.gate.integration.participants.pop();
+    },
+    /actual registered/u,
+  ],
+  [
+    'missing outbox boundary',
+    acceptedG3Fixture,
+    (x) => {
+      x.gate.integration.boundaries.pop();
+    },
+    /actual registered/u,
+  ],
+  [
+    'failed atomic rollback',
+    acceptedG3Fixture,
+    (x) => {
+      x.gate.integration.boundaries[1].status = 'FAIL';
+    },
+    /actual registered/u,
+  ],
+  [
+    'wrong integration source',
+    acceptedG3Fixture,
+    (x) => {
+      x.gate.integration.sourceSha = 'f'.repeat(40);
+    },
+    /actual registered/u,
+  ],
+  [
+    'unaccepted previous lane',
+    acceptedG3Fixture,
+    (x) => {
+      x.gate.acceptedSprints = x.gate.acceptedSprints.filter((id) => id !== 'R30');
+    },
+    /all five|unresolved dependency/u,
+  ],
+  [
+    'duplicate accepted sprint',
+    acceptedG3Fixture,
+    (x) => {
+      x.gate.acceptedSprints.push('R29');
+    },
+    /unique earlier-wave/u,
+  ],
+  [
+    'draft publication releasing lanes',
+    acceptedG3Fixture,
+    (x) => {
+      x.gate.publication = {
+        branch: 'fixture',
+        state: 'DRAFT_PENDING_OWNER_REVIEW',
+        acceptanceRecordCommitSha: null,
+        verifiedMerge: false,
+      };
+    },
+    /separately verified published/u,
+  ],
+  [
+    'unverified publication',
+    acceptedG3Fixture,
+    (x) => {
+      x.gate.publication.verifiedMerge = false;
+    },
+    /verified merged/u,
+  ],
+  [
+    'self-referential publication',
+    acceptedG3Fixture,
+    (x) => {
+      x.gate.publication.acceptanceRecordCommitSha = x.gate.candidateSourceSha;
+    },
+    /verified merged/u,
+  ],
+  [
+    'stale lane base',
+    acceptedG3Fixture,
+    (x) => {
+      x.wave.lanes[0].frozenBaseSha = 'f'.repeat(40);
+    },
+    /inconsistent Wave 4/u,
+  ],
+  [
+    'missing writer assignment',
+    acceptedG3Fixture,
+    (x) => {
+      delete x.wave.lanes[0].sessionAssignment;
+    },
+    /writer assignment/u,
+  ],
+  [
+    'unapproved exact ownership',
+    acceptedG3Fixture,
+    (x) => {
+      x.wave.lanes[0].ownershipApproval = 'PROPOSED';
+    },
+    /writer assignment/u,
+  ],
+  [
+    'live operations permission',
+    acceptedG3Fixture,
+    (x) => {
+      x.gate.restrictions.liveMoney = true;
+    },
+    /no operational authority/u,
+  ],
+  [
+    'dropped R16/R18 hold',
+    acceptedG3Fixture,
+    (x) => {
+      x.gate.restrictions.preserveR16R18Holds = false;
+    },
+    /policy holds/u,
+  ],
+  [
+    'premature R38 final acceptance',
+    acceptedG3Fixture,
+    (x) => {
+      x.wave.r38Finalization.status = 'RELEASE_ACCEPTED';
+    },
+    /serialized R38\/G4/u,
+  ],
+  [
+    'missing R38 peer join',
+    acceptedG3Fixture,
+    (x) => {
+      x.wave.lanes[4].finalEvidenceJoin.pop();
+    },
+    /serialized R38\/G4/u,
+  ],
+])
+  test(`G3 refuses ${name}`, () => {
+    const x = make();
+    mutate(x);
+    const errors = problems(x);
+    assert.ok(
+      errors.some((error) => pattern.test(error)),
+      errors.join('\n'),
+    );
+  });
+
+test('malformed G3 nested records fail closed without throwing', () => {
+  assert.ok(waveGateProblems(null, { wave: 4 }, null).includes('invalid G3 record'));
+  const x = g3Fixture();
+  x.wave.lanes[0] = null;
+  x.gate.mandatoryEvidence[0] = null;
+  assert.ok(problems(x).includes('Invalid Wave 4 lane'));
 });

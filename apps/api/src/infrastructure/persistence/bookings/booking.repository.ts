@@ -147,35 +147,74 @@ export class BookingRepository {
 
   // ─── Provider-side surfaces (Sprint 5 slice 5.4) ──────────────────────────
 
-  // Cursor-paginated list scoped to a single provider. Eager-loads the
-  // request (with category) + bid + provider + seeker (for first name);
-  // the seeker is only included on the provider-side surface where the
-  // booking is already accepted, so first-name exposure is acceptable.
+  // G2/R27: one bounded page + joins instead of six relation-hydration reads.
+  // The provider summary does not consume the provider profile, the full bid
+  // or private seeker fields. Dates remain scalar PostgreSQL values so Prisma
+  // decodes them as Date rather than strings nested in a JSON document.
   listForProvider(
     args: { providerId: string; status?: BookingStatus; take: number; cursor?: string },
     tx?: PrismaTx,
-  ): Promise<BookingWithProviderRelations[]> {
-    const where: Prisma.BookingWhereInput = {
-      providerId: args.providerId,
-      deletedAt: null,
-      ...(args.status ? { status: args.status } : {}),
-    };
-    return this.db(tx).booking.findMany({
-      where,
-      take: args.take,
-      ...(args.cursor ? { cursor: { id: args.cursor }, skip: 1 } : {}),
-      orderBy: [
-        { scheduledAt: { sort: 'desc', nulls: 'last' } },
-        { createdAt: 'desc' },
-        { id: 'desc' },
-      ],
-      include: {
-        request: { include: { category: true } },
-        bid: true,
-        provider: true,
-        seeker: { select: { id: true, firstName: true } },
-      },
-    }) as Promise<BookingWithProviderRelations[]>;
+  ): Promise<ProviderBookingListRow[]> {
+    const cursorJoin = args.cursor
+      ? Prisma.sql`JOIN (
+          SELECT id, "scheduledAt", "createdAt" FROM "Booking"
+          WHERE id = ${args.cursor} AND "providerId" = ${args.providerId} AND "deletedAt" IS NULL
+            ${args.status ? Prisma.sql`AND status = ${args.status}::"BookingStatus"` : Prisma.empty}
+        ) cursor ON TRUE`
+      : Prisma.empty;
+    const cursorWhere = args.cursor
+      ? Prisma.sql`AND (
+          booking."scheduledAt" < cursor."scheduledAt"
+          OR (booking."scheduledAt" IS NULL AND cursor."scheduledAt" IS NOT NULL)
+          OR (booking."scheduledAt" IS NOT DISTINCT FROM cursor."scheduledAt" AND (
+            booking."createdAt" < cursor."createdAt"
+            OR (booking."createdAt" = cursor."createdAt" AND booking.id <= cursor.id)
+          ))
+        )`
+      : Prisma.empty;
+    // Keep Prisma's existing inclusive cursor + skip:1 contract. For this
+    // nullable ordering its cursor must still belong to the filtered page:
+    // a deleted or status-changed own cursor produces an empty page. The
+    // service still rejects foreign/invented cursor IDs before this read.
+    return this.db(tx)
+      .$queryRaw<ProviderBookingListProjection[]>(
+        Prisma.sql`
+        SELECT page.*, request."addressSnapshot", request."customServiceText",
+          category.slug AS "categorySlug", category."labelEn" AS "categoryLabelEn",
+          category."labelAr" AS "categoryLabelAr", bid."pricingType", bid.note AS "bidNote",
+          seeker.id AS "seekerId", seeker."firstName" AS "seekerFirstName"
+        FROM (
+          SELECT booking.* FROM "Booking" booking
+          ${cursorJoin}
+          WHERE booking."providerId" = ${args.providerId} AND booking."deletedAt" IS NULL
+            ${args.status ? Prisma.sql`AND booking.status = ${args.status}::"BookingStatus"` : Prisma.empty}
+            ${cursorWhere}
+          ORDER BY booking."scheduledAt" DESC NULLS LAST, booking."createdAt" DESC, booking.id DESC
+          LIMIT ${args.take} OFFSET ${args.cursor ? 1 : 0}
+        ) page
+        JOIN "ServiceRequest" request ON request.id = page."requestId"
+        LEFT JOIN "ServiceCategory" category ON category.id = request."categoryId"
+        JOIN "Bid" bid ON bid.id = page."bidId"
+        JOIN "User" seeker ON seeker.id = page."seekerUserId"
+        ORDER BY page."scheduledAt" DESC NULLS LAST, page."createdAt" DESC, page.id DESC
+      `,
+      )
+      .then((rows) =>
+        rows.map((row) => ({
+          id: row.id,
+          requestId: row.requestId,
+          bidId: row.bidId,
+          status: row.status,
+          scheduledAt: row.scheduledAt,
+          priceAmount: row.priceAmount,
+          currency: row.currency,
+          createdAt: row.createdAt,
+          updatedAt: row.updatedAt,
+          request: listRequest(row),
+          bid: { pricingType: row.pricingType, note: row.bidNote },
+          seeker: { id: row.seekerId, firstName: row.seekerFirstName },
+        })),
+      );
   }
 
   // R17-E closure — is this id a booking of this provider (deleted or not)?
@@ -454,27 +493,55 @@ export class BookingRepository {
     }));
   }
 
-  // Cursor-paginated list of completed bookings for the admin
-  // financials table. Eager-loads the same shape as listForProvider
-  // PLUS the provider's linked user (so the admin row can show the
-  // provider's email alongside the display name).
+  // The completed-booking page is bounded before relation joins. The exact
+  // existing updatedAt/id cursor and monetary values are retained; this does
+  // not turn a mutable sort key into a snapshot or read the unused Bid row.
   async listCompletedBookingsForAdmin(
     args: { take: number; cursor?: string },
     tx?: PrismaTx,
   ): Promise<BookingWithAdminRelations[]> {
-    const db = this.db(tx);
-    return db.booking.findMany({
-      where: { deletedAt: null, status: 'COMPLETED' },
-      include: {
-        request: { include: { category: true } },
-        bid: true,
-        provider: { include: { user: { select: { id: true, email: true } } } },
-        seeker: { select: { id: true, firstName: true } },
+    const cursorJoin = args.cursor
+      ? Prisma.sql`JOIN (
+          SELECT id, "updatedAt" FROM "Booking" WHERE id = ${args.cursor}
+        ) cursor ON TRUE`
+      : Prisma.empty;
+    const rows = await this.db(tx).$queryRaw<AdminFinancialBookingProjection[]>(Prisma.sql`
+      SELECT page.id, page."priceAmount", page.currency, page."updatedAt",
+        request."addressSnapshot", request."customServiceText",
+        category.slug AS "categorySlug", category."labelEn" AS "categoryLabelEn",
+        category."labelAr" AS "categoryLabelAr",
+        provider.id AS "providerId", provider."displayName" AS "providerDisplayName",
+        provider_user.id AS "providerUserId", provider_user.email AS "providerEmail",
+        seeker.id AS "seekerId", seeker."firstName" AS "seekerFirstName"
+      FROM (
+        SELECT booking.* FROM "Booking" booking
+        ${cursorJoin}
+        WHERE booking."deletedAt" IS NULL AND booking.status = 'COMPLETED'::"BookingStatus"
+          ${args.cursor ? Prisma.sql`AND (booking."updatedAt", booking.id) <= (cursor."updatedAt", cursor.id)` : Prisma.empty}
+        ORDER BY booking."updatedAt" DESC, booking.id DESC
+        LIMIT ${args.take} OFFSET ${args.cursor ? 1 : 0}
+      ) page
+      JOIN "ServiceRequest" request ON request.id = page."requestId"
+      LEFT JOIN "ServiceCategory" category ON category.id = request."categoryId"
+      JOIN "ProviderProfile" provider ON provider.id = page."providerId"
+      LEFT JOIN "User" provider_user ON provider_user.id = provider."userId"
+      JOIN "User" seeker ON seeker.id = page."seekerUserId"
+      ORDER BY page."updatedAt" DESC, page.id DESC
+    `);
+    return rows.map((row) => ({
+      id: row.id,
+      priceAmount: row.priceAmount,
+      currency: row.currency,
+      updatedAt: row.updatedAt,
+      request: listRequest(row),
+      provider: {
+        id: row.providerId,
+        displayName: row.providerDisplayName,
+        user:
+          row.providerUserId === null ? null : { id: row.providerUserId, email: row.providerEmail },
       },
-      take: args.take,
-      ...(args.cursor ? { cursor: { id: args.cursor }, skip: 1 } : {}),
-      orderBy: [{ updatedAt: 'desc' }, { id: 'desc' }],
-    }) as unknown as Promise<BookingWithAdminRelations[]>;
+      seeker: { id: row.seekerId, firstName: row.seekerFirstName },
+    }));
   }
 
   // Per-provider rollup. SUM + COUNT grouped by providerId, sorted
@@ -515,16 +582,81 @@ export type BookingWithProviderRelations = Booking & {
   seeker: Pick<User, 'id' | 'firstName'>;
 };
 
-// Sprint 6.4 — eager-loaded shape used by the admin financials list.
-// Same as the provider shape but includes the provider's linked user
-// so the admin table can show the provider's email alongside the
-// display name.
-export type BookingWithAdminRelations = Booking & {
-  request: ServiceRequest & { category: ServiceCategory | null };
-  bid: Bid;
-  provider: ProviderProfile & { user: Pick<User, 'id' | 'email'> | null };
+type BookingListRequest = Pick<ServiceRequest, 'addressSnapshot' | 'customServiceText'> & {
+  category: Pick<ServiceCategory, 'slug' | 'labelEn' | 'labelAr'> | null;
+};
+
+export type ProviderBookingListRow = Pick<
+  Booking,
+  | 'id'
+  | 'requestId'
+  | 'bidId'
+  | 'status'
+  | 'scheduledAt'
+  | 'priceAmount'
+  | 'currency'
+  | 'createdAt'
+  | 'updatedAt'
+> & {
+  request: BookingListRequest;
+  bid: Pick<Bid, 'pricingType' | 'note'>;
   seeker: Pick<User, 'id' | 'firstName'>;
 };
+
+// The admin financial list's exact projection. The displayed amounts still
+// come from Booking; neither Bid nor the ledger is a second read authority.
+export type BookingWithAdminRelations = Pick<
+  Booking,
+  'id' | 'priceAmount' | 'currency' | 'updatedAt'
+> & {
+  request: BookingListRequest;
+  provider: Pick<ProviderProfile, 'id' | 'displayName'> & {
+    user: Pick<User, 'id' | 'email'> | null;
+  };
+  seeker: Pick<User, 'id' | 'firstName'>;
+};
+
+type BookingListRequestProjection = Pick<ServiceRequest, 'addressSnapshot' | 'customServiceText'> &
+  (
+    | { categorySlug: string; categoryLabelEn: string; categoryLabelAr: string }
+    | { categorySlug: null; categoryLabelEn: null; categoryLabelAr: null }
+  );
+
+type ProviderBookingListProjection = Booking &
+  BookingListRequestProjection & {
+    pricingType: Bid['pricingType'];
+    bidNote: Bid['note'];
+    seekerId: User['id'];
+    seekerFirstName: User['firstName'];
+  };
+
+type AdminFinancialBookingProjection = Pick<
+  Booking,
+  'id' | 'priceAmount' | 'currency' | 'updatedAt'
+> &
+  BookingListRequestProjection & {
+    providerId: ProviderProfile['id'];
+    providerDisplayName: ProviderProfile['displayName'];
+    providerUserId: User['id'] | null;
+    providerEmail: User['email'];
+    seekerId: User['id'];
+    seekerFirstName: User['firstName'];
+  };
+
+function listRequest(row: BookingListRequestProjection): BookingListRequest {
+  return {
+    addressSnapshot: row.addressSnapshot,
+    customServiceText: row.customServiceText,
+    category:
+      row.categorySlug === null
+        ? null
+        : {
+            slug: row.categorySlug,
+            labelEn: row.categoryLabelEn,
+            labelAr: row.categoryLabelAr,
+          },
+  };
+}
 
 // Aggregate result for the earnings-summary endpoint. All amounts are
 // integers in the marketplace's currency unit (cents-equivalent).

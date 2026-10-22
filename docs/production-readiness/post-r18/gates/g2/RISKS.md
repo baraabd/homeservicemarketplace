@@ -1,22 +1,25 @@
-# G2 — Risks and decisions
+# G2 — Risks and continuing holds
 
-| ID                 | State / owner                                           | Concrete condition and treatment                                                                                                                                                                                      |
-| ------------------ | ------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| G2-CI-01           | INTEGRATION_PENDING / coordinator                       | Combined develop's R25 browser case failed; keep the failed source/run/artifact and diagnose/retest the actual repaired candidate. No flake waiver or timeout increase.                                               |
-| G2-R27-01          | POLICY_BLOCKED / performance decision owner             | Existing statement/time budgets are proposals. Populate financial pages, inspect plans and record a concrete calibrated decision; unchanged bounded query counts are not permission to raise a ceiling.               |
-| G2-R27-CURSOR      | INTEGRATION_PENDING / API and performance owner         | Financial ID cursor is re-resolved against mutable updatedAt. Concurrent sort-key changes can shift the boundary; an index cannot establish snapshot semantics. Measure honestly; no silent API contract change.      |
-| R28-HOSTED-01      | HOSTED_ENVIRONMENT_BLOCKED / owner and hosting operator | Account, region, DNS, registry, secret delivery, network, spend, recovery, test environment and rollout authority are absent. Checked declarations cannot prove actual grants, TLS, storage, mail, scan or restore.   |
-| R19-P2 / R16 / R18 | POLICY_BLOCKED / commercial and release owners          | Missing refund/entitlement/market/currency/fee/tax/price/verification policies; live rails and payouts remain off. Subscription revenue is not withdrawable provider earnings.                                        |
-| G2-PUBLICATION     | EXTERNAL_BLOCKED / owner                                | Review and verified merged gate publication are required before R32. The current task is explicitly forbidden to merge/deploy.                                                                                        |
-| W3-PACKAGES-01     | EXTERNAL_BLOCKED / program owner                        | R29/R30/R31/R33 packages are not reconciled in this intake; parallel #178 has separate conditional R29 metadata. Their placeholders own no executable files or branches; the known R32 package is held independently. |
-| R32-ORCHESTRATION  | NOT_STARTED / later R32 session                         | Confirmed-result participant invocation, atomic refund outbox delivery, query-first recovery and approved expiry/eligibility are future code. An additive interface/fixture is no refunded-payment proof.             |
+## Technical risks under verification
 
-## Technical limits
+The read projections reduce round trips while preserving existing service authorization. Their risks are SQL/Prisma equivalence, nullable/tied cursor ordering, schema isolation and planner choices on representative large tables. Real PostgreSQL equivalence and the unchanged R27 generic/bound EXPLAIN and page-size checks are required before acceptance. A smaller query count alone is insufficient.
 
-The local PostgreSQL cluster inherited Asia/Riyadh from its host configuration. A separately retained full API run in a new database with that setting failed four assertions involving delayed outbox work, a legacy clock-skew control and work-access readiness. Standard CI/reference databases use UTC. A fresh task-only UTC database is used for comparable integrated evidence; the original failure is retained. Before hosted acceptance, verify UTC on the actual application/worker/pool sessions. A future multi-zone outbox/readiness change must address SQL clocks and timestamp defaults together and review existing ambiguous timestamps; changing only NOW() comparisons is not a complete correction. The separately fixed OTP boundary is covered in three zones and does not establish universal timezone independence for every model.
+Admin financial pagination still uses mutable `updatedAt` sorting. A concurrent change can repeat or omit an item during a long walk; the historical measurement demonstrates that limitation. This repair does not promise snapshot pagination or alter money values to conceal it.
 
-Local source checks are environment-specific; real-service summaries identify the exact worktree and source. R27's direct index experiment is separate from its verified Docker workflow. Timing comparisons must record runner/CPU/dataset and sample limits; no hosted capacity or universal latency percentage is promised. Baseline and candidate must use the same current harness without overlaying candidate runtime onto the baseline.
+The successor measurement baseline is the current owner-merged source, because the historical G1 lock differs from the accepted patched lock. The unchanged comparator must reject mixed dependency trees. Shared hosted CI hardware and low sample sizes limit timing inference even for comparable source/harness identities. Original proposal budgets remain unchanged; hosted SLOs are not evaluated by the local budget CLI.
 
-The measured additive Booking index changes query access only; both actual generic and parameter-bound Prisma reads were inspected. Its build may take locks and consume storage on a hosted database, so deployment scheduling and any concurrent-build strategy require a separate operator decision. This task applies migrations only on isolated test databases.
+## Publication and future waves
 
-Early private/no-store is expected to reduce unintended private response storage. It retains authorized immutable public-media overrides and normal authorization checks. A header alone does not invalidate every previously cached response or prove all same-user conditional requests return 200; tests assert actual unauthorized requests never reuse private cached content.
+Complete original R29–R38 packages are now available, but they are planning instructions. Conditional file ownership does not create runtime modules or implement a sprint. G2 publication controls R29–R33; G3 controls R34–R38; R38 final certification must wait for the serialized R34–R37 evidence join. No same-wave unmerged source may be imported.
+
+An accepted but unmerged G2 record remains a start hold. The owner reviews the concrete PR; the coordinator subsequently verifies the merge/publication source and next frozen base. No automatic merge, rebase, force push or deployment is authorized.
+
+## External and policy holds
+
+- R28 remains `CONFIGURATION_ONLY / HOSTED_ENVIRONMENT_BLOCKED` until approved target identities, TLS/proxy/Redis configuration, secrets, resources and operator authority exist. No hosted resources are created here.
+- R16 payout/funding authority and R18 commercial/legal/production decisions remain unchanged. Subscription collections are not provider withdrawable balances. No market, currency, tax, fee, grace, refund or verification policy is inferred.
+- New Stripe/manual live integrations require their explicit credentials, merchant/commercial policies and approved confirmation authority. Future component tests cannot manufacture settlement or activation.
+- A successful exact-PR CodeQL result and dependency audit do not establish a clean repository-wide alert inventory or branch protection. These separate launch controls require current authorized verification.
+- Live-money flags, production deployment, resource spend and account/permission grants remain prohibited by this task's scope.
+
+The historical blocked record and failed experiments remain retained so a future coordinator can distinguish resolved defects from missing or stale evidence. No zero-defect or conflict-free integration claim is made.

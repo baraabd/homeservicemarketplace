@@ -12,6 +12,13 @@ concurrency:
   group: r27-performance-${{ github.ref }}
   cancel-in-progress: true
 
+# Successor repair experiment on the owner-merged, dependency-patched source.
+# G1 remains 40cdac5... in its immutable gate; its historical R27 comparison
+# has a different lock digest and must not be relabelled comparable.
+env:
+  R27_BASELINE_SHA: 96e92825f9b65cf124317f43b55ce42fc97f5b49
+  R27_CANDIDATE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+
 jobs:
   measure:
     name: R27 real services (${{ matrix.source }})
@@ -41,7 +48,7 @@ jobs:
       - name: Checkout immutable runtime under test
         uses: actions/checkout@v5
         with:
-          ref: ${{ matrix.source == 'baseline' && '40cdac5c9ce6acaa8dedc0385984a807ae9a84d0' || github.event.pull_request.head.sha || github.sha }}
+          ref: ${{ matrix.source == 'baseline' && env.R27_BASELINE_SHA || env.R27_CANDIDATE_SHA }}
           path: subject
           persist-credentials: false
       - uses: pnpm/action-setup@v6
@@ -125,3 +132,61 @@ jobs:
       - name: Remove only this job's disposable services
         if: always() && env.R27_SERVICES_OWNED == 'true'
         run: docker compose -p hsm-r27-perf -f scripts/perf/post-r18/compose.r27.yml down -v
+
+  acceptance:
+    name: R27 comparable measurements and unchanged budgets
+    needs: measure
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Require both measurement jobs to succeed
+        env:
+          MEASURE_RESULT: ${{ needs.measure.result }}
+        run: test "$MEASURE_RESULT" = success
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ env.R27_CANDIDATE_SHA }}
+          persist-credentials: false
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '24.21.0'
+          package-manager-cache: false
+      - name: Download this run's exact-head baseline
+        uses: actions/download-artifact@v6
+        with:
+          name: r27-baseline-${{ env.R27_CANDIDATE_SHA }}
+          path: r27-acceptance/baseline
+      - name: Download this run's exact-head candidate
+        uses: actions/download-artifact@v6
+        with:
+          name: r27-candidate-${{ env.R27_CANDIDATE_SHA }}
+          path: r27-acceptance/candidate
+      - name: Compare unchanged report semantics and require complete evidence
+        run: |
+          set -euo pipefail
+          node --test .github/scripts/r27-acceptance.test.mjs
+          node scripts/perf/post-r18/compare-reports.mjs \
+            --baseline r27-acceptance/baseline \
+            --candidate r27-acceptance/candidate \
+            --out-json r27-acceptance/comparison.json
+          node .github/scripts/r27-acceptance.mjs \
+            --comparison r27-acceptance/comparison.json \
+            --baseline "$R27_BASELINE_SHA" --candidate "$R27_CANDIDATE_SHA"
+      - name: Enforce the original candidate query and bundle ceilings
+        run: |
+          set -euo pipefail
+          node scripts/perf/post-r18/check-budgets.mjs \
+            --bundle r27-acceptance/candidate/bundle.json \
+            --queries r27-acceptance/candidate/query.json \
+            | tee r27-acceptance/candidate-budgets.txt
+      - name: Retain acceptance findings including failures
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: r27-acceptance-${{ env.R27_CANDIDATE_SHA }}
+          path: |
+            r27-acceptance/comparison.json
+            r27-acceptance/candidate-budgets.txt
+          if-no-files-found: error
+          retention-days: 14

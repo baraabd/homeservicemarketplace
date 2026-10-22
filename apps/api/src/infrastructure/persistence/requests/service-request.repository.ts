@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
+import { Prisma } from '@homeservicemarketplace/database';
 import type {
   BookingStatus,
-  Prisma,
   PrismaTx,
   ScheduleType,
   ServiceCategory,
@@ -91,6 +91,29 @@ export type ServiceRequestForProvider = ServiceRequestWithCategory & {
   seeker: ServiceRequestSeekerPreview;
 };
 
+type SeekerPageDetails = { requestId: string; bidsCount: bigint } & (
+  | ServiceCategory
+  | { [Key in keyof ServiceCategory]: null }
+);
+
+function pageCategory(row: SeekerPageDetails): ServiceCategory | null {
+  if (row.id === null) return null;
+  return {
+    id: row.id,
+    slug: row.slug,
+    labelEn: row.labelEn,
+    labelAr: row.labelAr,
+    icon: row.icon,
+    sortOrder: row.sortOrder,
+    isActive: row.isActive,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+    deletedAt: row.deletedAt,
+    parentId: row.parentId,
+    isLeaf: row.isLeaf,
+  };
+}
+
 // Service-request persistence. Every read site filters `deletedAt: null`
 // so soft-deleted rows never escape the repository. Mutating call sites
 // match on { id, seekerUserId, deletedAt: null } so a foreign id from
@@ -112,7 +135,8 @@ export class ServiceRequestRepository {
       deletedAt: null,
       ...(args.status ? { status: args.status } : {}),
     };
-    const rows = (await this.db(tx).serviceRequest.findMany({
+    const db = this.db(tx);
+    const rows = await db.serviceRequest.findMany({
       where,
       take: args.take,
       ...(args.cursor ? { cursor: { id: args.cursor }, skip: 1 } : {}),
@@ -122,7 +146,6 @@ export class ServiceRequestRepository {
       // skip or duplicate rows.
       orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
       include: {
-        category: true,
         // Sprint 7.x — latest non-deleted booking, projected narrowly
         // (id / status / updatedAt only). The service maps this onto
         // ServiceRequestSummary.activeBooking* so the seeker's Active
@@ -136,21 +159,33 @@ export class ServiceRequestRepository {
           select: { id: true, status: true, updatedAt: true },
         },
       },
-    })) as ServiceRequestWithCategory[];
-    if (rows.length === 0) return rows;
-    // Aggregate only the authorized page. The relational _count generated a
-    // whole-Bid aggregate before joining this small page (CR-R27-05).
-    const counts = await this.db(tx).bid.groupBy({
-      by: ['requestId'],
-      where: {
-        requestId: { in: rows.map((row) => row.id) },
-        deletedAt: null,
-        status: { not: 'WITHDRAWN' },
-      },
-      _count: { _all: true },
     });
-    const byRequest = new Map(counts.map((row) => [row.requestId, row._count._all]));
-    return rows.map((row) => ({ ...row, _count: { bids: byRequest.get(row.id) ?? 0 } }));
+    if (rows.length === 0) return [];
+    // G2/R27: hydrate the category and count bids in ONE page-bounded read.
+    // The authorized page supplies both IDs: do not re-read a request's
+    // category after it may have changed, or restore Prisma's whole-Bid
+    // aggregate (CR-R27-05). Each correlated count uses the requestId index.
+    // All values, including nullable category IDs, remain bound parameters.
+    const details = await db.$queryRaw<SeekerPageDetails[]>(Prisma.sql`
+      SELECT page."requestId", category.*,
+        (SELECT COUNT(*) FROM "Bid" bid
+         WHERE bid."requestId" = page."requestId"
+           AND bid."deletedAt" IS NULL
+           AND bid.status <> 'WITHDRAWN'::"BidStatus") AS "bidsCount"
+      FROM (VALUES ${Prisma.join(
+        rows.map((row) => Prisma.sql`(${row.id}::text, ${row.categoryId}::text)`),
+      )}) AS page("requestId", "categoryId")
+      LEFT JOIN "ServiceCategory" category ON category.id = page."categoryId"
+    `);
+    const byRequest = new Map(details.map((row) => [row.requestId, row]));
+    return rows.map((row) => {
+      const detail = byRequest.get(row.id);
+      return {
+        ...row,
+        category: detail ? pageCategory(detail) : null,
+        _count: { bids: Number(detail?.bidsCount ?? 0) },
+      };
+    });
   }
 
   // Provider-side feed. Returns only OPEN_FOR_BIDS rows, scoped away

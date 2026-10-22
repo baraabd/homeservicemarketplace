@@ -1,14 +1,9 @@
-import type {
-  ProviderProfileServiceCategory,
-  ServiceCategory,
-  ServiceRequest,
-  User,
-} from '@homeservicemarketplace/database';
+import type { ServiceCategory, ServiceRequest, User } from '@homeservicemarketplace/database';
 
 import type { BidRepository } from '../../../infrastructure/persistence/bids/bid.repository';
 import type {
   ProviderProfileRepository,
-  ProviderProfileWithCategories,
+  ProviderMarketplaceProfile,
 } from '../../../infrastructure/persistence/bids/provider-profile.repository';
 import type {
   ServiceRequestRepository,
@@ -35,41 +30,21 @@ function makeCategory(over: Partial<ServiceCategory> = {}): ServiceCategory {
 
 function makeProfile(
   categories: ServiceCategory[] = [],
-  over: Partial<ProviderProfileWithCategories> = {},
-): ProviderProfileWithCategories {
-  const baseDate = new Date('2026-04-30T00:00:00Z');
+  over: Partial<ProviderMarketplaceProfile> = {},
+): ProviderMarketplaceProfile {
   return {
     id: 'pp-provider-1',
     userId: 'user-provider-1',
-    displayName: 'Ada Lovelace',
-    initials: 'AL',
-    avatarUrl: null,
-    ratingAvg: 4.7,
-    reviewCount: 23,
-    completedJobs: 17,
-    verified: true,
-    topPro: false,
-    bio: null,
-    headline: null,
-    phoneNumber: null,
     serviceAreaCity: 'Riyadh',
-    serviceAreaCountry: 'SA',
+    serviceAreaCityKey: null,
     serviceAreaLat: null,
     serviceAreaLng: null,
     serviceAreaRadiusKm: 25,
-    availability: 'ONLINE',
-    status: 'ACTIVE',
-    createdAt: baseDate,
-    updatedAt: baseDate,
-    deletedAt: null,
     serviceCategories: categories.map((c) => ({
-      providerProfileId: 'pp-provider-1',
       serviceCategoryId: c.id,
-      createdAt: baseDate,
-      serviceCategory: c,
-    })) as (ProviderProfileServiceCategory & { serviceCategory: ServiceCategory })[],
+    })),
     ...over,
-  } as ProviderProfileWithCategories;
+  };
 }
 
 // Default seeker preview. Layla Mansour → "Layla M." on the wire.
@@ -125,7 +100,7 @@ function makeRequest(
 
 function makeMocks(
   args: {
-    profile?: ProviderProfileWithCategories | null;
+    profile?: ProviderMarketplaceProfile | null;
     rows?: ServiceRequestForProvider[];
     detailRow?: ServiceRequestForProvider | null;
     bidCounts?: Map<string, number>;
@@ -134,7 +109,7 @@ function makeMocks(
 ) {
   return {
     providers: {
-      findByUserIdWithCategories: jest
+      findMarketplaceProfileByUserId: jest
         .fn()
         .mockResolvedValue(args.profile === undefined ? makeProfile([]) : args.profile),
     } as unknown as ProviderProfileRepository,

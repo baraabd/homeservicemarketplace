@@ -785,14 +785,16 @@
         "ownershipRecord": "docs/production-readiness/r24/OWNERSHIP.md",
         "changeRequest": "docs/production-readiness/r24/shared-change-requests/CR-001-integration.md",
         "integrationPolicy": "After the normal-hook ownership checkpoint, owner-merged develop was integrated into this R24 branch by normal merge, preserving frozen G1 source and incoming peer records. No unmerged R25 import, rebase, force-push, merge to develop or deployment.",
-        "acceptance": "NOT_ASSERTED",
+        "acceptance": "INTEGRATION_PENDING",
         "ownershipCommitSha": "60df8018ea9c76b1cda1c322fb279c7b9d7fde93",
         "integratedDevelopSha": "21089a5065169b78bea5e711a4839e1a467531dc",
         "integrationCommitSha": "65b2a0e59604931a4b8b87acb971c71afaaf9a74",
         "mergeCommitSha": "820913a87c90fd283df58e00827bcc79a1e0ca39",
         "pr": 176,
         "gate": "G2",
-        "gateRecord": "docs/production-readiness/post-r18/gates/g2/SOURCE_MANIFEST.json"
+        "gateRecord": "docs/production-readiness/post-r18/gates/g2/SOURCE_MANIFEST.json",
+        "sourceHeadSha": "22e25216f0b27ebdd0f6454842d43f35fafa8d34",
+        "mergedAtUtc": "2026-10-17T19:28:16Z"
       },
       "requiredEvidence": [
         "docs/production-readiness/r24/IMPLEMENTATION.md",
@@ -803,7 +805,7 @@
         "Exact final-head CI and CodeQL; real-service evidence; limitations and rollback"
       ],
       "pr": 176,
-      "scopeNote": "Historical READY_TO_START preserves the verified G1 start contract. Owner-merged PR #176 is implemented source; execution records the actual merge. G2 integrated acceptance is separately blocked; individual green checks do not certify the combined source.",
+      "scopeNote": "Historical READY_TO_START preserves the verified G1 start contract. Actual implementation is owner-merged; see execution for the reviewed head and merge. Successor G2 integrated acceptance/publication remains separate.",
       "startBarrier": {
         "gate": "G1",
         "decision": "ACCEPTED",
@@ -893,7 +895,7 @@
         "Exact final-head CI and CodeQL; real-service evidence; limitations and rollback"
       ],
       "pr": 175,
-      "scopeNote": "Historical READY_TO_START preserves the verified G1 start contract. Owner-merged PR #175 is implemented source; execution records the actual merge. G2 integrated acceptance is separately blocked; individual green checks do not certify the combined source.",
+      "scopeNote": "Historical READY_TO_START preserves the verified G1 start contract. Actual implementation is owner-merged; see execution for the reviewed head and merge. Successor G2 integrated acceptance/publication remains separate.",
       "startBarrier": {
         "gate": "G1",
         "decision": "ACCEPTED",
@@ -906,8 +908,10 @@
         "mergeCommitSha": "4e87bf03663fb3c72ffee983fdb70c2863e1ce8a",
         "pr": 175,
         "gate": "G2",
-        "acceptance": "NOT_ASSERTED",
-        "gateRecord": "docs/production-readiness/post-r18/gates/g2/SOURCE_MANIFEST.json"
+        "acceptance": "INTEGRATION_PENDING",
+        "gateRecord": "docs/production-readiness/post-r18/gates/g2/SOURCE_MANIFEST.json",
+        "sourceHeadSha": "3fdfddc6599fcd2f5d79b176c2e28471f327fe21",
+        "mergedAtUtc": "2026-10-17T19:28:55Z"
       }
     },
     {
@@ -995,7 +999,7 @@
         "Exact final-head CI and CodeQL; real-service evidence; limitations and rollback"
       ],
       "pr": 174,
-      "scopeNote": "Historical READY_TO_START preserves the verified G1 start contract. Owner-merged PR #174 is implemented source; execution records the actual merge. G2 integrated acceptance is separately blocked; individual green checks do not certify the combined source.",
+      "scopeNote": "Historical READY_TO_START preserves the verified G1 start contract. Actual implementation is owner-merged; see execution for the reviewed head and merge. Successor G2 integrated acceptance/publication remains separate.",
       "startBarrier": {
         "gate": "G1",
         "decision": "ACCEPTED",
@@ -1011,8 +1015,10 @@
         "mergeCommitSha": "6c599618f2a97407093b37ddfa93ad21a41ea7a1",
         "pr": 174,
         "gate": "G2",
-        "acceptance": "NOT_ASSERTED",
-        "gateRecord": "docs/production-readiness/post-r18/gates/g2/SOURCE_MANIFEST.json"
+        "acceptance": "INTEGRATION_PENDING",
+        "gateRecord": "docs/production-readiness/post-r18/gates/g2/SOURCE_MANIFEST.json",
+        "sourceHeadSha": "6bf2669700e80e1727549e17374db40f18111c77",
+        "mergedAtUtc": "2026-10-17T15:28:40Z"
       }
     },
     {
@@ -1097,7 +1103,7 @@
         "Exact final-head CI and CodeQL; real-service evidence; limitations and rollback"
       ],
       "pr": 173,
-      "scopeNote": "Historical READY_TO_START preserves the verified G1 start contract. Owner-merged PR #173 is implemented source; execution records the actual merge. G2 integrated acceptance is separately blocked; individual green checks do not certify the combined source.",
+      "scopeNote": "Historical READY_TO_START preserves the verified G1 start contract. Actual implementation is owner-merged; see execution for the reviewed head and merge. Successor G2 integrated acceptance/publication remains separate.",
       "startBarrier": {
         "gate": "G1",
         "decision": "ACCEPTED",
@@ -1110,8 +1116,10 @@
         "mergeCommitSha": "21089a5065169b78bea5e711a4839e1a467531dc",
         "pr": 173,
         "gate": "G2",
-        "acceptance": "NOT_ASSERTED",
-        "gateRecord": "docs/production-readiness/post-r18/gates/g2/SOURCE_MANIFEST.json"
+        "acceptance": "INTEGRATION_PENDING",
+        "gateRecord": "docs/production-readiness/post-r18/gates/g2/SOURCE_MANIFEST.json",
+        "sourceHeadSha": "8be5ad3f5cc22f350388e2bec854e809e03b487d",
+        "mergedAtUtc": "2026-10-17T15:29:06Z"
       }
     },
     {
@@ -1166,7 +1174,7 @@
         "Exact final-head CI and CodeQL; real-service evidence; limitations and rollback"
       ],
       "pr": 179,
-      "scopeNote": "Historical G1 start retained. The exact twelve-file R28 import from Draft #179 has one coordinator-owned portable test-fixture correction in G2 PR #180; runtime and eleven other peer files remain exact. No hosted acceptance, account, region, spending or deployment is inferred.",
+      "scopeNote": "Historical READY_TO_START preserves the verified G1 start contract. Actual implementation is owner-merged; see execution for the reviewed head and merge. Successor G2 integrated acceptance/publication remains separate.",
       "startBarrier": {
         "gate": "G1",
         "decision": "ACCEPTED",
@@ -1175,67 +1183,232 @@
         "verificationRecord": "docs/production-readiness/post-r18/gates/g1/PUBLICATION_VERIFICATION.json"
       },
       "execution": {
-        "state": "INTEGRATION_PENDING",
+        "state": "MERGED_INTEGRATION_PENDING",
         "gate": "G2",
         "ownershipRecord": "docs/production-readiness/post-r18/gates/g2/OWNERSHIP.md",
         "scope": "CONFIGURATION_ONLY checked plan under the R28 prompt; HOSTED_ENVIRONMENT_BLOCKED retained.",
-        "acceptance": "NOT_ASSERTED",
-        "pr": 179,
-        "deliveryHeadSha": "60b64cd8216294d7476a7a22607ee56feb18dec4",
-        "deliveryTreeSha": "a89d8cdf69f7fa368dc9ffb91fc1b241bdcc49b5",
-        "integrationPolicy": "Initial twelve-file import uses exact peer60b64cd blobs. Coordinator PR #180 changes only its portable adversarial test fixture, with separately scoped verification; eleven other files and runtime remain exact. Peer branch unchanged; no merge or Wave3 release."
-      }
+        "acceptance": "INTEGRATION_PENDING",
+        "pr": 181,
+        "integrationPolicy": "Initial #179 and corrective #181 are owner-merged. Current source96e928 is the successor G2 execution baseline; configuration-only scope and hosted blocker remain.",
+        "sourceHeadSha": "70b7225727d89df0fd040b00ebd37c09383e7d30",
+        "mergeCommitSha": "96e92825f9b65cf124317f43b55ce42fc97f5b49",
+        "mergedAtUtc": "2026-10-22T18:00:53Z",
+        "gateRecord": "docs/production-readiness/post-r18/gates/g2/SOURCE_MANIFEST.json",
+        "historicalDelivery": {
+          "deliveryHeadSha": "60b64cd8216294d7476a7a22607ee56feb18dec4",
+          "deliveryTreeSha": "a89d8cdf69f7fa368dc9ffb91fc1b241bdcc49b5",
+          "integrationPolicy": "Initial twelve-file import uses exact peer60b64cd blobs. Coordinator PR #180 changes only its portable adversarial test fixture, with separately scoped verification; eleven other files and runtime remain exact. Peer branch unchanged; no merge or Wave3 release."
+        }
+      },
+      "correctivePr": 181
     },
     {
       "id": "R29",
-      "title": null,
-      "titleSource": "PENDING_PACKAGE: SPRINT_PLAN.json and this lane prompt were not provided",
+      "title": "Stripe sandbox subscription collections, signed webhooks and refund adapter",
+      "titleSource": "gates/g2/prompts/R29.md",
       "wave": 3,
       "lane": 1,
-      "branch": null,
-      "owner": null,
-      "status": "RESERVED_PENDING_PACKAGE",
+      "branch": "feat/r29-stripe-sandbox-webhooks",
+      "owner": {
+        "lane": "R29 future lane session; coordinator assigns the writer only after verified G2 publication",
+        "coordinator": "Owner-delegated engineering coordinator for baraabd"
+      },
+      "status": "PLANNED",
       "frozenBase": null,
-      "dependencies": null,
-      "legacyAliases": [],
-      "ownedPaths": null,
-      "requiredEvidence": null,
+      "dependencies": ["R24", "R20", "R22", "R23"],
+      "legacyAliases": ["P38", "P39", "P41-stripe-adapter"],
+      "ownedPaths": {
+        "exact": [
+          "apps/api/src/modules/money/adapters/stripe/stripe-bindings.ts",
+          "apps/api/src/modules/money/adapters/stripe/stripe-bindings.spec.ts",
+          "apps/api/src/modules/money/adapters/stripe/stripe-collection.adapter.ts",
+          "apps/api/src/modules/money/adapters/stripe/stripe-collection.adapter.spec.ts",
+          "apps/api/src/modules/money/adapters/stripe/stripe-refund.adapter.ts",
+          "apps/api/src/modules/money/adapters/stripe/stripe-refund.adapter.spec.ts",
+          "apps/api/src/modules/money/adapters/stripe/stripe-sandbox.config.ts",
+          "apps/api/src/modules/money/adapters/stripe/stripe-sandbox.config.spec.ts",
+          "apps/api/src/modules/money/webhooks/stripe/stripe-webhook.controller.ts",
+          "apps/api/src/modules/money/webhooks/stripe/stripe-webhook.controller.spec.ts",
+          "apps/api/src/modules/money/webhooks/stripe/stripe-webhook.service.ts",
+          "apps/api/src/modules/money/webhooks/stripe/stripe-webhook.service.spec.ts",
+          "apps/api/src/modules/money/webhooks/stripe/stripe-webhook.module.ts",
+          "apps/api/test/integration/r29-stripe-sandbox.integration.spec.ts",
+          "scripts/production/stripe-sandbox/verify-sandbox.cjs",
+          "scripts/production/stripe-sandbox/verify-sandbox.test.cjs",
+          "docs/production-readiness/r29/IMPLEMENTATION.md",
+          "docs/production-readiness/r29/ACCEPTANCE.md",
+          "docs/production-readiness/r29/RISKS.md",
+          "docs/production-readiness/r29/ROLLBACK.md",
+          "docs/production-readiness/r29/OWNERSHIP.md",
+          "docs/production-readiness/r29/shared-change-requests/CR-001-sdk-api-pin.md",
+          "docs/production-readiness/r29/shared-change-requests/CR-002-raw-body-wiring.md",
+          "docs/production-readiness/r29/shared-change-requests/CR-003-inbox-binding.md"
+        ],
+        "prefixes": [],
+        "leases": []
+      },
+      "requiredEvidence": [
+        "docs/production-readiness/r29/IMPLEMENTATION.md",
+        "docs/production-readiness/r29/ACCEPTANCE.md",
+        "docs/production-readiness/r29/RISKS.md",
+        "docs/production-readiness/r29/ROLLBACK.md",
+        "All behavioral, negative and integration tests in gates/g2/prompts/R29.md",
+        "Exact source/base/tree and contract/schema versions; checked command exit codes and test counts; source-bound artifacts; final-PR CI and official CodeQL; explicit skipped, blocked, sandbox and hosted states"
+      ],
       "pr": null,
-      "scopeNote": "Payment confirmation producer consumed through R24 (coordinator prompt, Mode 3.4); Wave 3 assigns Stripe and webhooks to one owner and manual UI to another, without stating which ID is which."
+      "scopeNote": "Stripe transport and signed intake implement the existing collection/refund ports and durable MoneyExternalEvent inbox. Existing MoneyCommandService owns attempts, confirmation and transaction boundaries; no parallel billing or ledger authority.",
+      "startBarrier": {
+        "gate": "G2",
+        "decision": "BLOCKED",
+        "publication": "NOT_RELEASED",
+        "sourceRecord": "docs/production-readiness/post-r18/gates/g2/SOURCE_MANIFEST.json"
+      },
+      "ownershipApproval": "CONDITIONAL_AFTER_VERIFIED_G2_PUBLICATION_AND_SESSION_ASSIGNMENT",
+      "sourcePrompt": "docs/production-readiness/post-r18/gates/g2/prompts/R29.md"
     },
     {
       "id": "R30",
-      "title": null,
-      "titleSource": "PENDING_PACKAGE: SPRINT_PLAN.json and this lane prompt were not provided",
+      "title": "Manual subscription payment rails and protected receipt review",
+      "titleSource": "gates/g2/prompts/R30.md",
       "wave": 3,
       "lane": 2,
-      "branch": null,
-      "owner": null,
-      "status": "RESERVED_PENDING_PACKAGE",
+      "branch": "feat/r30-manual-payment-review",
+      "owner": {
+        "lane": "R30 future lane session; coordinator assigns the writer only after verified G2 publication",
+        "coordinator": "Owner-delegated engineering coordinator for baraabd"
+      },
+      "status": "PLANNED",
       "frozenBase": null,
-      "dependencies": null,
-      "legacyAliases": [],
-      "ownedPaths": null,
-      "requiredEvidence": null,
+      "dependencies": ["R24", "R20", "R21", "R22", "R23"],
+      "legacyAliases": ["P40", "P41-manual-adapter"],
+      "ownedPaths": {
+        "exact": [
+          "apps/api/src/modules/money/adapters/manual/manual-collection.adapter.ts",
+          "apps/api/src/modules/money/adapters/manual/manual-collection.adapter.spec.ts",
+          "apps/api/src/modules/money/adapters/manual/manual-refund.adapter.ts",
+          "apps/api/src/modules/money/adapters/manual/manual-refund.adapter.spec.ts",
+          "apps/api/src/modules/money/adapters/manual/manual-rail.config.ts",
+          "apps/api/src/modules/money/adapters/manual/manual-rail.config.spec.ts",
+          "apps/api/src/modules/money/manual-review/receipt-acceptance.participant.ts",
+          "apps/api/src/modules/money/manual-review/receipt-acceptance.participant.spec.ts",
+          "apps/api/src/modules/money/manual-review/manual-review.service.ts",
+          "apps/api/src/modules/money/manual-review/manual-review.service.spec.ts",
+          "apps/api/src/modules/money/manual-review/manual-review.controller.ts",
+          "apps/api/src/modules/money/manual-review/manual-review.controller.spec.ts",
+          "apps/api/src/modules/money/manual-review/manual-review.module.ts",
+          "apps/api/src/modules/money/manual-review/manual-review.module.spec.ts",
+          "apps/web/src/app/features/manual-payments/ManualPaymentScreen.tsx",
+          "apps/web/src/app/features/manual-payments/ManualPaymentScreen.test.tsx",
+          "apps/web/src/app/features/manual-payments/ManualReviewScreen.tsx",
+          "apps/web/src/app/features/manual-payments/ManualReviewScreen.test.tsx",
+          "apps/web/src/app/features/manual-payments/manual-payments.api.ts",
+          "apps/web/src/app/features/manual-payments/manual-payments.api.test.ts",
+          "apps/web/src/app/features/manual-payments/manual-payments.copy.ts",
+          "apps/web/src/app/features/manual-payments/manual-payments.copy.test.ts",
+          "apps/web/src/app/features/manual-payments/index.ts",
+          "apps/api/test/integration/r30-manual-payments.integration.spec.ts",
+          "apps/web/e2e/r30-manual-payments/manual-payments.real-api.spec.ts",
+          "scripts/production/manual-payments/verify-receipt-flow.cjs",
+          "scripts/production/manual-payments/verify-receipt-flow.test.cjs",
+          "docs/production-readiness/r30/IMPLEMENTATION.md",
+          "docs/production-readiness/r30/ACCEPTANCE.md",
+          "docs/production-readiness/r30/RISKS.md",
+          "docs/production-readiness/r30/ROLLBACK.md",
+          "docs/production-readiness/r30/OWNERSHIP.md",
+          "docs/production-readiness/r30/shared-change-requests/CR-001-integration.md"
+        ],
+        "prefixes": [],
+        "leases": []
+      },
+      "requiredEvidence": [
+        "docs/production-readiness/r30/IMPLEMENTATION.md",
+        "docs/production-readiness/r30/ACCEPTANCE.md",
+        "docs/production-readiness/r30/RISKS.md",
+        "docs/production-readiness/r30/ROLLBACK.md",
+        "All behavioral, negative and integration tests in gates/g2/prompts/R30.md",
+        "Exact source/base/tree and contract/schema versions; checked command exit codes and test counts; source-bound artifacts; final-PR CI and official CodeQL; explicit skipped, blocked, sandbox and hosted states"
+      ],
       "pr": null,
-      "scopeNote": "Payment confirmation producer consumed through R24 (coordinator prompt, Mode 3.4); see R29."
+      "scopeNote": "Manual adapters and receipt-review participant reuse R24 commands, immutable financial-evidence MediaAsset storage and existing outbox. A new review surface is composed through coordinator routes; no mock merchant details or receipt-as-confirmation shortcut.",
+      "startBarrier": {
+        "gate": "G2",
+        "decision": "BLOCKED",
+        "publication": "NOT_RELEASED",
+        "sourceRecord": "docs/production-readiness/post-r18/gates/g2/SOURCE_MANIFEST.json"
+      },
+      "ownershipApproval": "CONDITIONAL_AFTER_VERIFIED_G2_PUBLICATION_AND_SESSION_ASSIGNMENT",
+      "sourcePrompt": "docs/production-readiness/post-r18/gates/g2/prompts/R30.md"
     },
     {
       "id": "R31",
-      "title": null,
-      "titleSource": "PENDING_PACKAGE: SPRINT_PLAN.json and this lane prompt were not provided",
+      "title": "Subscription plans, My Plan and atomic entitlements",
+      "titleSource": "gates/g2/prompts/R31.md",
       "wave": 3,
       "lane": 3,
-      "branch": null,
-      "owner": null,
-      "status": "RESERVED_PENDING_PACKAGE",
+      "branch": "feat/r31-subscription-entitlements",
+      "owner": {
+        "lane": "R31 future lane session; coordinator assigns the writer only after verified G2 publication",
+        "coordinator": "Owner-delegated engineering coordinator for baraabd"
+      },
+      "status": "PLANNED",
       "frozenBase": null,
-      "dependencies": null,
-      "legacyAliases": [],
-      "ownedPaths": null,
-      "requiredEvidence": null,
+      "dependencies": ["R24", "R21", "R22", "R23"],
+      "legacyAliases": ["P42"],
+      "ownedPaths": {
+        "exact": [
+          "apps/api/src/modules/money/subscriptions/plan-version.service.ts",
+          "apps/api/src/modules/money/subscriptions/plan-version.service.spec.ts",
+          "apps/api/src/modules/money/subscriptions/subscription-activation.participant.ts",
+          "apps/api/src/modules/money/subscriptions/subscription-activation.participant.spec.ts",
+          "apps/api/src/modules/money/subscriptions/subscription-lifecycle.service.ts",
+          "apps/api/src/modules/money/subscriptions/subscription-lifecycle.service.spec.ts",
+          "apps/api/src/modules/money/subscriptions/subscription-outbox.handler.ts",
+          "apps/api/src/modules/money/subscriptions/subscription-outbox.handler.spec.ts",
+          "apps/api/src/modules/money/subscriptions/subscriptions.controller.ts",
+          "apps/api/src/modules/money/subscriptions/subscriptions.controller.spec.ts",
+          "apps/api/src/modules/money/subscriptions/subscriptions.module.ts",
+          "apps/api/src/modules/money/subscriptions/subscriptions.module.spec.ts",
+          "apps/api/src/modules/money/entitlements/entitlement-usage.service.ts",
+          "apps/api/src/modules/money/entitlements/entitlement-usage.service.spec.ts",
+          "apps/api/src/modules/money/entitlements/entitlement-policy.ts",
+          "apps/api/src/modules/money/entitlements/entitlement-policy.spec.ts",
+          "apps/web/src/app/features/subscriptions/MyPlanScreen.tsx",
+          "apps/web/src/app/features/subscriptions/MyPlanScreen.test.tsx",
+          "apps/web/src/app/features/subscriptions/subscriptions.api.ts",
+          "apps/web/src/app/features/subscriptions/subscriptions.api.test.ts",
+          "apps/web/src/app/features/subscriptions/subscriptions.copy.ts",
+          "apps/web/src/app/features/subscriptions/subscriptions.copy.test.ts",
+          "apps/web/src/app/features/subscriptions/index.ts",
+          "apps/api/test/integration/r31-subscription-entitlements.integration.spec.ts",
+          "apps/web/e2e/r31-subscriptions/my-plan.real-api.spec.ts",
+          "docs/production-readiness/r31/IMPLEMENTATION.md",
+          "docs/production-readiness/r31/ACCEPTANCE.md",
+          "docs/production-readiness/r31/RISKS.md",
+          "docs/production-readiness/r31/ROLLBACK.md",
+          "docs/production-readiness/r31/OWNERSHIP.md",
+          "docs/production-readiness/r31/shared-change-requests/CR-001-integration.md"
+        ],
+        "prefixes": [],
+        "leases": []
+      },
+      "requiredEvidence": [
+        "docs/production-readiness/r31/IMPLEMENTATION.md",
+        "docs/production-readiness/r31/ACCEPTANCE.md",
+        "docs/production-readiness/r31/RISKS.md",
+        "docs/production-readiness/r31/ROLLBACK.md",
+        "All behavioral, negative and integration tests in gates/g2/prompts/R31.md",
+        "Exact source/base/tree and contract/schema versions; checked command exit codes and test counts; source-bound artifacts; final-PR CI and official CodeQL; explicit skipped, blocked, sandbox and hosted states"
+      ],
       "pr": null,
-      "scopeNote": "Subscription activation (coordinator prompt, Mode 3.4)."
+      "scopeNote": "Plan-version authoring, the transaction-bound activation participant, lifecycle/usage and My Plan extend existing plan/subscription/period/usage persistence. Existing quote, confirmation and SubscriptionActivationService remain authorities; no replacement activation engine or purchase-to-work-access grant.",
+      "startBarrier": {
+        "gate": "G2",
+        "decision": "BLOCKED",
+        "publication": "NOT_RELEASED",
+        "sourceRecord": "docs/production-readiness/post-r18/gates/g2/SOURCE_MANIFEST.json"
+      },
+      "ownershipApproval": "CONDITIONAL_AFTER_VERIFIED_G2_PUBLICATION_AND_SESSION_ASSIGNMENT",
+      "sourcePrompt": "docs/production-readiness/post-r18/gates/g2/prompts/R31.md"
     },
     {
       "id": "R32",
@@ -1245,13 +1418,13 @@
       "lane": 4,
       "branch": "feat/r32-refund-recovery",
       "owner": {
-        "lane": "R32 owner-delegated session after verified G2 approval/publication",
-        "coordinator": "G2 owner-delegated coordinator for baraabd"
+        "lane": "R32 future lane session; coordinator assigns the writer only after verified G2 publication",
+        "coordinator": "Owner-delegated engineering coordinator for baraabd"
       },
       "status": "PLANNED",
       "frozenBase": null,
       "dependencies": ["R24", "R22", "R23"],
-      "legacyAliases": [],
+      "legacyAliases": ["P41"],
       "ownedPaths": {
         "exact": [
           "apps/api/src/modules/money/refunds/refund-eligibility.policy.ts",
@@ -1284,119 +1457,437 @@
         "docs/production-readiness/r32/ACCEPTANCE.md",
         "docs/production-readiness/r32/RISKS.md",
         "docs/production-readiness/r32/ROLLBACK.md",
-        "Every behavioral, negative, concurrency, PostgreSQL and eventual assembled Wave 3 adapter-backed test in gates/g2/prompts/R32.md; exact final-head CI and CodeQL."
+        "All behavioral, negative and integration tests in gates/g2/prompts/R32.md",
+        "Exact source/base/tree and contract/schema versions; checked command exit codes and test counts; source-bound artifacts; final-PR CI and official CodeQL; explicit skipped, blocked, sandbox and hosted states"
       ],
       "pr": null,
-      "scopeNote": "Only the supplied full R32 package is transcribed. Proposed exact future files confer no start while G2 is blocked. Shared MoneyModule/MoneyCommandService/outbox wiring requires a serialized exact lease after G2 publication; no schema change is presumed.",
+      "scopeNote": "Existing frozen refund policy, transport and confirmation-participant ports remain the boundary. Durable reservation/dispatch/compensation state is reused. The original 21-file R32 conditional package is retained; no unmerged adapter import or second ledger.",
       "startBarrier": {
         "gate": "G2",
         "decision": "BLOCKED",
-        "publication": "DRAFT_PENDING_OWNER_REVIEW",
-        "acceptanceRecordCommitSha": null,
-        "verificationRecord": "docs/production-readiness/post-r18/gates/g2/SOURCE_MANIFEST.json"
-      }
+        "publication": "NOT_RELEASED",
+        "sourceRecord": "docs/production-readiness/post-r18/gates/g2/SOURCE_MANIFEST.json"
+      },
+      "ownershipApproval": "CONDITIONAL_AFTER_VERIFIED_G2_PUBLICATION_AND_SESSION_ASSIGNMENT",
+      "sourcePrompt": "docs/production-readiness/post-r18/gates/g2/prompts/R32.md"
     },
     {
       "id": "R33",
-      "title": null,
-      "titleSource": "PENDING_PACKAGE: SPRINT_PLAN.json and this lane prompt were not provided",
+      "title": "Financial read models and Admin/Provider operations UI",
+      "titleSource": "gates/g2/prompts/R33.md",
       "wave": 3,
       "lane": 5,
-      "branch": null,
-      "owner": null,
-      "status": "RESERVED_PENDING_PACKAGE",
+      "branch": "feat/r33-financial-operations-ui",
+      "owner": {
+        "lane": "R33 future lane session; coordinator assigns the writer only after verified G2 publication",
+        "coordinator": "Owner-delegated engineering coordinator for baraabd"
+      },
+      "status": "PLANNED",
       "frozenBase": null,
-      "dependencies": null,
-      "legacyAliases": [],
-      "ownedPaths": null,
-      "requiredEvidence": null,
+      "dependencies": ["R24", "R20", "R23"],
+      "legacyAliases": ["P43-ui"],
+      "ownedPaths": {
+        "exact": [
+          "apps/api/src/modules/money/reporting/financial-report.service.ts",
+          "apps/api/src/modules/money/reporting/financial-report.service.spec.ts",
+          "apps/api/src/modules/money/reporting/financial-export.service.ts",
+          "apps/api/src/modules/money/reporting/financial-export.service.spec.ts",
+          "apps/api/src/modules/money/reporting/financial-report.controller.ts",
+          "apps/api/src/modules/money/reporting/financial-report.controller.spec.ts",
+          "apps/api/src/modules/money/reporting/financial-reporting.module.ts",
+          "apps/api/src/modules/money/reporting/financial-reporting.module.spec.ts",
+          "apps/web/src/app/features/financial-operations/AdminFinancialOperations.tsx",
+          "apps/web/src/app/features/financial-operations/AdminFinancialOperations.test.tsx",
+          "apps/web/src/app/features/financial-operations/ProviderFinancialHistory.tsx",
+          "apps/web/src/app/features/financial-operations/ProviderFinancialHistory.test.tsx",
+          "apps/web/src/app/features/financial-operations/financial-operations.api.ts",
+          "apps/web/src/app/features/financial-operations/financial-operations.api.test.ts",
+          "apps/web/src/app/features/financial-operations/financial-operations.copy.ts",
+          "apps/web/src/app/features/financial-operations/financial-operations.copy.test.ts",
+          "apps/web/src/app/features/financial-operations/money-format.ts",
+          "apps/web/src/app/features/financial-operations/money-format.test.ts",
+          "apps/web/src/app/features/financial-operations/index.ts",
+          "apps/api/test/integration/r33-financial-reporting.integration.spec.ts",
+          "apps/web/e2e/r33-financial-operations/financial-operations.real-api.spec.ts",
+          "scripts/production/financial-reports/verify-report.cjs",
+          "scripts/production/financial-reports/verify-report.test.cjs",
+          "docs/production-readiness/r33/IMPLEMENTATION.md",
+          "docs/production-readiness/r33/ACCEPTANCE.md",
+          "docs/production-readiness/r33/RISKS.md",
+          "docs/production-readiness/r33/ROLLBACK.md",
+          "docs/production-readiness/r33/OWNERSHIP.md",
+          "docs/production-readiness/r33/shared-change-requests/CR-001-integration.md"
+        ],
+        "prefixes": [],
+        "leases": []
+      },
+      "requiredEvidence": [
+        "docs/production-readiness/r33/IMPLEMENTATION.md",
+        "docs/production-readiness/r33/ACCEPTANCE.md",
+        "docs/production-readiness/r33/RISKS.md",
+        "docs/production-readiness/r33/ROLLBACK.md",
+        "All behavioral, negative and integration tests in gates/g2/prompts/R33.md",
+        "Exact source/base/tree and contract/schema versions; checked command exit codes and test counts; source-bound artifacts; final-PR CI and official CodeQL; explicit skipped, blocked, sandbox and hosted states"
+      ],
       "pr": null,
-      "scopeNote": "Financial UI (coordinator prompt, Mode 3.4)."
+      "scopeNote": "Reporting/export and UI compose existing MoneyFinanceReadPort and MoneyQueryService. Booking estimates stay distinct. Existing Admin FinancialsSection and Provider WalletScreen entrypoints remain coordinator-owned; frozen reconciliation exceptions are a read contract, not invented R34 implementation.",
+      "startBarrier": {
+        "gate": "G2",
+        "decision": "BLOCKED",
+        "publication": "NOT_RELEASED",
+        "sourceRecord": "docs/production-readiness/post-r18/gates/g2/SOURCE_MANIFEST.json"
+      },
+      "ownershipApproval": "CONDITIONAL_AFTER_VERIFIED_G2_PUBLICATION_AND_SESSION_ASSIGNMENT",
+      "sourcePrompt": "docs/production-readiness/post-r18/gates/g2/prompts/R33.md"
     },
     {
       "id": "R34",
-      "title": null,
-      "titleSource": "PENDING_PACKAGE: SPRINT_PLAN.json and this lane prompt were not provided",
+      "title": "Cross-rail reconciliation, settlement exceptions and financial acceptance",
+      "titleSource": "gates/g2/prompts/R34.md",
       "wave": 4,
       "lane": 1,
-      "branch": null,
-      "owner": null,
-      "status": "RESERVED_PENDING_PACKAGE",
+      "branch": "feat/r34-reconciliation-settlement",
+      "owner": {
+        "lane": "R34 future lane session; coordinator assigns the writer only after verified G3 publication",
+        "coordinator": "Owner-delegated engineering coordinator for baraabd"
+      },
+      "status": "PLANNED",
       "frozenBase": null,
-      "dependencies": null,
-      "legacyAliases": [],
-      "ownedPaths": null,
-      "requiredEvidence": null,
+      "dependencies": ["R29", "R30", "R31", "R32", "R33"],
+      "legacyAliases": ["P43", "P41-acceptance"],
+      "ownedPaths": {
+        "exact": [
+          "apps/api/src/modules/money/reconciliation/reconciliation.service.ts",
+          "apps/api/src/modules/money/reconciliation/reconciliation.service.spec.ts",
+          "apps/api/src/modules/money/reconciliation/statement-import.service.ts",
+          "apps/api/src/modules/money/reconciliation/statement-import.service.spec.ts",
+          "apps/api/src/modules/money/reconciliation/reconciliation-exception.service.ts",
+          "apps/api/src/modules/money/reconciliation/reconciliation-exception.service.spec.ts",
+          "apps/api/src/modules/money/reconciliation/reconciliation-outbox.handler.ts",
+          "apps/api/src/modules/money/reconciliation/reconciliation-outbox.handler.spec.ts",
+          "apps/api/src/modules/money/reconciliation/reconciliation.controller.ts",
+          "apps/api/src/modules/money/reconciliation/reconciliation.controller.spec.ts",
+          "apps/api/src/modules/money/reconciliation/reconciliation.module.ts",
+          "apps/api/src/modules/money/reconciliation/reconciliation.module.spec.ts",
+          "apps/api/test/integration/r34-reconciliation.integration.spec.ts",
+          "apps/web/e2e/r34-reconciliation/reconciliation.real-api.spec.ts",
+          "scripts/production/reconciliation/inspect.cjs",
+          "scripts/production/reconciliation/inspect.test.cjs",
+          "scripts/production/reconciliation/verify-reconciliation.cjs",
+          "scripts/production/reconciliation/verify-reconciliation.test.cjs",
+          "docs/production-readiness/r34/IMPLEMENTATION.md",
+          "docs/production-readiness/r34/ACCEPTANCE.md",
+          "docs/production-readiness/r34/RISKS.md",
+          "docs/production-readiness/r34/ROLLBACK.md",
+          "docs/production-readiness/r34/OWNERSHIP.md",
+          "docs/production-readiness/r34/shared-change-requests/CR-001-integration.md"
+        ],
+        "prefixes": [],
+        "leases": []
+      },
+      "requiredEvidence": [
+        "docs/production-readiness/r34/IMPLEMENTATION.md",
+        "docs/production-readiness/r34/ACCEPTANCE.md",
+        "docs/production-readiness/r34/RISKS.md",
+        "docs/production-readiness/r34/ROLLBACK.md",
+        "All behavioral, negative and integration tests in gates/g2/prompts/R34.md",
+        "Exact source/base/tree and contract/schema versions; checked command exit codes and test counts; source-bound artifacts; final-PR CI and official CodeQL; explicit skipped, blocked, sandbox and hosted states"
+      ],
       "pr": null,
-      "scopeNote": "Reconciliation (coordinator prompt, Mode 4)."
+      "scopeNote": "Reconciliation reads actual accepted Wave 3 adapters, financial persistence and the frozen R33 exception contract. Independent statements and scoped exception actions extend that authority; no balancing ledger rewrite or peer UI edits.",
+      "startBarrier": {
+        "gate": "G3",
+        "decision": "BLOCKED",
+        "publication": "NOT_RELEASED",
+        "sourceRecord": "docs/production-readiness/post-r18/gates/g3/SOURCE_MANIFEST.json"
+      },
+      "ownershipApproval": "CONDITIONAL_AFTER_VERIFIED_G3_PUBLICATION_AND_SESSION_ASSIGNMENT",
+      "sourcePrompt": "docs/production-readiness/post-r18/gates/g2/prompts/R34.md"
     },
     {
       "id": "R35",
-      "title": null,
-      "titleSource": "PENDING_PACKAGE: SPRINT_PLAN.json and this lane prompt were not provided",
+      "title": "Three-application and subscription lifecycle acceptance",
+      "titleSource": "gates/g2/prompts/R35.md",
       "wave": 4,
       "lane": 2,
-      "branch": null,
-      "owner": null,
-      "status": "RESERVED_PENDING_PACKAGE",
+      "branch": "test/r35-cross-role-certification",
+      "owner": {
+        "lane": "R35 future lane session; coordinator assigns the writer only after verified G3 publication",
+        "coordinator": "Owner-delegated engineering coordinator for baraabd"
+      },
+      "status": "PLANNED",
       "frozenBase": null,
-      "dependencies": null,
-      "legacyAliases": [],
-      "ownedPaths": null,
-      "requiredEvidence": null,
+      "dependencies": ["R24", "R25", "R29", "R30", "R31", "R32", "R33"],
+      "legacyAliases": ["P50-journeys"],
+      "ownedPaths": {
+        "exact": [
+          "apps/web/e2e/post-r18-certification/seeker-provider-journeys.real-api.spec.ts",
+          "apps/web/e2e/post-r18-certification/admin-finance-journeys.real-api.spec.ts",
+          "apps/web/e2e/post-r18-certification/subscription-refund-journeys.real-api.spec.ts",
+          "apps/web/e2e/post-r18-certification/accessibility-locales.real-api.spec.ts",
+          "apps/web/e2e/post-r18-certification/fixtures.ts",
+          "apps/api/test/integration/post-r18-certification/money-lifecycle.integration.spec.ts",
+          "apps/api/test/integration/post-r18-certification/private-evidence.integration.spec.ts",
+          "apps/api/test/integration/post-r18-certification/fixture.ts",
+          "scripts/production/cross-role-certification/run.cjs",
+          "scripts/production/cross-role-certification/run.test.cjs",
+          "scripts/production/cross-role-certification/verify-evidence.cjs",
+          "scripts/production/cross-role-certification/verify-evidence.test.cjs",
+          "docs/production-readiness/r35/IMPLEMENTATION.md",
+          "docs/production-readiness/r35/ACCEPTANCE.md",
+          "docs/production-readiness/r35/RISKS.md",
+          "docs/production-readiness/r35/ROLLBACK.md",
+          "docs/production-readiness/r35/OWNERSHIP.md",
+          "docs/production-readiness/r35/shared-change-requests/CR-001-integration.md"
+        ],
+        "prefixes": [],
+        "leases": []
+      },
+      "requiredEvidence": [
+        "docs/production-readiness/r35/IMPLEMENTATION.md",
+        "docs/production-readiness/r35/ACCEPTANCE.md",
+        "docs/production-readiness/r35/RISKS.md",
+        "docs/production-readiness/r35/ROLLBACK.md",
+        "All behavioral, negative and integration tests in gates/g2/prompts/R35.md",
+        "Exact source/base/tree and contract/schema versions; checked command exit codes and test counts; source-bound artifacts; final-PR CI and official CodeQL; explicit skipped, blocked, sandbox and hosted states"
+      ],
       "pr": null,
-      "scopeNote": "Product certification (coordinator prompt, Mode 4)."
+      "scopeNote": "Acceptance harnesses only: real routes/APIs, data persistence, full role journeys, required locales/viewports/browser engines and financial lifecycle. Product defects return to their owning coordinator; final candidate requires a rerun after the Wave 4 join.",
+      "startBarrier": {
+        "gate": "G3",
+        "decision": "BLOCKED",
+        "publication": "NOT_RELEASED",
+        "sourceRecord": "docs/production-readiness/post-r18/gates/g3/SOURCE_MANIFEST.json"
+      },
+      "ownershipApproval": "CONDITIONAL_AFTER_VERIFIED_G3_PUBLICATION_AND_SESSION_ASSIGNMENT",
+      "sourcePrompt": "docs/production-readiness/post-r18/gates/g2/prompts/R35.md"
     },
     {
       "id": "R36",
-      "title": null,
-      "titleSource": "PENDING_PACKAGE: SPRINT_PLAN.json and this lane prompt were not provided",
+      "title": "Backup restore, disaster recovery and compatible rollback",
+      "titleSource": "gates/g2/prompts/R36.md",
       "wave": 4,
       "lane": 3,
-      "branch": null,
-      "owner": null,
-      "status": "RESERVED_PENDING_PACKAGE",
+      "branch": "test/r36-backup-restore-recovery",
+      "owner": {
+        "lane": "R36 future lane session; coordinator assigns the writer only after verified G3 publication",
+        "coordinator": "Owner-delegated engineering coordinator for baraabd"
+      },
+      "status": "PLANNED",
       "frozenBase": null,
-      "dependencies": null,
-      "legacyAliases": [],
-      "ownedPaths": null,
-      "requiredEvidence": null,
+      "dependencies": ["R20", "R22", "R28", "R29", "R30", "R31", "R32", "R33"],
+      "legacyAliases": ["P50-recovery"],
+      "ownedPaths": {
+        "exact": [
+          "scripts/production/recovery/validate-recovery-set.cjs",
+          "scripts/production/recovery/validate-recovery-set.test.cjs",
+          "scripts/production/recovery/backup.cjs",
+          "scripts/production/recovery/backup.test.cjs",
+          "scripts/production/recovery/restore.cjs",
+          "scripts/production/recovery/restore.test.cjs",
+          "scripts/production/recovery/verify-restored-state.cjs",
+          "scripts/production/recovery/verify-restored-state.test.cjs",
+          "scripts/production/recovery/rehearse-rollback.cjs",
+          "scripts/production/recovery/rehearse-rollback.test.cjs",
+          "docs/production-readiness/r36/IMPLEMENTATION.md",
+          "docs/production-readiness/r36/ACCEPTANCE.md",
+          "docs/production-readiness/r36/RISKS.md",
+          "docs/production-readiness/r36/ROLLBACK.md",
+          "docs/production-readiness/r36/OWNERSHIP.md",
+          "docs/production-readiness/r36/shared-change-requests/CR-001-integration.md"
+        ],
+        "prefixes": [],
+        "leases": [
+          {
+            "paths": [
+              "infra/production/recovery/README.md",
+              "infra/production/recovery/recovery-inputs.schema.json",
+              "infra/production/recovery/recovery-set.template.json"
+            ],
+            "kind": "CONDITIONAL_EXACT_INFRASTRUCTURE_FILES",
+            "grantedBy": "Owner-delegated G2 successor coordinator; conditional file preparation recorded 2026-10-22 in waves/OWNERSHIP_R29_R38.md",
+            "scope": "R36 checked file authoring only after separately accepted and verified merged G3 publication and session assignment. No hosted target, resource, account, spending, network-test or deploy authority.",
+            "expires": "Earliest of the R38/G4 decision, lane PR closure, or coordinator revocation",
+            "handoff": "The assigned lane is the exclusive writer for these exact files; publish source and evidence, return the lease explicitly before reassignment. Effective only after the recorded G3 start condition.",
+            "sourcePrompt": "docs/production-readiness/post-r18/gates/g2/prompts/R36.md",
+            "startPrerequisite": {
+              "gate": "G3",
+              "requiredDecision": "ACCEPTED",
+              "requiredPublication": "MERGED_AND_VERIFIED",
+              "requiresSessionAssignment": true
+            }
+          }
+        ]
+      },
+      "requiredEvidence": [
+        "docs/production-readiness/r36/IMPLEMENTATION.md",
+        "docs/production-readiness/r36/ACCEPTANCE.md",
+        "docs/production-readiness/r36/RISKS.md",
+        "docs/production-readiness/r36/ROLLBACK.md",
+        "All behavioral, negative and integration tests in gates/g2/prompts/R36.md",
+        "Exact source/base/tree and contract/schema versions; checked command exit codes and test counts; source-bound artifacts; final-PR CI and official CodeQL; explicit skipped, blocked, sandbox and hosted states"
+      ],
       "pr": null,
-      "scopeNote": "Restore (coordinator prompt, Mode 4)."
+      "scopeNote": "Recovery scripts and checked templates extend existing staging/storage/backup authorities. Actual restore requires a separately authorized isolated hosted target, keys, retention and RPO/RTO; no live effects or destructive schema rollback.",
+      "startBarrier": {
+        "gate": "G3",
+        "decision": "BLOCKED",
+        "publication": "NOT_RELEASED",
+        "sourceRecord": "docs/production-readiness/post-r18/gates/g3/SOURCE_MANIFEST.json"
+      },
+      "ownershipApproval": "CONDITIONAL_AFTER_VERIFIED_G3_PUBLICATION_AND_SESSION_ASSIGNMENT",
+      "sourcePrompt": "docs/production-readiness/post-r18/gates/g2/prompts/R36.md"
     },
     {
       "id": "R37",
-      "title": null,
-      "titleSource": "PENDING_PACKAGE: SPRINT_PLAN.json and this lane prompt were not provided",
+      "title": "Hosted security, load and operational failure acceptance",
+      "titleSource": "gates/g2/prompts/R37.md",
       "wave": 4,
       "lane": 4,
-      "branch": null,
-      "owner": null,
-      "status": "RESERVED_PENDING_PACKAGE",
+      "branch": "test/r37-hosted-load-security",
+      "owner": {
+        "lane": "R37 future lane session; coordinator assigns the writer only after verified G3 publication",
+        "coordinator": "Owner-delegated engineering coordinator for baraabd"
+      },
+      "status": "PLANNED",
       "frozenBase": null,
-      "dependencies": null,
-      "legacyAliases": [],
-      "ownedPaths": null,
-      "requiredEvidence": null,
+      "dependencies": ["R23", "R25", "R26", "R27", "R28", "R29", "R30", "R31", "R32", "R33"],
+      "legacyAliases": ["P49-acceptance", "P50-operational"],
+      "ownedPaths": {
+        "exact": [
+          "scripts/production/hosted-acceptance/authorize-target.cjs",
+          "scripts/production/hosted-acceptance/authorize-target.test.cjs",
+          "scripts/production/hosted-acceptance/run-security.cjs",
+          "scripts/production/hosted-acceptance/run-security.test.cjs",
+          "scripts/production/hosted-acceptance/run-load.cjs",
+          "scripts/production/hosted-acceptance/run-load.test.cjs",
+          "scripts/production/hosted-acceptance/run-failures.cjs",
+          "scripts/production/hosted-acceptance/run-failures.test.cjs",
+          "scripts/production/hosted-acceptance/verify-evidence.cjs",
+          "scripts/production/hosted-acceptance/verify-evidence.test.cjs",
+          "docs/production-readiness/r37/IMPLEMENTATION.md",
+          "docs/production-readiness/r37/ACCEPTANCE.md",
+          "docs/production-readiness/r37/RISKS.md",
+          "docs/production-readiness/r37/ROLLBACK.md",
+          "docs/production-readiness/r37/OWNERSHIP.md",
+          "docs/production-readiness/r37/shared-change-requests/CR-001-integration.md"
+        ],
+        "prefixes": [],
+        "leases": [
+          {
+            "paths": [
+              "infra/production/hosted-acceptance/README.md",
+              "infra/production/hosted-acceptance/target-authorization.schema.json",
+              "infra/production/hosted-acceptance/workload.template.json"
+            ],
+            "kind": "CONDITIONAL_EXACT_INFRASTRUCTURE_FILES",
+            "grantedBy": "Owner-delegated G2 successor coordinator; conditional file preparation recorded 2026-10-22 in waves/OWNERSHIP_R29_R38.md",
+            "scope": "R37 checked file authoring only after separately accepted and verified merged G3 publication and session assignment. No hosted target, resource, account, spending, network-test or deploy authority.",
+            "expires": "Earliest of the R38/G4 decision, lane PR closure, or coordinator revocation",
+            "handoff": "The assigned lane is the exclusive writer for these exact files; publish source and evidence, return the lease explicitly before reassignment. Effective only after the recorded G3 start condition.",
+            "sourcePrompt": "docs/production-readiness/post-r18/gates/g2/prompts/R37.md",
+            "startPrerequisite": {
+              "gate": "G3",
+              "requiredDecision": "ACCEPTED",
+              "requiredPublication": "MERGED_AND_VERIFIED",
+              "requiresSessionAssignment": true
+            }
+          }
+        ]
+      },
+      "requiredEvidence": [
+        "docs/production-readiness/r37/IMPLEMENTATION.md",
+        "docs/production-readiness/r37/ACCEPTANCE.md",
+        "docs/production-readiness/r37/RISKS.md",
+        "docs/production-readiness/r37/ROLLBACK.md",
+        "All behavioral, negative and integration tests in gates/g2/prompts/R37.md",
+        "Exact source/base/tree and contract/schema versions; checked command exit codes and test counts; source-bound artifacts; final-PR CI and official CodeQL; explicit skipped, blocked, sandbox and hosted states"
+      ],
       "pr": null,
-      "scopeNote": "Hosted tests (coordinator prompt, Mode 4)."
+      "scopeNote": "Hosted harnesses/reports only, with exact target/window/rate/operator authorization before any network test. Configuration or local emulators cannot establish hosted acceptance. Keep existing security budgets and original R27 thresholds.",
+      "startBarrier": {
+        "gate": "G3",
+        "decision": "BLOCKED",
+        "publication": "NOT_RELEASED",
+        "sourceRecord": "docs/production-readiness/post-r18/gates/g3/SOURCE_MANIFEST.json"
+      },
+      "ownershipApproval": "CONDITIONAL_AFTER_VERIFIED_G3_PUBLICATION_AND_SESSION_ASSIGNMENT",
+      "sourcePrompt": "docs/production-readiness/post-r18/gates/g2/prompts/R37.md"
     },
     {
       "id": "R38",
-      "title": null,
-      "titleSource": "PENDING_PACKAGE: SPRINT_PLAN.json and this lane prompt were not provided",
+      "title": "Release-candidate packaging and final launch certification",
+      "titleSource": "gates/g2/prompts/R38.md",
       "wave": 4,
       "lane": 5,
-      "branch": null,
-      "owner": null,
-      "status": "RESERVED_PENDING_PACKAGE",
+      "branch": "release/r38-release-certification",
+      "owner": {
+        "lane": "R38 future lane session; coordinator assigns the writer only after verified G3 publication",
+        "coordinator": "Owner-delegated engineering coordinator for baraabd"
+      },
+      "status": "PLANNED",
       "frozenBase": null,
-      "dependencies": null,
-      "legacyAliases": [],
-      "ownedPaths": null,
-      "requiredEvidence": null,
+      "dependencies": ["R24", "R25", "R26", "R27", "R28", "R29", "R30", "R31", "R32", "R33"],
+      "legacyAliases": ["P50-final"],
+      "ownedPaths": {
+        "exact": [
+          "scripts/production/release-certification/collect-evidence.cjs",
+          "scripts/production/release-certification/collect-evidence.test.cjs",
+          "scripts/production/release-certification/validate-candidate.cjs",
+          "scripts/production/release-certification/validate-candidate.test.cjs",
+          "scripts/production/release-certification/verify-final-join.cjs",
+          "scripts/production/release-certification/verify-final-join.test.cjs",
+          "scripts/production/release-certification/prepare-rollout.cjs",
+          "scripts/production/release-certification/prepare-rollout.test.cjs",
+          "docs/production-readiness/r38/IMPLEMENTATION.md",
+          "docs/production-readiness/r38/ACCEPTANCE.md",
+          "docs/production-readiness/r38/RISKS.md",
+          "docs/production-readiness/r38/ROLLBACK.md",
+          "docs/production-readiness/r38/OWNERSHIP.md",
+          "docs/production-readiness/r38/shared-change-requests/CR-001-integration.md"
+        ],
+        "prefixes": [],
+        "leases": [
+          {
+            "paths": [
+              "infra/production/release-certification/README.md",
+              "infra/production/release-certification/candidate.schema.json",
+              "infra/production/release-certification/rollout.template.json"
+            ],
+            "kind": "CONDITIONAL_EXACT_INFRASTRUCTURE_FILES",
+            "grantedBy": "Owner-delegated G2 successor coordinator; conditional file preparation recorded 2026-10-22 in waves/OWNERSHIP_R29_R38.md",
+            "scope": "R38 checked file authoring only after separately accepted and verified merged G3 publication and session assignment. No hosted target, resource, account, spending, network-test or deploy authority.",
+            "expires": "Earliest of the R38/G4 decision, lane PR closure, or coordinator revocation",
+            "handoff": "The assigned lane is the exclusive writer for these exact files; publish source and evidence, return the lease explicitly before reassignment. Effective only after the recorded G3 start condition.",
+            "sourcePrompt": "docs/production-readiness/post-r18/gates/g2/prompts/R38.md",
+            "startPrerequisite": {
+              "gate": "G3",
+              "requiredDecision": "ACCEPTED",
+              "requiredPublication": "MERGED_AND_VERIFIED",
+              "requiresSessionAssignment": true
+            }
+          }
+        ]
+      },
+      "requiredEvidence": [
+        "docs/production-readiness/r38/IMPLEMENTATION.md",
+        "docs/production-readiness/r38/ACCEPTANCE.md",
+        "docs/production-readiness/r38/RISKS.md",
+        "docs/production-readiness/r38/ROLLBACK.md",
+        "All behavioral, negative and integration tests in gates/g2/prompts/R38.md",
+        "Exact source/base/tree and contract/schema versions; checked command exit codes and test counts; source-bound artifacts; final-PR CI and official CodeQL; explicit skipped, blocked, sandbox and hosted states"
+      ],
       "pr": null,
-      "scopeNote": "Release tooling; final sign-off cannot precede R34-R37 results (coordinator prompt, Mode 4)."
+      "scopeNote": "Phase A prepares the release collector/validator and rollback package. Phase B is a serialized G4 evidence join after R34-R37 complete and the coordinator freezes/retests the final candidate. No deployment, policy approval or live-money authorization is inferred.",
+      "startBarrier": {
+        "gate": "G3",
+        "decision": "BLOCKED",
+        "publication": "NOT_RELEASED",
+        "sourceRecord": "docs/production-readiness/post-r18/gates/g3/SOURCE_MANIFEST.json"
+      },
+      "ownershipApproval": "CONDITIONAL_AFTER_VERIFIED_G3_PUBLICATION_AND_SESSION_ASSIGNMENT",
+      "finalEvidenceJoin": ["R34", "R35", "R36", "R37"],
+      "sourcePrompt": "docs/production-readiness/post-r18/gates/g2/prompts/R38.md"
     }
   ],
   "observations": [
@@ -1446,14 +1937,21 @@
       "observedAt": "2026-10-17T20:06:42Z",
       "by": "G2 coordinator explicitly delegated by baraabd",
       "note": "Reconciled owner-merged R24 #176, R25 #175, R26 #174 and R27 #173. Combined develop 4e87bf03663fb3c72ffee983fdb70c2863e1ce8a fails R25 and aggregate CI. Exact G2 ownership recorded; R28 checked-plan work authorized; R32 supplied prompt transcribed but held. No merge or deployment authorized."
+    },
+    {
+      "observedAt": "2026-10-22",
+      "by": "Owner-delegated G2 successor coordinator",
+      "note": "Recovered the complete original R29-R38 prompt pack and verified SHA-256 bf82bef2f6417450b5c411f1f396f39ef966c4dbfb00747edd1e6c6c60798920. Restored exact titles, branches, earlier-wave dependencies and conditional file packages. This preparation does not assert implementation, G2 acceptance, publication, G3 acceptance or any future lane start. Existing R19-R28 gate histories remain preserved."
     }
   ],
   "gates": {
     "G1": "docs/production-readiness/post-r18/gates/g1/SOURCE_MANIFEST.json",
-    "G2": "docs/production-readiness/post-r18/gates/g2/SOURCE_MANIFEST.json"
+    "G2": "docs/production-readiness/post-r18/gates/g2/SOURCE_MANIFEST.json",
+    "G3": "docs/production-readiness/post-r18/gates/g3/SOURCE_MANIFEST.json"
   },
   "waveManifests": {
     "2": "docs/production-readiness/post-r18/waves/wave-02.plan.json",
-    "3": "docs/production-readiness/post-r18/waves/wave-03.plan.json"
+    "3": "docs/production-readiness/post-r18/waves/wave-03.plan.json",
+    "4": "docs/production-readiness/post-r18/waves/wave-04.plan.json"
   }
 }
