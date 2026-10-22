@@ -100,6 +100,48 @@ exit 0 alone can also represent an incomplete matrix. Preserve the original G1
 pair's dependency mismatch as a distinct historical limitation. No new result
 is asserted before execution, and no measurement approves policy or G2.
 
+## First published candidate: measured failure retained
+
+Draft PR [#182](https://github.com/baraabd/homeservicemarketplace/pull/182)
+first published source `1a319133d387dd6747bfd412503f4458573cf10e`, tree
+`af041d3817c8ae0aaeab2b6b8833380b44540cb3`. All 11 workflows and 37 checks
+completed successfully, including the official CodeQL result. Nevertheless,
+the unchanged R27 evaluator returned **exit 1: 50 passed / 2 failed**.
+Green workflow jobs do not establish that the artifact-level budgets pass.
+
+R27 run [39834776701](https://github.com/baraabd/homeservicemarketplace/actions/runs/39834776701)
+produced these independently downloaded, size- and SHA-256-verified artifacts:
+
+| Source          | Job ID         | Artifact ID   | ZIP SHA-256                                                        |
+| --------------- | -------------- | ------------- | ------------------------------------------------------------------ |
+| Candidate       | `120020088665` | `12451177878` | `6e6009bda9b8b22e9e2a23147c9b0c07d1518e6a8f0840c87b92420e3506f5d0` |
+| Repair baseline | `120020089009` | `12452060619` | `b52b26818805b97439795c7b955c0cdb4ce6d84d390965982d4912a711180192` |
+| Frozen G1       | `120020089061` | `12449889369` | `355a8e258cc8cbe73a6145e62e0d4c8272ffd12f86d83f383108d77c5b5cdb9b` |
+
+The amplified guarded counts meet the original 5/10/7/3 ceilings. All 101
+retained generic-plan records have no EXPLAIN error. However, provider and
+administrative booking hydration each sequentially scans `ServiceRequest`,
+estimated at 10,836 rows. The financial artifact retains the complete normalized
+SQL and plan; the provider artifact retains the scan/cost summary. The existing
+Booking index is used, but the separate scalar bound plans exclude hydration
+and do not resolve these failures.
+
+The repair-baseline evaluator retains 48 passes / 4 failures at 6/13/12/9.
+The unchanged repair comparison passes with `OBSERVED_COMPLETE_MATRIX`,
+8 cells, 48 paired groups, 3 observations per group per side and no missing
+groups. Intel/AMD host differences confound timing deltas; they are not causal
+speedup or hosted-SLO evidence. The frozen G1 comparison still correctly
+rejects unequal lockfiles. Financial parity and the 1,626-item/82-page walk
+pass, while the documented mutable-cursor case still lacks snapshot safety.
+
+Root records a renewed exact two-file source/test lease before the corrective
+edit. The follow-up must retain a correlated primary-key request lookup for
+each page row, reproduce the prior generic-plan failure, preserve the existing
+PostgreSQL equivalence assertions and rerun R27 on its own published head.
+No index, planner switch, schema, budget, comparator or harness change is
+authorized to hide the scan. These first-candidate observations are history;
+successor measurements and source identities belong in the final PR evidence.
+
 ## Concrete completion conditions
 
 1. Verify the complete checks and official CodeQL on one exact integrated

@@ -73,6 +73,17 @@ or a G2 freeze. Temporary guard fixtures may be created outside the repository.
 
 Repository owner baraabd explicitly delegated complete G2 coordination, remediation and a review pull request in this conversation at 2026-10-17T20:06:42Z. The delegation authorizes preparation and required repairs; it does not authorize merge, deployment, live money, external spend, production grants or fictional acceptance. R32 starts only after G2 is approved and its publication identity is verified.
 
+The first R30 prerequisite candidate `1a319133d387dd6747bfd412503f4458573cf10e`
+produced 50 passing / 2 failing original R27 budget checks. Both booking-list
+generic plans scan the large `ServiceRequest` relation. Before its correction,
+the coordinator reassigns `r30_governance_ui_audit` the two existing leased paths
+`apps/api/src/infrastructure/persistence/bookings/booking.repository.ts` and
+`apps/api/test/integration/g2-query-projections.integration.spec.ts`, as detailed
+in the R30 measured-follow-up lease. Preserve complete correctness and add actual
+generic-plan regression evidence. No index, schema, dependency, planner setting,
+performance harness, comparator or budget relaxation is authorized. Root owns
+all publication/evidence mutations and requires fresh successor measurements.
+
 - Delivery mode: Mode A, integration and correctness.
 - Branch: `chore/g2-wave2-acceptance`.
 - Isolated worktree: `/workspace/scratch/ca0e1fde8f79/homeservicemarketplace-g2`.

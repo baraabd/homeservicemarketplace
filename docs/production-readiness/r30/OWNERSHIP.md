@@ -117,6 +117,36 @@ must precede a performance PASS. Even passing measurements do not approve
 the budget policy or publish an accepted G2 freeze. Root owns final validation
 and publication after the agent returns this exclusive lease.
 
+## Measured G2 follow-up — r30_governance_ui_audit
+
+The first published candidate `1a319133d387dd6747bfd412503f4458573cf10e`
+passes functional checks and the four amplified statement ceilings, but the
+unchanged evaluator reports 50 passes / 2 failures: complete generic plans for
+provider and administrative booking lists sequentially scan 10,836
+`ServiceRequest` rows during relation hydration. Before corrective edits, root
+reassigns these two paths from the returned eleven-file lease exclusively to
+`r30_governance_ui_audit`:
+
+```text
+apps/api/src/infrastructure/persistence/bookings/booking.repository.ts
+apps/api/test/integration/g2-query-projections.integration.spec.ts
+```
+
+Retain a correlated primary-key lookup boundary for each returned page row,
+preserving every existing field, authorization, cursor and null/deletion
+invariant. Prove the prior source fails the new actual generic-plan regression,
+then rerun equivalence and final-head R27. No new index, schema, dependency,
+planner switch, guard, budget, comparator or harness change is authorized.
+The earlier measured failure remains evidence; green workflow jobs alone do
+not satisfy the failed performance gates. Root retains documentation, commits,
+PR metadata and publication. The source writer returns this lease after checks.
+
+The renewed source/test lease has been returned after the prior-query red proof,
+36/36 real PostgreSQL cases, 74/74 targeted units, scoped lint/format and API
+typecheck. Independent read-only review found no blocking defect. Root resumes
+final formatting, source validation, normal-hook commits and publication; this
+handoff grants no R30 product runtime authority.
+
 ## G2 comparison prerequisite repair — r30_readiness_audit
 
 The unchanged comparator rejects the verified PR181 G1/candidate pair because

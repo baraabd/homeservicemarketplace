@@ -89,6 +89,18 @@ const BOOKING_REQUEST_LIST_COLUMNS = Prisma.sql`
   ) END AS "requestCategory"
 `;
 
+// A primary key supplies at most one request. Keep that lookup correlated to
+// each page row even when a generic plan cannot know the page-size parameter;
+// flattening an ordinary join can instead scan the entire request table.
+const BOOKING_REQUEST_LIST_JOIN = Prisma.sql`
+  JOIN LATERAL (
+    SELECT request."customServiceText", request."addressSnapshot", request."categoryId"
+    FROM "ServiceRequest" request
+    WHERE request."id" = page."requestId"
+    LIMIT 1
+  ) request ON TRUE
+`;
+
 // Booking persistence. Slice 2.2 added `create` + `findByBidId`. Slice
 // 2.3 adds the read surface (listForSeeker / findOwned, eager-loading
 // the relations the Bookings tab needs) and the status-flip helper
@@ -277,7 +289,7 @@ export class BookingRepository {
         ORDER BY booking."scheduledAt" DESC NULLS LAST, booking."createdAt" DESC, booking."id" DESC
         LIMIT ${args.take} OFFSET ${args.cursor ? 1 : 0}
       ) page
-      JOIN "ServiceRequest" request ON request."id" = page."requestId"
+      ${BOOKING_REQUEST_LIST_JOIN}
       LEFT JOIN "ServiceCategory" category ON category."id" = request."categoryId"
       JOIN "Bid" bid ON bid."id" = page."bidId"
       JOIN "User" seeker ON seeker."id" = page."seekerUserId"
@@ -622,7 +634,7 @@ export class BookingRepository {
         ORDER BY booking."updatedAt" DESC, booking."id" DESC
         LIMIT ${args.take} OFFSET ${args.cursor ? 1 : 0}
       ) page
-      JOIN "ServiceRequest" request ON request."id" = page."requestId"
+      ${BOOKING_REQUEST_LIST_JOIN}
       LEFT JOIN "ServiceCategory" category ON category."id" = request."categoryId"
       JOIN "ProviderProfile" provider ON provider."id" = page."providerId"
       LEFT JOIN "User" provider_user ON provider_user."id" = provider."userId"

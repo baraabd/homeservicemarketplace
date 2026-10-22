@@ -766,4 +766,249 @@ dbDescribe('G2 bounded query projections (real PostgreSQL)', () => {
       await isolated.$disconnect();
     }
   });
+
+  describe('amplified full-query execution plans', () => {
+    type PlanNode = {
+      'Node Type': string;
+      'Relation Name'?: string;
+      'Index Name'?: string;
+      'Index Cond'?: string;
+      'Plan Rows': number;
+      Plans?: PlanNode[];
+    };
+    type Plan = Array<{ Plan: PlanNode }>;
+    let isolated: PrismaClient;
+    let isolatedBookings: BookingRepository;
+    const queries: Array<{ query: string; params: string }> = [];
+    const rowCounts: Record<string, number> = {};
+    const diagnostics: Array<{
+      scenario: string;
+      limit: number;
+      mode: string;
+      sql: string;
+      plan: Plan;
+    }> = [];
+
+    // Exercise unknown literal values as in R27's pg_stat_statements input,
+    // including a literal lateral LIMIT. This is explicitly a test-side
+    // normalization of the actual emitted SQL, not native pg_stat_statements
+    // evidence. Quoted identifiers and IS NULL predicates remain unchanged.
+    function normalizedGenericSql(sql: string): string {
+      let parameter = Math.max(
+        0,
+        ...Array.from(sql.matchAll(/\$(\d+)/g), (match) => Number(match[1])),
+      );
+      return sql.replace(
+        /"(?:[^"]|"")*"|'(?:[^']|'')*'|\$\d+|\b(?:NULL|TRUE|FALSE|\d+)\b/g,
+        (token: string, offset: number) => {
+          if (token.startsWith('"') || token.startsWith('$')) return token;
+          if (
+            /^(NULL|TRUE|FALSE)$/.test(token) &&
+            /\bIS(?:\s+NOT)?\s*$/.test(sql.slice(0, offset))
+          ) {
+            return token;
+          }
+          return `$${++parameter}`;
+        },
+      );
+    }
+
+    function nodesOf(node: PlanNode): PlanNode[] {
+      return [node, ...(node.Plans ?? []).flatMap(nodesOf)];
+    }
+
+    function expectIndexedHydration(plan: Plan) {
+      expect(plan).toHaveLength(1);
+      const nodes = nodesOf(plan[0].Plan);
+      // Check all large fixture relations, so fixing requests cannot hide a
+      // newly introduced broad Bid/Booking scan after a join-order change.
+      expect(
+        nodes
+          .filter(
+            (node) =>
+              node['Node Type'] === 'Seq Scan' &&
+              (rowCounts[node['Relation Name'] ?? ''] ?? 0) >= 5_000,
+          )
+          .map((node) => ({ relation: node['Relation Name'], rows: node['Plan Rows'] })),
+      ).toEqual([]);
+      const requests = nodes.filter((node) => node['Relation Name'] === 'ServiceRequest');
+      expect(requests.length).toBeGreaterThan(0);
+      for (const request of requests) {
+        expect(request['Index Name']).toBeTruthy();
+        expect(request['Plan Rows']).toBeLessThanOrEqual(1);
+        // Planner aliases can change when the page subquery is flattened.
+        // Still require the indexed primary key to equal that page's requestId.
+        const keyEquality = (request['Index Cond'] ?? '')
+          .replaceAll('"', '')
+          .replace(/\b[A-Za-z_][A-Za-z_0-9$]*\./g, '')
+          .replace(/[()\s]/g, '');
+        expect(['id=requestId', 'requestId=id']).toContain(keyEquality);
+      }
+    }
+
+    beforeAll(async () => {
+      const db =
+        require('@homeservicemarketplace/database') as typeof import('@homeservicemarketplace/database');
+      const url = new URL(process.env.DATABASE_URL!);
+      const sourceSchema = db.Prisma.raw(
+        `"${(url.searchParams.get('schema') ?? 'public').replaceAll('"', '""')}"`,
+      );
+      url.searchParams.set('schema', 'pg_temp');
+      url.searchParams.set('connection_limit', '1');
+      const client = new db.PrismaClient({
+        datasourceUrl: url.toString(),
+        log: [{ emit: 'event', level: 'query' }],
+      });
+      client.$on('query', (event) => queries.push({ query: event.query, params: event.params }));
+      isolated = client;
+      const tables = [
+        'User',
+        'ProviderProfile',
+        'ServiceCategory',
+        'ServiceRequest',
+        'Bid',
+        'Booking',
+      ] as const;
+      for (const table of tables) {
+        const name = db.Prisma.raw(`"${table}"`);
+        await isolated.$executeRaw(
+          db.Prisma
+            .sql`CREATE TEMPORARY TABLE ${name} (LIKE ${sourceSchema}.${name} INCLUDING ALL)`,
+        );
+        await isolated.$executeRaw(
+          db.Prisma
+            .sql`INSERT INTO ${name} SELECT * FROM ${sourceSchema}.${name} WHERE "id" LIKE ${`${prefix}%`}`,
+        );
+      }
+
+      // Both page sources and request hydration need realistic statistics.
+      // Growing requests alone leaves the old flat join trivially selective.
+      await isolated.$executeRaw(db.Prisma.sql`
+        INSERT INTO "ServiceRequest"
+        SELECT (jsonb_populate_record(NULL::"ServiceRequest", to_jsonb(source) || jsonb_build_object(
+          'id', source."id" || '-plan-' || generation.n, 'idempotencyKey', NULL
+        ))).*
+        FROM ${sourceSchema}."ServiceRequest" source CROSS JOIN generate_series(1, 600) generation(n)
+        WHERE source."id" LIKE ${`${prefix}%`}
+      `);
+      const rotatedProvider = db.Prisma
+        .sql`(ARRAY[${provider}, ${otherProvider}, ${detachedProvider}, ${id('empty-provider')}]::text[])[
+        ((generation.n + CASE source."providerId" WHEN ${provider} THEN 0 WHEN ${otherProvider} THEN 1 ELSE 2 END) % 4) + 1
+      ]`;
+      for (const table of ['Bid', 'Booking'] as const) {
+        const name = db.Prisma.raw(`"${table}"`);
+        await isolated.$executeRaw(db.Prisma.sql`
+          INSERT INTO ${name}
+          SELECT (jsonb_populate_record(NULL::${name}, to_jsonb(source) || jsonb_build_object(
+            'id', source."id" || '-plan-' || generation.n,
+            'requestId', source."requestId" || '-plan-' || generation.n,
+            'providerId', ${rotatedProvider}
+          ) ${table === 'Booking' ? db.Prisma.sql`|| jsonb_build_object('bidId', source."bidId" || '-plan-' || generation.n)` : db.Prisma.empty})).*
+          FROM ${sourceSchema}.${name} source CROSS JOIN generate_series(1, 400) generation(n)
+          WHERE source."id" LIKE ${`${prefix}%`}
+        `);
+      }
+      await isolated.$executeRaw(db.Prisma.sql`
+        INSERT INTO "Bid"
+        SELECT (jsonb_populate_record(NULL::"Bid", to_jsonb(source) || jsonb_build_object(
+          'id', source."id" || '-padding-' || generation.n, 'status', 'WITHDRAWN', 'deletedAt', source."createdAt"
+        ))).*
+        FROM ${sourceSchema}."Bid" source CROSS JOIN generate_series(1, 1600) generation(n)
+        WHERE source."id" LIKE ${`${prefix}%`}
+      `);
+      for (const table of tables) {
+        const name = db.Prisma.raw(`"${table}"`);
+        await isolated.$executeRaw(db.Prisma.sql`ANALYZE ${name}`);
+        const [count] = await isolated.$queryRaw<Array<{ count: bigint }>>(
+          db.Prisma.sql`SELECT COUNT(*) AS count FROM ${name}`,
+        );
+        rowCounts[table] = Number(count.count);
+      }
+      for (const table of ['ServiceRequest', 'Booking', 'Bid']) {
+        expect(rowCounts[table]).toBeGreaterThan(5_000);
+      }
+
+      // Prisma requires binding any $N in its own prepared command. Binding
+      // those values would produce a custom plan. This session-local helper
+      // lets PostgreSQL explain the captured statement with unknown values,
+      // as the unchanged R27 collector does; no planner settings are changed.
+      await isolated.$executeRaw(db.Prisma.sql`
+        CREATE FUNCTION pg_temp.g2_explain_generic(query_text text) RETURNS jsonb
+        LANGUAGE plpgsql AS $$
+        DECLARE result jsonb;
+        BEGIN
+          EXECUTE 'EXPLAIN (GENERIC_PLAN, FORMAT JSON) ' || query_text INTO result;
+          RETURN result;
+        END $$
+      `);
+      const { BookingRepository: Bookings } =
+        require('../../src/infrastructure/persistence/bookings/booking.repository') as typeof import('../../src/infrastructure/persistence/bookings/booking.repository');
+      isolatedBookings = new Bookings({ client: isolated } as unknown as PrismaService);
+    }, 120_000);
+
+    afterAll(async () => {
+      try {
+        // Optional local evidence contains only synthetic fixture SQL/plans.
+        // CI still owns the authoritative native pg_stat_statements report.
+        if (process.env.G2_QUERY_PLAN_REPORT) {
+          const { writeFile } = require('node:fs/promises') as typeof import('node:fs/promises');
+          await writeFile(
+            process.env.G2_QUERY_PLAN_REPORT,
+            JSON.stringify({ rowCounts, diagnostics }, null, 2),
+          );
+        }
+      } finally {
+        // Temporary tables/functions disappear with this one connection.
+        await isolated?.$disconnect();
+      }
+    });
+
+    it.each(['provider', 'financial'] as const)(
+      '%s page uses indexed hydration in bound and normalized generic full plans',
+      async (scenario) => {
+        const db =
+          require('@homeservicemarketplace/database') as typeof import('@homeservicemarketplace/database');
+        for (const limit of [5, 20, 100]) {
+          const start = queries.length;
+          const rows =
+            scenario === 'provider'
+              ? await isolatedBookings.listForProviderSummary({
+                  providerId: provider,
+                  take: limit + 1,
+                })
+              : await isolatedBookings.listCompletedBookingsForAdmin({ take: limit + 1 });
+          expect(rows).toHaveLength(limit + 1);
+          const emitted = queries.slice(start).filter((query) => /^\s*SELECT\b/i.test(query.query));
+          expect(emitted).toHaveLength(1);
+          const { query, params } = emitted[0];
+          const [bound] = await isolated.$queryRawUnsafe<Array<{ 'QUERY PLAN': Plan }>>(
+            `EXPLAIN (FORMAT JSON) ${query}`,
+            ...(JSON.parse(params) as Prisma.InputJsonValue[]),
+          );
+          diagnostics.push({
+            scenario,
+            limit,
+            mode: 'bound',
+            sql: query,
+            plan: bound['QUERY PLAN'],
+          });
+          expectIndexedHydration(bound['QUERY PLAN']);
+
+          const normalized = normalizedGenericSql(query);
+          const [generic] = await isolated.$queryRaw<Array<{ plan: Plan }>>(
+            db.Prisma.sql`SELECT pg_temp.g2_explain_generic(${normalized}) AS plan`,
+          );
+          diagnostics.push({
+            scenario,
+            limit,
+            mode: 'normalized-generic',
+            sql: normalized,
+            plan: generic.plan,
+          });
+          expectIndexedHydration(generic.plan);
+        }
+      },
+      30_000,
+    );
+  });
 });

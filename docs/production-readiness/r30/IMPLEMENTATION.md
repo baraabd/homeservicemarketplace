@@ -77,6 +77,24 @@ Existing unit assertions remain, with adapted doubles and additional narrow
 projection/access cases. Actual checks and measurements are recorded in
 `ACCEPTANCE.md`; a target in this table is not a measured pass.
 
+The first published candidate met the four amplified statement ceilings, but
+the full generic plans still scanned the request table during provider/admin
+hydration. The measured follow-up retains an inner correlated `LATERAL` request
+lookup with `LIMIT 1` after the existing bounded Booking page. The request
+primary key preserves the same zero-or-one match and selected fields. Page
+selection, cursor semantics, request visibility and every other join remain
+unchanged. No index or planner-setting change is required.
+
+Two added PostgreSQL cases amplify and analyze session-local request, booking
+and bid tables, capture each repository's actual emitted query and inspect its
+complete bound and generic plans. A temporary PostgreSQL helper explains the
+generic statement without supplying values; the test explicitly normalizes
+emitted literal values, including the inner limit. This test-side normalization
+is not native `pg_stat_statements` evidence. The unchanged R27 collector must
+still verify native normalized plans on the final published source. Before the
+source edit, both new cases reproduced the full-request scan; the 34 existing
+equivalence cases remain intact.
+
 The owner's merged dependency security upgrades make the current candidate
 incomparable with the original G1 lockfile. A separate one-file CI lease adds
 an immutable PR-base `repair-baseline` with the same candidate harness, while

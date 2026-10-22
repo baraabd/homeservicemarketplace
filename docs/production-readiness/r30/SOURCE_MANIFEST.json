@@ -3,7 +3,7 @@
   "sprint": "R30",
   "title": "Manual subscription payment rails and protected receipt review",
   "branch": "feat/r30-manual-payment-review",
-  "status": "LOCAL_PREREQUISITE_CHECKS_PASSED_REMOTE_PENDING",
+  "status": "LOCAL_POST_MEASUREMENT_CORRECTION_PASSED_REMOTE_PENDING",
   "runtimeStatus": "NOT_IMPLEMENTED",
   "gate": "G2",
   "gateDecision": "BLOCKED",
@@ -14,7 +14,7 @@
   "approvedExecutionTreeSha": null,
   "finalPublishedIdentity": {
     "location": "English Draft PR body and production-governance-source artifact",
-    "status": "PENDING_PUBLICATION",
+    "status": "SUCCESSOR_EVIDENCE_PENDING",
     "note": "The final commit/tree is recorded outside this hashed source after normal hooks and publication."
   },
   "prompt": {
@@ -44,7 +44,7 @@
     "peerRecordsPreserved": true
   },
   "g2PrerequisiteRepair": {
-    "status": "IMPLEMENTED_LOCAL_CHECKS_PASSED_REMOTE_PENDING",
+    "status": "POST_MEASUREMENT_CORRECTION_IMPLEMENTED_LOCAL_PASSED_REMOTE_PENDING",
     "originalProposedQueryLimits": [5, 10, 7, 3],
     "budgetFileModified": false,
     "policyApproval": null,
@@ -82,6 +82,47 @@
         "reason": "incomparable lockfileSha256 after owner-merged security upgrades"
       },
       "finalMeasurements": "PENDING_PUBLICATION"
+    },
+    "firstPublishedCandidate": {
+      "prNumber": 182,
+      "sourceSha": "1a319133d387dd6747bfd412503f4458573cf10e",
+      "treeSha": "af041d3817c8ae0aaeab2b6b8833380b44540cb3",
+      "r27RunId": 39834776701,
+      "candidateArtifactId": 12451177878,
+      "candidateZipSha256": "6e6009bda9b8b22e9e2a23147c9b0c07d1518e6a8f0840c87b92420e3506f5d0",
+      "budgetEvaluator": {
+        "exitCode": 1,
+        "passed": 50,
+        "failed": 2,
+        "amplifiedScenarioCounts": [5, 10, 7, 3],
+        "failures": [
+          "provider bookings: large ServiceRequest sequential scan",
+          "admin financial bookings: large ServiceRequest sequential scan"
+        ],
+        "estimatedRequestRows": 10836
+      },
+      "ci": {
+        "successfulWorkflows": 11,
+        "successfulChecks": 37,
+        "officialCodeQLCheckId": 120021624217,
+        "officialCodeQLAppId": 57789,
+        "officialCodeQLAnnotations": 0
+      },
+      "sourceArtifact": {
+        "runId": 39834776565,
+        "artifactId": 12448889945,
+        "zipSha256": "80ffe345052de05a24853b59ec2ba13f1c8d621695614485ab1bcf29c66757bf",
+        "files": 2640,
+        "reconstructedTree": "af041d3817c8ae0aaeab2b6b8833380b44540cb3"
+      },
+      "repairComparison": {
+        "exitCode": 0,
+        "browserStatus": "OBSERVED_COMPLETE_MATRIX",
+        "pairedGroups": 48,
+        "missingGroups": 0,
+        "timingLimitation": "Intel/AMD host mismatch; hardware-confounded timing deltas"
+      },
+      "scope": "Historical first published source only; its green CI does not waive two failed artifact-level budgets or prove the corrective successor."
     }
   },
   "governanceFixture": {
@@ -222,7 +263,7 @@
       "passed": 34,
       "failed": 0,
       "skipped": 0,
-      "scope": "Native PostgreSQL repository projection/cursor/count/namespace equivalence; not R27 HTTP or browser evidence."
+      "scope": "First-candidate native PostgreSQL repository projection/cursor/count/namespace equivalence; successor checks pending; not R27 HTTP/browser evidence."
     },
     "r27ActualMeasurements": "PENDING",
     "secretScan": "PENDING_COMMITTED_TREE_CHECKPOINT",
@@ -256,7 +297,76 @@
       "originalJobsSemanticsPreserved": true,
       "actionlint": "UNAVAILABLE_NOT_RUN",
       "permanentTestFileAdded": false
-    }
+    },
+    "postMeasurementCorrection": {
+      "status": "LOCAL_PASS_FINAL_HEAD_REMOTE_PENDING",
+      "paths": [
+        "apps/api/src/infrastructure/persistence/bookings/booking.repository.ts",
+        "apps/api/test/integration/g2-query-projections.integration.spec.ts"
+      ],
+      "requiredRegression": "Actual normalized generic plans reproduce prior-source large scans and use bounded primary-key request lookups after correction; preserve all equivalence cases.",
+      "priorSourceRedProof": {
+        "passed": 0,
+        "failed": 2,
+        "notSelectedExistingCases": 34,
+        "requestRows": 10217,
+        "bookingRows": 6416,
+        "bidRows": 42021,
+        "scope": "Added regression runs against unchanged production repository bytes from the first candidate; other working-tree evidence is not claimed as that complete historical commit. Test-side normalization is not native pg_stat_statements evidence.",
+        "productionSourceSha": "1a319133d387dd6747bfd412503f4458573cf10e"
+      },
+      "postgres": {
+        "exitCode": 0,
+        "passed": 36,
+        "failed": 0,
+        "skipped": 0,
+        "existingEquivalenceCases": 34,
+        "newPlanCases": 2
+      },
+      "targetedUnits": {
+        "exitCode": 0,
+        "passed": 74,
+        "failed": 0,
+        "skipped": 0
+      },
+      "fullPlans": {
+        "count": 12,
+        "pageLimits": [5, 20, 100],
+        "projections": ["provider", "financial"],
+        "modes": ["bound", "test-side-normalized-generic"],
+        "requestIndex": "ServiceRequest_pkey",
+        "requestEquality": "id = requestId",
+        "maximumEstimatedRequestRows": 1,
+        "largeSequentialScans": 0,
+        "smallRelationSequentialScansRetained": true
+      },
+      "scopedLintExitCode": 0,
+      "typecheckExitCode": 0,
+      "buildExitCode": 0,
+      "formatExitCode": 0,
+      "governance": {
+        "passed": 340,
+        "failed": 0,
+        "skipped": 0,
+        "exitCode": 0
+      },
+      "g2ConsistencyExitCode": 0,
+      "r30ReadinessExitCode": 1,
+      "r30ReadinessReason": "R30 is not authorized to start",
+      "taskDatabaseStopped": true,
+      "warnings": ["Existing ts-jest isolatedModules deprecation"],
+      "reports": [
+        {
+          "name": "g2-query-projections-final.json",
+          "sha256": "fd3464828c88ee81b0172a12e4939fe5dcd293b36e262d4d0fc50dba2eed84bd"
+        },
+        {
+          "name": "g2-generic-plans-final.json",
+          "sha256": "1ebdde063d340a05582a045dc45ec447662cadddb9209bc5a42196024b4fb916"
+        }
+      ]
+    },
+    "evidenceScope": "apiChecks, postgresEquivalence, dependency audits and initial harness/workflow checks are retained first-candidate results. postMeasurementCorrection records successor local checks; final-head CI, native R27 and artifact proof are recorded in the final PR body after publication."
   },
   "runtimeEvidence": {
     "r30PostgresStorageClamav": "NOT_RUN",

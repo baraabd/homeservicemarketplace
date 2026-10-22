@@ -15,10 +15,13 @@ acceptance. Required checks still running or not yet run are identified below.
   published PR body after normal hooks and actual checks, avoiding a self-hash.
 - Exact write leases: `OWNERSHIP.md` and the G2 coordinator's ownership record.
 
-The current October 22 checks below are recreated on this source. October 18
-local results and earlier PR-head checks are historical, not final-head proof.
+The first October 22 source checkpoint below became published commit
+`1a319133d387dd6747bfd412503f4458573cf10e`, tree
+`af041d3817c8ae0aaeab2b6b8833380b44540cb3`. Its results are retained history
+for the measured follow-up. Successor source requires its own checks and
+artifacts; neither October 18 results nor this first head prove a later head.
 
-## Executed preparation checks
+## First-candidate preparation checks
 
 | Command/evidence                                                              | Actual result                                                       | Scope                                                                                                              |
 | ----------------------------------------------------------------------------- | ------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
@@ -36,10 +39,10 @@ local results and earlier PR-head checks are historical, not final-head proof.
 | Full default API suite with existing CI placeholder environment               | PASS, exit 0; 4,873 passed / 0 failed / 1,750 service-gated skipped | 265 passing suites / 92 skipped. Skipped real-service cases are not claimed as passes.                             |
 | `pnpm --filter @homeservicemarketplace/api build`                             | PASS, exit 0                                                        | Database/contracts dependency builds and Nest production build.                                                    |
 | Real PostgreSQL equivalence                                                   | PASS, exit 0; 34 passed, 0 failed, 0 skipped                        | Actual SELECT counts, prior Prisma cursor/DTO parity, nullable relations and configured schema; native G2 fixture. |
-| Unchanged R27 reports and budget evaluator                                    | PENDING                                                             | Actual populated query counts/plans and browser evidence on published source.                                      |
+| Unchanged R27 reports and budget evaluator                                    | FAIL, exit 1; 50 passed / 2 failed                                  | Counts 5/10/7/3 pass; two large ServiceRequest scans require the follow-up below.                                  |
 | Precommit changed-file Gitleaks snapshot                                      | PASS, exit 0; no leaks in the initial 32-file snapshot              | Preliminary only; the final committed tree is scanned separately after normal hooks.                               |
-| Tracked-source Gitleaks                                                       | PENDING_PUBLICATION_CHECKPOINT                                      | Exact committed tree and final results belong to the published PR evidence.                                        |
-| Final PR CI and official CodeQL                                               | PENDING                                                             | Complete inventory on the final published head.                                                                    |
+| Tracked-source Gitleaks                                                       | PASS, exit 0; zero findings                                         | Exact first-candidate tree: 2,640 files, 23,079,110 scanned bytes.                                                 |
+| First PR CI and official CodeQL                                               | PASS; 11 workflows / 37 checks                                      | Exact first head; official result app 57789, zero annotations, PR182 association.                                  |
 
 Toolchain archives were checksum verified. Node archive SHA-256:
 `fd8e59d5a511510f6a298afb548f18c7d2b1be404d8b4a27d94fbe49f56cb2d6`.
@@ -118,9 +121,67 @@ failure; it left partial shared index cache, with no package install or system
 configuration change. Later downloads/extraction used only temporary paths.
 The cache was intentionally not deleted. This native database is not a claimed
 Docker service or a substitute for the existing remote R27 harness.
-After validation, root verified the process executable, data path and port,
-stopped only this task-owned server, and confirmed the PID file was absent and
-port 54330 was closed. Temporary data and logs were retained.
+After the first validation, root verified the process executable, data path and
+port, stopped only this task-owned server, and confirmed the PID file was absent
+and port 54330 was closed. Temporary data and logs were retained. For the measured
+follow-up, root verified the same data identity and unused port before restarting
+that server; its scoped tests and final shutdown are recorded separately.
+
+## Measured follow-up
+
+The first published candidate passed functional CI, but the unchanged R27
+artifact evaluator exposed two large `ServiceRequest` scans, each estimated at
+10,836 rows. `G2_REVIEW.md` records the exact first run, artifacts and digests.
+The corrective two-file lease adds a bounded correlated primary-key hydration
+lookup and two actual generic-plan regressions. Before changing the production
+query, both added tests failed on the prior joins with a 10,217-row request
+scan. That isolated red-proof command selected the two new cases; the 34
+existing cases were not selected, and none of their assertions was removed.
+The analyzed session-local fixture contains 10,217 requests, 6,416 bookings and
+42,021 bids, plus small category/profile/user tables. Temporary tables and the
+generic-EXPLAIN helper disappear when their single connection closes.
+
+The regression captures the full emitted repository SQL and compares bound
+plans with explicit test-side normalized generic plans at page limits 5, 20
+and 100. It verifies request access and scans of all large fixture relations.
+No planner settings or production schema are changed. This normalization is
+labelled as a local test approximation; final R27 native `pg_stat_statements`
+plans remain required evidence.
+
+First-head real-service CI passed 6,542 API cases with 81 explicitly gated in
+that main command; those gates executed in their dedicated retention, storage,
+worker and dispute lanes. Default API CI passed 4,873 with 1,750 service-gated
+skips. Web units passed 2,525; general browser coverage passed 836 with 349
+declared skips. These counts are evidence of the first source only. Source
+artifact, real R25 replica and official CodeQL provenance were independently
+verified, but must be recollected for the successor.
+
+The strengthened corrective run passed **36 PostgreSQL cases, zero failures
+and zero skips**. All 12 full plans use `ServiceRequest_pkey` with an actual
+`id = requestId` equality and estimated rows 1; no large-fixture sequential
+scan remains. Small category/user/provider scans are retained and disclosed.
+The four affected unit suites passed **74/74**, with no failures or skips.
+Scoped ESLint, Prettier, complete API typecheck and production build passed.
+The governance rerun passed **340/340**, with no failures or skips; G2 record
+consistency passed and `--ready R30` still correctly refused runtime start.
+
+The final database command included
+`G2_QUERY_PLAN_REPORT=/tmp/hsm-r30-validation/g2-generic-plans-final.json`
+and wrote the Jest report to
+`/tmp/hsm-r30-validation/g2-query-projections-final.json`. The latter's SHA-256
+is `fd3464828c88ee81b0172a12e4939fe5dcd293b36e262d4d0fc50dba2eed84bd`;
+the full 12-plan report is
+`1ebdde063d340a05582a045dc45ec447662cadddb9209bc5a42196024b4fb916`.
+The existing ts-jest isolatedModules deprecation warning remains; it is not
+reported as a warning-free run. After checks, root verified and stopped only
+the restarted task-owned server, confirming process/PID-file absence and the
+closed port. No test or server process from the source writer remains.
+
+Final-head remote evidence remains pending publication. The PR body records
+the actual immutable source/tree, normal-hook and committed-tree secret scan,
+actual R27 evaluator/comparator outcome, complete latest workflow/check
+inventory and separately identified skips. No first-head green result is
+transferred to the successor.
 
 ## Comparable R27 evidence
 
