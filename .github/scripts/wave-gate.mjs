@@ -323,7 +323,12 @@ function g3WaveGateProblems(gate, wave, registry) {
       official?.appSlug === 'github-advanced-security' &&
       official?.conclusion === 'success' &&
       official?.annotationsCount === 0, 'G3 requires official successful exact-source CodeQL');
-    require(gate.sourceArtifact?.treeRecomputed === true &&
+    require(gate.sourceArtifact?.sourceSha === gate.candidateSourceSha &&
+      gate.sourceArtifact?.treeSha === gate.candidateTreeSha &&
+      positiveId(gate.sourceArtifact?.artifactId) &&
+      positiveId(gate.sourceArtifact?.runId) &&
+      digest(gate.sourceArtifact?.innerArchiveSha256) &&
+      gate.sourceArtifact?.treeRecomputed === true &&
       positiveId(gate.sourceArtifact?.trackedBlobsVerified) &&
       digest(
         gate.sourceArtifact?.zipSha256,

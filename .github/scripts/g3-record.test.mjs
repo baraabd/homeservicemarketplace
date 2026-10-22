@@ -288,6 +288,72 @@ test('G3 cannot consume a published G2 prerequisite with an unassigned startable
   );
 });
 
+for (const [name, mutate] of [
+  [
+    'wrong source',
+    (artifact) => {
+      artifact.sourceSha = sha('f');
+    },
+  ],
+  [
+    'wrong tree',
+    (artifact) => {
+      artifact.treeSha = sha('f');
+    },
+  ],
+  ...['sourceSha', 'treeSha', 'artifactId', 'runId', 'innerArchiveSha256'].map((field) => [
+    `missing ${field}`,
+    (artifact) => {
+      delete artifact[field];
+    },
+  ]),
+  [
+    'zero artifact ID',
+    (artifact) => {
+      artifact.artifactId = 0;
+    },
+  ],
+  [
+    'negative run ID',
+    (artifact) => {
+      artifact.runId = -1;
+    },
+  ],
+  [
+    'fractional artifact ID',
+    (artifact) => {
+      artifact.artifactId = 1.5;
+    },
+  ],
+  [
+    'string run ID',
+    (artifact) => {
+      artifact.runId = '9101';
+    },
+  ],
+  [
+    'invalid inner digest',
+    (artifact) => {
+      artifact.innerArchiveSha256 = sha('a');
+    },
+  ],
+]) {
+  test(`G3 rejects its own source archive with ${name}`, () => {
+    const b = acceptedDouble();
+    assert.deepEqual(recordProblems(b), []);
+    mutate(b.gate.sourceArtifact);
+    assert.ok(
+      recordProblems(b).some((message) => /G3 requires verified source archive/u.test(message)),
+    );
+    for (const lane of ['R34', 'R35', 'R36', 'R37', 'R38'])
+      assert.ok(
+        readinessProblems(b, lane).some((message) =>
+          /G3 requires verified source archive/u.test(message),
+        ),
+      );
+  });
+}
+
 test('G3 cannot consume conditional Wave 3 ownership as an executable prerequisite', () => {
   const b = acceptedDouble();
   const lane = b.g2.wave.lanes[0];

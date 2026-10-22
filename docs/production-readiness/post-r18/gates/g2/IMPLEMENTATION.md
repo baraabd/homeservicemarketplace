@@ -2,6 +2,15 @@
 
 ## PR183 merged-source correction — 2026-10-23
 
+Review comment 4353973365 exposed the corresponding G3 source-artifact identity
+gap. Twelve synthetic negative cases reproduced acceptance of wrong or missing
+source/tree, absent/invalid artifact/run IDs and absent/invalid inner digest.
+The G3 validator now requires all of those identities in addition to the
+existing recomputed-tree, tracked-blob and ZIP-digest checks. Every future lane
+R34–R38 rejects the malformed proof. The complete governance suite passes
+480/480 with no failures, skips or cancellations after the repair. This only
+strengthens future acceptance; it does not accept G3 or release Wave 4.
+
 The same head's real-service job 120122846017 passed 6,583 tests but failed two
 existing G2 isolated-schema cases (`BookingStatus` was not visible on the
 temporary schema's search path). The financial query's constant `COMPLETED`

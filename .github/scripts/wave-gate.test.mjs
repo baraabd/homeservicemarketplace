@@ -934,7 +934,16 @@ function acceptedG3Fixture(published = true) {
         annotationsCount: 0,
       },
     },
-    sourceArtifact: { treeRecomputed: true, trackedBlobsVerified: 100, zipSha256: '1'.repeat(64) },
+    sourceArtifact: {
+      sourceSha: source,
+      treeSha: tree,
+      artifactId: 201,
+      runId: 202,
+      treeRecomputed: true,
+      trackedBlobsVerified: 100,
+      zipSha256: '1'.repeat(64),
+      innerArchiveSha256: '2'.repeat(64),
+    },
     lanes: ['R29', 'R30', 'R31', 'R32', 'R33'].map((id, index) => ({
       id,
       branch: x.registry.sprints.find((sprint) => sprint.id === id).branch,

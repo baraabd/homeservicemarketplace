@@ -1,5 +1,44 @@
 # G2 coordinator ownership
 
+## PR183 G3 review finding correction — 2026-10-23
+
+Before edits, root extends its sole-writer lease to
+`.github/scripts/wave-gate.mjs`, `.github/scripts/wave-gate.test.mjs`,
+`.github/scripts/g3-record.test.mjs`, `IMPLEMENTATION.md` and this record.
+Review comment 4353973365 correctly identifies an unbound G3 source archive.
+Require the exact candidate source/tree, positive artifact/run identities and
+inner archive digest, retaining all prior controls. Reproduce the defect with
+synthetic negative tests before repair. No actual G3 acceptance is granted.
+
+## PR183 source-bound acceptance recording — 2026-10-23
+
+Before evidence-record edits, root is the sole writer for the following exact
+coordinator files. Record technical acceptance only after complete successful
+checks and independently verified artifacts for one actual source. Keep owner
+publication unmerged, Wave 3/4 blocked, session assignments unallocated, and all
+existing hosted/live-money restrictions. No source, test, validator or workflow
+change is included in this evidence-only lease.
+
+- `docs/production-readiness/post-r18/gates/g2/SOURCE_MANIFEST.json`
+- `docs/production-readiness/post-r18/gates/g2/ACCEPTANCE_EVIDENCE.json`
+- `docs/production-readiness/post-r18/gates/g2/evidence/source-provenance.json`
+- `docs/production-readiness/post-r18/gates/g2/evidence/r25-summary.json`
+- `docs/production-readiness/post-r18/gates/g2/evidence/r26-summary.json`
+- `docs/production-readiness/post-r18/gates/g2/evidence/r27-summary.json`
+- `docs/production-readiness/post-r18/gates/g2/ACCEPTANCE.md`
+- `docs/production-readiness/post-r18/gates/g2/BLOCKERS.md`
+- `docs/production-readiness/post-r18/gates/g2/IMPLEMENTATION.md`
+- `docs/production-readiness/post-r18/gates/g2/OWNERSHIP.md`
+- `docs/production-readiness/post-r18/waves/wave-02.closeout.json`
+- `docs/production-readiness/post-r18/waves/wave-03.plan.json`
+- `docs/production-readiness/post-r18/SPRINT_REGISTRY.json`
+- `docs/production-readiness/post-r18/ACTIVE_STATUS.md`
+
+The reviewed source archive for `133c1c8aca806909e26737e83128b381ebefb3a7`
+already matches all 2,666 tracked blobs and reconstructed tree
+`9558a3495e6eed916fa469786b8bb63c15d52653`; remaining CI and domain artifacts
+are pending at lease creation. This statement grants no acceptance by itself.
+
 ## PR183 isolated-schema follow-up — 2026-10-23
 
 Before edits, root retains the existing sole-writer lease for
