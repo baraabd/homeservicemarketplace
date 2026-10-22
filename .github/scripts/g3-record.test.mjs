@@ -38,7 +38,16 @@ const checks = (source) => ({
     annotationsCount: 0,
   },
 });
-const provenance = () => ({ treeRecomputed: true, trackedBlobsVerified: 100, zipSha256: digest });
+const provenance = (source, tree) => ({
+  sourceSha: source,
+  treeSha: tree,
+  artifactId: 9100,
+  runId: 9101,
+  treeRecomputed: true,
+  trackedBlobsVerified: 100,
+  zipSha256: digest,
+  innerArchiveSha256: digest,
+});
 
 // Pure contract doubles. All numbers/identities below are synthetic and cannot
 // establish execution, remote evidence authenticity or actual owner authority.
@@ -71,7 +80,7 @@ function acceptedDouble(published = true) {
       preserveR16R18Holds: true,
     },
     checks: checks(source),
-    sourceArtifact: provenance(),
+    sourceArtifact: provenance(source, tree),
     contracts: {
       sourceSha: source,
       version: 'hsm.money.v1',
@@ -156,7 +165,7 @@ function acceptedDouble(published = true) {
       verifiedMerge: published,
     },
     checks: checks(sha('a')),
-    sourceArtifact: provenance(),
+    sourceArtifact: provenance(sha('a'), sha('b')),
     mandatoryEvidence: G3_REQUIRED_EVIDENCE.map((id, i) => ({
       id,
       status: 'PASS',
@@ -254,6 +263,20 @@ test('complete G3 double needs separate verified publication before any Wave 4 r
   assert.equal(acceptedDouble().wave.r38Finalization.status, 'BLOCKED');
   assert.ok(readinessProblems(acceptedDouble(), 'R29').length > 0);
 });
+
+for (const field of ['sourceSha', 'treeSha']) {
+  test(`G3 rejects a G2 source artifact with mismatched ${field}`, () => {
+    const b = acceptedDouble();
+    assert.deepEqual(recordProblems(b), []);
+    b.g2.gate.sourceArtifact[field] = sha('f');
+    assert.ok(
+      recordProblems(b).some((message) =>
+        /Verified source artifact identity required/u.test(message),
+      ),
+    );
+    assert.ok(readinessProblems(b, 'R34').length > 0);
+  });
+}
 
 test('G3 cannot consume a published G2 prerequisite with an unassigned startable Wave 3 lane', () => {
   const b = acceptedDouble();

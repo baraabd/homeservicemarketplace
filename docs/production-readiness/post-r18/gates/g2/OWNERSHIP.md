@@ -471,3 +471,17 @@ Require a startable Wave 3 lane to have the documented approved ownership state,
 ### Final correction handoff — 2026-10-22
 
 The four-file Wave 3 assignment correction lease is returned to root after 452/452 governance tests, zero failed/cancelled/skipped/todo, and scoped formatting/lint/diff checks. Root is the sole writer for commit and publication. Independent review also confirmed the new PostgreSQL suite is discovered by the existing full real-service CI job; no workflow filter is changed.
+
+### Source artifact identity correction — `/root/r25_gate_audit`
+
+Recorded before edits on 2026-10-22 during independent publication review. An accepted record must reject a source archive proof for a different source or tree, even when its digest and reconstructed-tree fields are otherwise valid. Root grants this exclusive correction lease:
+
+- `.github/scripts/g2-current-record.mjs`
+- `.github/scripts/g2-current-record.test.mjs`
+- `.github/scripts/g3-record.test.mjs`
+
+Reproduce the missing binding with explicitly synthetic fixtures, then require sourceArtifact.sourceSha and sourceArtifact.treeSha to equal the candidate, positive artifact/run identifiers and the existing inner archive digest. Add wrong-source/tree and incomplete-provenance negatives; update only synthetic accepted fixtures. Retain external artifact verification as a separate coordinator responsibility. No current evidence, acceptance, ownership or publication approval is granted. Return all three paths after verification.
+
+### Source artifact correction handoff — 2026-10-22
+
+All three correction files are returned to root after the two original wrong-source/tree negatives reproduced the defect (exit 1), then 14/14 focused and 464/464 full governance cases passed (exit 0; zero failures/cancellations/skips/todo). Scoped lint, formatting and diff checks passed. The 12 added regressions cover source/tree mismatch, missing identities/digest, invalid run/artifact identifiers and G3 prerequisite propagation. Root is again the sole writer for publication and real-evidence recording.

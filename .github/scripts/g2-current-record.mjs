@@ -129,11 +129,18 @@ export function canonicalG2Problems(bundle) {
       official?.annotationsCount === 0 &&
       Number.isSafeInteger(official?.id) &&
       official.id > 0, 'Official CodeQL evidence required');
-    require(gate.sourceArtifact?.treeRecomputed === true &&
+    require(gate.sourceArtifact?.sourceSha === source &&
+      gate.sourceArtifact?.treeSha === gate.candidateTreeSha &&
+      Number.isSafeInteger(gate.sourceArtifact?.artifactId) &&
+      gate.sourceArtifact.artifactId > 0 &&
+      Number.isSafeInteger(gate.sourceArtifact?.runId) &&
+      gate.sourceArtifact.runId > 0 &&
+      gate.sourceArtifact?.treeRecomputed === true &&
       Number.isSafeInteger(gate.sourceArtifact?.trackedBlobsVerified) &&
       gate.sourceArtifact.trackedBlobsVerified > 0 &&
+      DIGEST.test(gate.sourceArtifact?.zipSha256 ?? '') &&
       DIGEST.test(
-        gate.sourceArtifact?.zipSha256 ?? '',
+        gate.sourceArtifact?.innerArchiveSha256 ?? '',
       ), 'Verified source artifact identity required');
     require(gate.contracts?.sourceSha === source &&
       gate.contracts?.version === 'hsm.money.v1' &&

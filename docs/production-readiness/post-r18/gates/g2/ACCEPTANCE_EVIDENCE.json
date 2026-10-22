@@ -1312,7 +1312,16 @@
     "requiredEvidence": "Full new-source CI/officialCodeQL/source provenance/R25/R26/R27/R28; no result copied from baseline",
     "queryCeilingsUnchanged": true,
     "performanceBaselineSha": "96e92825f9b65cf124317f43b55ce42fc97f5b49",
-    "fullPromptPackSha256": "bf82bef2f6417450b5c411f1f396f39ef966c4dbfb00747edd1e6c6c60798920"
+    "fullPromptPackSha256": "bf82bef2f6417450b5c411f1f396f39ef966c4dbfb00747edd1e6c6c60798920",
+    "firstPublication": {
+      "pr": 183,
+      "headSha": "6c7aac2ea68ee4943d60b0db3be33012d572ac8d",
+      "treeSha": "cc91989350df563dfda19b211904437c33fb1fb1",
+      "localHookedCommit": "0c587b71ef466412b86581fee18ff2eb46a37f9f",
+      "readBackTreeVerified": true,
+      "state": "SUPERSEDED_FOR_SOURCE_IDENTITY_CORRECTION",
+      "qualification": "Any completed first-head checks remain bound only to that source; corrective-head evidence must be collected anew."
+    }
   },
   "localPostgres": {
     "version": "16.14",
@@ -1328,7 +1337,13 @@
       "skipped": 0,
       "exitCode": 0
     },
-    "qualification": "Real database component equivalence, not full HTTP/Redis/browser acceptance"
+    "qualification": "Real database component equivalence, not full HTTP/Redis/browser acceptance",
+    "cleanup": {
+      "stopped": true,
+      "exitCode": 0,
+      "method": "pg_ctl -D /tmp/hsm-g2-postgres/data -m fast -w stop",
+      "scope": "only this task-owned instance; data retained"
+    }
   },
   "publication": {
     "state": "DRAFT_PENDING_OWNER_REVIEW",
@@ -1425,11 +1440,12 @@
       {
         "command": "node --test --test-reporter=tap .github/scripts/*.test.mjs",
         "exitCode": 0,
-        "passed": 452,
+        "passed": 464,
         "failed": 0,
         "cancelled": 0,
         "skipped": 0,
-        "todo": 0
+        "todo": 0,
+        "qualification": "Final source-artifact identity correction: prior 452-pass run retained separately; 12 new regressions added."
       },
       {
         "command": "pnpm security:audit:prod",
@@ -1449,7 +1465,8 @@
       "Initial mapper typecheck failed for wallet and earnings consumers; annotation-only compatibility leases repaired them.",
       "Initial PostgreSQL 23/26: cursor equivalence defects fixed and invalid duplicate-bid fixture corrected; final 27/27.",
       "Initial full units: 4873 passed assertions; 3 suite startups lacked validation-only environment; final 4885 passed.",
-      "Intermediate governance 437/438: status index drift fixed without changing frozen machine statuses."
+      "Intermediate governance 437/438: status index drift fixed without changing frozen machine statuses.",
+      "Wrong-source/tree negative regression reproduced missing archive proof binding: 2 executed and failed before repair; after repair 14 focused and 464 full governance cases pass."
     ],
     "artifacts": [
       {
@@ -1510,6 +1527,12 @@
         "name": "audit-production.json",
         "bytes": 310,
         "sha256": "1880b619f39c3c9cadaba46553ae80b5e4acf05999f2e0fb8a64e47bc5b798dd",
+        "availability": "private task scratch; sanitized counts retained in this record, not a GitHub artifact"
+      },
+      {
+        "name": "hsm-g2-source-artifact-governance.tap",
+        "bytes": 74706,
+        "sha256": "704b4a1dae970027e1cdd31f356b8dd6ab1dccd07872d37ce9770291fd0b41a7",
         "availability": "private task scratch; sanitized counts retained in this record, not a GitHub artifact"
       }
     ],

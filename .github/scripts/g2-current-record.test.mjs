@@ -296,7 +296,16 @@ function acceptedDouble(published = true) {
       annotationsCount: 0,
     },
   };
-  b.gate.sourceArtifact = { treeRecomputed: true, trackedBlobsVerified: 100, zipSha256: digest };
+  b.gate.sourceArtifact = {
+    sourceSha: source,
+    treeSha: tree,
+    artifactId: 9100,
+    runId: 9101,
+    treeRecomputed: true,
+    trackedBlobsVerified: 100,
+    zipSha256: digest,
+    innerArchiveSha256: digest,
+  };
   b.gate.contracts = {
     sourceSha: source,
     version: 'hsm.money.v1',
@@ -370,6 +379,33 @@ test('complete canonical contract double needs separate verified publication bef
   assert.deepEqual(readinessProblems(acceptedDouble(), 'R32'), []);
   assert.ok(readinessProblems(acceptedDouble(), 'R29').length > 0);
 });
+
+for (const [name, field, value] of [
+  ['wrong source', 'sourceSha', syntheticSha('a')],
+  ['wrong tree', 'treeSha', syntheticSha('a')],
+  ['missing source', 'sourceSha', undefined],
+  ['missing tree', 'treeSha', undefined],
+  ['missing artifact identity', 'artifactId', undefined],
+  ['nonpositive artifact identity', 'artifactId', 0],
+  ['missing run identity', 'runId', undefined],
+  ['fractional run identity', 'runId', 1.5],
+  ['missing inner archive digest', 'innerArchiveSha256', undefined],
+  ['invalid inner archive digest', 'innerArchiveSha256', 'g'.repeat(64)],
+]) {
+  test(`source artifact rejects ${name}`, () => {
+    const b = acceptedDouble();
+    assert.deepEqual(recordProblems(b), []);
+    if (value === undefined) delete b.gate.sourceArtifact[field];
+    else b.gate.sourceArtifact[field] = value;
+    assert.ok(
+      recordProblems(b).some((message) =>
+        /Verified source artifact identity required/u.test(message),
+      ),
+      name,
+    );
+    assert.ok(readinessProblems(b, 'R32').length > 0, name);
+  });
+}
 
 for (const [name, mutate] of [
   [

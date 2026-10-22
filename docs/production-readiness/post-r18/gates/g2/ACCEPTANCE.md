@@ -57,3 +57,11 @@ Source verification, local component correctness, integrated sandbox acceptance,
 ## CI discovery qualification
 
 The existing `ci.yml` integration job sets `RUN_DB_INTEGRATION=1`, provisions PostgreSQL 16 and Redis, and runs the complete API suite without a path filter. The new projection integration file matches the existing Jest roots/regex and is included in its retained `g1-api-report.json`. The reusable static/unit job intentionally does not set that flag. This source inspection establishes discoverability; the candidate run must still execute successfully.
+
+## Source-artifact correction verification
+
+The two wrong-source/tree negative tests failed before the validator repair, reproducing the missing binding. After correction, 14 focused cases and all 464 governance cases passed with zero failures/skips. `sourceArtifact.sourceSha` and `.treeSha` must match the candidate; positive artifact/run identifiers and both archive digests are required. This remains a consistency guard; independent download/hash/tree verification is still required.
+
+## Superseded first publication
+
+PR #183 first published `6c7aac2ea68ee4943d60b0db3be33012d572ac8d`. Independent review found a missing candidate source/tree comparison in the canonical archive-proof check. Corrective source and negative tests stay on this PR. Completed first-head results are not promoted to the corrective head; final acceptance requires fresh exact-head evidence. The configured PostgreSQL fixture has been stopped successfully after its local tests.

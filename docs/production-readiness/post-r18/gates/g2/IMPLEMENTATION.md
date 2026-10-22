@@ -27,16 +27,24 @@ Raw SQL is limited to measured read projections and uses `Prisma.sql` bound para
 
 The successor experiment uses **96e92825f9b65cf124317f43b55ce42fc97f5b49** as its immutable baseline and the published repair head as its candidate. Both receive exactly the candidate measurement harness and retain the same patched lockfile. This measures the repair against the owner-merged current implementation; it does not redefine G1 or rehabilitate the historical incomparable run. Four candidate ceilings remain 5, 10, 7 and 3 statements. The proposed 6/13/12/9 relaxation is not applied.
 
+The original budget JSON retains its historical proposal status and thresholds. This successor workflow now enforces its host-independent statement, plan and bundle limits as a G2 regression condition; its old non-enforcement note is historical. Hosted-only time/SLO proposals still require separate measured owner approval.
+
 The workflow retains both full measurement artifacts and comparison/budget findings. Missing artifacts, a failed prerequisite, mismatched identities, incomplete browser cells or an exceeded candidate ceiling fail the acceptance job. Host timing remains qualified by sample sizes and hardware contention. GitHub's artifact flow is composed using the repository's current action versions: <https://docs.github.com/en/actions/tutorials/store-and-share-data>.
 
 ## Toolchain and runtime isolation
 
 Task-local Node 24.21.0 and pnpm 10.32.1 were checked against the official Node checksum and the repository package-manager integrity pin. `pnpm install --frozen-lockfile` completed without modifying the lockfile; normal lifecycle scripts and hooks remain enabled. Prisma generation completed through the existing guarded package script. Initial sandbox network restrictions were recorded before the successful scoped retry.
 
-The local correctness fixture is PostgreSQL 16.14 on loopback port 45119, database `hsm_g2_r27_read_projections`, with a task-only non-superuser role, SCRAM, UTC and a four-connection application pool. Its configuration fingerprint is `71e921ce6fe83018d4fee735e1cdb0441c3e7f604dc12d30bacf92b00c08ddf2`. All 72 existing migrations were applied to that new empty database. No seed, database reset, shared Redis mutation or user data is involved. Private credentials and raw environment files are outside Git.
+The local correctness fixture is PostgreSQL 16.14 on loopback port 45119, database `hsm_g2_r27_read_projections`, with a task-only non-superuser role, SCRAM, UTC and a four-connection application pool. Its configuration fingerprint is `71e921ce6fe83018d4fee735e1cdb0441c3e7f604dc12d30bacf92b00c08ddf2`. All 72 existing migrations were applied to that new empty database. No seed, database reset, shared Redis mutation or user data is involved. After the 27 passing local database cases, the exact task-owned PostgreSQL instance was stopped with `pg_ctl -D /tmp/hsm-g2-postgres/data -m fast -w stop` (exit 0); no unrelated process or data was changed. Private credentials and raw environment files are outside Git.
 
 ## Evidence and handoff
 
 Local command outcomes and failures are in `ACCEPTANCE.md`; machine identities and final remote evidence belong in `SOURCE_MANIFEST.json` and `ACCEPTANCE_EVIDENCE.json`. Local repository equivalence tests do not substitute for the full HTTP/Redis/browser performance experiment or the exact-source R25/R26/R28 acceptance runs.
 
 A successful technical G2 candidate can be recorded while publication remains `DRAFT_PENDING_OWNER_REVIEW`. That does not authorize Wave 3 execution. The owner must approve and merge the publication, and the coordinator must verify the resulting source before setting the next wave ready. R34–R38 remain behind G3. No merge, deployment, live activation, price/currency/payout policy or account grant is performed here.
+
+## Corrective publication review
+
+The first locally hooked commit `0c587b71ef466412b86581fee18ff2eb46a37f9f` was published through the connected GitHub API as `6c7aac2ea68ee4943d60b0db3be33012d572ac8d`, tree `cc91989350df563dfda19b211904437c33fb1fb1`, on Draft PR #183. A normal read-back fetch proved the trees identical. The API path was necessary because the local Git shell has no configured remote credential; no hooks or branch protections were bypassed.
+
+Independent review then identified that the G2 validator checked source-archive proof shape without requiring its source/tree to equal the candidate. The same review branch strengthens this binding and its negative fixtures. First-head results remain explicitly superseded and cannot establish acceptance of the corrective head. This correction changes no application projection, budget or contract.
