@@ -30,6 +30,15 @@ Infrastructure readiness would not independently close those policy gates.
 
 ## Validation limits
 
+The fresh test-repair CI checkpoint passed R11 and the full real-database suite,
+but then failed both zero-finding dependency audits. The separately recorded
+dependency follow-up patches follow-redirects, Vite and the matched Vitest cohort.
+Both local audits now contain zero findings, and all 2,525 web tests pass. Vite's
+changed filesystem/editor handling and Vitest's changed mock handling still
+require the unchanged final-head browser/startup and CI gates. Static graph review
+shows the API/root/database/contracts closures are unchanged; a passing local
+audit does not establish absence of undisclosed vulnerabilities or hosted safety.
+
 PR #181's first published head failed the real-database R11 concurrent-review
 fixture. The 2026-10-22 repair gives its loopback listener suite lifetime and
 drains all nine concurrent batches before reporting rejection. It preserves

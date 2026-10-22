@@ -5,11 +5,82 @@ The 2026-10-18 successor is scoped and assigned in IMPLEMENTATION.md. Historical
 counts below are retained as original evidence; they are not fresh test results
 for a newer commit. The final-head PR ledger records current source acceptance.
 
-## 2026-10-22 PR #181 repair verification
+## 2026-10-22 dependency-audit follow-up
+
+The published test-repair checkpoint
+`41de231dcbb324daec36698a908ad4038b8fbfc5` passed the complete real-PostgreSQL/Redis
+API integration job in
+[CI run 39797078525 / job 119888934240](https://github.com/baraabd/homeservicemarketplace/actions/runs/39797078525/job/119888934240):
+**6,506 passed, zero failed, 81 unchanged skips; 343 passed suites and 13 unchanged
+skipped suites**. R11 passed, as did the following 3/3 G1 worker CLI tests.
+The separate official CodeQL result `119888482368` was successful with zero
+annotations on that head. These are checkpoint results, not proof for a later SHA.
+
+[Security job 119888934571](https://github.com/baraabd/homeservicemarketplace/actions/runs/39797078525/job/119888934571)
+then exposed **9 dependency findings: 3 high, 5 moderate, 1 low**. Production had
+the two high follow-redirects findings. Both failures were reproduced locally and
+retained in `/tmp/hsm-pr181-audit-before-{full,prod}.json`. The exact new
+dependency-file assignment was recorded in IMPLEMENTATION.md, CR-001 and the PR
+description before edits. No audit policy or test gate was relaxed.
+
+| Component                                                | Before | Patched | Findings addressed           |
+| -------------------------------------------------------- | ------ | ------- | ---------------------------- |
+| follow-redirects, through unchanged Axios 1.20.0         | 1.16.0 | 1.16.1  | 2 high, including production |
+| Vite                                                     | 6.4.3  | 6.4.4   | 1 high, 3 moderate, 1 low    |
+| Vitest and its seven matched internals, including mocker | 4.1.11 | 4.1.12  | 2 moderate in mocker         |
+
+Primary maintainer releases:
+[follow-redirects 1.16.1](https://github.com/follow-redirects/follow-redirects/releases/tag/v1.16.1),
+[Vite 6.4.4](https://github.com/vitejs/vite/releases/tag/v6.4.4), and
+[Vitest 4.1.12](https://github.com/vitest-dev/vitest/releases/tag/v4.1.12).
+The audit entries have creation dates of October 20/21; historical October 18
+audit results are not reused. This does not claim that the browser executes
+Axios's Node redirect adapter merely because it appears in the production graph.
+
+Verification used the same exact Node 24.21.0 and pnpm 10.32.1. Normal installation
+changed twelve linked packages for the ten patched package records and two Vite
+peer snapshots. The independently reviewed lockfile also changes Vitest's compatible
+es-module-lexer edge to the already present 2.3.2; API, root-tooling, database and
+contracts dependency closures are identical to the preceding checkpoint.
+
+| Executed check                                                                                                                            | Actual result                                                                                    |
+| ----------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| `pnpm security:audit --output /tmp/hsm-pr181-audit-after-full.json`                                                                       | PASS; zero findings at every severity, zero advisories                                           |
+| `pnpm security:audit:prod --output /tmp/hsm-pr181-audit-after-prod.json`                                                                  | PASS; zero findings at every severity, zero advisories                                           |
+| `pnpm --filter @homeservicemarketplace/web test --reporter=default --reporter=json --outputFile.json=/tmp/hsm-pr181-web-patch-tests.json` | **2,525 passed**, zero failed/skipped; 205 test files passed with unchanged Vitest configuration |
+| `pnpm --filter @homeservicemarketplace/web lint`                                                                                          | PASS; zero errors, 34 existing-source warnings                                                   |
+| `pnpm --filter @homeservicemarketplace/web typecheck`                                                                                     | PASS                                                                                             |
+| `pnpm --filter @homeservicemarketplace/web typecheck:e2e`                                                                                 | PASS                                                                                             |
+| `VITE_API_URL=https://api.example.com pnpm --filter @homeservicemarketplace/web build`                                                    | PASS; existing large-chunk warning retained                                                      |
+
+The subsequent frozen installation passed and kept the lockfile SHA-256 identical
+before and after `pnpm install --frozen-lockfile --store-dir
+/tmp/hsm-pr181-pnpm-store --reporter=append-only`.
+
+The unchanged `pnpm --filter @homeservicemarketplace/web test:dev-startup` passed
+**6/6 browser tests**, zero failed/skipped, using its configured one worker and
+zero retries: cold entry/login navigation, failed-module recovery and API-offline
+selector on desktop and mobile. It exercises the real Vite/native-module graph
+with the existing mocked authentication responses, not a real API service.
+The configured browser CDN initially returned a 195-byte HTML page instead of
+an archive. The identical pinned Chrome/Headless Shell 151.0.7922.34, Playwright
+revision 1234, was obtained from the official Google upstream, checked against
+official object hashes and ZIP integrity, and used from an isolated temporary
+cache. No browser revision or test/configuration was substituted. Test logs and
+download provenance are in `/tmp/hsm-pr181-browser/`; Vite shut down cleanly.
+
+The existing peer warning for eslint-plugin-react-hooks/ESLint 10 and ignored
+@parcel/watcher/unrs-resolver build-script warnings remain; no new build approval
+or configuration change was made. Formatting, diff checks and governance/baseline
+validators passed; the platform fingerprint and nine hosted blockers are unchanged.
+Normal hooks and final-head CI/browser/CodeQL identities belong in the PR ledger.
+No hosted target was used; Draft and G2 BLOCKED status remain unchanged.
+
+## 2026-10-22 PR #181 test-repair verification
 
 Starting head: `4bcc1f35cea4def95dd40a752f30bd69c3c3dd50`; unchanged integrated
 base: `75bd688e7254b84316b32f82b0f6ee337249b977`. The exact additional test file
-and current ten-path PR scope are recorded in IMPLEMENTATION.md. This section
+and that checkpoint's ten-path PR scope are recorded in IMPLEMENTATION.md. This section
 records newly executed checks; the 2026-10-18 results below remain historical.
 
 The original failing integration run is

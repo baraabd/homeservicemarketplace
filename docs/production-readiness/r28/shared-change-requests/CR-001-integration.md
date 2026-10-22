@@ -168,6 +168,25 @@ hosted journeys/load. None was run against an external target by this lane.
 
 ## Handoff and approval boundary
 
+### 2026-10-22 PR #181 dependency-audit follow-up
+
+After publication of the test repair at
+`41de231dcbb324daec36698a908ad4038b8fbfc5`, security job `119888934571` in CI
+run `39797078525` failed the unchanged full/production zero-finding audits.
+The current owner repair request and continuing coordinator authority support the
+new exact-file assignment recorded in IMPLEMENTATION.md before edits:
+`package.json`, `apps/web/package.json` and `pnpm-lock.yaml`. Root is their sole
+writer and updates the same five evidence documents. The old test-only assignment
+and expired G1 lease do not grant this dependency scope.
+
+Apply only the patched follow-redirects 1.16.1, Vite 6.4.4 and matched Vitest
+4.1.12 packages, preserve runtime pins and every gate, and regenerate the lockfile
+normally. Require zero findings in both audits, web verification and fresh
+final-head CI/CodeQL. The resulting PR contains thirteen paths; no shared workflow,
+application-source or additional infrastructure path is assigned. This assignment
+expires at source/evidence handoff or earlier revocation. Hosted requirements,
+G2 BLOCKED status and Draft status remain unchanged.
+
 ### 2026-10-22 PR #181 test-only repair
 
 The existing PR coordination record assigns exactly
@@ -175,7 +194,7 @@ The existing PR coordination record assigns exactly
 integration failure in run `39149960222`. The owner renewed the repair request
 on 2026-10-22. IMPLEMENTATION.md records the single-author assignment, listener
 ownership correction and failure-draining behavior. Root updates the five
-existing R28 evidence documents; the PR now has ten authored paths against the
+existing R28 evidence documents; that checkpoint has ten authored paths against the
 same base. No further shared workflow, application or infrastructure change is
 added. Preserve the original failed run and require fresh source/CI evidence;
 the external requirements and prior database refinement below remain unchanged.

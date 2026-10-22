@@ -1,5 +1,20 @@
 # R28 — Rollback and stop conditions
 
+## 2026-10-22 dependency-audit repair
+
+The dependency repair is a separate bounded commit after the test-harness repair
+`41de231dcbb324daec36698a908ad4038b8fbfc5`. It changes the root security override,
+the web Vite/Vitest pins, the regenerated lockfile and existing R28 evidence.
+Prefer a reviewed compatible patched successor if a regression is found.
+Reverting this commit would restore nine known audit findings, including two
+high production-graph findings, so that old graph cannot pass the unchanged
+zero-finding policy. Never add an audit waiver to make the rollback green.
+
+Retain the separate R11 listener/draining correction and database privilege
+contract. Re-run both dependency audits, web verification and final-head CI after
+any corrective dependency change. No migration, data rollback or deployed resource
+change is involved in this source-only repair.
+
 ## 2026-10-22 test-harness repair
 
 The PR #181 repair adds one test path to the earlier nine-file diff. Its bounded

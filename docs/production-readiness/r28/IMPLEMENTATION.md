@@ -1,5 +1,42 @@
 # R28 — Authorized hosted topology and release inputs
 
+## 2026-10-22 PR #181 dependency-audit repair assignment
+
+Delivery mode remains **Mode A — Integration and Bug-Fix Mode**. The owner's
+current instruction is to repair PR #181. After the test-only repair was
+published as `41de231dcbb324daec36698a908ad4038b8fbfc5`, fresh CI run
+`39797078525` exposed nine dependency advisories in security job `119888934571`.
+The full audit reported 3 high, 5 moderate and 1 low finding; production reported
+the two high follow-redirects findings. The unchanged zero-finding policy is the
+acceptance criterion. Both failures were reproduced locally before dependency
+edits. Their advisory creation dates are 2026-10-20/21, after the historical
+2026-10-18 audit evidence.
+
+Under the continuing owner-delegated coordinator authority and the current repair
+request, root recorded this **new bounded assignment before dependency edits**:
+`package.json`, `apps/web/package.json` and `pnpm-lock.yaml`, plus the same five
+R28 evidence documents. Root is the sole writer for these shared dependency files;
+independent agents only review or monitor CI. This does not reuse or extend the
+expired G1 lease or the prior test-only assignment. It ends at the source/evidence
+handoff or earlier owner revocation.
+
+The permitted changes are patch-only Vite 6.4.3 to 6.4.4, Vitest 4.1.11 to
+4.1.12 with its matching internal packages, and follow-redirects 1.16.0 to 1.16.1
+through a targeted security override and normal lockfile regeneration. Preserve
+Node 24.21.0, pnpm 10.32.1, all test assertions and normal hooks. No audit ignore,
+policy relaxation, workflow or application-source edit is assigned. The completed
+PR scope is **thirteen paths**, adding these three dependency files to the
+ten-path test-repair checkpoint below. Platform fingerprint and hosted authority
+remain unchanged. Fresh local dependency/web evidence and final-head CI are
+required; G2 remains BLOCKED and the PR remains Draft.
+
+Normal pnpm regeneration replaced the ten package records for these three patches
+and the seven matched Vitest internals. The Vite plugin peer references follow
+6.4.4; Vitest's compatible `es-module-lexer` edge now selects the already locked
+2.3.2 instead of 2.0.0. No unrelated package record changed. Independent parsed
+lockfile review confirms that the complete API, root-tooling, database and
+contracts dependency closures are unchanged. Only the web importer changes.
+
 ## 2026-10-22 PR #181 integration-test repair
 
 Delivery mode: **Mode A — Integration and Bug-Fix Mode**. The owner requested
@@ -30,8 +67,8 @@ every operation before propagating all original rejection reasons in an
 Request concurrency, round counts, assertions, guards, constraints, cleanup
 scope and timeouts are unchanged.
 
-The total authored PR diff is the original nine-file successor below plus this
-one test file: **ten paths**. This repair changes no application source,
+At the published test-repair checkpoint, the authored PR diff is the original
+nine-file successor below plus this one test file: **ten paths**. This repair changes no application source,
 schema, migration, dependency, lockfile, workflow, platform fingerprint or
 hosted authority. Earlier nine-file/851-test records are historical checkpoints.
 Fresh local verification belongs in ACCEPTANCE.md; final published SHA/tree and
@@ -254,7 +291,8 @@ Both the frozen G1 source and starting integrated develop are ancestors of the
 starting head. The successor additionally integrates owner-merged develop
 `75bd688e7254b84316b32f82b0f6ee337249b977`; it is not waiting for the superseded
 integration approval. Its authored diff was nine files at that checkpoint; the
-2026-10-22 test repair makes the current PR diff exactly ten files.
+2026-10-22 test repair made ten, and the subsequent bounded dependency repair
+makes the current PR diff exactly thirteen files.
 
 ## Source identity convention
 
