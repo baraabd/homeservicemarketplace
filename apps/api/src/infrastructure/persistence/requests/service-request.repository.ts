@@ -166,12 +166,14 @@ export class ServiceRequestRepository {
     // category after it may have changed, or restore Prisma's whole-Bid
     // aggregate (CR-R27-05). Each correlated count uses the requestId index.
     // All values, including nullable category IDs, remain bound parameters.
+    // The fixed status literal takes its enum type from the bid column, even
+    // when a schema-local table reuses an enum defined in another schema.
     const details = await db.$queryRaw<SeekerPageDetails[]>(Prisma.sql`
       SELECT page."requestId", category.*,
         (SELECT COUNT(*) FROM "Bid" bid
          WHERE bid."requestId" = page."requestId"
            AND bid."deletedAt" IS NULL
-           AND bid.status <> 'WITHDRAWN'::"BidStatus") AS "bidsCount"
+           AND bid.status <> 'WITHDRAWN') AS "bidsCount"
       FROM (VALUES ${Prisma.join(
         rows.map((row) => Prisma.sql`(${row.id}::text, ${row.categoryId}::text)`),
       )}) AS page("requestId", "categoryId")

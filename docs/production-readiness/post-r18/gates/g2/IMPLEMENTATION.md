@@ -2,6 +2,15 @@
 
 ## PR183 merged-source correction — 2026-10-23
 
+Real-service job 120132134430 on `99703ddf7def463b935d48bd53f6422bced546d2`
+passed 6,584 tests and the financial generic-plan regression; the remaining
+isolated-schema case then reached the seeker's bid count and exposed the same
+unnecessary fixed-literal enum lookup for `WITHDRAWN`. That literal now also
+takes its type from its column. All fixed enum literals across the three G2
+projection repositories were audited together; only the existing bound dynamic
+provider-status casts remain. Withdrawn/deleted exclusions and all integration
+assertions are unchanged. This earlier failed run is not acceptance evidence.
+
 Review comment 4353973365 exposed the corresponding G3 source-artifact identity
 gap. Twelve synthetic negative cases reproduced acceptance of wrong or missing
 source/tree, absent/invalid artifact/run IDs and absent/invalid inner digest.

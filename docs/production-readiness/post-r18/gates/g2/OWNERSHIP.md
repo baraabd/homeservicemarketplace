@@ -1,5 +1,17 @@
 # G2 coordinator ownership
 
+## PR183 seeker enum follow-up — 2026-10-23
+
+Before edits, root extends its sole-writer lease to
+`apps/api/src/infrastructure/persistence/requests/service-request.repository.ts`
+and the already-owned `IMPLEMENTATION.md` and this record. Real integration job
+120132134430 now passes the financial generic plan but reaches the next seeker
+read in the isolated-schema case and rejects its explicit `BidStatus` lookup.
+Infer the fixed WITHDRAWN literal from the existing bid column, preserving
+withdrawn/deleted bid exclusion, page ownership and bound values. Audit all
+fixed enum literals in the three affected projection repositories together;
+retain both actual PostgreSQL suites and every assertion unchanged.
+
 ## PR183 G3 review finding correction — 2026-10-23
 
 Before edits, root extends its sole-writer lease to
