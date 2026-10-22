@@ -2,6 +2,16 @@
 
 ## PR183 merged-source correction — 2026-10-23
 
+The same head's real-service job 120122846017 passed 6,583 tests but failed two
+existing G2 isolated-schema cases (`BookingStatus` was not visible on the
+temporary schema's search path). The financial query's constant `COMPLETED`
+literal now takes its enum type directly from the compared column, retaining
+the enum comparison and index eligibility without hard-coding another schema.
+No fixture, integration assertion, budget or predicate was relaxed. The bounded
+projection unit suite passes 9/9; an initial command also named a nonexistent
+second spec, then the corrected command passed. Final-source real PostgreSQL
+equivalence and generic-plan results remain required from CI.
+
 Remote follow-up at `7843ed58f638b7db925b3541e922fc30d0887947` passed the
 R27 baseline, candidate, repair-baseline and unchanged-budget/comparison jobs,
 as well as the API build checks, authentication lifecycle, R26 security and

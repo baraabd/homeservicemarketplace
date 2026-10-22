@@ -1,5 +1,16 @@
 # G2 coordinator ownership
 
+## PR183 isolated-schema follow-up — 2026-10-23
+
+Before edits, root retains the existing sole-writer lease for
+`apps/api/src/infrastructure/persistence/bookings/booking.repository.ts`,
+`IMPLEMENTATION.md` and this ownership record. Real PostgreSQL job 120122846017
+failed two existing isolated-schema regressions because the constant financial
+status literal explicitly resolved an enum name outside the temporary table's
+schema. Let PostgreSQL infer that literal's type from its existing column.
+Preserve predicates, bound inputs, indexes, query budgets and both regression
+suites. No schema, search-path, migration or fixture relaxation is authorized.
+
 ## PR183 exact prose finding follow-up — 2026-10-23
 
 Before edits, root extends its sole-writer repair lease to `.gitleaksignore`,

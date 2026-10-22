@@ -558,6 +558,8 @@ export class BookingRepository {
           SELECT id, "updatedAt" FROM "Booking" WHERE id = ${args.cursor}
         ) cursor ON TRUE`
       : Prisma.empty;
+    // Infer the constant status literal from the column's enum, including when
+    // a schema-local table reuses an enum defined in a different schema.
     const rows = await this.db(tx).$queryRaw<AdminFinancialBookingProjection[]>(Prisma.sql`
       SELECT page.id, page."priceAmount", page.currency, page."updatedAt",
         request."addressSnapshot", request."customServiceText",
@@ -569,7 +571,7 @@ export class BookingRepository {
       FROM (
         SELECT booking.* FROM "Booking" booking
         ${cursorJoin}
-        WHERE booking."deletedAt" IS NULL AND booking.status = 'COMPLETED'::"BookingStatus"
+        WHERE booking."deletedAt" IS NULL AND booking.status = 'COMPLETED'
           ${args.cursor ? Prisma.sql`AND (booking."updatedAt", booking.id) <= (cursor."updatedAt", cursor.id)` : Prisma.empty}
         ORDER BY booking."updatedAt" DESC, booking.id DESC
         LIMIT ${args.take} OFFSET ${args.cursor ? 1 : 0}
