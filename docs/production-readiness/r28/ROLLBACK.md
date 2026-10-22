@@ -1,11 +1,44 @@
 # R28 — Rollback and stop conditions
 
+## 2026-10-22 dependency-audit repair
+
+The dependency repair is a separate bounded commit after the test-harness repair
+`41de231dcbb324daec36698a908ad4038b8fbfc5`. It changes the root security override,
+the web Vite/Vitest pins, the regenerated lockfile and existing R28 evidence.
+Prefer a reviewed compatible patched successor if a regression is found.
+Reverting this commit would restore nine known audit findings, including two
+high production-graph findings, so that old graph cannot pass the unchanged
+zero-finding policy. Never add an audit waiver to make the rollback green.
+
+Retain the separate R11 listener/draining correction and database privilege
+contract. Re-run both dependency audits, web verification and final-head CI after
+any corrective dependency change. No migration, data rollback or deployed resource
+change is involved in this source-only repair.
+
+## 2026-10-22 test-harness repair
+
+The PR #181 repair adds one test path to the earlier nine-file diff. Its bounded
+commit changes the R11 integration fixture and the existing R28 evidence only.
+If necessary, revert that repair through a reviewed corrective commit while
+preserving the earlier database-owner/CREATE contract. Reverting it reintroduces
+request-owned listener closure and early-rejection cleanup races; it does not
+change any deployed application, database schema or stored data. Rerun the
+unchanged R11 real-database suite and final-head CI after a source revert.
+
 ## This configuration-only change
 
 No infrastructure, database, account, DNS, bucket, image registry, secret or running
-application was changed by R28. No migration was added. Rollback of this lane is
-therefore a reviewed source revert of its 12 exact files; it requires no resource
-deletion, database rollback or credential invalidation.
+application was deployed by R28. No migration was added. The original 12-file
+configuration implementation and the later authorized source/CI repairs have
+separate commit identities. Roll back only the intended bounded source change;
+this requires no resource deletion, database rollback or credential invalidation.
+
+The 2026-10-18 successor changes nine existing files: three prepared platform
+files, their test file and five R28 evidence documents. A reviewed revert restores
+the earlier input schema and its fingerprint, but also restores its missing
+database-owner/database-CREATE declarations. Preserve that known limitation and
+the original denial tests; never present the older fingerprint as approval of the
+new contract. Review protected target copies separately before any later rollout.
 
 Before integration, the coordinator can decline the draft PR or supersede the
 prepared inputs with a reviewed corrective commit on the same R28 branch. After a
@@ -14,9 +47,13 @@ PR process. Do not reset a shared branch, force-push, delete peer work, pop anot
 session's stash or destroy shared volumes. Preserve acceptance history and the
 original/follow-up source identities.
 
-CR-001 has not changed the shared workflow, Compose overlay or applied edge. If
-the coordinator later integrates those changes, their rollback belongs to that
-integration commit and must preserve any peer changes in the same files.
+CR-001 sections 0 and 1 were applied by the separately authorized current-base/CI
+repair documented in PR_REPAIR_20261018.md. This successor does not revert those
+workflows or the OTP/realtime correctness repairs. Owner-merged G2 at
+`75bd688e7254b84316b32f82b0f6ee337249b977` also applies the API's 30-second Compose
+stop grace; preserve that baseline when reverting this nine-file successor.
+Selected edge/secret integration and actual shutdown evidence remain pending;
+any later integration has its own rollback and must preserve peer changes.
 
 ## A later authorized hosted rollout
 

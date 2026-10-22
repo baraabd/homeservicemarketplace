@@ -1,6 +1,136 @@
 # R28 — Authorized hosted topology and release inputs
 
-## Scope and authority recorded before implementation
+## 2026-10-22 PR #181 dependency-audit repair assignment
+
+Delivery mode remains **Mode A — Integration and Bug-Fix Mode**. The owner's
+current instruction is to repair PR #181. After the test-only repair was
+published as `41de231dcbb324daec36698a908ad4038b8fbfc5`, fresh CI run
+`39797078525` exposed nine dependency advisories in security job `119888934571`.
+The full audit reported 3 high, 5 moderate and 1 low finding; production reported
+the two high follow-redirects findings. The unchanged zero-finding policy is the
+acceptance criterion. Both failures were reproduced locally before dependency
+edits. Their advisory creation dates are 2026-10-20/21, after the historical
+2026-10-18 audit evidence.
+
+Under the continuing owner-delegated coordinator authority and the current repair
+request, root recorded this **new bounded assignment before dependency edits**:
+`package.json`, `apps/web/package.json` and `pnpm-lock.yaml`, plus the same five
+R28 evidence documents. Root is the sole writer for these shared dependency files;
+independent agents only review or monitor CI. This does not reuse or extend the
+expired G1 lease or the prior test-only assignment. It ends at the source/evidence
+handoff or earlier owner revocation.
+
+The permitted changes are patch-only Vite 6.4.3 to 6.4.4, Vitest 4.1.11 to
+4.1.12 with its matching internal packages, and follow-redirects 1.16.0 to 1.16.1
+through a targeted security override and normal lockfile regeneration. Preserve
+Node 24.21.0, pnpm 10.32.1, all test assertions and normal hooks. No audit ignore,
+policy relaxation, workflow or application-source edit is assigned. The completed
+PR scope is **thirteen paths**, adding these three dependency files to the
+ten-path test-repair checkpoint below. Platform fingerprint and hosted authority
+remain unchanged. Fresh local dependency/web evidence and final-head CI are
+required; G2 remains BLOCKED and the PR remains Draft.
+
+Normal pnpm regeneration replaced the ten package records for these three patches
+and the seven matched Vitest internals. The Vite plugin peer references follow
+6.4.4; Vitest's compatible `es-module-lexer` edge now selects the already locked
+2.3.2 instead of 2.0.0. No unrelated package record changed. Independent parsed
+lockfile review confirms that the complete API, root-tooling, database and
+contracts dependency closures are unchanged. Only the web importer changes.
+
+## 2026-10-22 PR #181 integration-test repair
+
+Delivery mode: **Mode A — Integration and Bug-Fix Mode**. The owner requested
+repair of PR #181. Its existing 2026-10-18 coordination record already assigns
+the exact additional test path below; this repair completes that assignment.
+The starting head is `4bcc1f35cea4def95dd40a752f30bd69c3c3dd50`, with unchanged
+base `75bd688e7254b84316b32f82b0f6ee337249b977`. The isolated checkout is
+`/workspace/scratch/9f756efb75e6/hsm-pr181`, initially clean with no stash.
+
+The failed CI run `39149960222`, integration job `117742289029`, reported
+`read ECONNRESET` in the twelve-concurrent-review case, followed by a
+review-to-booking foreign-key failure in the next case's cleanup. Its original
+6,504 passed / 2 failed / 81 skipped result is retained as failed evidence.
+R18 acceptance and CI gate failed because they require that integration job.
+
+The fixture initialized an unbound Nest HTTP server. Locked Supertest 7.2.2
+lets the first request bind and later close such a server, even while sibling
+requests are active. In addition, `Promise.all` can reject before peers finish,
+allowing fixture cleanup to race remaining requests or database operations.
+
+A single delegated author owns
+`apps/api/test/integration/r11-reviews-reputation.integration.spec.ts`; root
+owns the five existing R28 evidence documents. The fixture now binds one
+ephemeral loopback listener with `app.listen(0, '127.0.0.1')`; existing
+`app.close()` owns teardown. All nine concurrent batches await settlement of
+every operation before propagating all original rejection reasons in an
+`AggregateError`. Successful values retain their input order and tuple types.
+Request concurrency, round counts, assertions, guards, constraints, cleanup
+scope and timeouts are unchanged.
+
+At the published test-repair checkpoint, the authored PR diff is the original
+nine-file successor below plus this one test file: **ten paths**. This repair changes no application source,
+schema, migration, dependency, lockfile, workflow, platform fingerprint or
+hosted authority. Earlier nine-file/851-test records are historical checkpoints.
+Fresh local verification belongs in ACCEPTANCE.md; final published SHA/tree and
+remote runs belong in the PR description after publication. G2 remains BLOCKED,
+and the PR remains Draft pending the existing hosted/integration requirements.
+
+## 2026-10-18 successor scope and coordination record
+
+The owner renewed the R28 implementation request on 2026-10-18. The continuing
+owner-delegated coordinator records this bounded successor assignment before
+changing the prepared PostgreSQL contract. The concrete request was published in
+PR #179 before the schema change. The original G1 lease expires at the G2 decision;
+the recorded BLOCKED G2 decision is not treated as an automatic extension of it.
+This is a newly recorded continuation under existing owner authority, not a claim
+that the repository already contained this successor lease.
+
+- Reviewed starting head: `e197e943bca78859976f0495b388f376cb4c0136`.
+- Reviewed starting tree: `60df06295cde83bdfcf6f725caa2c7bc94cde39d`.
+- Starting integrated develop: `6e13120f140e973e793e9e1a7e76170dcb1850a0`.
+- Current integrated develop: `75bd688e7254b84316b32f82b0f6ee337249b977`,
+  tree `953f1556497502bb7c9828e763732416adbfc3d6`.
+- Isolated successor worktree: `/workspace/scratch/e21baf16b335/hsm-r28`.
+- Original frozen G1 source and its tree remain the immutable identities below.
+- During this successor's local verification, the owner merged PR #179 at
+  `15fe443a7d1b94b3f6a7f45cbe2bf5650a38d539`, then PR #180 at the current develop
+  above. The successor normally merged that owner-merged baseline into its isolated
+  R28 branch under continuing coordinator authority, preserving both parents and
+  all accepted peer changes. No unmerged PR #180 source was imported and no write
+  was made to its branch. Further R28 changes require a successor Draft PR because
+  #179 is already merged. Publication requires a fresh expected-head check.
+- The merged G2 source still records BLOCKED, a null frozen base and pending owner
+  review. Merging its source does not establish G2 acceptance or authorize hosting.
+
+The successor coordinator assigns exactly three prepared infrastructure files:
+`infra/production/platform/topology.json`,
+`infra/production/platform/inputs.schema.json`, and
+`infra/production/platform/README.md`. A single delegated author handles these
+three files. Root handles the five existing R28 evidence documents and
+`scripts/production/platform/validate-plan.test.cjs`. These nine paths were the
+complete write allowlist at that checkpoint; no new shared-glue, Compose, workflow, database-schema,
+application, lockfile, edge or central-registry lease is granted. This assignment
+ends at handoff of the final source/evidence or earlier owner revocation.
+
+The change distinguishes the role attribute `CREATEDB` from ownership and `CREATE`
+on the existing database. Both API and migrator declarations must deny database
+ownership and database-level creation rights; migrator DDL remains confined to the
+pre-created application schema. The closed schema and negative tests enforce these
+declarations, and the operator guide checks effective database ACLs and direct,
+inherited and assumable owner authority. No target is accessed or granted rights.
+This refines the unaccepted `hsm.platform-inputs/v1` configuration contract, changes
+its fingerprint and requires fresh input review. It changes no application port,
+Prisma schema, migration, runtime configuration or deployment behavior.
+
+Current-base integration and R28 CI inclusion are already applied by the separately
+authorized repair in `PR_REPAIR_20261018.md`; CR-001 sections 0 and 1 retain their
+historical request and now identify that disposition. Owner-merged G2 also applies
+the API's 30-second Compose stop grace. Effective protected-setting and shutdown
+evidence, selected edge/secret integration and actual hosted evidence remain pending.
+Historical measurements below are retained with their original scope; successor
+verification belongs in ACCEPTANCE.md and the final-head PR ledger.
+
+## Original scope and authority recorded before implementation
 
 Delivery mode: **Mode A — Integration and Bug-Fix Mode**. This lane prepares
 checked configuration for the existing operator-managed staging architecture.
@@ -36,7 +166,7 @@ directory-wide or shared-glue lease is asserted.
 ## Implementation
 
 **IMPLEMENTED:** the prepared platform/edge contracts and their offline validator.
-**INTEGRATION_PENDING:** coordinator-owned CI, container stop grace and the selected
+**INTEGRATION_PENDING:** effective shutdown-window evidence and the selected
 edge/secret-provider integration. **EXTERNAL_BLOCKED:** hosted target authority and
 real target evidence. This lane does not assert SANDBOX_ACCEPTED, HOSTED_ACCEPTED
 or RELEASE_ACCEPTED. Executed source verification is recorded in ACCEPTANCE.md.
@@ -48,7 +178,7 @@ in the inspected authority. Those fields remain null in the checked-in template.
 An explicit `HOSTED_ENVIRONMENT_BLOCKED` result satisfies this sprint's permitted
 external-blocker exit without pretending that a hosted environment exists.
 
-### Exact changed-file manifest
+### Original 12-file manifest
 
 | Path                                                                         | Authority and purpose                                                        |
 | ---------------------------------------------------------------------------- | ---------------------------------------------------------------------------- |
@@ -68,9 +198,14 @@ external-blocker exit without pretending that a hosted environment exists.
 All 12 paths are covered by the existing [R28 manifest entry at the inspected
 develop revision](https://github.com/baraabd/homeservicemarketplace/blob/4e87bf03663fb3c72ffee983fdb70c2863e1ce8a/docs/production-readiness/post-r18/waves/wave-02.plan.json).
 The older copy at the frozen runtime base predates the acceptance publication;
-it is not substituted for the later approved ownership record. No global CI,
-Compose/Docker, staging launcher, central registry, source contract, app entrypoint,
-package manifest, lockfile or migration is modified.
+it is not substituted for the later approved ownership record. This table records
+the original implementation, not the full current PR diff. The authorized repair
+in PR_REPAIR_20261018.md later added ten paths, including two shared workflows and
+six OTP/realtime source/test files. The 2026-10-18 successor changed its nine
+paths; the 2026-10-22 test repair added one path for a ten-path checkpoint.
+The subsequent dependency repair adds the two manifests and lockfile assigned
+above, making thirteen current PR paths. Compose/Docker, the staging launcher,
+central registry, app entrypoints and migrations are unchanged by these repairs.
 
 Authoring was partitioned between the validator/evidence writer, one test writer,
 and one five-file infrastructure writer. The latter two released their files
@@ -92,8 +227,9 @@ branch was imported, no shared runtime was reused and no stash was popped.
 - Match workers to existing code: outbox/cleanup/scan/verification-expiry/public
   cleanup run in the API; only evidence retention and dispute maintenance have
   independent binaries. Keep their existing modes off. Compare proposed container
-  stop grace strictly against the worker grace; actual Compose integration remains
-  a coordinator request.
+  stop grace strictly against the worker grace. Owner-merged G2 sets the API's
+  Compose grace to 30 seconds; effective target settings and pending-work shutdown
+  evidence remain a coordinator/operator requirement.
 - Use external immutable API/migrator secret snapshots, serialized rotation and
   exact registry/repository identities. Evidence references do not prove secret
   encryption, trustworthy provenance or operator authorization.
@@ -113,8 +249,9 @@ branch was imported, no shared runtime was reused and no stash was popped.
 `hsm.platform-inputs/v1` and `hsm.edge-policy/v1` use a closed JSON Schema
 draft-2020-12 subset. `hsm.platform-validator/v1` implements only that checked-in
 subset and rejects unsupported keywords/references. It never retrieves a schema.
-The existing staging manifest stays `schemaVersion: 1`; there is no database
-schema, Prisma, dependency or public application-contract change.
+The existing staging manifest stays `schemaVersion: 1`. The validator
+implementation itself changes no database schema, Prisma dependency or public
+application contract; the separately assigned web dependency repair is above.
 
 `--check` opens a bounded regular JSON input once, then validates the path entry
 against the opened descriptor before reading. It rejects symlinks/entry replacement
@@ -141,15 +278,22 @@ storage and worker playbooks remain authoritative. Version-specific vendor links
 are recorded in the platform and edge READMEs.
 
 The concrete integration request names the existing staging workflow and Compose
-overlay. It also identifies applied edge/CSP and secret-rotation evidence still
-needed. Repository-wide CI success alone does not run the new R28 tests until the
-coordinator integrates that request. No unmerged R25/R26 implementation is consumed.
+overlay. R28 tests and configuration reports now run in the shared Linux/Windows
+staging workflow and production-governance workflow. Effective Compose stop grace,
+applied edge/CSP and secret-rotation evidence are still needed. No unmerged
+R25/R26 implementation is consumed by this successor.
 
 The first published PR run exposed missing post-G1 R26/R27 harness files and a
-CodeQL file-race finding in the R28 reader. The reader correction is scoped here;
-the missing harnesses require explicit current-base integration authority under
-CLAUDE.md and the wave handoff. CR-001 records the concrete normal-merge request.
-The branch remains on its prescribed lineage pending that authorization.
+CodeQL file-race finding in the R28 reader. Those historical defects were repaired
+before the reviewed starting head: the descriptor-bound reader remains intact,
+and the authorized current-base integration includes the post-G1 harnesses.
+CR-001 records those applied dispositions alongside the remaining requests.
+Both the frozen G1 source and starting integrated develop are ancestors of the
+starting head. The successor additionally integrates owner-merged develop
+`75bd688e7254b84316b32f82b0f6ee337249b977`; it is not waiting for the superseded
+integration approval. Its authored diff was nine files at that checkpoint; the
+2026-10-22 test repair made ten, and the subsequent bounded dependency repair
+makes the current PR diff exactly thirteen files.
 
 ## Source identity convention
 

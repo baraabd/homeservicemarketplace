@@ -1,14 +1,30 @@
 # R28 CR-001 — Shared CI, shutdown grace and edge handoff
 
-State: **PROPOSED / INTEGRATION_PENDING; not applied by this lane**.
+State: **PARTIALLY_APPLIED / INTEGRATION_PENDING**. Sections 0 and 1 were applied
+by the separately authorized repair in PR_REPAIR_20261018.md. Owner-merged G2
+source-applied section 2's 30-second API Compose grace; its actual target evidence
+and section 3 remain pending. Section 4 records the bounded successor handoff.
 
 Requester: R28. Author/applicator: the G2 coordinator after ownership is serialized.
-R28's existing lease covers only the five prepared infrastructure files listed in
-IMPLEMENTATION.md. It grants no write authority for the global files below.
+The original R28 lease covered five prepared infrastructure files and expired at
+the G2 decision. The exact successor assignment in IMPLEMENTATION.md covers three
+platform files and owned tests/evidence; it grants no write authority for the
+still-pending global files below.
 Resolve these proposals against the accepted integration candidate, without
 importing an unmerged peer branch or overwriting the current coordinator work.
 
-## 0. Authorize current-base integration into the R28 branch
+## 0. Current-base integration into the R28 branch — APPLIED
+
+Disposition: the owner-authorized repair integrated develop
+`6e13120f140e973e793e9e1a7e76170dcb1850a0` while preserving the frozen G1 ancestor.
+Both are present in reviewed head `e197e943bca78859976f0495b388f376cb4c0136`.
+PR_REPAIR_20261018.md and the PR ledger record the source and subsequent checks.
+During successor verification the owner merged PR #179, then PR #180. The R28
+successor normally integrated that owner-merged develop revision
+`75bd688e7254b84316b32f82b0f6ee337249b977` under continuing coordinator authority.
+Its new nine-file delta requires a corrective Draft PR because #179 is merged.
+No unmerged peer source was consumed; G2 remains BLOCKED in the merged record.
+The following describes the original request, superseded by those integrations.
 
 The first published R28 head follows the required frozen G1 source. Current
 `develop` (`4e87bf03663fb3c72ffee983fdb70c2863e1ce8a`) also contains the later
@@ -40,12 +56,17 @@ No integration commit or ref update to that candidate is performed without the
 requested authority. Afterwards, retain the exact final head/tree and rerun all
 affected checks; prior green runs do not validate the integrated source.
 
-## 1. Run and retain the R28 controls in the existing staging workflow
+## 1. R28 controls in the existing staging workflow — APPLIED
+
+Disposition: `.github/workflows/staging-boundary.yml` runs the R28 tests and plan
+check on Linux and Windows and retains the report/source SHA. The authorized
+repair also added them to `.github/workflows/production-governance.yml`. The
+following preserves the original request and its minimal patch for provenance.
 
 Exact shared path: `.github/workflows/staging-boundary.yml`.
 
-The current controls matrix runs only the existing runtime/launcher tests. The new
-R28 test filename is not discovered by any current CI command. Add it to the
+The original controls matrix ran only the existing runtime/launcher tests. The new
+R28 test filename was not discovered by its CI command. The request was to add it to the
 existing Linux/Windows matrix and retain the configuration report next to the same
 source SHA. Keep all current tests, image checks, gate dependencies and permissions.
 
@@ -76,14 +97,19 @@ Linux and Windows; run the check CLI; inspect retained `controls.tap`,
 existing image jobs and gate green. No package, dependency, database migration,
 public contract or feature-flag change is required by this patch.
 
-## 2. Give the API its reviewed worker shutdown window
+## 2. Give the API its reviewed worker shutdown window — SOURCE_APPLIED
 
 Exact shared path: `infra/production/docker-compose.staging.yml`.
 
-The API runs the outbox worker in-process. The inspected overlay has no explicit
-stop grace, while the current worker defaults to 20,000 ms. The prepared R28 plan
-proposes 30 seconds for that default. Apply the following only to the API service,
-not to the reusable preflight anchor:
+Disposition: owner-merged G2 at `75bd688e7254b84316b32f82b0f6ee337249b977` sets
+`stop_grace_period: 30s` on the API service. The R28 successor preserves that
+accepted source. Protected-setting comparison and actual pending-work shutdown
+evidence below remain pending; no target was deployed or inspected by R28.
+
+The API runs the outbox worker in-process. The originally inspected overlay had
+no explicit stop grace, while the worker defaults to 20,000 ms. The prepared R28
+plan proposes 30 seconds for that default. The historical patch below is now
+applied to the API service, not to the reusable preflight anchor:
 
 ```diff
 @@
@@ -142,8 +168,72 @@ hosted journeys/load. None was run against an external target by this lane.
 
 ## Handoff and approval boundary
 
+### 2026-10-22 PR #181 dependency-audit follow-up
+
+After publication of the test repair at
+`41de231dcbb324daec36698a908ad4038b8fbfc5`, security job `119888934571` in CI
+run `39797078525` failed the unchanged full/production zero-finding audits.
+The current owner repair request and continuing coordinator authority support the
+new exact-file assignment recorded in IMPLEMENTATION.md before edits:
+`package.json`, `apps/web/package.json` and `pnpm-lock.yaml`. Root is their sole
+writer and updates the same five evidence documents. The old test-only assignment
+and expired G1 lease do not grant this dependency scope.
+
+Apply only the patched follow-redirects 1.16.1, Vite 6.4.4 and matched Vitest
+4.1.12 packages, preserve runtime pins and every gate, and regenerate the lockfile
+normally. Require zero findings in both audits, web verification and fresh
+final-head CI/CodeQL. The resulting PR contains thirteen paths; no shared workflow,
+application-source or additional infrastructure path is assigned. This assignment
+expires at source/evidence handoff or earlier revocation. Hosted requirements,
+G2 BLOCKED status and Draft status remain unchanged.
+
+### 2026-10-22 PR #181 test-only repair
+
+The existing PR coordination record assigns exactly
+`apps/api/test/integration/r11-reviews-reputation.integration.spec.ts` for the
+integration failure in run `39149960222`. The owner renewed the repair request
+on 2026-10-22. IMPLEMENTATION.md records the single-author assignment, listener
+ownership correction and failure-draining behavior. Root updates the five
+existing R28 evidence documents; that checkpoint has ten authored paths against the
+same base. No further shared workflow, application or infrastructure change is
+added. Preserve the original failed run and require fresh source/CI evidence;
+the external requirements and prior database refinement below remain unchanged.
+
+### 4. Database privilege contract refinement — successor handoff
+
+The request and exact three-file successor infrastructure assignment were
+published in PR #179 before changing the schema, then recorded in IMPLEMENTATION.md.
+The previous G1 lease is not reused beyond its G2-decision expiry.
+
+Require `databaseOwner: false` and `databaseCreate: false` for both API and migrator
+under `services.postgres`. These are distinct from `createDatabase` (the role's
+CREATEDB attribute). The operator guide now inspects the current database ACL and
+direct/inherited/SET ROLE owner authority. The migration identity continues to
+perform DDL only inside the pre-created application schema. No database is
+queried, modified or granted rights by the validator.
+
+Exact implementation files: `infra/production/platform/topology.json`,
+`infra/production/platform/inputs.schema.json`,
+`infra/production/platform/README.md`, and
+`scripts/production/platform/validate-plan.test.cjs`; five existing R28 evidence
+documents record scope, tests, risks and rollback. No application interface,
+Prisma schema, migration, dependency or global workflow changes are requested.
+
+The coordinator must use the reviewed successor schema and regenerate/review
+any copied R28 inputs and their fingerprint before later integration. A prior
+complete input omitting either new field now fails closed. PR #180 was first
+inspected at `5d96bd17cc490579434007806345d8e0502ec679`, then owner-merged into
+develop at `75bd688e7254b84316b32f82b0f6ee337249b977` and normally integrated into
+this successor. Its prior copied configuration is not silently promoted to the
+new contract. No source or metadata was written to the PR #180 branch.
+
+Acceptance requires omitted-field and unsafe-grant rejection tests, unchanged
+configuration-only/no-side-effect behavior, final-head CI/CodeQL and the later
+authorized-target database privilege audit. Target roles, hosted denial probes,
+spending and deployment remain externally blocked.
+
 Publish the R28 final head/tree and local evidence first. The coordinator releases
 or renews exact-file ownership before reassigning an author and updates wave status
 only after integrated evidence. A green R28 draft is a source-review candidate;
-it neither applies this CR nor grants a merge, deployment, infrastructure charge,
+it neither applies the pending CR sections nor grants a merge, deployment, infrastructure charge,
 identity/policy change or live-money activation.

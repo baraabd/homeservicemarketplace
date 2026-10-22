@@ -100,12 +100,23 @@ Different usernames are necessary but insufficient: inherited membership, `SET R
 object ownership and `PUBLIC` grants can all defeat the separation.
 
 The API policy forbids superuser, database/role creation, replication, bypass-RLS,
-schema/relation ownership, schema creation, migrator membership, writes to migration
-history and `TRUNCATE`. Grant only the application reads/writes needed by the frozen
-code. Preserve immutable ledger/history enforcement; do not grant broad privileges
-just to make a smoke pass. The migrator also has no superuser/database/role creation,
-replication or bypass-RLS authority. Its DDL is confined to the application schema;
-provider extension installation or wider DBA work remains a separate operator action.
+database/schema/relation ownership, database/schema creation privileges, migrator
+membership, writes to migration history and `TRUNCATE`. Grant only the application
+reads/writes needed by the frozen code. Preserve immutable ledger/history enforcement;
+do not grant broad privileges just to make a smoke pass. The migrator also has no
+superuser/database/role creation, database ownership, database-level `CREATE`,
+replication or bypass-RLS authority. Its DDL is confined to the pre-created application
+schema; schema provisioning, provider extension installation and wider DBA work remain
+separate operator actions.
+
+`createDatabase: false` denies the role attribute `CREATEDB`. It does not deny
+`CREATE ON DATABASE`, which permits new schemas, publications and trusted extensions
+inside an existing database. Both identities also require `databaseCreate: false`
+and `databaseOwner: false`. These declarations cover rights from `PUBLIC`, inherited
+memberships and any identity reachable through `SET ROLE`, as well as direct grants
+and ownership. Removing ordinary privileges from an owner is insufficient because
+the owner can grant them again. The prepared contract changes its fingerprint; any
+previously reviewed plan must be reviewed again with these explicit declarations.
 
 After read access to the exact target is authorized, use separate sessions with the
 actual API and migrator credentials. The following PostgreSQL 16/psql inspection is
@@ -132,6 +143,18 @@ WHERE rolname <> current_user
   AND (pg_has_role(current_user, oid, 'MEMBER')
        OR pg_has_role(current_user, oid, 'USAGE')
        OR pg_has_role(current_user, oid, 'SET'));
+
+SELECT d.datname, r.rolname AS inspected_role,
+       r.rolname = current_user AS current_identity,
+       pg_get_userbyid(d.datdba) AS database_owner,
+       r.oid = d.datdba AS owns_database,
+       has_database_privilege(r.oid, d.oid, 'CREATE') AS can_create_schema_or_extension,
+       pg_has_role(r.oid, d.datdba, 'USAGE') AS inherits_database_owner,
+       pg_has_role(r.oid, d.datdba, 'SET') AS may_assume_database_owner
+FROM pg_database d CROSS JOIN pg_roles r
+WHERE d.datname = current_database()
+  AND (r.rolname = current_user OR pg_has_role(current_user, r.oid, 'SET'))
+ORDER BY r.rolname;
 
 SELECT nspname,
        pg_get_userbyid(nspowner) AS schema_owner,
@@ -160,6 +183,16 @@ WHERE n.nspname = :'application_schema' AND a.grantee = 0;
 ROLLBACK;
 ```
 
+For both the API and migrator sessions, every row of the database query must report
+`false` for `owns_database`, `can_create_schema_or_extension`,
+`inherits_database_owner` and `may_assume_database_owner`. The query includes the
+current identity and all roles it can assume; `has_database_privilege` includes
+effective inherited and `PUBLIC` grants for each inspected identity. A denied current
+identity is insufficient if an assumable role retains `CREATE` or owner authority.
+An owner result remains disqualifying even when its ordinary `CREATE` grant was
+revoked. Apply the other role/schema/relation constraints to reachable role identities
+as well, and inspect membership changes after migrations.
+
 Bind the sanitized outcome to the actual resource ID, source/image revision, schema,
 role pair, timestamp and reviewer. Confirm that the two connections reach the same
 physical database through provider identity/network evidence; matching logical names
@@ -170,7 +203,12 @@ checks still need the selected client/provider.
 
 A read-only transaction refusing DDL would not test the role's permissions. Actual
 negative DDL/migration-history/TRUNCATE tests belong on an approved disposable target
-with representative grants; assert permission-denied results there. This README
+with representative grants. Require `CREATE SCHEMA` to fail with SQLSTATE `42501`
+for both the API and migrator, including relevant assumable-role sessions, in a
+write-capable transaction on that disposable target. Use a unique absent schema
+name, preserve the failed-attempt evidence and roll back any unexpected creation;
+also prove the migrator retains the required DDL inside the existing application
+schema. No such target test has been run by this configuration change. This README
 contains no SQL grant, secret, schema mutation, or production write probe.
 
 ## Worker placement and graceful shutdown
@@ -187,10 +225,13 @@ needs accepted R25 integration, including SSE fan-out and Socket.IO polling affi
 
 The plan proposes a 30-second container stop grace and the current 20,000 ms outbox
 shutdown grace. The checker requires the former to strictly exceed the latter.
-The existing Compose overlay has no explicit stop grace and therefore needs a
-coordinator-authored change before target acceptance. Compare against the **actual**
+Owner-merged G2 at `75bd688e7254b84316b32f82b0f6ee337249b977` applies
+`stop_grace_period: 30s` to the API in the existing Compose overlay. Compare that
+source setting and the effective Compose configuration against the **actual**
 protected API configuration: `OUTBOX_SHUTDOWN_GRACE_MS` can be configured up to
-120,000 ms. A green declaration check does not install the proposed grace period.
+120,000 ms. Thirty seconds supports the default, not every permitted worker value.
+A green declaration check does not prove the deployed settings or controlled
+shutdown of pending work on the approved target.
 
 ## Redis, secrets and registry provenance
 
@@ -274,6 +315,10 @@ rollback procedure and separately reviewed immutable image/secret versions.
 - [PostgreSQL 16 role attributes](https://www.postgresql.org/docs/16/role-attributes.html)
   and [privilege inquiry functions](https://www.postgresql.org/docs/16/functions-info.html)
   define the role/catalog checks; effective privileges matter beyond role names.
+- [PostgreSQL 16 object privileges](https://www.postgresql.org/docs/16/ddl-priv.html),
+  [database ownership catalog](https://www.postgresql.org/docs/16/catalog-pg-database.html)
+  and [CREATE SCHEMA](https://www.postgresql.org/docs/16/sql-createschema.html), rechecked
+  2026-10-18, distinguish database `CREATE` and owner rights from `CREATEDB`.
 - [PostgreSQL 16 continuous archiving/PITR](https://www.postgresql.org/docs/16/continuous-archiving.html)
   documents base-backup/WAL recovery and the distinction from logical dumps.
 - [Docker Compose service stop grace](https://docs.docker.com/reference/compose-file/services/#stop_grace_period)

@@ -108,6 +108,23 @@ d('R11 - booking reviews and provider reputation (real HTTP, real Postgres)', ()
   const reason = (res: { body: { error?: { details?: { reason?: string } } } }) =>
     res.body.error?.details?.reason;
 
+  /** Drain every concurrent operation before a failure can trigger fixture cleanup. */
+  async function allSettledOrThrow<T extends readonly unknown[] | []>(
+    operations: T,
+  ): Promise<{ -readonly [K in keyof T]: Awaited<T[K]> }> {
+    const results = await Promise.allSettled(operations);
+    const values: unknown[] = [];
+    const failures: unknown[] = [];
+    for (const result of results) {
+      if (result.status === 'fulfilled') values.push(result.value);
+      else failures.push(result.reason);
+    }
+    if (failures.length > 0) {
+      throw new AggregateError(failures, 'R11 concurrent operations failed');
+    }
+    return values as { -readonly [K in keyof T]: Awaited<T[K]> };
+  }
+
   /** A booking, arranged directly. */
   async function booking(
     bookingStatus: 'SCHEDULED' | 'IN_PROGRESS' | 'COMPLETED' | 'CANCELLED',
@@ -311,7 +328,9 @@ d('R11 - booking reviews and provider reputation (real HTTP, real Postgres)', ()
     app.useGlobalPipes(
       new ValidationPipe({ whitelist: true, transform: true, forbidNonWhitelisted: true }),
     );
-    await app.init();
+    // The suite owns this listener until app.close(); individual Supertest
+    // requests must not open and close it while concurrent siblings are active.
+    await app.listen(0, '127.0.0.1');
     http = app.getHttpServer();
 
     // The real completion, for the races.
@@ -650,7 +669,7 @@ d('R11 - booking reviews and provider reputation (real HTTP, real Postgres)', ()
       for (let round = 0; round < 4; round += 1) {
         await clearBookings();
         const id = await booking('COMPLETED');
-        const results = await Promise.all(
+        const results = await allSettledOrThrow(
           Array.from({ length: 8 }, () => submit(id, { rating: 3, comment: 'same' })),
         );
         const statuses = results.map((r) => r.status).sort();
@@ -666,7 +685,7 @@ d('R11 - booking reviews and provider reputation (real HTTP, real Postgres)', ()
       for (let round = 0; round < 8; round += 1) {
         await clearBookings();
         const id = await booking('COMPLETED');
-        const [a, b] = await Promise.all([
+        const [a, b] = await allSettledOrThrow([
           submit(id, { rating: 5, comment: 'from tab A' }),
           submit(id, { rating: 1, comment: 'from tab B' }),
         ]);
@@ -739,8 +758,10 @@ d('R11 - booking reviews and provider reputation (real HTTP, real Postgres)', ()
       for (let round = 0; round < 3; round += 1) {
         await clearBookings();
         const ratings = [5, 4, 3, 2, 1, 5, 4, 3, 2, 1, 5, 5];
-        const ids = await Promise.all(ratings.map(() => booking('COMPLETED')));
-        const results = await Promise.all(ids.map((id, i) => submit(id, { rating: ratings[i] })));
+        const ids = await allSettledOrThrow(ratings.map(() => booking('COMPLETED')));
+        const results = await allSettledOrThrow(
+          ids.map((id, i) => submit(id, { rating: ratings[i] })),
+        );
         expect(results.map((r) => r.status)).toEqual(ratings.map(() => 201));
         const stored = await reputation();
         expect([round, stored.reviewCount]).toEqual([round, 12]);
@@ -799,7 +820,7 @@ d('R11 - booking reviews and provider reputation (real HTTP, real Postgres)', ()
       let reviewedInRace = 0;
       for (let round = 0; round < 10; round += 1) {
         const id = await booking('IN_PROGRESS');
-        const [completion, review] = await Promise.all([
+        const [completion, review] = await allSettledOrThrow([
           providerBookings.complete(PROVIDER_USER, id).then(
             () => 'completed',
             (e: any) => e,
@@ -837,8 +858,10 @@ d('R11 - booking reviews and provider reputation (real HTTP, real Postgres)', ()
     it('six bookings completed at once count as six jobs', async () => {
       for (let round = 0; round < 3; round += 1) {
         await clearBookings();
-        const ids = await Promise.all(Array.from({ length: 6 }, () => booking('IN_PROGRESS')));
-        await Promise.all(ids.map((id) => providerBookings.complete(PROVIDER_USER, id)));
+        const ids = await allSettledOrThrow(
+          Array.from({ length: 6 }, () => booking('IN_PROGRESS')),
+        );
+        await allSettledOrThrow(ids.map((id) => providerBookings.complete(PROVIDER_USER, id)));
         expect([round, (await reputation()).completedJobs]).toEqual([round, 6]);
         expect((await reconciled()).completedJobs).toBe(6);
       }
@@ -980,7 +1003,7 @@ d('R11 - booking reviews and provider reputation (real HTTP, real Postgres)', ()
         as(SEEKER);
         const [, , low] = await threeReviews();
         as(ADMIN);
-        const [a, b] = await Promise.all([hide(low), hide(low)]);
+        const [a, b] = await allSettledOrThrow([hide(low), hide(low)]);
         expect([round, [a.status, b.status].sort()]).toEqual([round, [200, 409]]);
         expect(await reputation()).toMatchObject({ ratingAvg: 5, reviewCount: 2 });
         expect(await auditOf('ADMIN_REVIEW_HIDDEN', ADMIN)).toHaveLength(1);
@@ -994,7 +1017,7 @@ d('R11 - booking reviews and provider reputation (real HTTP, real Postgres)', ()
         const [, , low] = await threeReviews();
         const fresh = await booking('COMPLETED');
         // Two people, at once: each request carries its own user.
-        const [hidden, added] = await Promise.all([
+        const [hidden, added] = await allSettledOrThrow([
           hide(low).set('x-test-user', ADMIN),
           submit(fresh, { rating: 5 }).set('x-test-user', SEEKER),
         ]);

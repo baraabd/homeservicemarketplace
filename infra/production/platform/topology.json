@@ -37,6 +37,8 @@
       "apiPrivileges": {
         "superuser": false,
         "createDatabase": false,
+        "databaseOwner": false,
+        "databaseCreate": false,
         "createRole": false,
         "replication": false,
         "bypassRls": false,
@@ -50,6 +52,8 @@
       "migratorPrivileges": {
         "superuser": false,
         "createDatabase": false,
+        "databaseOwner": false,
+        "databaseCreate": false,
         "createRole": false,
         "replication": false,
         "bypassRls": false,

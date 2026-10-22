@@ -1,15 +1,235 @@
 # R28 — Source evidence and hosted acceptance boundary
 
-Evidence date: **2026-10-17**. Scope: the 12 exact files in IMPLEMENTATION.md.
+Original evidence date: **2026-10-17**, covering the original 12-file scope.
+The 2026-10-18 successor is scoped and assigned in IMPLEMENTATION.md. Historical
+counts below are retained as original evidence; they are not fresh test results
+for a newer commit. The final-head PR ledger records current source acceptance.
 
-| State                                                 | Result and limit                                                                                            |
-| ----------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
-| IMPLEMENTED                                           | Platform/edge input contracts, offline validator, negative/concurrency tests and handoff documents          |
-| SOURCE_VERIFIED                                       | Applicable local checks below passed; publication CI/CodeQL belongs to the final-head PR ledger             |
-| INTEGRATION_PENDING                                   | CR-001: explicit shared CI coverage, effective API stop grace, selected edge and secret-process integration |
-| EXTERNAL_BLOCKED                                      | No authorized account/resources/region/cost or actual hosted target evidence                                |
-| CONFIGURATION_ONLY                                    | Both unselected and fully populated synthetic input remain configuration-only                               |
-| SANDBOX_ACCEPTED / HOSTED_ACCEPTED / RELEASE_ACCEPTED | Not asserted                                                                                                |
+## 2026-10-22 dependency-audit follow-up
+
+The published test-repair checkpoint
+`41de231dcbb324daec36698a908ad4038b8fbfc5` passed the complete real-PostgreSQL/Redis
+API integration job in
+[CI run 39797078525 / job 119888934240](https://github.com/baraabd/homeservicemarketplace/actions/runs/39797078525/job/119888934240):
+**6,506 passed, zero failed, 81 unchanged skips; 343 passed suites and 13 unchanged
+skipped suites**. R11 passed, as did the following 3/3 G1 worker CLI tests.
+The separate official CodeQL result `119888482368` was successful with zero
+annotations on that head. These are checkpoint results, not proof for a later SHA.
+
+[Security job 119888934571](https://github.com/baraabd/homeservicemarketplace/actions/runs/39797078525/job/119888934571)
+then exposed **9 dependency findings: 3 high, 5 moderate, 1 low**. Production had
+the two high follow-redirects findings. Both failures were reproduced locally and
+retained in `/tmp/hsm-pr181-audit-before-{full,prod}.json`. The exact new
+dependency-file assignment was recorded in IMPLEMENTATION.md, CR-001 and the PR
+description before edits. No audit policy or test gate was relaxed.
+
+| Component                                                | Before | Patched | Findings addressed           |
+| -------------------------------------------------------- | ------ | ------- | ---------------------------- |
+| follow-redirects, through unchanged Axios 1.20.0         | 1.16.0 | 1.16.1  | 2 high, including production |
+| Vite                                                     | 6.4.3  | 6.4.4   | 1 high, 3 moderate, 1 low    |
+| Vitest and its seven matched internals, including mocker | 4.1.11 | 4.1.12  | 2 moderate in mocker         |
+
+Primary maintainer releases:
+[follow-redirects 1.16.1](https://github.com/follow-redirects/follow-redirects/releases/tag/v1.16.1),
+[Vite 6.4.4](https://github.com/vitejs/vite/releases/tag/v6.4.4), and
+[Vitest 4.1.12](https://github.com/vitest-dev/vitest/releases/tag/v4.1.12).
+The audit entries have creation dates of October 20/21; historical October 18
+audit results are not reused. This does not claim that the browser executes
+Axios's Node redirect adapter merely because it appears in the production graph.
+
+Verification used the same exact Node 24.21.0 and pnpm 10.32.1. Normal installation
+changed twelve linked packages for the ten patched package records and two Vite
+peer snapshots. The independently reviewed lockfile also changes Vitest's compatible
+es-module-lexer edge to the already present 2.3.2; API, root-tooling, database and
+contracts dependency closures are identical to the preceding checkpoint.
+
+| Executed check                                                                                                                            | Actual result                                                                                    |
+| ----------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| `pnpm security:audit --output /tmp/hsm-pr181-audit-after-full.json`                                                                       | PASS; zero findings at every severity, zero advisories                                           |
+| `pnpm security:audit:prod --output /tmp/hsm-pr181-audit-after-prod.json`                                                                  | PASS; zero findings at every severity, zero advisories                                           |
+| `pnpm --filter @homeservicemarketplace/web test --reporter=default --reporter=json --outputFile.json=/tmp/hsm-pr181-web-patch-tests.json` | **2,525 passed**, zero failed/skipped; 205 test files passed with unchanged Vitest configuration |
+| `pnpm --filter @homeservicemarketplace/web lint`                                                                                          | PASS; zero errors, 34 existing-source warnings                                                   |
+| `pnpm --filter @homeservicemarketplace/web typecheck`                                                                                     | PASS                                                                                             |
+| `pnpm --filter @homeservicemarketplace/web typecheck:e2e`                                                                                 | PASS                                                                                             |
+| `VITE_API_URL=https://api.example.com pnpm --filter @homeservicemarketplace/web build`                                                    | PASS; existing large-chunk warning retained                                                      |
+
+The subsequent frozen installation passed and kept the lockfile SHA-256 identical
+before and after `pnpm install --frozen-lockfile --store-dir
+/tmp/hsm-pr181-pnpm-store --reporter=append-only`.
+
+The unchanged `pnpm --filter @homeservicemarketplace/web test:dev-startup` passed
+**6/6 browser tests**, zero failed/skipped, using its configured one worker and
+zero retries: cold entry/login navigation, failed-module recovery and API-offline
+selector on desktop and mobile. It exercises the real Vite/native-module graph
+with the existing mocked authentication responses, not a real API service.
+The configured browser CDN initially returned a 195-byte HTML page instead of
+an archive. The identical pinned Chrome/Headless Shell 151.0.7922.34, Playwright
+revision 1234, was obtained from the official Google upstream, checked against
+official object hashes and ZIP integrity, and used from an isolated temporary
+cache. No browser revision or test/configuration was substituted. Test logs and
+download provenance are in `/tmp/hsm-pr181-browser/`; Vite shut down cleanly.
+
+The existing peer warning for eslint-plugin-react-hooks/ESLint 10 and ignored
+@parcel/watcher/unrs-resolver build-script warnings remain; no new build approval
+or configuration change was made. Formatting, diff checks and governance/baseline
+validators passed; the platform fingerprint and nine hosted blockers are unchanged.
+Normal hooks and final-head CI/browser/CodeQL identities belong in the PR ledger.
+No hosted target was used; Draft and G2 BLOCKED status remain unchanged.
+
+## 2026-10-22 PR #181 test-repair verification
+
+Starting head: `4bcc1f35cea4def95dd40a752f30bd69c3c3dd50`; unchanged integrated
+base: `75bd688e7254b84316b32f82b0f6ee337249b977`. The exact additional test file
+and that checkpoint's ten-path PR scope are recorded in IMPLEMENTATION.md. This section
+records newly executed checks; the 2026-10-18 results below remain historical.
+
+The original failing integration run is
+[39149960222 / job 117742289029](https://github.com/baraabd/homeservicemarketplace/actions/runs/39149960222/job/117742289029):
+6,504 passed, 2 failed, 81 skipped; 342 suites passed, 1 failed, 13 skipped.
+The first failure was `read ECONNRESET` during twelve simultaneous reviews;
+the following test's cleanup failed on the review-to-booking foreign key.
+The dependent R18 acceptance and CI gate also failed. That run is not replaced
+or relabeled as successful evidence.
+
+The repair used isolated Node **24.21.0** and pnpm **10.32.1**, verified against
+the official Node SHA-256 and repository-pinned pnpm SHA-512. Installation used
+the unchanged lockfile: six workspaces, 1,166 packages. The existing ignored
+`@parcel/watcher` and `unrs-resolver` build-script warnings remain. Prisma's
+initial default-schema discovery warning was followed by successful generation
+through the repository's guarded explicit-schema command.
+
+| Executed check                                                                                                                                                                           | Actual result                                                                                                                       |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| `pnpm install --frozen-lockfile --store-dir /tmp/hsm-pr181-pnpm-store --reporter=append-only`                                                                                            | PASS; dependency manifests and lockfile unchanged                                                                                   |
+| `pnpm --filter @homeservicemarketplace/database generate`                                                                                                                                | PASS; Prisma 6.12.0 client and separate-process native-engine verification                                                          |
+| `pnpm --filter @homeservicemarketplace/api typecheck`                                                                                                                                    | PASS; includes the edited integration test and tuple inference                                                                      |
+| `pnpm --filter @homeservicemarketplace/api build`                                                                                                                                        | PASS; database/contracts dependency builds and Nest build                                                                           |
+| `pnpm exec eslint apps/api/test/integration/r11-reviews-reputation.integration.spec.ts --max-warnings=0`                                                                                 | PASS; zero warnings                                                                                                                 |
+| `node --test --test-reporter=tap scripts/production/platform/validate-plan.test.cjs .github/scripts/*.test.mjs`                                                                          | **692 passed**, zero failed/cancelled/skipped/TODO: 353 R28 and 339 governance                                                      |
+| `node --test --test-reporter=tap /tmp/hsm-pr181-probes/r11-transport-helper.cjs`                                                                                                         | **7 passed**, zero failed/cancelled/skipped/TODO; controlled transport/helper verification described below                          |
+| `pnpm --filter @homeservicemarketplace/database migrate:deploy` and `pnpm --filter @homeservicemarketplace/database seed`                                                                | PASS against a fresh disposable PostgreSQL 16.14 database; no existing external database used                                       |
+| `RUN_DB_INTEGRATION=1 pnpm --filter @homeservicemarketplace/api exec jest --runTestsByPath test/integration/r11-reviews-reputation.integration.spec.ts --json --outputFile=<run-report>` | **Three independent runs, each 62 passed / 0 failed / 0 skipped**, with normal Jest configuration and unchanged request concurrency |
+| Runtime pin, production-governance and release-baseline CLI checks                                                                                                                       | PASS; no acceptance or wave promotion                                                                                               |
+| `node scripts/production/platform/validate-plan.cjs --check`                                                                                                                             | PASS, same fingerprint, CONFIGURATION_ONLY / HOSTED_ENVIRONMENT_BLOCKED and nine blocker groups                                     |
+
+The PostgreSQL 16.14 runtime came from integrity-verified
+`@embedded-postgres/linux-x64@16.14.0-beta.17`, ran as an unprivileged OS account,
+and listened only on an ephemeral loopback port. Its generated test credentials
+are not stored in the repository or this evidence. The database-owner test role
+has no superuser, CREATEDB, CREATEROLE or replication attribute; this disposable
+fixture is not evidence of the prepared hosted API/migrator privilege policy.
+R11 reports are `/tmp/hsm-pr181-probes/r11-postgres-{1,2,3}.json`. These are three
+repetitions of the same 62 cases, not 186 distinct tests.
+
+The controlled probe extracts and transpiles the actual edited helper using
+locked TypeScript 5.9.3, and uses the installed Supertest 7.2.2. An initially
+unbound server closes on the first response while eleven other barrier-held
+handlers are active. A suite-bound server survives three rounds of twelve
+concurrent requests on the same port: one suite listen, zero request-owned
+closes, and 36 HTTP 201 responses. Five further cases verify every original
+rejection reason, draining an unfinished successful sibling, input-order
+results, twelve concurrent thenables consumed once each, and an empty batch.
+This reproduces premature listener ownership/closure, not a promise that the
+exact ECONNRESET errno is deterministic on every machine.
+
+Initial sandbox process/listener attempts did not complete behavioral
+verification. The same commands succeeded with approved subprocess/loopback
+execution. Scoped formatting, `git diff --check` and normal commit hooks are
+required before publication; their final status, source tree, published SHA and
+fresh GitHub CI/CodeQL results belong in the PR ledger. The prior failed head's
+other green checks do not validate the new source.
+
+No Docker, full local Redis/SMTP/browser stack or hosted target was used for
+this repair. The existing unchanged remote workflows provide those technical
+checks on the published head/integration merge. Hosted requirements remain
+external; the PR remains Draft and G2 remains BLOCKED.
+
+## 2026-10-18 successor verification
+
+Starting source: `e197e943bca78859976f0495b388f376cb4c0136`, tree
+`60df06295cde83bdfcf6f725caa2c7bc94cde39d`, originally integrating develop
+`6e13120f140e973e793e9e1a7e76170dcb1850a0`. After the owner merged PR #179 and
+PR #180 during this work, the successor normally integrated current develop
+`75bd688e7254b84316b32f82b0f6ee337249b977`, tree
+`953f1556497502bb7c9828e763732416adbfc3d6`. The original frozen G1 source below
+is retained. The successor's nine-file scope and prepared-file assignment were
+recorded before implementation in IMPLEMENTATION.md and published in PR #179;
+its new source and final checks belong to the corrective Draft PR. G2 acceptance
+remains BLOCKED in the owner-merged source.
+
+The current configuration fingerprint is:
+
+```text
+d2b75052c99e89d4699c53fd93e74920b710ee092dad856c541b730943a2dbf2
+```
+
+Both database-owner and database-level-CREATE fields are required and fixed to
+false for API and migrator declarations. Four newly added omitted-field tests
+failed with `Missing expected exception` on the original schema, then passed after
+the correction. Four additional unsafe-grant cases and one prior-fingerprint
+rejection case also pass. The platform suite therefore increases from 344 to
+**353** tests without removing, skipping or weakening any prior case.
+
+Commands ran in `/workspace/scratch/e21baf16b335/hsm-r28` with an isolated copy of
+the pinned Node 24.21.0/pnpm 10.32.1 toolchain and independent node_modules. The
+package download store was reused, not another worktree's installed modules.
+Every PASS below returned exit 0; the incomplete-target check returned its required
+exit 2. No local database, Docker daemon or hosted target was used.
+
+| Command                                                                                                                                                                                                                                                         | Actual successor result                                                                                                          |
+| --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| `pnpm install --offline --frozen-lockfile --store-dir /tmp/hsm-r26-20261018-store`                                                                                                                                                                              | PASS; six workspace projects, 1,166 packages reused, zero downloads; contracts prepare/build passed; lockfile unchanged          |
+| `node scripts/runtime/toolchain.cjs`                                                                                                                                                                                                                            | PASS exact Node 24.21.0 and repository declarations; pnpm 10.32.1 verified                                                       |
+| `node --test --test-reporter=tap scripts/production/platform/validate-plan.test.cjs infra/production/check-runtime.test.cjs infra/production/staging.test.cjs scripts/production/storage/storage-plan.test.cjs scripts/production/storage/storage-cli.test.cjs` | **466 passed**, 0 failed/cancelled/skipped/todo: 353 R28, 95 staging, 18 storage                                                 |
+| `node --test --test-reporter=tap .github/scripts/*.test.mjs scripts/security/dependency-audit.test.cjs scripts/security/secret-scan-tree.test.cjs`                                                                                                              | **385 passed**, 0 failed/cancelled/skipped/todo: 339 governance, 46 security                                                     |
+| `pnpm exec eslint scripts/production/platform/validate-plan.cjs scripts/production/platform/validate-plan.test.cjs --max-warnings=0`                                                                                                                            | PASS, zero warnings                                                                                                              |
+| `node --check scripts/production/platform/validate-plan.cjs` and `node --check scripts/production/platform/validate-plan.test.cjs`                                                                                                                              | PASS both files                                                                                                                  |
+| `node scripts/production/platform/validate-plan.cjs --check`                                                                                                                                                                                                    | PASS; CONFIGURATION_ONLY / HOSTED_ENVIRONMENT_BLOCKED, nine blocker groups, authorizationVerified false, deploymentStarted false |
+| `node scripts/production/platform/validate-plan.cjs --check --require-target`                                                                                                                                                                                   | Expected exit 2; missing target declarations rejected                                                                            |
+| `node .github/scripts/production-governance.mjs` and `node .github/scripts/release-baseline.mjs`                                                                                                                                                                | PASS; source governance only, no sprint/wave promotion                                                                           |
+| `node scripts/production/storage/storage-plan.cjs --check`                                                                                                                                                                                                      | PASS, STORAGE_PLAN_OK                                                                                                            |
+| `pnpm security:audit --output /workspace/scratch/e21baf16b335/r28-evidence/audit-full.json`                                                                                                                                                                     | PASS; all severity counters zero                                                                                                 |
+| `pnpm security:audit:prod --output /workspace/scratch/e21baf16b335/r28-evidence/audit-production.json`                                                                                                                                                          | PASS; all severity counters zero                                                                                                 |
+| Scoped Prettier, normal commit hooks and `git diff --check`                                                                                                                                                                                                     | Required on the nine listed successor paths before publication; final execution recorded in the PR ledger                        |
+
+The first local attempt was prevented by sandbox child-process `EPERM`; it is not
+counted as a behavioral regression. Authorized-process execution subsequently
+produced the four actual assertion failures before the schema edit and 730 passing
+source tests after it, before integrating the newly owner-merged baseline. The
+repeated suites on integrated develop `75bd688e7254b84316b32f82b0f6ee337249b977`
+then passed all **851** tests above; G2 contributes 121 additional governance cases.
+These counts are separate checkpoints, not additive test totals.
+Existing ignored dependency build-script
+warnings for `@parcel/watcher` and `unrs-resolver` remain; no package approvals or
+runtime/dependency changes were made. Optional Python `jsonschema` and local
+PostgreSQL were unavailable; their validation is not claimed.
+
+Pinned Gitleaks 8.24.3 was verified against archive SHA-256
+`9991e0b2903da4c8f6122b5c3186448b927a5da4deef1fe45271c3793f4ee29c`.
+The final committed-tree scan, full source identity, history scan, CodeQL result,
+Actions/artifact identifiers and actual source checkout belong together in the PR
+ledger after that source exists. Previously observed 36/36 checks on `e197e943`
+are historical evidence, not acceptance of this successor. Every new published
+head must complete its own required checks, while this PR stays Draft for missing
+hosted/integration evidence.
+
+The PostgreSQL audit is a read-only operator query, not executed target evidence.
+Database-owner/CREATE denial, positive migrator DDL in the existing schema, real
+network/TLS/SMTP/storage/scanner/worker behavior and applied edge tests still need
+the approved isolated target. The original API/browser CI is retained and runs
+against the published source or its actual GitHub integration merge as each
+workflow specifies; it is not described as local or hosted validation.
+
+## Current acceptance states
+
+| State                                                 | Result and limit                                                                                                                                |
+| ----------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| IMPLEMENTED                                           | Platform/edge input contracts, offline validator, negative/concurrency tests and handoff documents                                              |
+| SOURCE_VERIFIED                                       | Applicable local checks below passed; publication CI/CodeQL belongs to the final-head PR ledger                                                 |
+| INTEGRATION_PENDING                                   | CR-001: effective shutdown-window evidence, selected edge and secret-process integration; CI and 30-second API Compose grace are source-applied |
+| EXTERNAL_BLOCKED                                      | No authorized account/resources/region/cost or actual hosted target evidence                                                                    |
+| CONFIGURATION_ONLY                                    | Both unselected and fully populated synthetic input remain configuration-only                                                                   |
+| SANDBOX_ACCEPTED / HOSTED_ACCEPTED / RELEASE_ACCEPTED | Not asserted                                                                                                                                    |
 
 ## Source, tooling and reproducibility
 
@@ -27,18 +247,18 @@ Evidence date: **2026-10-17**. Scope: the 12 exact files in IMPLEMENTATION.md.
   contain its own hash; any new source commit invalidates the previous final-head
   acceptance record until rechecked.
 
-The checked-in plan/edge/schema fingerprint is:
+The original plan/edge/schema fingerprint was:
 
 ```text
 00930548859d95781434fcd8727ce38775be9bdfe2d123f089639d150afdf8e3
 ```
 
-It covers the canonical non-secret declarations and schema under
+It covered the canonical non-secret declarations and schema under
 `hsm.platform-validator/v1`. It is not an owner signature or proof that a target
 was inspected. Real target IDs, approval documents, secrets, raw env files and
 browser sessions are not embedded in this source evidence.
 
-## Executed local checks
+## Original executed local checks
 
 Commands ran from the isolated repository with the pinned toolchain on PATH.
 Every listed PASS completed with exit **0**, except the explicitly expected
@@ -135,13 +355,14 @@ collector intentionally rejects Draft and an unintegrated current base. Do not
 call that collector's blocked state a hosting approval or remove the Draft flag
 just to obtain an acceptance label.
 
-The current workflow does not name the new R28 test file. Until the coordinator
-applies CR-001, local R28 coverage and existing remote regression gates are separate
-facts. Green existing Actions alone do not prove Windows execution of R28 or an
-applied platform/edge. Remote run/artifact IDs are retained in PR metadata to avoid
-creating a new source SHA merely by documenting the run that checked the old SHA.
+The authorized repair now names the R28 test file in both production governance
+and the staging Linux/Windows matrix, retaining the plan report and source SHA.
+CR-001 sections 0 and 1 are applied. Source-bound Windows execution is verified
+from those actual jobs; it still does not prove an applied hosted platform/edge.
+Remote run/artifact IDs are retained in PR metadata to avoid creating a new source
+SHA merely by documenting the run that checked the old SHA.
 
-## Failures, warnings and unrun checks
+## Historical original-lane failures, warnings and unrun checks (2026-10-17/18)
 
 - Initial subprocess tests failed with executor `EPERM`; rerunning with authorized
   process access executed the real child CLI tests. They were not skipped or mocked
@@ -155,9 +376,10 @@ creating a new source SHA merely by documenting the run that checked the old SHA
   non-symlink identity before reading, and adds replacement/no-follow-fallback
   regressions. Only a later observed official CodeQL result can close this alert;
   successful execution of the CodeQL Actions job alone is insufficient.
-- The first R26/R27 publication workflows fail on missing post-G1 harness files,
-  outside the R28 allowance. CR-001 records the explicit current-base integration
-  request. No missing test result is converted to PASS, and no check is disabled.
+- The first R26/R27 publication workflows failed on missing post-G1 harness files,
+  outside the original R28 allowance. PR_REPAIR_20261018.md records the authorized
+  current-base integration that resolved them. The original failed runs remain
+  historical failures; later checks validate their own source. No check is disabled.
 - Frozen install reported ignored build scripts for `@parcel/watcher@2.6.0` and
   `unrs-resolver@1.12.2`; no package/build approval or dependency change was made.
 - Optional Python meta-schema tooling was unavailable (`jsonschema` absent);
