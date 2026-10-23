@@ -1047,7 +1047,9 @@ export class MoneyCommandService {
     parse(idSchema, userId);
     parse(keySchema, key);
     if (
-      ['r24_event_', 'r24_process_', 'r24_refund_result_'].some((prefix) => key.startsWith(prefix))
+      ['r24_event_', 'r24_process_', 'r24_refund_result_', 'r31_'].some((prefix) =>
+        key.startsWith(prefix),
+      )
     )
       throw invalid('MONEY_INTERNAL_KEY_RESERVED');
     return this.command(

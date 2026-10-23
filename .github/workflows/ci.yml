@@ -355,6 +355,63 @@ jobs:
         if: ${{ always() && env.R25_SESSION != '' }}
         run: docker compose -f infra/production/realtime/compose.test.yml down
 
+  # R31 owns a disposable real-API runtime and keeps authentication material
+  # outside the uploaded evidence. This is required by both aggregate gates.
+  r31-subscriptions:
+    name: R31 subscriptions real API and browser
+    runs-on: ubuntu-latest
+    needs: verify
+    timeout-minutes: 25
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: r31_browser_admin
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s --health-timeout 5s --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports: ['6379:6379']
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s --health-timeout 5s --health-retries 10
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/r31_browser_admin
+      REDIS_HOST: 127.0.0.1
+      REDIS_PORT: '6379'
+      RUN_DB_INTEGRATION: '1'
+      NODE_ENV: test
+      APP_ENV: test
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v5
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Generate the frozen database client
+        run: pnpm --filter @homeservicemarketplace/database generate
+      - name: Install the pinned browser
+        run: pnpm --filter @homeservicemarketplace/web exec playwright install --with-deps chromium
+      - name: Verify My Plan against real persisted API state
+        run: node scripts/production/subscriptions/verify-my-plan.cjs --output "${{ runner.temp }}/r31-browser"
+      - name: Preserve source-bound subscription evidence
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: r31-subscriptions-evidence
+          path: ${{ runner.temp }}/r31-browser/
+          if-no-files-found: error
+          retention-days: 14
+
   # ── the approved design, measured ─────────────────────────────────────────
   # Sprint 09B.29 Phase 5B. The visual gate produced its evidence only on a
   # developer's machine, which meant the one check that can tell whether the
@@ -2217,6 +2274,7 @@ jobs:
       - r30-manual-payments
       - browser-e2e
       - r25-realtime
+      - r31-subscriptions
       - phase5-visual
       - phase5-real-api
       - admin-review-real-api
@@ -2267,6 +2325,7 @@ jobs:
       - r30-manual-payments
       - browser-e2e
       - r25-realtime
+      - r31-subscriptions
       # The approved design is an acceptance criterion, so the check that
       # measures it blocks merges like any other.
       - phase5-visual

@@ -7,6 +7,8 @@ import { LedgerModule } from './modules/money/ledger/ledger.module';
 import { MoneyModule } from './modules/money/money.module';
 import { RefundsModule } from './modules/money/refunds/refunds.module';
 import { RefundOutboxConsumer } from './modules/money/recovery/refund-outbox.consumer';
+import { SubscriptionsModule } from './modules/money/subscriptions/subscriptions.module';
+import { SubscriptionOutboxHandler } from './modules/money/subscriptions/subscription-outbox.handler';
 import { OutboxModule } from './infrastructure/outbox/outbox.module';
 import { OUTBOX_HANDLERS } from './infrastructure/outbox/outbox.tokens';
 import { SupportModule } from './modules/support/support.module';
@@ -50,6 +52,26 @@ describe('AppModule feature registration', () => {
     expect(moneyExports.filter((entry) => entry === LedgerModule)).toHaveLength(1);
     expect(supportControllers).toEqual(
       expect.arrayContaining([SupportController, AdminSupportController]),
+    );
+  });
+
+  it('registers the period-bound lifecycle handler in the actual outbox worker', () => {
+    const imports = Reflect.getMetadata(MODULE_METADATA.IMPORTS, AppModule) as Array<{
+      module?: unknown;
+      imports?: unknown[];
+      providers?: Array<{ provide?: unknown; inject?: unknown[] } | unknown>;
+    }>;
+    const outbox = imports.find((entry) => entry.module === OutboxModule);
+    expect(outbox?.imports).toContain(SubscriptionsModule);
+    const handlerList = outbox?.providers?.find(
+      (entry): entry is { provide: unknown; inject: unknown[] } =>
+        typeof entry === 'object' &&
+        entry !== null &&
+        'provide' in entry &&
+        entry.provide === OUTBOX_HANDLERS,
+    );
+    expect(handlerList?.inject.filter((entry) => entry === SubscriptionOutboxHandler)).toHaveLength(
+      1,
     );
   });
 });

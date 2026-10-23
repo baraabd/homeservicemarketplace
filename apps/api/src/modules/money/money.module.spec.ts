@@ -19,7 +19,10 @@ import {
   ManualFinanceReviewController,
 } from './manual-review/manual-review.controller';
 import type { PrismaTx } from '@homeservicemarketplace/database';
+import type { MoneyTransportBinding } from './ports/collection.port';
 import { MONEY_ACTIVATION_PARTICIPANT } from './ports/activation.port';
+import { SubscriptionActivationParticipant } from './subscriptions/subscription-activation.participant';
+import { SubscriptionsModule } from './subscriptions/subscriptions.module';
 import {
   MONEY_COLLECTION_ADAPTER,
   MONEY_CONFIGURATION,
@@ -60,7 +63,7 @@ function configuredProvider(token: symbol) {
   return new matches[0]!.useClass();
 }
 
-describe('R24 MoneyModule composition with R30 manual transports', () => {
+describe('R24/R31 MoneyModule composition and unavailable external defaults', () => {
   it('imports and exports the existing ledger once without creating another posting authority', () => {
     expect(
       (Reflect.getMetadata(MODULE_METADATA.IMPORTS, MoneyModule) as unknown[]).filter(
@@ -130,18 +133,50 @@ describe('R24 MoneyModule composition with R30 manual transports', () => {
     }
   });
 
+  it('binds exactly one real R31 participant from its owning module', () => {
+    expect(Reflect.getMetadata(MODULE_METADATA.IMPORTS, MoneyModule)).toContain(
+      SubscriptionsModule,
+    );
+    expect(
+      providers.filter(
+        (entry) =>
+          typeof entry === 'object' &&
+          entry !== null &&
+          'provide' in entry &&
+          entry.provide === MONEY_ACTIVATION_PARTICIPANT,
+      ),
+    ).toEqual([
+      { provide: MONEY_ACTIVATION_PARTICIPANT, useExisting: SubscriptionActivationParticipant },
+    ]);
+    expect(Reflect.getMetadata(MODULE_METADATA.EXPORTS, SubscriptionsModule)).toContain(
+      SubscriptionActivationParticipant,
+    );
+    expect(providers).not.toContain(SubscriptionActivationParticipant);
+  });
+
   it.each([
-    [MONEY_ACTIVATION_PARTICIPANT, 'activatePeriod', 'MONEY_ACTIVATION_UNAVAILABLE'],
+    [MONEY_COLLECTION_ADAPTER, ManualCollectionAdapter],
+    [MONEY_RECEIPT_ACCEPTANCE, ReceiptAcceptanceParticipant],
+    [MONEY_REFUND_ADAPTER, ManualRefundAdapter],
   ] as const)(
-    'never reports a configured or successful default for %s',
-    async (token, method, reason) => {
-      const port = configuredProvider(token);
-      expect(port.isConfigured()).toBe(false);
-      await expect(port[method]()).rejects.toMatchObject({
-        code: 'DEPENDENCY_UNAVAILABLE',
-        status: 503,
-        details: { reason },
-      });
+    'keeps the mounted manual participant %s unavailable to live or non-manual bindings',
+    (token, implementation) => {
+      expect(providers).toContainEqual({ provide: token, useExisting: implementation });
+      const binding: MoneyTransportBinding = {
+        planVersionId: 'plan',
+        method: 'SHAM_CASH',
+        currency: 'XTS',
+        mode: 'LIVE',
+        adapterId: 'hsm.manual.v1',
+        accountReference: 'synthetic-account',
+        configVersion: 'synthetic-v1',
+        debitAccountId: 'clearing',
+        creditAccountId: 'revenue',
+      };
+      expect(implementation.prototype.isConfigured(binding)).toBe(false);
+      expect(
+        implementation.prototype.isConfigured({ ...binding, mode: 'SANDBOX', method: 'STRIPE' }),
+      ).toBe(false);
     },
   );
 
