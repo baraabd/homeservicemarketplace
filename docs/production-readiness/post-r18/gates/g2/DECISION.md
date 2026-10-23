@@ -1,21 +1,51 @@
-# G2 — Technical decision and publication hold
+# G2 — Accepted source and verified owner publication
 
-**Current decision: BLOCKED pending the successor candidate's integrated evidence.** The exact active state and source are in `SOURCE_MANIFEST.json`. No future-wave lane is authorized to start by a planning package or a local passing test.
+**Current decision: ACCEPTED; owner publication verified.** Technical acceptance
+remains bound to `72b4aaeb0a71d806b7fca7363dd9ca59bbcee644`, tree
+`43e9c6a4e58cfb934b12789feeb38b588e1cb7c6`. The canonical source is unchanged.
+The owner merged PR #183 on 2026-10-23 at 04:11:34 UTC as
+`986b4707776711e80564f0642133ede90ba16f3c`.
 
-## Successor decision on 2026-10-22
+The independent publication verification confirms accepted-source ancestry,
+identical final PR-head and merged trees, 38 latest distinct successful PR-head
+checks, and 30 successful postmerge checks across eight push-triggered workflows.
+The 13 changed paths between accepted source and publication contain only
+coordinator evidence/status records. Full identities, check URLs and scope are
+in [`PUBLICATION_VERIFICATION.json`](PUBLICATION_VERIFICATION.json).
 
-The owner requested removal of G2's blockers. The coordinator is repairing the four R27 reads to meet the original 5/10/7/3 statement ceilings; the earlier 6/13/12/9 relaxation proposal is **superseded, not approved or applied**. No performance/security budget is raised. The original pre-successor bundle remains preserved, and its full earlier decision narrative remains available at `96e92825f9b65cf124317f43b55ce42fc97f5b49`.
+## R30 session release on 2026-10-23
 
-The latest merged baseline has successful CI, R25 recovery and R26/R28 boundary evidence. Its exact-source official Advanced Security check and new repair measurements must still come from the successor PR. The prior R27 comparison is not comparable after dependency patches because the frozen G1 and latest candidate lockfile digests differ. The new experiment explicitly compares the owner-merged patched baseline with the repair, using one unchanged candidate harness on both sides. G1's accepted identity is not changed.
+The renewed owner request explicitly asks for R30 implementation. Under the
+standing coordinator delegation, root assigns only session
+`hsm-r30-590834e66da5` on `feat/r30-manual-payment-review`. The exact allowlist,
+serialized shared leases and writer handoffs are recorded before source edits.
+The checkout begins at the verified metadata-only publication descendant;
+the accepted runtime base remains the frozen source above.
 
-Complete R29–R38 instructions were recovered from the original package with a digest matching G1 provenance. The missing-package blocker is resolved as source preparation, not sprint execution.
+Wave 3's readiness contract releases R30 only. R29, R31, R32 and R33 retain
+their unassigned session holds. R34–R38 still require their separate G3 start
+gate. R30 implementation, sandbox acceptance, hosted acceptance and live method
+activation are separate outcomes; this record establishes only its source
+execution prerequisite and assigned ownership.
 
-## Required sequence
+## Preserved technical decision
 
-1. Publish the coherent repair candidate after applicable local checks. Execute full required CI, independent CodeQL and the real-service/browser measurements at its exact source/tree.
-2. Independently verify artifacts and all six G2 categories. Record technical acceptance only when complete. Keep R28's permitted configuration-only scope and explicit hosted blocker.
-3. Publish the concrete acceptance record for owner review. An accepted but unmerged record retains `DRAFT_PENDING_OWNER_REVIEW`, null acceptance publication SHA, blocked next-wave status and no startable lanes.
-4. After an explicitly authorized owner merge, independently verify the reviewed acceptance record, accepted-source ancestry, postmerge checks and resulting publication SHA. Release only R29–R33 with a full approved frozen base and assigned single-writer exact leases.
-5. Assemble and accept the real Wave 3 money flows at G3, then separately verify G3 publication before R34–R38 start. R38 final certification consumes R34–R37 results at the mandatory serialized join.
+The accepted repair meets the original R27 5/10/7/3 statement ceilings and all
+52 unchanged performance budgets. The earlier 6/13/12/9 relaxation proposal
+remains superseded. G1's immutable acceptance identity remains unchanged.
+Measured source-bound checks, R24 interface freeze, R25 replica recovery,
+R26 security boundaries, R27 comparison and R28 checked configuration remain
+the six categories recorded by `SOURCE_MANIFEST.json` and its evidence bundle.
+Earlier blocked observations remain in Git history and are not relabeled.
 
-A JSON PASS label cannot prove a GitHub review, a merge, branch protection, settlement, hosted acceptance or permission to operate. This task performs no merge or deployment and grants no live-money, resource-spend or account authority. R16/R18 holds remain unchanged.
+## Remaining integration and operational boundaries
+
+Assemble and accept the actual Wave 3 money flows at G3, then verify G3 owner
+publication before R34–R38 start. R38 final certification also needs the
+serialized R34–R37 evidence join and G4 scope approval.
+
+R28 retains its explicit hosted-environment blocker and configuration-only
+acceptance. R16/R18 payout, commercial, verification and release holds remain.
+A readiness label grants no live funds, merchant setup, policy decision,
+resource spend, account or permission changes, merge or deployment. This task
+records an existing owner merge; it performs no new merge.

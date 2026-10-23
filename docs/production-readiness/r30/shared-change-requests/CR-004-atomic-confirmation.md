@@ -1,5 +1,13 @@
 # CR-004 — final manual review in the existing money transaction
 
+## Current disposition — 2026-10-23
+
+Atomic R24 participation and bounded durable retry are implemented. Actual R31 and R32 production integration remains pending. See `../RUNTIME_OWNERSHIP.json`, `../IMPLEMENTATION.md` and `../ACCEPTANCE.md`.
+
+## Historical request (preserved)
+
+The following source observation/request predates authorized runtime work. Its blocked/unapplied status is historical, not the current disposition above.
+
 Status: **REQUESTED / UNAPPLIED / G2_BLOCKED**. Runtime: **NOT_IMPLEMENTED**.
 Source inspected: `96e92825f9b65cf124317f43b55ce42fc97f5b49`; source tree:
 `68f4e926eabeb37bb70382c62b75272cf67bd02c`. No runtime lease, participant,

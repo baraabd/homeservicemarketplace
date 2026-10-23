@@ -1,5 +1,13 @@
 # CR-003 — private financial receipt isolation and access
 
+## Current disposition — 2026-10-23
+
+Private financial receipt storage/read/scan and identity isolation are implemented. Hosted finance IAM/KMS and financial erasure/holds remain unresolved; this is not hosted acceptance. See `../RUNTIME_OWNERSHIP.json`, `../IMPLEMENTATION.md` and `../ACCEPTANCE.md`.
+
+## Historical request (preserved)
+
+The following source observation/request predates authorized runtime work. Its blocked/unapplied status is historical, not the current disposition above.
+
 Status: **REQUESTED / UNAPPLIED / G2_BLOCKED**. Runtime: **NOT_IMPLEMENTED**.
 Source inspected: `96e92825f9b65cf124317f43b55ce42fc97f5b49`; source tree:
 `68f4e926eabeb37bb70382c62b75272cf67bd02c`. The recorded preparation lease covers

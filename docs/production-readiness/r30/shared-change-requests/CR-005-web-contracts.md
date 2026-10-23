@@ -1,5 +1,13 @@
 # CR-005 — published manual-payment contracts and real routes
 
+## Current disposition — 2026-10-23
+
+Published contracts, lazy provider/admin routes and required real-service/browser CI are implemented; executed outcomes belong in ACCEPTANCE.md. See `../RUNTIME_OWNERSHIP.json`, `../IMPLEMENTATION.md` and `../ACCEPTANCE.md`.
+
+## Historical request (preserved)
+
+The following source observation/request predates authorized runtime work. Its blocked/unapplied status is historical, not the current disposition above.
+
 Status: **REQUESTED / UNAPPLIED / G2_BLOCKED**. Runtime: **NOT_IMPLEMENTED**.
 Source inspected: `96e92825f9b65cf124317f43b55ce42fc97f5b49`, tree
 `68f4e926eabeb37bb70382c62b75272cf67bd02c`. These are proposed coordinator
