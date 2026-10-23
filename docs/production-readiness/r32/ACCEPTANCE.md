@@ -21,6 +21,9 @@ and links to current Actions. No result from G2 is treated as an R32 test.
 | Frozen source tree                  | `43e9c6a4e58cfb934b12789feeb38b588e1cb7c6`                                |
 | Owner-merged publication / PR base  | `986b4707776711e80564f0642133ede90ba16f3c`                                |
 | Publication tree                    | `7ab683ea8c5304929a2fa51f1dc824c7cb46f7d5`                                |
+| Published implementation source     | `a8957930b9eb297f0f5dfc69f01f0077714344df`                                |
+| Normal-hook local source commit     | `4d08d2083a502eb5e7a3c1b5e6bfe5be386cf5ed`                                |
+| Identical implementation tree       | `e29ea9d31cf78b95e4c54a29e28f08980660ac64`                                |
 | Branch                              | `feat/r32-refund-recovery`                                                |
 | Source contract / schema            | `hsm.money.v1`; existing 72 migrations; no version/schema/lockfile change |
 
@@ -79,9 +82,10 @@ Additional completed checks: package-level API `typecheck` and `build`, includin
 their normal dependency builds, both exited 0. Production dependency audit
 exited 0 for 553 dependencies; all five severity counts are zero. The full audit
 covers 1,319 dependencies, also with zero findings. Changed source/test/CLI lint,
-37-file formatting and diff-whitespace checks are required before commit.
-The committed-tree secret scan must run after that commit and is reported with
-its exact source identity in the publication addendum/PR evidence.
+37-file formatting and diff-whitespace checks passed. The normal Husky and
+lint-staged commit hooks completed successfully, including ESLint and Prettier.
+The exact committed implementation tree then passed the pinned Gitleaks scan
+documented below.
 
 All applicable remote workflows, full service-enabled API regression,
 browser/container scans and official CodeQL remain mandatory on the submitted
@@ -128,6 +132,35 @@ The corresponding logs are `hsm-r32-r24-regression-final.log`,
 is `hsm-r32-api-unit-final-skips.json`. CI discovers the R32 integration spec
 through its existing Jest roots and records it in `g1-api-report.json` inside
 the `g1-worker-process-evidence` artifact. No CI selection/filter was weakened.
+
+## Publication and committed-tree secret scan
+
+Authenticated Git Data publication reproduced the complete implementation tree
+`e29ea9d31cf78b95e4c54a29e28f08980660ac64` exactly. The published source commit
+`a8957930b9eb297f0f5dfc69f01f0077714344df` has the already owner-merged G2
+publication as its only parent. The normal-hook local source commit above has
+the same tree and parent; GitHub publication supplies distinct commit metadata.
+The subsequent evidence-only commit records these immutable identities. It
+does not change runtime source, tests, contracts, dependencies or schema.
+
+Gitleaks 8.24.3 scanned the exact normal-hook implementation commit: 2,689
+tracked files / 23,953,233 bytes, exit 0, no leaks. The binary SHA-256 is
+`e18325d568268b6efb6cd0cc721f8bea5667f4cd1c8d03618ab61987f41269ad`.
+
+```bash
+node scripts/security/secret-scan-tree.cjs \
+  --gitleaks /tmp/hsm-pr183-gitleaks/gitleaks \
+  --commit 4d08d2083a502eb5e7a3c1b5e6bfe5be386cf5ed \
+  --work-dir /tmp/hsm-r32-source-scanned-tree \
+  --report /tmp/hsm-r32-source-tree.sarif
+```
+
+The captured report/log are `hsm-r32-source-tree.sarif` and
+`hsm-r32-secret-source.log`. The complete final PR tree must also pass the
+unchanged remote secret scan and official CodeQL. The exact final commit,
+complete tree, workflow runs and artifact IDs are bound in the PR body and its
+Production governance artifact; this source record does not predict their
+results. The PR remains Draft for the stated integration and policy blockers.
 
 ## Failures found and corrected
 
