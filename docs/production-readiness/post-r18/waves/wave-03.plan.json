@@ -355,6 +355,18 @@
           "scope": "Make the existing missing/duplicate LedgerModule and lost-export negative fixtures identify the imports/exports arrays regardless of formatter whitespace. Keep every rejection assertion and the production composition fence unchanged; explicitly assert that each fixture mutation changed its target. Needed after additive SubscriptionsModule made Prettier wrap the existing import array.",
           "expires": "R31 PR closure or coordinator revocation",
           "handoff": "Root is sole writer. No test skip, budget change, validator relaxation or permission change."
+        },
+        {
+          "id": "R31-CI-20261023",
+          "grantedBy": "Owner request to repair PRs #185/#186/#187; root serializes shared changes",
+          "writer": "root PR repair session aa623b77a7b8",
+          "scope": "Exclude unrelated asynchronous mail dispatch from request SQL measurements, with regression coverage. Original budgets and production defaults unchanged.",
+          "paths": [
+            "scripts/perf/post-r18/lib/lane-env.mjs",
+            "scripts/perf/post-r18/lib/runtime.test.mjs"
+          ],
+          "expires": "PR #186 closure or coordinator revocation",
+          "handoff": "docs/production-readiness/r31/ACCEPTANCE.md"
         }
       ],
       "requiredEvidence": [

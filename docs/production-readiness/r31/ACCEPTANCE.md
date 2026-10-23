@@ -288,3 +288,10 @@ the added real-service regression must pass the mandatory GitHub integration
 job on the new head. Browser/CodeQL/remote acceptance remains pending until
 that head finishes. Historical acceptance below/above is not proof of this
 new integrated source; commercial, lifecycle and release restrictions persist.
+
+The same diagnosed R27 measurement issue affects this branch's harness:
+unrelated mail retry SQL can contaminate request-level counts. The existing
+MAIL_DISPATCHER_ENABLED flag is disabled only in the fixed measurement profiles,
+with regression coverage for ambient and override settings. Original ceilings
+and production defaults are unchanged. The combined governance and performance
+harness suite passes 588 tests with zero failures/skips.
