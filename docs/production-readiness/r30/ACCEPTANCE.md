@@ -36,11 +36,11 @@ under `historicalPreparation` in `SOURCE_MANIFEST.json`.
 | Full dependency audit                       | PASS, exit 0; 0 vulnerabilities at all severities                   | Pinned full dependency graph                                                                                                       |
 | Production dependency audit                 | PASS, exit 0; 0 vulnerabilities at all severities                   | Pinned production graph                                                                                                            |
 | Final real-service suite                    | 16 passed, 0 failed, 0 skipped; exit 0                              | Real HTTP/auth, PostgreSQL, Redis, private storage and ClamAV; includes concurrent worker failure injection over actual PostgreSQL |
-| Final shared/API/private HTTP boundaries    | 14 suites, 213 passed, 0 failed, 0 skipped; exit 0                  | Includes 8 R30 unit suites / 51 tests; subset, not additive                                                                        |
+| Final shared/API/private HTTP boundaries    | 15 suites, 219 passed, 0 failed, 0 skipped; exit 0                  | Includes 9 R30 unit suites / 57 tests; subset, not additive                                                                        |
 | Final frontend feature suite                | 6 files, 54 passed, 0 failed, 0 skipped                             | Includes actual settlement `201 {id}` contract followed by authoritative detail GET                                                |
 | Frontend lint / TypeScript / E2E TypeScript | PASS                                                                | Scoped feature/browser lint; web tsc-b and E2E typecheck                                                                           |
 | Complete R30 real browser                   | 2 scenarios passed; 0 unexpected/skipped/flaky; harness 1/1; exit 0 | Actual HTTP, bytes, scan, replacement, inspection, settlement, approval, session cleanup and durable database assertions           |
-| Final publication CI and official CodeQL    | PENDING PUBLICATION                                                 | Must refer to exact final published head; earlier G2 evidence does not substitute                                                  |
+| Final publication CI and official CodeQL    | PENDING CORRECTED FINAL HEAD                                        | The first published head had one official security finding; final results belong to the exact successor head in PR184              |
 
 Current root/agent JSON report digests and final scoped outcomes are maintained
 in the manifest. Full default API service gates remain enabled only in their
@@ -70,11 +70,15 @@ contains fixed admin chrome at the scroll position. Actual PDF rendering,
 keyboard dialog focus/escape/confirmation, outsider denial and session byte
 revocation were exercised by the completed browser scenario.
 
-Normal commit hooks formatted method-chain layout in two backend files. The
+Before the first publication, normal commit hooks formatted method-chain layout in two backend files. The
 213 scoped API/shared cases, 16 real-service cases and both complete browser
 scenarios were repeated successfully after hooks. Source digests now describe
-those committed bytes. The API full build, lint and TypeScript checks pass
-after all backend fixes.
+those committed bytes. After the first remote CodeQL finding, the three-file
+refund authorization correction passed 219 scoped API/shared cases across
+15 suites and all 16 real-service cases, including fresh revoked-dispatcher
+checks. The six new refund cases are included in the 219 total. API build,
+TypeScript and corrected-file lint are verified again; final normal-hook
+source equality and official CodeQL belong to the successor publication.
 All 38 root-shared TypeScript/JavaScript paths pass scoped ESLint. Final
 frontend feature tests pass 54 cases; web and E2E TypeScript and scoped lint
 pass. The final production web build uses CI's non-live API URL. Dependency
@@ -109,6 +113,17 @@ removed by the harness; no profiles/cookies/traces are public evidence.
 
 ## Observed failures and corrections
 
+- The first published R30 head `38307f0e3262a04319b2c79f39dae031cdbe0bb8`
+  completed the CodeQL analysis workflow, but its separate official security
+  check `120376196775` correctly failed with one high-severity
+  `js/user-controlled-bypass` finding. Dispatcher reauthorization in refund
+  review depended on the request's event-type branch. The successor moves that
+  check onto the common transaction path using the persisted dispatcher, or
+  the authorized current actor for first dispatch. Regression checks cover
+  revoked dispatcher authority for all three event types, retained UNKNOWN
+  state, no new evidence on rejection, restored authority and idempotent replay.
+  No query, gate or severity threshold is suppressed. The successor's official
+  CodeQL result must independently pass before technical publication acceptance.
 - Initial service fixture lacked CREATEDB; only the disposable test-cluster
   role was corrected. No application or shared database grant changed.
 - An EICAR string in a PDF comment did not trigger real ClamAV. The fixture was

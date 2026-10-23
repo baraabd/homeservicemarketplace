@@ -828,15 +828,56 @@ realDescribe('R30 manual payments with real private storage and ClamAV', () => {
       409,
       'INDEPENDENT_REFUND_CONFIRMATION_REQUIRED',
     );
+    await f.h.revoke('noPermission', R24_PERMISSIONS.refundReview);
+    try {
+      for (const type of ['DISPATCH', 'CONFIRM_SUCCEEDED', 'CONFIRM_FAILED']) {
+        const blocked = await reviewer.request(
+          '/v1/money/manual/review/refunds/' + refundId + '/evidence',
+          {
+            method: 'POST',
+            idempotencyKey: f.h.key('revoked-dispatcher'),
+            body: { ...confirmedInput, type },
+          },
+        );
+        failure(blocked, 403);
+        expect(blocked.body).toMatchObject({ error: { code: 'FORBIDDEN' } });
+      }
+      expect(
+        await f.h.prisma.moneyManualRefundOperation.findUniqueOrThrow({ where: { refundId } }),
+      ).toMatchObject({ state: 'UNKNOWN', confirmationUserId: null, reference: null });
+      expect(await f.h.prisma.moneyManualRefundEvent.count({ where: { refundId } })).toBe(1);
+    } finally {
+      await f.h.grant('noPermission', R24_PERMISSIONS.refundReview);
+    }
+    const confirmationKey = f.h.key('independent-refund');
     const confirmed = await reviewer.request(
       '/v1/money/manual/review/refunds/' + refundId + '/evidence',
       {
         method: 'POST',
-        idempotencyKey: f.h.key('independent-refund'),
+        idempotencyKey: confirmationKey,
         body: confirmedInput,
       },
     );
     expect(confirmed.status).toBe(201);
+    const replay = await reviewer.request(
+      '/v1/money/manual/review/refunds/' + refundId + '/evidence',
+      {
+        method: 'POST',
+        idempotencyKey: confirmationKey,
+        body: confirmedInput,
+      },
+    );
+    expect(replay.status).toBe(201);
+    expect(replay.body).toEqual(confirmed.body);
+    failure(
+      await reviewer.request('/v1/money/manual/review/refunds/' + refundId + '/evidence', {
+        method: 'POST',
+        idempotencyKey: confirmationKey,
+        body: { ...confirmedInput, type: 'CONFIRM_FAILED' },
+      }),
+      409,
+      'IDEMPOTENCY_CONFLICT',
+    );
     const operation = await f.h.prisma.moneyManualRefundOperation.findUniqueOrThrow({
       where: { refundId },
     });

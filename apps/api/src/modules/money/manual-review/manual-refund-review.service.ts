@@ -72,6 +72,9 @@ export class ManualRefundReviewService {
           where: { refundId },
           include: { refund: { include: { paymentConfirmation: true } } },
         });
+        // Authority comes from the locked operation, independently of the
+        // requested event type. The command wrapper also checks the caller.
+        await this.review.authorize(operation.dispatchUserId ?? userId, 'money:refund:review', tx);
         const context = await this.review.context(
           operation.refund.paymentConfirmation.paymentIntentId,
           tx,
@@ -103,7 +106,6 @@ export class ManualRefundReviewService {
             operation.state !== 'UNKNOWN'
           )
             throw manualConflict('INDEPENDENT_REFUND_CONFIRMATION_REQUIRED');
-          await this.review.authorize(operation.dispatchUserId, 'money:refund:review', tx);
           await tx.moneyManualRefundOperation.update({
             where: { refundId },
             data: {

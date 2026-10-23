@@ -24,8 +24,8 @@
   },
   "finalPublishedIdentity": {
     "location": "English draft PR body and production-governance-source artifact",
-    "status": "PENDING_FINAL_HOOKS_AND_PUBLICATION",
-    "note": "Final commit/tree identity is recorded outside this self-hashed source. Earlier G2 checks do not prove this candidate."
+    "status": "CORRECTED_FINAL_IDENTITY_RECORDED_EXTERNALLY",
+    "note": "Final commit/tree identity is recorded outside this self-hashed source in PR184. The first R30 head had one official CodeQL finding; prior green workflows do not prove the successor."
   },
   "prompt": {
     "path": "docs/production-readiness/r30/PROMPT.md",
@@ -125,19 +125,19 @@
     "finalApiAndSharedBoundaries": {
       "status": "PASS",
       "exitCode": 0,
-      "passed": 213,
+      "passed": 219,
       "failed": 0,
       "skipped": 0,
       "todo": 0,
-      "reportedSuites": 14,
-      "reportBasename": "hsm-r30-590834-final-api-units.json",
-      "reportSha256": "c232c7e9551cb66f84f85ee50d30d511e7243454239545df9c7a38f3660debae",
+      "reportedSuites": 15,
+      "reportBasename": "hsm-r30-590834-codeql-api-units.json",
+      "reportSha256": "91e7eda1555bb05afb17abec40ca3edd422967da9cb00ddedae43158bbb7a374",
       "r30UnitSubset": {
-        "suites": 8,
-        "passed": 51,
-        "scope": "Included in213; not an additive count."
+        "suites": 9,
+        "passed": 57,
+        "scope": "Included in219; not an additive count."
       },
-      "postNormalHooks": true
+      "verificationStage": "Corrected source after first publication; final normal-hook tree equality and official checks recorded in PR184."
     },
     "realManualServices": {
       "status": "PASS",
@@ -147,10 +147,11 @@
       "skipped": 0,
       "todo": 0,
       "reportedSuites": 1,
-      "reportBasename": "hsm-r30-590834-final-manual-integration.json",
-      "reportSha256": "961e9eab355a9a65a586a92e023d4ee8434c16d148d46249e0e0ee6ac156229c",
+      "reportBasename": "hsm-r30-590834-final-refund-authority-integration.json",
+      "reportSha256": "1732976e72b72994afaeb54451c71e160ead372f613ad33a337d321a1746d3e8",
       "faultInjection": "Concurrent error ordering uses held processExternalEvent calls over real PostgreSQL; subsequent failure uses the actual unavailable activation participant. This is explicit fault injection, not a real external transfer.",
-      "postNormalHooks": true
+      "verificationStage": "Corrected source after first publication; final normal-hook tree equality and official checks recorded in PR184.",
+      "refundAuthorityRegression": "Revoked persisted dispatcher denies all three request event types, retains UNKNOWN and the single dispatch event; restored independent confirmation and same-key replay succeed, changed-type replay conflicts."
     },
     "finalWebFeature": {
       "status": "PASS",
@@ -173,7 +174,8 @@
       "reportedSuites": 1,
       "reportBasename": "hsm-r30-590834-browser-jest.json",
       "reportSha256": "35b61b18035dfe2919d35d4073fd6ccd82e75111a3b0d7b3e824966e61674b09",
-      "postNormalHooks": true
+      "postNormalHooks": true,
+      "scope": "Complete browser journey after first-publication normal hooks; the later refund-only authorization correction does not change this journey. Successor final-head CI must run the required browser job again."
     },
     "realBrowserScenarios": {
       "status": "PASS",
@@ -347,17 +349,20 @@
     "apiBuild": {
       "status": "PASS",
       "exitCode": 0,
-      "logSha256": "bba97a05200257c1e8828eb6a85d7743d1696ee027b2f62d83617aa3da428a43"
+      "logSha256": "bba97a05200257c1e8828eb6a85d7743d1696ee027b2f62d83617aa3da428a43",
+      "scope": "Complete API and dependency build after the refund authorization correction."
     },
     "apiLint": {
       "status": "PASS",
       "exitCode": 0,
-      "logSha256": "a400344c2d233e85775fe83f96d9ea032e3a4bd788268308a3373b0b74b4105a"
+      "logSha256": "a400344c2d233e85775fe83f96d9ea032e3a4bd788268308a3373b0b74b4105a",
+      "scope": "Full API lint before first publication; all three corrected source/test files pass scoped ESLint in codeqlFollowUp."
     },
     "apiTypecheck": {
       "status": "PASS",
       "exitCode": 0,
-      "logSha256": "a8958d9ddfdd92f3840580672bee474712fe7ee88efb55388ca65d9ec30ab9c9"
+      "logSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "scope": "Complete API tsc --noEmit after refund authorization correction."
     },
     "rootSharedLint": {
       "status": "PASS",
@@ -370,7 +375,8 @@
       "passed": 480,
       "failed": 0,
       "skipped": 0,
-      "logSha256": "a97f9905c23101d4d7032d13aa9bd3a287178592fed8d1a38a78038ce79a9fce"
+      "logSha256": "d77b351a5c350703cd4b9547073e74c3121204fd8999f1b18aa366cc404e2a64",
+      "scope": "480 unchanged assertions after correction, run in normal runtime with Node/Git subprocess capability; restricted sandbox attempt did not count as acceptance."
     },
     "canonicalRecords": {
       "status": "PASS",
@@ -385,8 +391,9 @@
       "scope": "Source record consistency, not remote authentication or branch protection."
     },
     "remoteFinalHead": {
-      "status": "PENDING_PUBLICATION",
-      "location": "English draft PR body; required exact-head CI and official CodeQL."
+      "status": "PENDING_CORRECTED_FINAL_HEAD",
+      "location": "https://github.com/baraabd/homeservicemarketplace/pull/184",
+      "required": "All exact-head CI and the separate official CodeQL check, not merely the successful analysis workflow."
     },
     "webProductionBuild": {
       "status": "PASS",
@@ -397,11 +404,38 @@
     },
     "normalHookFormatting": {
       "status": "PASS",
-      "scope": "Normal lint-staged hooks normalized method-chain wrapping in two source files. All213 scoped API/shared tests,16 real-service cases and both real browser scenarios were repeated and passed after hooks. No assertion or behavior was changed by the inspected formatting diff.",
+      "scope": "First-publication evidence: normal lint-staged hooks normalized method-chain wrapping in two source files. All213 scoped API/shared tests,16 real-service cases and both real browser scenarios were repeated and passed after those hooks. The later refund authorization correction has separate scoped results; final normal-hook source equality is recorded externally.",
       "paths": [
         "apps/api/src/modules/money/manual-review/receipt-acceptance.participant.spec.ts",
         "apps/api/src/modules/money/manual-review/receipt-upload.service.ts"
       ]
+    },
+    "codeqlFollowUp": {
+      "firstHead": "38307f0e3262a04319b2c79f39dae031cdbe0bb8",
+      "analysisRunId": 39941852128,
+      "officialCheckId": 120376196775,
+      "officialAppId": 57789,
+      "firstOfficialConclusion": "failure",
+      "findings": 1,
+      "severity": "high",
+      "rule": "js/user-controlled-bypass",
+      "annotationSha256": "ee1c502abcb697ef69982339e35b2e9a5cdc0e16ce0a87552fecf54596ef5dfc",
+      "correction": "Common locked-operation dispatcher/current-actor authorization precedes every request-type branch; no CodeQL query, gate or threshold change.",
+      "focusedTests": {
+        "passed": 17,
+        "suites": 3,
+        "failed": 0,
+        "skipped": 0,
+        "reportBasename": "hsm-r30-590834-final-refund-authority-units.json",
+        "reportSha256": "aa4a550a2f6bb3cfb799c777513f1d578534bae1c39f3e25779871a5adebef7d",
+        "scope": "Included in219 combined scoped tests, not additive."
+      },
+      "correctedFilesLint": {
+        "exitCode": 0,
+        "logSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "successorOfficialResult": "Required externally in the exact final-head PR evidence.",
+      "securitySeverity": 7.8
     }
   },
   "verifiedSourceDigests": [
@@ -462,8 +496,12 @@
       "sha256": "8ddea538efdad199a470df0df9efee6b0ce531119bef444c1306507ecf061ca2"
     },
     {
+      "path": "apps/api/src/modules/money/manual-review/manual-refund-review.service.spec.ts",
+      "sha256": "3fbaee3d2618b50757f1cc36e600ef3556fc2ddcc3ec35cfa01b8fd159a27f6d"
+    },
+    {
       "path": "apps/api/src/modules/money/manual-review/manual-refund-review.service.ts",
-      "sha256": "64fd34f3437cce2451750be40d9647ac31ada3edf1ebcb8f748f552f1255cad4"
+      "sha256": "0594c469b0cf1284048bca911cdd42314351182350745c77574ae0cb07ba0d7b"
     },
     {
       "path": "apps/api/src/modules/money/manual-review/manual-review.controller.ts",
@@ -551,7 +589,7 @@
     },
     {
       "path": "apps/api/test/integration/r30-manual-payments.integration.spec.ts",
-      "sha256": "8d0d5f4df8f677c6ca5284fad90e5ef60cd5f945a786ee83257f14737b8edb92"
+      "sha256": "aa59dd97f18b42cca4c42f993de9fe00fc5964e223cb55f061d24168f2e97a48"
     },
     {
       "path": "apps/api/test/support/r24-money-http.fixture.ts",

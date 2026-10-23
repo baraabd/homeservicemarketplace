@@ -71,6 +71,30 @@ finite map. Root alone owns Git, migration/schema, contracts and shared glue.
 The authoritative map has 42 shared integration paths and 58 canonical lane /
 evidence paths; future proposed lists below are historical.
 
+### Serialized PR184 security correction
+
+The first published R30 head `38307f0e3262a04319b2c79f39dae031cdbe0bb8`
+received one official CodeQL `js/user-controlled-bypass` finding in manual
+refund evidence review. Root reacquired and delegated exactly these three
+already reserved paths to `manual_api`, with `pr_audit` reviewing read-only:
+
+```text
+apps/api/src/modules/money/manual-review/manual-refund-review.service.ts
+apps/api/src/modules/money/manual-review/manual-refund-review.service.spec.ts
+apps/api/test/integration/r30-manual-payments.integration.spec.ts
+```
+
+The correction makes persisted dispatcher authorization independent of the
+request's event type and adds revoked-authority regression evidence. The lease
+does not change CodeQL configuration, security rules, financial contracts or
+acceptance criteria. Root retains documentation, normal hooks and publication;
+the follow-up commit must fast-forward the existing branch, with its final
+identity and new official check recorded externally in the PR. The writer
+returned all three paths after formatting, unit/integration checks, lint and
+API typecheck; the independent reviewer found the intended common authorization
+path and unchanged financial/independence guards. Further work is read-only
+unless root grants another exact corrective lease.
+
 | Resource                  | Actual task-owned allocation                                                                                                 |
 | ------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
 | PostgreSQL                | 16.15, loopback 5530, database/user `hsm_r30_590834`; disposable child databases created by the repository helper            |

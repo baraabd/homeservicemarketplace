@@ -6,25 +6,25 @@ The final draft PR identifies the published commit/tree and remote checks.
 
 ## Required boundaries
 
-| Boundary             | Required evidence                                                                                                             |
-| -------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
-| Source/ownership     | Exact branch/base/tree, finite writer map, unchanged peer records, no unmerged peer imports.                                  |
-| Toolchain            | Node 24.21.0, pnpm 10.32.1, Prisma 6.12.0; frozen lockfile, guarded generation and builds.                                    |
-| Database             | Fresh isolated migrations, immutable triggers/checks and actual transaction rollback.                                         |
-| Configuration        | Missing/disabled/expired/threshold/scale handling, pinned version, unconditional LIVE rejection.                              |
-| Upload/scan          | Actual owner-bound bytes, size/type/hash, immutable retries/replacement, real clean scan and EICAR quarantine.                |
-| Private read         | Uniform foreign/missing response, fresh revoked authority, digest/state rechecks, private cache headers and attributed audit. |
-| Isolation            | Public denial before storage; identity scan/cleanup/retention exclusion; database attachment guards.                          |
-| Review               | Actual current inspection, optimistic version, no self-review, independent permitted settlement recorder.                     |
-| Concurrency          | Duplicate deposit, parallel approval, approved-byte reuse and two-obligation fingerprint races.                               |
-| Atomicity            | One R24 confirmation/claim/ledger effect; activation failure rollback and durable duplicate-free recovery.                    |
-| Recovery             | Permanent authority failure halts; original reviewer retry; bounded failures; stale-scan fairness.                            |
-| Refund               | Stable key/full binding, UNKNOWN after dispatch and independent exact terminal observation.                                   |
-| Rate limit           | Real Redis Lua and 30/hour upload limit returning 429/Retry-After; namespace isolation without flush.                         |
-| Browser              | Real OTP/HTTP, PNG then PDF replacement, independent settlement/review, keyboard decision, history and outsider denial.       |
-| Layout/accessibility | EN/AR RTL at 320/390/430/768/1024/1440, focus/keyboard, scoped Axe and 200% content enlargement.                              |
-| Regression           | Lint, TypeScript, builds, full hermetic suites, affected boundaries, governance and migration index.                          |
-| Publication          | Dependency audit, final tree secret scan, normal hooks, exact uploaded tree, final-head workflows and official CodeQL.        |
+| Boundary             | Required evidence                                                                                                                                                          |
+| -------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Source/ownership     | Exact branch/base/tree, finite writer map, unchanged peer records, no unmerged peer imports.                                                                               |
+| Toolchain            | Node 24.21.0, pnpm 10.32.1, Prisma 6.12.0; frozen lockfile, guarded generation and builds.                                                                                 |
+| Database             | Fresh isolated migrations, immutable triggers/checks and actual transaction rollback.                                                                                      |
+| Configuration        | Missing/disabled/expired/threshold/scale handling, pinned version, unconditional LIVE rejection.                                                                           |
+| Upload/scan          | Actual owner-bound bytes, size/type/hash, immutable retries/replacement, real clean scan and EICAR quarantine.                                                             |
+| Private read         | Uniform foreign/missing response, fresh revoked authority, digest/state rechecks, private cache headers and attributed audit.                                              |
+| Isolation            | Public denial before storage; identity scan/cleanup/retention exclusion; database attachment guards.                                                                       |
+| Review               | Actual current inspection, optimistic version, no self-review, independent permitted settlement recorder.                                                                  |
+| Concurrency          | Duplicate deposit, parallel approval, approved-byte reuse and two-obligation fingerprint races.                                                                            |
+| Atomicity            | One R24 confirmation/claim/ledger effect; activation failure rollback and durable duplicate-free recovery.                                                                 |
+| Recovery             | Permanent authority failure halts; original reviewer retry; bounded failures; stale-scan fairness.                                                                         |
+| Refund               | Stable key/full binding, UNKNOWN after dispatch, independent exact terminal observation and persisted dispatcher authorization across every request type after revocation. |
+| Rate limit           | Real Redis Lua and 30/hour upload limit returning 429/Retry-After; namespace isolation without flush.                                                                      |
+| Browser              | Real OTP/HTTP, PNG then PDF replacement, independent settlement/review, keyboard decision, history and outsider denial.                                                    |
+| Layout/accessibility | EN/AR RTL at 320/390/430/768/1024/1440, focus/keyboard, scoped Axe and 200% content enlargement.                                                                           |
+| Regression           | Lint, TypeScript, builds, full hermetic suites, affected boundaries, governance and migration index.                                                                       |
+| Publication          | Dependency audit, final tree secret scan, normal hooks, exact uploaded tree, final-head workflows and official CodeQL.                                                     |
 
 Layout and scoped accessibility assertions are not a certification. Default API
 suites intentionally gate actual service tests; always report those skips
