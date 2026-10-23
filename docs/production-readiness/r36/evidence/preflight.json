@@ -1,0 +1,1431 @@
+{
+  "schemaVersion": 1,
+  "sprintId": "R36",
+  "scope": "PREFLIGHT_DOCUMENTATION_ONLY",
+  "observedBaseSha": "5ff2b7e6a46b4e42114184fac89928372f4c8d4c",
+  "observedSourceTreeSha": "54e00d4e9eaa7bd81146f01b69dfa9b396eab45c",
+  "approvedExecutionBaseSha": null,
+  "finalDocumentationIdentity": "See the PR Final SHA and tree; this evidence does not contain its own commit SHA.",
+  "branch": "test/r36-backup-restore-recovery",
+  "states": {
+    "implementation": "NOT_STARTED",
+    "sourceVerification": "INSPECTION_ONLY",
+    "integration": "INTEGRATION_PENDING",
+    "sandbox": "NOT_EXECUTED",
+    "hosted": "EXTERNAL_BLOCKED",
+    "release": "NOT_ACCEPTED"
+  },
+  "fileFingerprints": {
+    "CLAUDE.md": "e721f2e0c541176dd6250d8ae3b95d196e15de579b345acfa289cd7982a74915",
+    ".claude/rules/ux-ui-design-policy.md": "a905afbe0bf2def7d8797e183e748f3a91d36532eea739dc577d35c03bc571eb",
+    "docs/production-readiness/post-r18/gates/g3/SOURCE_MANIFEST.json": "71a0c3fea19d9f0010c11195263b8bd7cea059d883a8e6ab783cbd74855f119c",
+    "docs/production-readiness/post-r18/waves/wave-04.plan.json": "4ec343c977988fff06c6f32fcf3a022cb13e10c1766565fb4712c46eba04f9b7",
+    "infra/production/platform/topology.json": "ac1a647a1275b809a4395468260ae7eb6fdbac43a27f46bed25329c417011d90",
+    "infra/production/storage/storage-plan.json": "4caf8778baa93a9186b64608ff9d8a807aa9704dac2e85625930099298cb8916",
+    "packages/database/prisma/schema.prisma": "8d408b8219f8aa8c1ededc1d50cd8261adddc07f716261c2ce8432b52e946515",
+    "packages/contracts/package.json": "89202eabd12de5a1e553c814a1af5c1f2e620e9d9bc2c8c0fd3ff8a2e4a3c148",
+    "pnpm-lock.yaml": "38c763b2348edacd22c88f61d7efbae67455ca92e5fb23320e3a5543e0a9d7c4"
+  },
+  "schemaLineage": {
+    "prismaVersion": "6.12.0",
+    "contractPackageVersion": "0.1.0",
+    "migrationCount": 73,
+    "sortedPathAndContentSha256": "f9b0a33f218ba460b206be58fa23c32013c521fcfe995ecb5bb54c5584993c25",
+    "storageInventory": "hsm.storage-inventory/v1",
+    "storageRestoreReport": "hsm.storage-restore-report/v1",
+    "platformInputs": "hsm.platform-inputs/v1",
+    "changes": false
+  },
+  "environment": {
+    "node": "24.21.0",
+    "pnpm": "10.32.1",
+    "platform": "linux-x64",
+    "planSha256": "d2b75052c99e89d4699c53fd93e74920b710ee092dad856c541b730943a2dbf2",
+    "restoreDestination": null,
+    "databaseStarted": false,
+    "redisStarted": false,
+    "outboundEffectsStarted": false
+  },
+  "environmentFingerprintSha256": "5755c1e27a9f2c19a8ae6c4b61ee113971f7cdaefece031e67eb125f620e90df",
+  "gates": [
+    {
+      "command": "node .github/scripts/g3-record.mjs --check",
+      "exitCode": 0,
+      "output": "PASS G3 record consistency; this does not authenticate evidence or grant approval.\nRecorded G3: BLOCKED; Wave 4: BLOCKED; R38 final G4 join: BLOCKED"
+    },
+    {
+      "command": "node .github/scripts/g3-record.mjs --ready R36",
+      "exitCode": 1,
+      "output": "FAIL R36 is not authorized to start"
+    },
+    {
+      "command": "node .github/scripts/g3-record.mjs --ready R34",
+      "exitCode": 1,
+      "output": "FAIL R34 is not authorized to start"
+    },
+    {
+      "command": "node .github/scripts/g2-record.mjs --check",
+      "exitCode": 0,
+      "output": "PASS G2 record consistency; this does not authenticate remote evidence or grant approval.\nRecorded G2: ACCEPTED; Wave 3: READY_TO_START"
+    }
+  ],
+  "platformProbe": {
+    "command": "node scripts/production/platform/validate-plan.cjs --check --require-target",
+    "exitCode": 2,
+    "report": {
+      "sprint": "R28",
+      "status": "CONFIGURATION_ONLY",
+      "hostedStatus": "HOSTED_ENVIRONMENT_BLOCKED",
+      "deploymentStarted": false,
+      "authorizationVerified": false,
+      "targetInputsComplete": false,
+      "planSha256": "d2b75052c99e89d4699c53fd93e74920b710ee092dad856c541b730943a2dbf2",
+      "blockers": [
+        {
+          "id": "HOSTED_TARGET_AUTHORITY_REQUIRED",
+          "owner": "Infrastructure and spending owner",
+          "fields": [
+            "target.accountId",
+            "target.dnsZoneId",
+            "target.hostId",
+            "target.monthlyCostCeiling.amount",
+            "target.monthlyCostCeiling.currency",
+            "target.operatorApprovalRef",
+            "target.provider",
+            "target.region",
+            "target.registryHost",
+            "target.registryRepositories.api",
+            "target.registryRepositories.migrator",
+            "target.registryRepositories.web",
+            "target.secretStoreId",
+            "target.spendApprovalRef"
+          ]
+        },
+        {
+          "id": "HOSTED_SERVICE_INPUTS_REQUIRED",
+          "owner": "Database, storage, mail and security owners",
+          "fields": [
+            "services.clamav.host",
+            "services.clamav.resourceId",
+            "services.clamav.verdictEvidenceRef",
+            "services.postgres.apiRole",
+            "services.postgres.database",
+            "services.postgres.host",
+            "services.postgres.migratorRole",
+            "services.postgres.privilegeEvidenceRef",
+            "services.postgres.resourceId",
+            "services.redis.aclEvidenceRef",
+            "services.redis.host",
+            "services.redis.resourceId",
+            "services.smtp.deliveryEvidenceRef",
+            "services.smtp.host",
+            "services.smtp.provider",
+            "services.smtp.senderDomain",
+            "services.storage.accessEvidenceRef",
+            "services.storage.portfolioStagingBucket",
+            "services.storage.publicBucket",
+            "services.storage.restrictedBucket"
+          ]
+        },
+        {
+          "id": "HOSTED_RELEASE_INPUTS_REQUIRED",
+          "owner": "Release owner",
+          "fields": ["release"]
+        },
+        {
+          "id": "HOSTED_NETWORK_EVIDENCE_REQUIRED",
+          "owner": "Network owner",
+          "fields": ["network.boundaryEvidenceRef", "network.externalNetwork"]
+        },
+        {
+          "id": "HOSTED_SECRET_DELIVERY_REQUIRED",
+          "owner": "Secret rotation operator",
+          "fields": [
+            "secrets.apiSnapshotId",
+            "secrets.migrationSnapshotId",
+            "secrets.rotationLockEvidenceRef"
+          ]
+        },
+        {
+          "id": "REGISTRY_PROVENANCE_REQUIRED",
+          "owner": "Release and registry owner",
+          "fields": [
+            "provenance.apiAttestationRef",
+            "provenance.migratorAttestationRef",
+            "provenance.registryEvidenceRef",
+            "provenance.webAttestationRef"
+          ]
+        },
+        {
+          "id": "ISOLATED_TARGETS_REQUIRED",
+          "owner": "Infrastructure owner and R35/R36/R37 coordinator",
+          "fields": [
+            "isolation.hostedTests.approvalRef",
+            "isolation.hostedTests.targetRef",
+            "isolation.production.databaseResourceId",
+            "isolation.production.redisResourceId",
+            "isolation.production.storageBuckets",
+            "isolation.restore.approvalRef",
+            "isolation.restore.databaseResourceId",
+            "isolation.restore.networkId",
+            "isolation.restore.redisResourceId",
+            "isolation.restore.storageBuckets",
+            "isolation.restore.targetRef"
+          ]
+        },
+        {
+          "id": "RECOVERY_ACCEPTANCE_REQUIRED",
+          "owner": "Data owner and R36 coordinator",
+          "fields": ["recovery.ownerApprovalRef", "recovery.restoreEvidenceRef"]
+        },
+        {
+          "id": "EDGE_INTEGRATION_EVIDENCE_REQUIRED",
+          "owner": "Edge owner and R25/R26 coordinator",
+          "fields": [
+            "edge.applicationEvidenceRef",
+            "edge.csp.integrationEvidenceRef",
+            "edge.origin",
+            "edge.tls.certificateRef"
+          ]
+        }
+      ],
+      "remainingHostedChecks": [
+        "Owner authorization for exact account, resources, region, cost and plan hash",
+        "Effective database grants, storage ACLs, Redis isolation and public ingress denial",
+        "Verified registry provenance and deployed immutable image/source identity",
+        "Applied edge CSP/CORS/cookies/TLS and both realtime transports",
+        "External email, scanner verdicts, private-media denial and durable worker delivery",
+        "Approved recovery objectives, isolated restore and representative hosted browser journeys"
+      ]
+    }
+  },
+  "mergedLanes": [
+    {
+      "number": 184,
+      "headSha": "f83829ef687f66012736af5c262a7cf9764018c4",
+      "mergeSha": "aaa22a9a04025fc312cbcc2121687aca2e467cac",
+      "mergedAt": "2026-10-23T12:50:31Z",
+      "url": "https://github.com/baraabd/homeservicemarketplace/pull/184",
+      "checks": [
+        {
+          "name": "Dev browser startup (windows-latest)",
+          "id": 120393695344,
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39947519044/job/120393695344"
+        },
+        {
+          "name": "R26 cookies, authorization and enforced CSP",
+          "id": 120393695350,
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39947518998/job/120393695350"
+        },
+        {
+          "name": "Recovery and native Sharp (windows-latest)",
+          "id": 120393695532,
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39947519034/job/120393695532"
+        },
+        {
+          "name": "Recovery and native Sharp (ubuntu-latest)",
+          "id": 120393695793,
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39947519034/job/120393695793"
+        },
+        {
+          "name": "Real Seeker Provider Admin startup",
+          "id": 120393695910,
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39947519191/job/120393695910"
+        },
+        {
+          "name": "Dev browser startup (ubuntu-latest)",
+          "id": 120393696024,
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39947519044/job/120393696024"
+        },
+        {
+          "name": "Analyze JavaScript/TypeScript",
+          "id": 120393696261,
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39947519291/job/120393696261"
+        },
+        {
+          "name": "Verify / Install & lockfile integrity",
+          "id": 120393696866,
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39947519318/job/120393696866"
+        },
+        {
+          "name": "Production governance",
+          "id": 120423107923,
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39956372300/job/120423107923"
+        },
+        {
+          "name": "Staging image boundaries",
+          "id": 120393697232,
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39947519526/job/120393697232"
+        },
+        {
+          "name": "R27 real services (repair-baseline)",
+          "id": 120393697277,
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39947519564/job/120393697277"
+        },
+        {
+          "name": "R04 real browser, SMTP and Postgres",
+          "id": 120393697331,
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39947519574/job/120393697331"
+        },
+        {
+          "name": "Staging release controls (ubuntu-latest)",
+          "id": 120393697560,
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39947519526/job/120393697560"
+        },
+        {
+          "name": "Staging release controls (windows-latest)",
+          "id": 120393697569,
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39947519526/job/120393697569"
+        },
+        {
+          "name": "R27 real services (baseline)",
+          "id": 120393697615,
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39947519564/job/120393697615"
+        },
+        {
+          "name": "R23 Linux firing and recovery delivery",
+          "id": 120393697632,
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39947519548/job/120393697632"
+        },
+        {
+          "name": "R27 real services (candidate)",
+          "id": 120393697760,
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39947519564/job/120393697760"
+        },
+        {
+          "name": "Verify / Verify Contracts",
+          "id": 120393882758,
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39947519318/job/120393882758"
+        },
+        {
+          "name": "Verify / Verify Database",
+          "id": 120394170462,
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39947519318/job/120394170462"
+        },
+        {
+          "name": "Verify / Verify Web (lint / typecheck / unit / build)",
+          "id": 120394170528,
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39947519318/job/120394170528"
+        },
+        {
+          "name": "Verify / Verify API (lint / typecheck / unit / build)",
+          "id": 120394383206,
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39947519318/job/120394383206"
+        },
+        {
+          "name": "CodeQL",
+          "id": 120394912117,
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/baraabd/homeservicemarketplace/runs/120394912117"
+        },
+        {
+          "name": "Staging boundary gate",
+          "id": 120395108301,
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39947519526/job/120395108301"
+        },
+        {
+          "name": "Auth cookie contract (real browser + real API)",
+          "id": 120395298466,
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39947519318/job/120395298466"
+        },
+        {
+          "name": "Integration & E2E (real Postgres / Redis)",
+          "id": 120395298483,
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39947519318/job/120395298483"
+        },
+        {
+          "name": "Browser E2E (Playwright / Chromium)",
+          "id": 120395298484,
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39947519318/job/120395298484"
+        },
+        {
+          "name": "Dependency, secret, and container scans",
+          "id": 120395298522,
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39947519318/job/120395298522"
+        },
+        {
+          "name": "Phase 5 visual, responsive and accessibility gate",
+          "id": 120395298529,
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39947519318/job/120395298529"
+        },
+        {
+          "name": "R25 real replicas and recovery",
+          "id": 120395298531,
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39947519318/job/120395298531"
+        },
+        {
+          "name": "Evidence retention / real Postgres, S3 versions and ClamAV",
+          "id": 120395298538,
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39947519318/job/120395298538"
+        },
+        {
+          "name": "R30 manual payments / real services and browser",
+          "id": 120395298561,
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39947519318/job/120395298561"
+        },
+        {
+          "name": "Dispute journey / real HTTP, browser, Postgres and ClamAV",
+          "id": 120395298592,
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39947519318/job/120395298592"
+        },
+        {
+          "name": "Admin review real-route and persistence evidence",
+          "id": 120395298610,
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39947519318/job/120395298610"
+        },
+        {
+          "name": "Docker cold build + production boot",
+          "id": 120395298654,
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39947519318/job/120395298654"
+        },
+        {
+          "name": "Compose stack smoke (migrate / boot / readiness / media / OTP)",
+          "id": 120395298655,
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39947519318/job/120395298655"
+        },
+        {
+          "name": "R27 comparable measurements and unchanged budgets",
+          "id": 120396729917,
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39947519564/job/120396729917"
+        },
+        {
+          "name": "Phase 5 real-route and persistence evidence",
+          "id": 120396853535,
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39947519318/job/120396853535"
+        },
+        {
+          "name": "R18 functional completion acceptance",
+          "id": 120401595921,
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39947519318/job/120401595921"
+        },
+        {
+          "name": "CI gate",
+          "id": 120401637086,
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39947519318/job/120401637086"
+        }
+      ],
+      "ancestorExitCode": 0
+    },
+    {
+      "number": 186,
+      "headSha": "6805d505db6af348c6d636068abdc15ceaa8e981",
+      "mergeSha": "c3c080cf28f142ed46495ec7e5d549937da90096",
+      "mergedAt": "2026-10-23T16:05:39Z",
+      "url": "https://github.com/baraabd/homeservicemarketplace/pull/186",
+      "checks": [
+        {
+          "name": "R23 Linux firing and recovery delivery",
+          "id": 120449969524,
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39964285624/job/120449969524"
+        },
+        {
+          "name": "Analyze JavaScript/TypeScript",
+          "id": 120449969538,
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39964285672/job/120449969538"
+        },
+        {
+          "name": "Dev browser startup (ubuntu-latest)",
+          "id": 120449969583,
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39964285630/job/120449969583"
+        },
+        {
+          "name": "R27 real services (repair-baseline)",
+          "id": 120449969646,
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39964285598/job/120449969646"
+        },
+        {
+          "name": "R27 real services (baseline)",
+          "id": 120449969901,
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39964285598/job/120449969901"
+        },
+        {
+          "name": "R27 real services (candidate)",
+          "id": 120449969913,
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39964285598/job/120449969913"
+        },
+        {
+          "name": "Dev browser startup (windows-latest)",
+          "id": 120449969996,
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39964285630/job/120449969996"
+        },
+        {
+          "name": "R04 real browser, SMTP and Postgres",
+          "id": 120449970260,
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39964285731/job/120449970260"
+        },
+        {
+          "name": "Recovery and native Sharp (ubuntu-latest)",
+          "id": 120449970357,
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39964285835/job/120449970357"
+        },
+        {
+          "name": "Staging release controls (windows-latest)",
+          "id": 120449970367,
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39964285767/job/120449970367"
+        },
+        {
+          "name": "R26 cookies, authorization and enforced CSP",
+          "id": 120449970571,
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39964285719/job/120449970571"
+        },
+        {
+          "name": "Production governance",
+          "id": 120463618944,
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39968223529/job/120463618944"
+        },
+        {
+          "name": "Staging image boundaries",
+          "id": 120449970661,
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39964285767/job/120449970661"
+        },
+        {
+          "name": "Staging release controls (ubuntu-latest)",
+          "id": 120449970777,
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39964285767/job/120449970777"
+        },
+        {
+          "name": "Recovery and native Sharp (windows-latest)",
+          "id": 120449970841,
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39964285835/job/120449970841"
+        },
+        {
+          "name": "Real Seeker Provider Admin startup",
+          "id": 120449971565,
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39964285725/job/120449971565"
+        },
+        {
+          "name": "Verify / Install & lockfile integrity",
+          "id": 120450851359,
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39964285853/job/120450851359"
+        },
+        {
+          "name": "Verify / Verify Contracts",
+          "id": 120451065300,
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39964285853/job/120451065300"
+        },
+        {
+          "name": "Verify / Verify Web (lint / typecheck / unit / build)",
+          "id": 120451286577,
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39964285853/job/120451286577"
+        },
+        {
+          "name": "Verify / Verify Database",
+          "id": 120451286589,
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39964285853/job/120451286589"
+        },
+        {
+          "name": "CodeQL",
+          "id": 120451536377,
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/baraabd/homeservicemarketplace/runs/120451536377"
+        },
+        {
+          "name": "Verify / Verify API (lint / typecheck / unit / build)",
+          "id": 120451650686,
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39964285853/job/120451650686"
+        },
+        {
+          "name": "Staging boundary gate",
+          "id": 120452147419,
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39964285767/job/120452147419"
+        },
+        {
+          "name": "Phase 5 visual, responsive and accessibility gate",
+          "id": 120453090632,
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39964285853/job/120453090632"
+        },
+        {
+          "name": "Integration & E2E (real Postgres / Redis)",
+          "id": 120453090653,
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39964285853/job/120453090653"
+        },
+        {
+          "name": "Docker cold build + production boot",
+          "id": 120453090764,
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39964285853/job/120453090764"
+        },
+        {
+          "name": "R30 manual payments / real services and browser",
+          "id": 120453090798,
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39964285853/job/120453090798"
+        },
+        {
+          "name": "Compose stack smoke (migrate / boot / readiness / media / OTP)",
+          "id": 120453090802,
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39964285853/job/120453090802"
+        },
+        {
+          "name": "Admin review real-route and persistence evidence",
+          "id": 120453090816,
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39964285853/job/120453090816"
+        },
+        {
+          "name": "Browser E2E (Playwright / Chromium)",
+          "id": 120453090818,
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39964285853/job/120453090818"
+        },
+        {
+          "name": "Dependency, secret, and container scans",
+          "id": 120453090825,
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39964285853/job/120453090825"
+        },
+        {
+          "name": "Evidence retention / real Postgres, S3 versions and ClamAV",
+          "id": 120453090943,
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39964285853/job/120453090943"
+        },
+        {
+          "name": "Dispute journey / real HTTP, browser, Postgres and ClamAV",
+          "id": 120453090988,
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39964285853/job/120453090988"
+        },
+        {
+          "name": "R25 real replicas and recovery",
+          "id": 120453091067,
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39964285853/job/120453091067"
+        },
+        {
+          "name": "R31 subscriptions real API and browser",
+          "id": 120453091072,
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39964285853/job/120453091072"
+        },
+        {
+          "name": "Auth cookie contract (real browser + real API)",
+          "id": 120453091099,
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39964285853/job/120453091099"
+        },
+        {
+          "name": "R27 comparable measurements and unchanged budgets",
+          "id": 120453563773,
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39964285598/job/120453563773"
+        },
+        {
+          "name": "Phase 5 real-route and persistence evidence",
+          "id": 120454896910,
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39964285853/job/120454896910"
+        },
+        {
+          "name": "R18 functional completion acceptance",
+          "id": 120463136131,
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39964285853/job/120463136131"
+        },
+        {
+          "name": "CI gate",
+          "id": 120463184431,
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39964285853/job/120463184431"
+        }
+      ],
+      "ancestorExitCode": 0
+    },
+    {
+      "number": 187,
+      "headSha": "ea3c4c1eab49901106f59ea3a7724ae6cbe98b2f",
+      "mergeSha": "70962ea24be36035b62c81e537002353795ca00a",
+      "mergedAt": "2026-10-23T20:00:36Z",
+      "url": "https://github.com/baraabd/homeservicemarketplace/pull/187",
+      "checks": [
+        {
+          "name": "Production governance",
+          "id": 120568822551,
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39998687860/job/120568822551"
+        },
+        {
+          "name": "Dev browser startup (windows-latest)",
+          "id": 120554202794,
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39994445197/job/120554202794"
+        },
+        {
+          "name": "Real Seeker Provider Admin startup",
+          "id": 120554202799,
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39994445175/job/120554202799"
+        },
+        {
+          "name": "Recovery and native Sharp (ubuntu-latest)",
+          "id": 120554203372,
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39994445261/job/120554203372"
+        },
+        {
+          "name": "Analyze JavaScript/TypeScript",
+          "id": 120554203426,
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39994445259/job/120554203426"
+        },
+        {
+          "name": "Dev browser startup (ubuntu-latest)",
+          "id": 120554203446,
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39994445197/job/120554203446"
+        },
+        {
+          "name": "R23 Linux firing and recovery delivery",
+          "id": 120554203512,
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39994445201/job/120554203512"
+        },
+        {
+          "name": "Recovery and native Sharp (windows-latest)",
+          "id": 120554203744,
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39994445261/job/120554203744"
+        },
+        {
+          "name": "R04 real browser, SMTP and Postgres",
+          "id": 120554204012,
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39994445192/job/120554204012"
+        },
+        {
+          "name": "Staging release controls (windows-latest)",
+          "id": 120554204021,
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39994445468/job/120554204021"
+        },
+        {
+          "name": "R27 real services (baseline)",
+          "id": 120554204380,
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39994445329/job/120554204380"
+        },
+        {
+          "name": "Staging release controls (ubuntu-latest)",
+          "id": 120554204482,
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39994445468/job/120554204482"
+        },
+        {
+          "name": "Staging image boundaries",
+          "id": 120554204612,
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39994445468/job/120554204612"
+        },
+        {
+          "name": "R27 real services (repair-baseline)",
+          "id": 120554204684,
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39994445329/job/120554204684"
+        },
+        {
+          "name": "R26 cookies, authorization and enforced CSP",
+          "id": 120554204815,
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39994445383/job/120554204815"
+        },
+        {
+          "name": "R27 real services (candidate)",
+          "id": 120554204911,
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39994445329/job/120554204911"
+        },
+        {
+          "name": "Verify / Install & lockfile integrity",
+          "id": 120554205468,
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39994445385/job/120554205468"
+        },
+        {
+          "name": "Verify / Verify Contracts",
+          "id": 120554433724,
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39994445385/job/120554433724"
+        },
+        {
+          "name": "Verify / Verify Web (lint / typecheck / unit / build)",
+          "id": 120554686877,
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39994445385/job/120554686877"
+        },
+        {
+          "name": "Verify / Verify Database",
+          "id": 120554686915,
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39994445385/job/120554686915"
+        },
+        {
+          "name": "Verify / Verify API (lint / typecheck / unit / build)",
+          "id": 120555021104,
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39994445385/job/120555021104"
+        },
+        {
+          "name": "CodeQL",
+          "id": 120555723526,
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/baraabd/homeservicemarketplace/runs/120555723526"
+        },
+        {
+          "name": "Staging boundary gate",
+          "id": 120555823537,
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39994445468/job/120555823537"
+        },
+        {
+          "name": "Browser E2E (Playwright / Chromium)",
+          "id": 120556251376,
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39994445385/job/120556251376"
+        },
+        {
+          "name": "Admin review real-route and persistence evidence",
+          "id": 120556251423,
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39994445385/job/120556251423"
+        },
+        {
+          "name": "Phase 5 visual, responsive and accessibility gate",
+          "id": 120556251467,
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39994445385/job/120556251467"
+        },
+        {
+          "name": "Dispute journey / real HTTP, browser, Postgres and ClamAV",
+          "id": 120556251641,
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39994445385/job/120556251641"
+        },
+        {
+          "name": "Dependency, secret, and container scans",
+          "id": 120556251677,
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39994445385/job/120556251677"
+        },
+        {
+          "name": "Integration & E2E (real Postgres / Redis)",
+          "id": 120556251679,
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39994445385/job/120556251679"
+        },
+        {
+          "name": "Docker cold build + production boot",
+          "id": 120556251686,
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39994445385/job/120556251686"
+        },
+        {
+          "name": "R31 subscriptions real API and browser",
+          "id": 120556251694,
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39994445385/job/120556251694"
+        },
+        {
+          "name": "Compose stack smoke (migrate / boot / readiness / media / OTP)",
+          "id": 120556251714,
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39994445385/job/120556251714"
+        },
+        {
+          "name": "R25 real replicas and recovery",
+          "id": 120556251771,
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39994445385/job/120556251771"
+        },
+        {
+          "name": "Auth cookie contract (real browser + real API)",
+          "id": 120556251797,
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39994445385/job/120556251797"
+        },
+        {
+          "name": "R30 manual payments / real services and browser",
+          "id": 120556251830,
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39994445385/job/120556251830"
+        },
+        {
+          "name": "Evidence retention / real Postgres, S3 versions and ClamAV",
+          "id": 120556251908,
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39994445385/job/120556251908"
+        },
+        {
+          "name": "R27 comparable measurements and unchanged budgets",
+          "id": 120557775122,
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39994445329/job/120557775122"
+        },
+        {
+          "name": "Phase 5 real-route and persistence evidence",
+          "id": 120559241331,
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39994445385/job/120559241331"
+        },
+        {
+          "name": "R18 functional completion acceptance",
+          "id": 120567074824,
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39994445385/job/120567074824"
+        },
+        {
+          "name": "CI gate",
+          "id": 120567131384,
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39994445385/job/120567131384"
+        }
+      ],
+      "ancestorExitCode": 0
+    },
+    {
+      "number": 185,
+      "headSha": "25fec75db092cd68ea1f08297601d8baecde6b1a",
+      "mergeSha": "5ff2b7e6a46b4e42114184fac89928372f4c8d4c",
+      "mergedAt": "2026-10-23T20:00:50Z",
+      "url": "https://github.com/baraabd/homeservicemarketplace/pull/185",
+      "checks": [
+        {
+          "name": "Production governance",
+          "id": 120568827303,
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39998689385/job/120568827303"
+        },
+        {
+          "name": "R26 cookies, authorization and enforced CSP",
+          "id": 120555478493,
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39994816630/job/120555478493"
+        },
+        {
+          "name": "Analyze JavaScript/TypeScript",
+          "id": 120555480890,
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39994816762/job/120555480890"
+        },
+        {
+          "name": "Dev browser startup (windows-latest)",
+          "id": 120555481753,
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39994816810/job/120555481753"
+        },
+        {
+          "name": "Dev browser startup (ubuntu-latest)",
+          "id": 120555481904,
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39994816810/job/120555481904"
+        },
+        {
+          "name": "R23 Linux firing and recovery delivery",
+          "id": 120555481930,
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39994816923/job/120555481930"
+        },
+        {
+          "name": "Recovery and native Sharp (windows-latest)",
+          "id": 120555481941,
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39994816889/job/120555481941"
+        },
+        {
+          "name": "R27 real services (baseline)",
+          "id": 120555482117,
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39994816854/job/120555482117"
+        },
+        {
+          "name": "Staging release controls (windows-latest)",
+          "id": 120555482192,
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39994816811/job/120555482192"
+        },
+        {
+          "name": "Recovery and native Sharp (ubuntu-latest)",
+          "id": 120555482397,
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39994816889/job/120555482397"
+        },
+        {
+          "name": "R27 real services (repair-baseline)",
+          "id": 120555482435,
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39994816854/job/120555482435"
+        },
+        {
+          "name": "R27 real services (candidate)",
+          "id": 120555482472,
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39994816854/job/120555482472"
+        },
+        {
+          "name": "R04 real browser, SMTP and Postgres",
+          "id": 120555482489,
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39994816887/job/120555482489"
+        },
+        {
+          "name": "Verify / Install & lockfile integrity",
+          "id": 120555482606,
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39994816758/job/120555482606"
+        },
+        {
+          "name": "Staging release controls (ubuntu-latest)",
+          "id": 120555482696,
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39994816811/job/120555482696"
+        },
+        {
+          "name": "Real Seeker Provider Admin startup",
+          "id": 120555482714,
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39994816794/job/120555482714"
+        },
+        {
+          "name": "Staging image boundaries",
+          "id": 120555482729,
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39994816811/job/120555482729"
+        },
+        {
+          "name": "Verify / Verify Contracts",
+          "id": 120555967870,
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39994816758/job/120555967870"
+        },
+        {
+          "name": "Verify / Verify Database",
+          "id": 120556679685,
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39994816758/job/120556679685"
+        },
+        {
+          "name": "Verify / Verify Web (lint / typecheck / unit / build)",
+          "id": 120556679849,
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39994816758/job/120556679849"
+        },
+        {
+          "name": "CodeQL",
+          "id": 120557119308,
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/baraabd/homeservicemarketplace/runs/120557119308"
+        },
+        {
+          "name": "Staging boundary gate",
+          "id": 120557472971,
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39994816811/job/120557472971"
+        },
+        {
+          "name": "Verify / Verify API (lint / typecheck / unit / build)",
+          "id": 120557586263,
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39994816758/job/120557586263"
+        },
+        {
+          "name": "Browser E2E (Playwright / Chromium)",
+          "id": 120560327671,
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39994816758/job/120560327671"
+        },
+        {
+          "name": "R31 subscriptions real API and browser",
+          "id": 120560327916,
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39994816758/job/120560327916"
+        },
+        {
+          "name": "Integration & E2E (real Postgres / Redis)",
+          "id": 120560327939,
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39994816758/job/120560327939"
+        },
+        {
+          "name": "Admin review real-route and persistence evidence",
+          "id": 120560327946,
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39994816758/job/120560327946"
+        },
+        {
+          "name": "Phase 5 visual, responsive and accessibility gate",
+          "id": 120560327965,
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39994816758/job/120560327965"
+        },
+        {
+          "name": "Dispute journey / real HTTP, browser, Postgres and ClamAV",
+          "id": 120560328005,
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39994816758/job/120560328005"
+        },
+        {
+          "name": "R25 real replicas and recovery",
+          "id": 120560328028,
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39994816758/job/120560328028"
+        },
+        {
+          "name": "Evidence retention / real Postgres, S3 versions and ClamAV",
+          "id": 120560328054,
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39994816758/job/120560328054"
+        },
+        {
+          "name": "Compose stack smoke (migrate / boot / readiness / media / OTP)",
+          "id": 120560328066,
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39994816758/job/120560328066"
+        },
+        {
+          "name": "Docker cold build + production boot",
+          "id": 120560328198,
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39994816758/job/120560328198"
+        },
+        {
+          "name": "Dependency, secret, and container scans",
+          "id": 120560328210,
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39994816758/job/120560328210"
+        },
+        {
+          "name": "R30 manual payments / real services and browser",
+          "id": 120560328225,
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39994816758/job/120560328225"
+        },
+        {
+          "name": "Auth cookie contract (real browser + real API)",
+          "id": 120560328242,
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39994816758/job/120560328242"
+        },
+        {
+          "name": "Phase 5 real-route and persistence evidence",
+          "id": 120561653775,
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39994816758/job/120561653775"
+        },
+        {
+          "name": "R27 comparable measurements and unchanged budgets",
+          "id": 120564201916,
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39994816854/job/120564201916"
+        },
+        {
+          "name": "R18 functional completion acceptance",
+          "id": 120568526121,
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39994816758/job/120568526121"
+        },
+        {
+          "name": "CI gate",
+          "id": 120568591029,
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39994816758/job/120568591029"
+        }
+      ],
+      "ancestorExitCode": 0
+    }
+  ],
+  "localTestRuns": [
+    {
+      "command": "node --test .github/scripts/g3-record.test.mjs .github/scripts/r27-acceptance.test.mjs .github/scripts/r27-workflow.test.mjs scripts/production/platform/validate-plan.test.cjs scripts/production/storage/storage-plan.test.cjs scripts/production/storage/storage-cli.test.cjs infra/production/staging.test.cjs",
+      "exitCode": 0,
+      "passed": 509,
+      "failed": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0,
+      "logSha256": "b74de434539f3c2534f68a70a46e73243e04bb68750a5a74fd3c991767a76bb5"
+    },
+    {
+      "command": "node --test .github/scripts/*.test.mjs",
+      "exitCode": 0,
+      "passed": 480,
+      "failed": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0,
+      "logSha256": "b7abc3fdae5689bc91aec783197661bcb18f5ed27aaf838133e8c8f2a61a8ede"
+    }
+  ],
+  "testCountNote": "The two suites overlap. Do not present 989 as a unique-test count. All tests are existing; no R36 runtime or real-service test has been executed.",
+  "measurements": {
+    "achievedRpoSeconds": null,
+    "achievedRtoSeconds": null,
+    "unintendedMoneyEffects": null,
+    "unintendedMailEffects": null
+  },
+  "restrictions": {
+    "merge": false,
+    "deploy": false,
+    "liveMoney": false,
+    "grants": false,
+    "spend": false,
+    "productionRestore": false
+  },
+  "notExecuted": [
+    "R36 runtime implementation",
+    "real PostgreSQL/Redis/storage restore",
+    "historical object-version and lost-key drill",
+    "cross-role login and private preview on restored target",
+    "pending-job replay with observed outbound counts",
+    "compatible immutable image rollback",
+    "partial deployment and migration failure drill",
+    "hosted timing and cutover"
+  ],
+  "frozenInstall": {
+    "command": "pnpm install --frozen-lockfile --offline --store-dir /workspace/scratch/d86d02f90f5c/pnpm-store --reporter=append-only",
+    "exitCode": 0,
+    "logSha256": "ad614f964bf8c84af40aa4915272f5ce7fecafc151fcf747f1dd84f2e4785747",
+    "initialOnlineAttemptExitCode": 130,
+    "cache": "Task-local copy of pre-existing package download cache; independent project node_modules",
+    "warnings": ["Ignored build scripts: @parcel/watcher@2.6.0, unrs-resolver@1.12.2"],
+    "normalLifecycleHooksExecuted": true,
+    "lockfileUnchanged": true
+  },
+  "documentValidation": [
+    {
+      "command": "node .github/scripts/production-governance.mjs",
+      "exitCode": 0,
+      "output": "PASS repository governance files\nGitHub protection is NOT verified by this local check."
+    },
+    {
+      "command": "node .github/scripts/release-baseline.mjs",
+      "exitCode": 0,
+      "output": "PASS source-backed baseline registry; sprint completion is not implied"
+    },
+    {
+      "command": "git diff --check",
+      "exitCode": 0,
+      "output": ""
+    }
+  ]
+}
