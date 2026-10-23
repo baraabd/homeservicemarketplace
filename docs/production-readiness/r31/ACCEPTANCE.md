@@ -184,6 +184,20 @@ so an evidence-only source commit cannot invalidate its own recorded hash.
 
 ## Failures and warnings encountered
 
+- The first published head `2ce7dcece60151f30390ee1adcaadcb43a90e066`
+  passed the CodeQL Actions analysis but its separate official security result
+  failed on two `js/file-system-race` findings (CWE-367). They identified
+  path-stat/read races in private credential reads and working-source hashing.
+  Corrective descriptor-bound reads keep checks and bytes on the same opened
+  file, reject unsafe file types and close handles on all paths. Security
+  rules and the final-head official-result requirement remain unchanged.
+  Earlier head acceptance artifacts remain historical; the current PR head
+  must supply its own complete browser and CodeQL evidence.
+  Isolated checks exercise the actual extracted functions: 12/12 credential
+  cases and 9/9 source-fingerprint cases pass, with zero failures or skips.
+  They cover path replacement, symlinks, directories, no-writer FIFOs, private
+  permissions and handle closure on success and errors. Scoped ESLint,
+  Prettier, launcher syntax and the full E2E TypeScript check also pass.
 - The first complete staged-tree Gitleaks scan read 24,058,490 bytes and
   rejected a literal synthetic plan name in the browser fixture under its
   generic API-key heuristic. Inspection confirmed public test metadata, not

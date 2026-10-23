@@ -65,13 +65,22 @@ async function sourceIdentity() {
   for (const relative of new Set(files)) {
     hash.update(relative).update('\0');
     const file = path.join(ROOT, relative);
+    let handle;
     try {
-      const stat = await fsp.lstat(file);
-      hash.update(stat.isSymbolicLink() ? await fsp.readlink(file) : await fsp.readFile(file));
+      // Nonblocking open also lets the descriptor check reject a replaced FIFO.
+      handle = await fsp.open(
+        file,
+        fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW | fs.constants.O_NONBLOCK,
+      );
+      const stat = await handle.stat();
+      if (!stat.isFile()) throw new Error('R31 source identity requires regular files.');
+      hash.update(await handle.readFile());
       hash.update(String(stat.mode & 0o777));
     } catch (error) {
       if (error.code !== 'ENOENT') throw error;
       hash.update('DELETED');
+    } finally {
+      await handle?.close();
     }
     hash.update('\0');
   }

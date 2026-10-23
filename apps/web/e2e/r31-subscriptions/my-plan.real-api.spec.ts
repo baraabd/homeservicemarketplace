@@ -7,7 +7,7 @@ import {
   type Page,
   type Response,
 } from '@playwright/test';
-import { mkdirSync, readFileSync, statSync } from 'node:fs';
+import { closeSync, constants, fstatSync, mkdirSync, openSync, readFileSync } from 'node:fs';
 import { isAbsolute, join } from 'node:path';
 import type { MoneyMyPlanWireV1 } from '@homeservicemarketplace/contracts';
 import { SUBSCRIPTION_COPY } from '../../src/app/features/subscriptions/subscriptions.copy';
@@ -71,10 +71,19 @@ function requiredEnvironment(name: string): string {
 }
 
 function privateJson<T>(path: string): T {
-  if (!isAbsolute(path) || (statSync(path).mode & 0o777) !== 0o600) {
+  if (!isAbsolute(path)) {
     throw new Error('R31 credentials and delivered OTPs must use private mode-0600 files.');
   }
-  return JSON.parse(readFileSync(path, 'utf8')) as T;
+  const fd = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
+  try {
+    const metadata = fstatSync(fd);
+    if (!metadata.isFile() || (metadata.mode & 0o777) !== 0o600) {
+      throw new Error('R31 credentials and delivered OTPs must use private mode-0600 files.');
+    }
+    return JSON.parse(readFileSync(fd, 'utf8')) as T;
+  } finally {
+    closeSync(fd);
+  }
 }
 
 async function deliveredCode(account: Account, previousId: string): Promise<string> {

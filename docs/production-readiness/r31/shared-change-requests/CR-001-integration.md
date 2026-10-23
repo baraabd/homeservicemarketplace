@@ -131,3 +131,30 @@ identifier `r31-test-plan`. No scanner rule, exclusion, threshold or production
 input changes. Verification: scoped fixture lint/typecheck, actual pre-commit
 hook, complete staged-tree rescan, and the clean committed-source browser
 matrix. No other path is delegated.
+
+## Approved CodeQL descriptor-bound reads
+
+Official CodeQL security result on PR #186 head
+`2ce7dcece60151f30390ee1adcaadcb43a90e066` reported two `js/file-system-race`
+findings (CWE-367), despite the successful analysis workflow. Before corrective
+edits, root reactivates these exact disjoint writer leases:
+
+- `r31_frontend`: `apps/web/e2e/r31-subscriptions/my-plan.real-api.spec.ts`.
+- `pr_ci_audit`: `scripts/production/subscriptions/verify-my-plan.cjs`.
+
+Replace path-check-then-reopen sequences with one non-following open and
+descriptor-bound metadata/read operations, closing the descriptor in `finally`.
+Credentials must remain regular mode-0600 files and cannot follow symlinks;
+source hashing must inspect and hash the same opened file. Unsupported file
+types fail closed. Preserve source-drift checks, private output, exact browser
+matrix, cleanup and every security rule. Exercise the credential/source race
+boundaries with isolated temporary files, run relevant type/lint checks, the
+actual pre-commit hook, full candidate/committed scans and final-head browser
+and official CodeQL. No policy, budget, dependency or runtime authority changes.
+
+Both leases are returned frozen after implementation. Isolated scratch checks
+of the actual functions passed 12/12 credential cases and 9/9 source-identity
+cases, including real no-writer FIFOs and descriptor closure on error. Relevant
+lint, format, syntax and E2E type checks pass. Root serializes the four-file
+corrective publication (these two files and this CR/ACCEPTANCE evidence) and
+requires fresh clean-head browser and official CodeQL results.
