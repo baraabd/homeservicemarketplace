@@ -97,3 +97,30 @@ The two wrong-source/tree negative tests failed before the validator repair, rep
 ## Superseded first publication
 
 PR #183 first published `6c7aac2ea68ee4943d60b0db3be33012d572ac8d`. Independent review found a missing candidate source/tree comparison in the canonical archive-proof check. Corrective source and negative tests stay on this PR. Completed first-head results are not promoted to the corrective head; final acceptance requires fresh exact-head evidence. The configured PostgreSQL fixture has been stopped successfully after its local tests.
+
+## Verified owner publication and R32 handoff — 2026-10-23
+
+Owner `baraabd` merged PR #183 at `2026-10-23T04:11:34Z` as
+`986b4707776711e80564f0642133ede90ba16f3c`, tree
+`7ab683ea8c5304929a2fa51f1dc824c7cb46f7d5`. The accepted source remains
+`72b4aaeb0a71d806b7fca7363dd9ca59bbcee644`, tree
+`43e9c6a4e58cfb934b12789feeb38b588e1cb7c6`. Comparison confirms that exact
+accepted-source ancestor, ahead 2 / behind 0, and 13 record-only changed files.
+
+The complete postmerge inventory passed: 30 checks across eight workflow runs,
+including CI `39899003702`, governance `39899003864` and CodeQL Actions
+`39899003733`. The inventory and merge evidence are retained separately in
+`ACCEPTANCE_EVIDENCE.json#publicationVerification`; they do not relabel the
+accepted-source evidence. Owner merge is the observed approval action. No
+separate human APPROVED review or independent Advanced Security result on the
+push SHA is claimed.
+
+Under the existing coordinator delegation, only R32 is assigned to session
+`r32-20261023-1db81624b1de`, with the 21 exact lane files and serialized
+`R32-CORE-01` / `R32-G2-01` leases recorded in
+`docs/production-readiness/r32/OWNERSHIP.md`. The R32 checkout remains rooted
+at the frozen runtime source; this handoff copies only the already merged
+acceptance records and performs no new merge. R29/R30/R31/R33 require their own
+session assignment; R34–R38 remain behind G3. R32 implementation, real rail
+refund acceptance, commercial policy and paid-entitlement consequences are not
+certified by this handoff. All hosted, R16/R18 and live-money holds remain.

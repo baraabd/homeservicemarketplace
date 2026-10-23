@@ -56,13 +56,14 @@
     }
   ],
   "publication": {
-    "state": "DRAFT_PENDING_OWNER_REVIEW",
+    "state": "MERGED",
     "branch": "coord/g2-wave3-start-gate",
     "pr": 183,
-    "acceptanceRecordCommitSha": null,
-    "verifiedMerge": false,
-    "requirement": "Owner review/approval and separately verified merged publication are required before releasing R29–R33. R34–R38 additionally require G3. This task never merges.",
-    "prUrl": "https://github.com/baraabd/homeservicemarketplace/pull/183"
+    "acceptanceRecordCommitSha": "986b4707776711e80564f0642133ede90ba16f3c",
+    "verifiedMerge": true,
+    "requirement": "Owner merge #183, accepted-source ancestry and complete postmerge checks are independently verified. Only specifically assigned Wave 3 lanes may start; this R32 task performs no merge or deployment.",
+    "prUrl": "https://github.com/baraabd/homeservicemarketplace/pull/183",
+    "verificationRecord": "docs/production-readiness/post-r18/gates/g2/ACCEPTANCE_EVIDENCE.json#publicationVerification"
   },
   "externalBlockers": [
     {
@@ -82,7 +83,7 @@
   ],
   "evidenceRecord": "docs/production-readiness/post-r18/gates/g2/ACCEPTANCE_EVIDENCE.json",
   "preservedG1SourceSha": "40cdac5c9ce6acaa8dedc0385984a807ae9a84d0",
-  "identityResolution": "Technical acceptance binds the exact tested source and independently reconstructed tree. This separate record-only descendant is review publication; its containing commit is not invented. Owner-reviewed merge, postmerge verification and explicit session assignments remain required before lane starts.",
+  "identityResolution": "The accepted frozen source and tree remain unchanged. Owner merged the separate record-only publication in PR #183 as 986b4707776711e80564f0642133ede90ba16f3c; ancestry and all 30 postmerge checks were verified. R32 alone receives an exact isolated session assignment; peer lanes and G3 remain held.",
   "restrictions": {
     "liveMoney": false,
     "deploy": false,

@@ -3,12 +3,12 @@
   "wave": 3,
   "startGate": "G2",
   "baseSha": "72b4aaeb0a71d806b7fca7363dd9ca59bbcee644",
-  "status": "BLOCKED",
-  "startableLanes": [],
-  "blockedLanes": ["R29", "R30", "R31", "R32", "R33"],
+  "status": "READY_TO_START",
+  "startableLanes": ["R32"],
+  "blockedLanes": ["R29", "R30", "R31", "R33"],
   "coordinator": "Owner-delegated engineering coordinator for baraabd",
   "decisionRecord": "docs/production-readiness/post-r18/gates/g2/SOURCE_MANIFEST.json",
-  "publicationRequirement": "All lanes remain held until accepted exact-source G2 evidence and a separate owner-reviewed, merged and verified publication. A plan, local test pass or review PR cannot release a lane.",
+  "publicationRequirement": "Accepted G2 publication #183 is independently verified as owner merged. R32 is released under its recorded session and exact leases; all other lanes require their own coordinator session assignment.",
   "promptProvenance": "docs/production-readiness/post-r18/gates/g2/PROMPT_PROVENANCE.md",
   "ownershipRecord": "docs/production-readiness/post-r18/waves/OWNERSHIP_R29_R38.md",
   "lanes": [
@@ -242,10 +242,10 @@
       "lane": 4,
       "branch": "feat/r32-refund-recovery",
       "owner": {
-        "lane": "R32 future lane session; coordinator assigns the writer only after verified G2 publication",
-        "coordinator": "Owner-delegated engineering coordinator for baraabd"
+        "lane": "/root; session r32-20261023-1db81624b1de",
+        "coordinator": "/root owner-delegated coordinator for baraabd"
       },
-      "status": "BLOCKED",
+      "status": "READY_TO_START",
       "frozenBaseSha": "72b4aaeb0a71d806b7fca7363dd9ca59bbcee644",
       "dependencies": ["R24", "R22", "R23"],
       "exactFiles": [
@@ -271,7 +271,49 @@
         "docs/production-readiness/r32/OWNERSHIP.md",
         "docs/production-readiness/r32/shared-change-requests/CR-001-integration.md"
       ],
-      "leases": [],
+      "leases": [
+        {
+          "id": "R32-CORE-01",
+          "grantedBy": "/root owner-delegated coordinator for baraabd",
+          "writer": "/root",
+          "scope": "Existing R24 reservation/dispatch, R22 outbox, fresh durable reviewer authorization, query-first recovery, original-posting reversal fence, safe command errors and frozen confirmation participant wiring; bounded regression fixtures.",
+          "expires": "R32 PR closure, G3 integration or coordinator revocation, whichever occurs first.",
+          "handoff": "docs/production-readiness/r32/shared-change-requests/CR-001-integration.md",
+          "paths": [
+            "apps/api/src/modules/money/application/money-command.service.ts",
+            "apps/api/src/modules/money/application/money-command.service.spec.ts",
+            "apps/api/src/modules/money/money.module.ts",
+            "apps/api/src/modules/money/money.module.spec.ts",
+            "apps/api/src/app.module.ts",
+            "apps/api/src/app.module.spec.ts",
+            "apps/api/test/support/r24-money-http.fixture.ts",
+            "apps/api/test/integration/r24-money-api.integration.spec.ts"
+          ]
+        },
+        {
+          "id": "R32-G2-01",
+          "grantedBy": "/root owner-delegated coordinator for baraabd",
+          "writer": "/root (returned by /root/pr_audit after canonical verification)",
+          "scope": "Overlay the 13 already owner-merged G2 acceptance records; verify publication and assign only the R32 isolated session without changing frozen identities or historical results.",
+          "expires": "R32 PR closure, G3 integration or coordinator revocation; subtask author returned the lease to /root.",
+          "handoff": "docs/production-readiness/r32/OWNERSHIP.md",
+          "paths": [
+            "docs/production-readiness/post-r18/ACTIVE_STATUS.md",
+            "docs/production-readiness/post-r18/SPRINT_REGISTRY.json",
+            "docs/production-readiness/post-r18/gates/g2/ACCEPTANCE.md",
+            "docs/production-readiness/post-r18/gates/g2/ACCEPTANCE_EVIDENCE.json",
+            "docs/production-readiness/post-r18/gates/g2/BLOCKERS.md",
+            "docs/production-readiness/post-r18/gates/g2/IMPLEMENTATION.md",
+            "docs/production-readiness/post-r18/gates/g2/SOURCE_MANIFEST.json",
+            "docs/production-readiness/post-r18/gates/g2/evidence/r25-summary.json",
+            "docs/production-readiness/post-r18/gates/g2/evidence/r26-summary.json",
+            "docs/production-readiness/post-r18/gates/g2/evidence/r27-summary.json",
+            "docs/production-readiness/post-r18/gates/g2/evidence/source-provenance.json",
+            "docs/production-readiness/post-r18/waves/wave-02.closeout.json",
+            "docs/production-readiness/post-r18/waves/wave-03.plan.json"
+          ]
+        }
+      ],
       "requiredEvidence": [
         "docs/production-readiness/r32/IMPLEMENTATION.md",
         "docs/production-readiness/r32/ACCEPTANCE.md",
@@ -280,10 +322,10 @@
         "All behavioral, negative and integration tests in gates/g2/prompts/R32.md",
         "Exact source/base/tree and contract/schema versions; checked command exit codes and test counts; source-bound artifacts; final-PR CI and official CodeQL; explicit skipped, blocked, sandbox and hosted states"
       ],
-      "ownershipApproval": "CONDITIONAL_AFTER_VERIFIED_G2_PUBLICATION_AND_SESSION_ASSIGNMENT",
-      "blockedBy": ["G2_VERIFIED_OWNER_MERGED_PUBLICATION", "EXACT_SESSION_ASSIGNMENT"],
+      "ownershipApproval": "APPROVED_AFTER_VERIFIED_G2_PUBLICATION",
+      "blockedBy": [],
       "isolatedRuntime": {
-        "allocationStatus": "PLANNED_NOT_PROVISIONED",
+        "allocationStatus": "PROVISIONED_ISOLATED_TEST_RUNTIME",
         "composeProject": "hsm-r32-<session>",
         "database": "hsm_r32_<session>",
         "databaseUser": "hsm_r32_<session>",
@@ -297,9 +339,35 @@
         "browserOrigin": "http://r32.<session>.localhost:4432",
         "browserContexts": "Independent Seeker, Provider and Admin contexts with host-only cookies; different ports alone do not isolate cookies",
         "effectiveConfiguration": "Inspect resolved container names, explicit volume names, bucket/directory prefixes and ports before allocating; a Compose project name alone is insufficient",
-        "secrets": "Task-issued disposable values only; never copy an unreviewed .env or use the user working database"
+        "secrets": "Task-issued disposable values only; never copy an unreviewed .env or use the user working database",
+        "observed": {
+          "postgresVersion": "16.14",
+          "postgresPort": 5532,
+          "database": "hsm_r32_1db816",
+          "databaseRole": "hsm_r32_tests",
+          "redisVersion": "7.4.7",
+          "redisPort": 6432,
+          "storage": "Per-fixture temporary private/public/staging roots",
+          "apiPort": "Ephemeral loopback per real HTTP fixture",
+          "evidence": "docs/production-readiness/r32/ACCEPTANCE.md"
+        }
       },
-      "sourcePrompt": "docs/production-readiness/post-r18/gates/g2/prompts/R32.md"
+      "sourcePrompt": "docs/production-readiness/post-r18/gates/g2/prompts/R32.md",
+      "sessionAssignment": {
+        "sessionId": "r32-20261023-1db81624b1de",
+        "assignedBy": "/root owner-delegated coordinator for baraabd",
+        "assignedAt": "2026-10-23T04:49:01.699Z",
+        "ownershipRecord": "docs/production-readiness/r32/OWNERSHIP.md"
+      },
+      "execution": {
+        "status": "SOURCE_VERIFIED",
+        "integrationStatus": "INTEGRATION_PENDING",
+        "policyStatus": "POLICY_BLOCKED",
+        "externalStatus": "EXTERNAL_BLOCKED",
+        "publicationBaselineSha": "986b4707776711e80564f0642133ede90ba16f3c",
+        "evidence": "docs/production-readiness/r32/ACCEPTANCE.md",
+        "note": "Historical READY_TO_START preserves the verified G2 start contract. R32 is implemented and locally verified; final exact-head CI and assembled Wave 3 sandbox/policy acceptance are independent. No merge or deployment."
+      }
     },
     {
       "id": "R33",

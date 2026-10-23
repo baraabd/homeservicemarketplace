@@ -1428,10 +1428,10 @@
       "lane": 4,
       "branch": "feat/r32-refund-recovery",
       "owner": {
-        "lane": "R32 future lane session; coordinator assigns the writer only after verified G2 publication",
-        "coordinator": "Owner-delegated engineering coordinator for baraabd"
+        "lane": "/root; session r32-20261023-1db81624b1de",
+        "coordinator": "/root owner-delegated coordinator for baraabd"
       },
-      "status": "PLANNED",
+      "status": "READY_TO_START",
       "frozenBase": "72b4aaeb0a71d806b7fca7363dd9ca59bbcee644",
       "dependencies": ["R24", "R22", "R23"],
       "legacyAliases": ["P41"],
@@ -1460,7 +1460,49 @@
           "docs/production-readiness/r32/shared-change-requests/CR-001-integration.md"
         ],
         "prefixes": [],
-        "leases": []
+        "leases": [
+          {
+            "id": "R32-CORE-01",
+            "grantedBy": "/root owner-delegated coordinator for baraabd",
+            "writer": "/root",
+            "scope": "Existing R24 reservation/dispatch, R22 outbox, fresh durable reviewer authorization, query-first recovery, original-posting reversal fence, safe command errors and frozen confirmation participant wiring; bounded regression fixtures.",
+            "expires": "R32 PR closure, G3 integration or coordinator revocation, whichever occurs first.",
+            "handoff": "docs/production-readiness/r32/shared-change-requests/CR-001-integration.md",
+            "paths": [
+              "apps/api/src/modules/money/application/money-command.service.ts",
+              "apps/api/src/modules/money/application/money-command.service.spec.ts",
+              "apps/api/src/modules/money/money.module.ts",
+              "apps/api/src/modules/money/money.module.spec.ts",
+              "apps/api/src/app.module.ts",
+              "apps/api/src/app.module.spec.ts",
+              "apps/api/test/support/r24-money-http.fixture.ts",
+              "apps/api/test/integration/r24-money-api.integration.spec.ts"
+            ]
+          },
+          {
+            "id": "R32-G2-01",
+            "grantedBy": "/root owner-delegated coordinator for baraabd",
+            "writer": "/root (returned by /root/pr_audit after canonical verification)",
+            "scope": "Overlay the 13 already owner-merged G2 acceptance records; verify publication and assign only the R32 isolated session without changing frozen identities or historical results.",
+            "expires": "R32 PR closure, G3 integration or coordinator revocation; subtask author returned the lease to /root.",
+            "handoff": "docs/production-readiness/r32/OWNERSHIP.md",
+            "paths": [
+              "docs/production-readiness/post-r18/ACTIVE_STATUS.md",
+              "docs/production-readiness/post-r18/SPRINT_REGISTRY.json",
+              "docs/production-readiness/post-r18/gates/g2/ACCEPTANCE.md",
+              "docs/production-readiness/post-r18/gates/g2/ACCEPTANCE_EVIDENCE.json",
+              "docs/production-readiness/post-r18/gates/g2/BLOCKERS.md",
+              "docs/production-readiness/post-r18/gates/g2/IMPLEMENTATION.md",
+              "docs/production-readiness/post-r18/gates/g2/SOURCE_MANIFEST.json",
+              "docs/production-readiness/post-r18/gates/g2/evidence/r25-summary.json",
+              "docs/production-readiness/post-r18/gates/g2/evidence/r26-summary.json",
+              "docs/production-readiness/post-r18/gates/g2/evidence/r27-summary.json",
+              "docs/production-readiness/post-r18/gates/g2/evidence/source-provenance.json",
+              "docs/production-readiness/post-r18/waves/wave-02.closeout.json",
+              "docs/production-readiness/post-r18/waves/wave-03.plan.json"
+            ]
+          }
+        ]
       },
       "requiredEvidence": [
         "docs/production-readiness/r32/IMPLEMENTATION.md",
@@ -1471,15 +1513,30 @@
         "Exact source/base/tree and contract/schema versions; checked command exit codes and test counts; source-bound artifacts; final-PR CI and official CodeQL; explicit skipped, blocked, sandbox and hosted states"
       ],
       "pr": null,
-      "scopeNote": "Existing frozen refund policy, transport and confirmation-participant ports remain the boundary. Durable reservation/dispatch/compensation state is reused. The original 21-file R32 conditional package is retained; no unmerged adapter import or second ledger.",
+      "scopeNote": "Historical READY_TO_START preserves the verified G2 start contract; see execution and R32/ACCEPTANCE.md for actual source verification and remaining integration/policy blockers. Frozen refund policy, transport and confirmation-participant ports remain the boundary; no peer import or second ledger.",
       "startBarrier": {
         "gate": "G2",
         "decision": "ACCEPTED",
-        "publication": "NOT_RELEASED",
+        "publication": "MERGED",
         "sourceRecord": "docs/production-readiness/post-r18/gates/g2/SOURCE_MANIFEST.json"
       },
-      "ownershipApproval": "CONDITIONAL_AFTER_VERIFIED_G2_PUBLICATION_AND_SESSION_ASSIGNMENT",
-      "sourcePrompt": "docs/production-readiness/post-r18/gates/g2/prompts/R32.md"
+      "ownershipApproval": "APPROVED_AFTER_VERIFIED_G2_PUBLICATION",
+      "sourcePrompt": "docs/production-readiness/post-r18/gates/g2/prompts/R32.md",
+      "sessionAssignment": {
+        "sessionId": "r32-20261023-1db81624b1de",
+        "assignedBy": "/root owner-delegated coordinator for baraabd",
+        "assignedAt": "2026-10-23T04:49:01.699Z",
+        "ownershipRecord": "docs/production-readiness/r32/OWNERSHIP.md"
+      },
+      "execution": {
+        "status": "SOURCE_VERIFIED",
+        "integrationStatus": "INTEGRATION_PENDING",
+        "policyStatus": "POLICY_BLOCKED",
+        "externalStatus": "EXTERNAL_BLOCKED",
+        "publicationBaselineSha": "986b4707776711e80564f0642133ede90ba16f3c",
+        "evidence": "docs/production-readiness/r32/ACCEPTANCE.md",
+        "note": "Historical READY_TO_START preserves the verified G2 start contract. R32 is implemented and locally verified; final exact-head CI and assembled Wave 3 sandbox/policy acceptance are independent. No merge or deployment."
+      }
     },
     {
       "id": "R33",

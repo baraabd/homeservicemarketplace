@@ -19,6 +19,7 @@ import {
 } from '../../src/modules/money/ports/collection.port';
 import {
   MONEY_REFUND_ADAPTER,
+  MONEY_REFUND_CONFIRMATION_PARTICIPANT,
   MONEY_REFUND_POLICY,
 } from '../../src/modules/money/ports/refund.port';
 import { createIsolatedDatabase, type IsolatedDatabase } from './isolated-database';
@@ -95,6 +96,7 @@ const ALLOWED_PORTS = new Set([
   MONEY_ACTIVATION_PARTICIPANT,
   MONEY_REFUND_POLICY,
   MONEY_REFUND_ADAPTER,
+  MONEY_REFUND_CONFIRMATION_PARTICIPANT,
 ]);
 
 /**
@@ -115,7 +117,7 @@ export async function r24MoneyHttpFixture(
   }
   for (const override of options.adapters ?? []) {
     if (!ALLOWED_PORTS.has(override.token)) {
-      throw new Error('R24 fixtures may replace only the six explicit money ports.');
+      throw new Error('R24 fixtures may replace only the seven explicit money ports.');
     }
   }
 

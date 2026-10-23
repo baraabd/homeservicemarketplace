@@ -28,8 +28,12 @@ import {
   MONEY_REFUND_POLICY,
   UnavailableMoneyRefundAdapter,
   UnavailableMoneyRefundConfirmationParticipant,
-  UnavailableMoneyRefundPolicy,
 } from './ports/refund.port';
+import {
+  REFUND_POLICY_SOURCE,
+  RefundEligibilityPolicy,
+  UnavailableRefundPolicySource,
+} from './refunds/refund-eligibility.policy';
 
 // One composition boundary. R29–R32 must provide reviewed, configured
 // participants through these exact tokens. Default providers are unavailable;
@@ -45,7 +49,9 @@ import {
     { provide: MONEY_COLLECTION_ADAPTER, useClass: UnavailableMoneyCollectionAdapter },
     { provide: MONEY_RECEIPT_ACCEPTANCE, useClass: UnavailableMoneyReceiptAcceptance },
     { provide: MONEY_ACTIVATION_PARTICIPANT, useClass: UnavailableMoneyActivationParticipant },
-    { provide: MONEY_REFUND_POLICY, useClass: UnavailableMoneyRefundPolicy },
+    { provide: REFUND_POLICY_SOURCE, useClass: UnavailableRefundPolicySource },
+    RefundEligibilityPolicy,
+    { provide: MONEY_REFUND_POLICY, useExisting: RefundEligibilityPolicy },
     { provide: MONEY_REFUND_ADAPTER, useClass: UnavailableMoneyRefundAdapter },
     {
       provide: MONEY_REFUND_CONFIRMATION_PARTICIPANT,
@@ -63,6 +69,7 @@ import {
     MONEY_RECEIPT_ACCEPTANCE,
     MONEY_ACTIVATION_PARTICIPANT,
     MONEY_REFUND_POLICY,
+    REFUND_POLICY_SOURCE,
     MONEY_REFUND_ADAPTER,
     MONEY_REFUND_CONFIRMATION_PARTICIPANT,
     MONEY_FINANCE_READ,

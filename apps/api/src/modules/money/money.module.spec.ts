@@ -20,6 +20,7 @@ import {
   MONEY_REFUND_CONFIRMATION_PARTICIPANT,
   MONEY_REFUND_POLICY,
 } from './ports/refund.port';
+import { REFUND_POLICY_SOURCE, RefundEligibilityPolicy } from './refunds/refund-eligibility.policy';
 
 // This unit suite checks composition metadata and unavailable providers. The
 // dedicated HTTP suite boots the real AppModule with its actual validation.
@@ -99,13 +100,12 @@ describe('R24 MoneyModule composition and unavailable defaults', () => {
   );
 
   it('has no implicit refund eligibility policy', async () => {
-    await expect(
-      configuredProvider(MONEY_REFUND_POLICY).authorizeReservation(),
-    ).rejects.toMatchObject({
-      code: 'DEPENDENCY_UNAVAILABLE',
-      status: 503,
-      details: { reason: 'MONEY_REFUND_POLICY_UNAVAILABLE' },
+    expect(providers).toContain(RefundEligibilityPolicy);
+    expect(providers).toContainEqual({
+      provide: MONEY_REFUND_POLICY,
+      useExisting: RefundEligibilityPolicy,
     });
+    await expect(configuredProvider(REFUND_POLICY_SOURCE).resolve()).resolves.toBeNull();
   });
 
   it('exports one unavailable G2 confirmed-refund participant without applying a consequence', async () => {
