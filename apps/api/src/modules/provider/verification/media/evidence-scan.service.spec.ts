@@ -40,6 +40,7 @@ const TRUNCATED_PDF = Buffer.from('%PDF-1.4\nno end marker');
 
 type Row = {
   id: string;
+  purpose: string | null;
   storageKey: string;
   scanState: string;
   declaredMimeType: string;
@@ -53,6 +54,7 @@ type Row = {
 function row(over: Partial<Row> = {}): Row {
   return {
     id: 'asset-1',
+    purpose: null,
     storageKey: 'verification/case-1/asset-1.pdf',
     scanState: 'PENDING',
     declaredMimeType: 'application/pdf',
@@ -159,6 +161,26 @@ function harness(options: {
 const stateWritten = (updates: Array<{ data: Record<string, unknown> }>) =>
   updates.map((u) => u.data.scanState);
 
+describe('financial evidence isolation from identity scanning', () => {
+  it('filters financial purposes at selection and refuses an injected candidate before reading bytes', async () => {
+    const scanner = new ScriptedScanner(true, { state: 'CLEAN', scannerId: 'scripted' });
+    const h = harness({
+      scanner,
+      rows: [row({ purpose: 'FINANCIAL_RECEIPT', verificationCaseId: null })],
+    });
+    await h.service.scanPending();
+    expect(h.client.mediaAsset.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ purpose: null }),
+      }),
+    );
+    expect(h.storage.openReadStream).not.toHaveBeenCalled();
+    expect(scanner.calls).toEqual([]);
+    expect(h.updates).toEqual([]);
+    expect(h.audits).toEqual([]);
+  });
+});
+
 describe('a file a real scanner clears', () => {
   it('is written CLEAN, with the scanner recorded', async () => {
     const h = harness({});
@@ -175,7 +197,11 @@ describe('a file a real scanner clears', () => {
     // decision made on a different reading of the file.
     const h = harness({});
     await h.service.scanPending();
-    expect(h.updates[0].where).toMatchObject({ id: 'asset-1', scanState: 'PENDING' });
+    expect(h.updates[0].where).toMatchObject({
+      id: 'asset-1',
+      scanState: 'PENDING',
+      purpose: null,
+    });
   });
 
   it('counts a lost race as skipped rather than cleared', async () => {

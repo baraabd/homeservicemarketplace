@@ -8,7 +8,21 @@ import { LedgerService } from './ledger/ledger.service';
 import { LedgerModule } from './ledger/ledger.module';
 import { SubscriptionActivationService } from './domain/subscription-activation.service';
 import { MoneyModule } from './money.module';
+import { ManualReviewModule } from './manual-review/manual-review.module';
+import { ManualRailConfiguration } from './adapters/manual/manual-rail.config';
+import { ManualCollectionAdapter } from './adapters/manual/manual-collection.adapter';
+import { ManualRefundAdapter } from './adapters/manual/manual-refund.adapter';
+import { ReceiptAcceptanceParticipant } from './manual-review/receipt-acceptance.participant';
+import {
+  ManualPaymentController,
+  ManualReceiptReadController,
+  ManualFinanceReviewController,
+} from './manual-review/manual-review.controller';
+import type { PrismaTx } from '@homeservicemarketplace/database';
+import type { MoneyTransportBinding } from './ports/collection.port';
 import { MONEY_ACTIVATION_PARTICIPANT } from './ports/activation.port';
+import { SubscriptionActivationParticipant } from './subscriptions/subscription-activation.participant';
+import { SubscriptionsModule } from './subscriptions/subscriptions.module';
 import {
   MONEY_COLLECTION_ADAPTER,
   MONEY_CONFIGURATION,
@@ -20,6 +34,7 @@ import {
   MONEY_REFUND_CONFIRMATION_PARTICIPANT,
   MONEY_REFUND_POLICY,
 } from './ports/refund.port';
+import { REFUND_POLICY_SOURCE, RefundEligibilityPolicy } from './refunds/refund-eligibility.policy';
 
 // This unit suite checks composition metadata and unavailable providers. The
 // dedicated HTTP suite boots the real AppModule with its actual validation.
@@ -48,7 +63,7 @@ function configuredProvider(token: symbol) {
   return new matches[0]!.useClass();
 }
 
-describe('R24 MoneyModule composition and unavailable defaults', () => {
+describe('R24/R31 MoneyModule composition and unavailable external defaults', () => {
   it('imports and exports the existing ledger once without creating another posting authority', () => {
     expect(
       (Reflect.getMetadata(MODULE_METADATA.IMPORTS, MoneyModule) as unknown[]).filter(
@@ -66,6 +81,9 @@ describe('R24 MoneyModule composition and unavailable defaults', () => {
     expect(Reflect.getMetadata(MODULE_METADATA.CONTROLLERS, MoneyModule)).toEqual([
       MoneyController,
       MoneyReviewController,
+      ManualPaymentController,
+      ManualReceiptReadController,
+      ManualFinanceReviewController,
     ]);
   });
 
@@ -77,35 +95,103 @@ describe('R24 MoneyModule composition and unavailable defaults', () => {
   });
 
   it('contains no configured purchase binding by default', async () => {
-    await expect(configuredProvider(MONEY_CONFIGURATION).resolve()).resolves.toBeNull();
+    const tx = { moneyManualInstructionVersion: { findMany: jest.fn().mockResolvedValue([]) } };
+    await expect(
+      new ManualRailConfiguration().resolve(
+        { planVersionId: 'absent-plan', method: 'SHAM_CASH' },
+        tx as unknown as PrismaTx,
+      ),
+    ).resolves.toBeNull();
+    expect(tx.moneyManualInstructionVersion.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { planVersionId: 'absent-plan', method: 'SHAM_CASH', enabled: true },
+      }),
+    );
+  });
+
+  it('reuses exactly one manual participant per port through the reviewed module', () => {
+    expect(
+      (Reflect.getMetadata(MODULE_METADATA.IMPORTS, MoneyModule) as unknown[]).filter(
+        (entry) => entry === ManualReviewModule,
+      ),
+    ).toHaveLength(1);
+    for (const [provide, useExisting] of [
+      [MONEY_CONFIGURATION, ManualRailConfiguration],
+      [MONEY_COLLECTION_ADAPTER, ManualCollectionAdapter],
+      [MONEY_RECEIPT_ACCEPTANCE, ReceiptAcceptanceParticipant],
+      [MONEY_REFUND_ADAPTER, ManualRefundAdapter],
+    ]) {
+      expect(
+        providers.filter(
+          (entry) =>
+            typeof entry === 'object' &&
+            entry !== null &&
+            'provide' in entry &&
+            entry.provide === provide,
+        ),
+      ).toEqual([{ provide, useExisting }]);
+    }
+  });
+
+  it('binds exactly one real R31 participant from its owning module', () => {
+    expect(Reflect.getMetadata(MODULE_METADATA.IMPORTS, MoneyModule)).toContain(
+      SubscriptionsModule,
+    );
+    expect(
+      providers.filter(
+        (entry) =>
+          typeof entry === 'object' &&
+          entry !== null &&
+          'provide' in entry &&
+          entry.provide === MONEY_ACTIVATION_PARTICIPANT,
+      ),
+    ).toEqual([
+      { provide: MONEY_ACTIVATION_PARTICIPANT, useExisting: SubscriptionActivationParticipant },
+    ]);
+    expect(Reflect.getMetadata(MODULE_METADATA.EXPORTS, SubscriptionsModule)).toContain(
+      SubscriptionActivationParticipant,
+    );
+    expect(providers).not.toContain(SubscriptionActivationParticipant);
   });
 
   it.each([
-    [MONEY_COLLECTION_ADAPTER, 'createOrResume', 'MONEY_COLLECTION_UNAVAILABLE'],
-    [MONEY_RECEIPT_ACCEPTANCE, 'accept', 'MONEY_RECEIPT_UNAVAILABLE'],
-    [MONEY_ACTIVATION_PARTICIPANT, 'activatePeriod', 'MONEY_ACTIVATION_UNAVAILABLE'],
-    [MONEY_REFUND_ADAPTER, 'submit', 'MONEY_REFUND_ADAPTER_UNAVAILABLE'],
+    [MONEY_COLLECTION_ADAPTER, ManualCollectionAdapter],
+    [MONEY_RECEIPT_ACCEPTANCE, ReceiptAcceptanceParticipant],
+    [MONEY_REFUND_ADAPTER, ManualRefundAdapter],
   ] as const)(
-    'never reports a configured or successful default for %s',
-    async (token, method, reason) => {
-      const port = configuredProvider(token);
-      expect(port.isConfigured()).toBe(false);
-      await expect(port[method]()).rejects.toMatchObject({
-        code: 'DEPENDENCY_UNAVAILABLE',
-        status: 503,
-        details: { reason },
-      });
+    'keeps the mounted manual participant %s unavailable to live or non-manual bindings',
+    (token, implementation) => {
+      expect(providers).toContainEqual({ provide: token, useExisting: implementation });
+      const binding: MoneyTransportBinding = {
+        planVersionId: 'plan',
+        method: 'SHAM_CASH',
+        currency: 'XTS',
+        mode: 'LIVE',
+        adapterId: 'hsm.manual.v1',
+        accountReference: 'synthetic-account',
+        configVersion: 'synthetic-v1',
+        debitAccountId: 'clearing',
+        creditAccountId: 'revenue',
+      };
+      expect(implementation.prototype.isConfigured(binding)).toBe(false);
+      expect(
+        implementation.prototype.isConfigured({ ...binding, mode: 'SANDBOX', method: 'STRIPE' }),
+      ).toBe(false);
     },
   );
 
   it('has no implicit refund eligibility policy', async () => {
-    await expect(
-      configuredProvider(MONEY_REFUND_POLICY).authorizeReservation(),
-    ).rejects.toMatchObject({
-      code: 'DEPENDENCY_UNAVAILABLE',
-      status: 503,
-      details: { reason: 'MONEY_REFUND_POLICY_UNAVAILABLE' },
-    });
+    expect(providers).toContain(RefundEligibilityPolicy);
+    expect(
+      providers.filter(
+        (entry) =>
+          typeof entry === 'object' &&
+          entry !== null &&
+          'provide' in entry &&
+          entry.provide === MONEY_REFUND_POLICY,
+      ),
+    ).toEqual([{ provide: MONEY_REFUND_POLICY, useExisting: RefundEligibilityPolicy }]);
+    await expect(configuredProvider(REFUND_POLICY_SOURCE).resolve()).resolves.toBeNull();
   });
 
   it('exports one unavailable G2 confirmed-refund participant without applying a consequence', async () => {

@@ -4,6 +4,11 @@ on:
   pull_request:
     branches: ['develop']
   workflow_dispatch:
+    inputs:
+      repair_baseline_sha:
+        description: 'Full immutable repair baseline SHA for manual runs'
+        required: true
+        type: string
 
 permissions:
   contents: read
@@ -11,6 +16,13 @@ permissions:
 concurrency:
   group: r27-performance-${{ github.ref }}
   cancel-in-progress: true
+
+# Successor experiment with independently verified dependency-only controls.
+# G1 remains 40cdac5... in its immutable gate; its historical R27 comparison
+# has a different lock digest and must not be relabelled comparable.
+env:
+  R27_BASELINE_SHA: 608b4532c6bb354331af1ce4a8cef1cbd5cf912e
+  R27_CANDIDATE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
 
 jobs:
   measure:
@@ -20,17 +32,18 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        source: [baseline, candidate]
+        source: [baseline, candidate, repair-baseline]
     defaults:
       run:
         working-directory: subject
     env:
       DATABASE_URL: postgresql://r27:r27-local-only@127.0.0.1:54397/hsm_r27_perf
       R27_HARNESS_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+      R27_REPAIR_BASELINE_SHA: ${{ github.event.pull_request.base.sha || inputs.repair_baseline_sha }}
       VITE_API_URL: http://127.0.0.1:4327
       E2E_REAL_API: http://127.0.0.1:4327
       E2E_MAILPIT: http://127.0.0.1:18027
-      R27_CANDIDATE: ${{ matrix.source == 'candidate' && 'true' || 'false' }}
+      R27_CANDIDATE: ${{ matrix.source != 'baseline' && 'true' || 'false' }}
     steps:
       - name: Checkout measurement harness
         uses: actions/checkout@v5
@@ -38,12 +51,44 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           path: harness
           persist-credentials: false
+          fetch-depth: 0
+      - name: Prepare the pinned control validator runtime
+        uses: actions/setup-node@v5
+        with:
+          node-version: '24.21.0'
+          package-manager-cache: false
+      - name: Verify dependency-only controls and select the comparable repair baseline
+        working-directory: harness
+        run: |
+          set -euo pipefail
+          node .github/scripts/r27-dependency-controls.mjs \
+            --candidate "$R27_HARNESS_SHA" \
+            --repair-base "$R27_REPAIR_BASELINE_SHA" \
+            --baseline "$R27_BASELINE_SHA" \
+            --github-env "$GITHUB_ENV" \
+            --report "$RUNNER_TEMP/r27-dependency-controls.json"
+      - name: Validate immutable repair baseline
+        if: matrix.source == 'repair-baseline'
+        working-directory: harness
+        run: |
+          set -euo pipefail
+          [[ "$R27_REPAIR_BASELINE_SHA" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$R27_REPAIR_BASELINE_SHA" != "$R27_HARNESS_SHA" ]]
+          test "$(git rev-parse HEAD)" = "$R27_HARNESS_SHA"
+          git cat-file -e "${R27_REPAIR_BASELINE_SHA}^{commit}"
+          git merge-base --is-ancestor "$R27_REPAIR_BASELINE_SHA" "$R27_HARNESS_SHA"
       - name: Checkout immutable runtime under test
         uses: actions/checkout@v5
         with:
-          ref: ${{ matrix.source == 'baseline' && '40cdac5c9ce6acaa8dedc0385984a807ae9a84d0' || github.event.pull_request.head.sha || github.sha }}
+          ref: ${{ matrix.source == 'baseline' && env.R27_BASELINE_SHA || matrix.source == 'repair-baseline' && env.R27_REPAIR_BASELINE_SHA || env.R27_CANDIDATE_SHA }}
           path: subject
           persist-credentials: false
+      - name: Verify repair baseline checkout and dependency identity
+        if: matrix.source == 'repair-baseline'
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$R27_REPAIR_BASELINE_SHA"
+          cmp --silent pnpm-lock.yaml ../harness/pnpm-lock.yaml
       - uses: pnpm/action-setup@v6
         with:
           package_json_file: subject/package.json
@@ -61,6 +106,7 @@ jobs:
           mkdir -p apps/web/r27-tests
           cp -R ../harness/apps/web/r27-tests/. apps/web/r27-tests/
           mkdir r27-evidence
+          cp "$RUNNER_TEMP/r27-dependency-controls.json" r27-evidence/dependency-controls.json
       - run: pnpm install --frozen-lockfile
       - name: Harness regressions and source identity
         run: |
@@ -90,7 +136,7 @@ jobs:
           node scripts/perf/post-r18/bundle-report.mjs --label '${{ matrix.source }}' --out-json r27-evidence/bundle.json
           node scripts/perf/post-r18/api-boot.mjs --runs 5 --requests 30 --profile production --out-json r27-evidence/boot.json
           node scripts/perf/post-r18/api-boot-profile.mjs --out-json r27-evidence/boot-profile.json
-          node scripts/perf/post-r18/query-profile.mjs --copies 300 ${{ matrix.source == 'candidate' && '--assert-repairs' || '' }} --out-json r27-evidence/query.json
+          node scripts/perf/post-r18/query-profile.mjs --copies 300 ${{ matrix.source != 'baseline' && '--assert-repairs' || '' }} --out-json r27-evidence/query.json
       - name: Build and typecheck real browser harness
         run: |
           set -euo pipefail
@@ -125,3 +171,61 @@ jobs:
       - name: Remove only this job's disposable services
         if: always() && env.R27_SERVICES_OWNED == 'true'
         run: docker compose -p hsm-r27-perf -f scripts/perf/post-r18/compose.r27.yml down -v
+
+  acceptance:
+    name: R27 comparable measurements and unchanged budgets
+    needs: measure
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Require every measurement job to succeed
+        env:
+          MEASURE_RESULT: ${{ needs.measure.result }}
+        run: test "$MEASURE_RESULT" = success
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ env.R27_CANDIDATE_SHA }}
+          persist-credentials: false
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '24.21.0'
+          package-manager-cache: false
+      - name: Download this run's exact-head baseline
+        uses: actions/download-artifact@v6
+        with:
+          name: r27-baseline-${{ env.R27_CANDIDATE_SHA }}
+          path: r27-acceptance/baseline
+      - name: Download this run's exact-head candidate
+        uses: actions/download-artifact@v6
+        with:
+          name: r27-candidate-${{ env.R27_CANDIDATE_SHA }}
+          path: r27-acceptance/candidate
+      - name: Compare unchanged report semantics and require complete evidence
+        run: |
+          set -euo pipefail
+          node --test .github/scripts/r27-acceptance.test.mjs
+          node scripts/perf/post-r18/compare-reports.mjs \
+            --baseline r27-acceptance/baseline \
+            --candidate r27-acceptance/candidate \
+            --out-json r27-acceptance/comparison.json
+          node .github/scripts/r27-acceptance.mjs \
+            --comparison r27-acceptance/comparison.json \
+            --baseline "$R27_BASELINE_SHA" --candidate "$R27_CANDIDATE_SHA"
+      - name: Enforce the original candidate query and bundle ceilings
+        run: |
+          set -euo pipefail
+          node scripts/perf/post-r18/check-budgets.mjs \
+            --bundle r27-acceptance/candidate/bundle.json \
+            --queries r27-acceptance/candidate/query.json \
+            | tee r27-acceptance/candidate-budgets.txt
+      - name: Retain acceptance findings including failures
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: r27-acceptance-${{ env.R27_CANDIDATE_SHA }}
+          path: |
+            r27-acceptance/comparison.json
+            r27-acceptance/candidate-budgets.txt
+          if-no-files-found: error
+          retention-days: 14

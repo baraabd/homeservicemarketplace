@@ -1,0 +1,100 @@
+{
+  "schemaVersion": 1,
+  "gateId": "G3",
+  "decision": "BLOCKED",
+  "authority": "Owner-delegated coordinator review of develop 5ff2b7e6a46b4e42114184fac89928372f4c8d4c after the request to repair PR #188, verify Wave 3 merges and prepare G3 before R34. Source inspection is not integrated G3 acceptance.",
+  "candidateSourceSha": null,
+  "candidateTreeSha": null,
+  "frozenBaseSha": null,
+  "frozenTreeSha": null,
+  "prerequisite": {
+    "gateId": "G2",
+    "record": "docs/production-readiness/post-r18/gates/g2/SOURCE_MANIFEST.json",
+    "frozenBaseSha": null,
+    "acceptanceRecordCommitSha": null
+  },
+  "acceptedSprints": [],
+  "mandatoryEvidence": [
+    {
+      "id": "combined-wave3-checks",
+      "status": "NOT_RUN",
+      "sourceSha": null,
+      "treeSha": null,
+      "reference": "docs/production-readiness/post-r18/gates/g3/REQUIREMENTS.md"
+    },
+    {
+      "id": "r29-real-stripe-sandbox",
+      "status": "NOT_RUN",
+      "sourceSha": null,
+      "treeSha": null,
+      "reference": "docs/production-readiness/post-r18/gates/g3/REQUIREMENTS.md"
+    },
+    {
+      "id": "r30-real-manual-review",
+      "status": "NOT_RUN",
+      "sourceSha": null,
+      "treeSha": null,
+      "reference": "docs/production-readiness/post-r18/gates/g3/REQUIREMENTS.md"
+    },
+    {
+      "id": "r31-atomic-subscription-entitlements",
+      "status": "NOT_RUN",
+      "sourceSha": null,
+      "treeSha": null,
+      "reference": "docs/production-readiness/post-r18/gates/g3/REQUIREMENTS.md"
+    },
+    {
+      "id": "r32-refund-ambiguity-recovery",
+      "status": "NOT_RUN",
+      "sourceSha": null,
+      "treeSha": null,
+      "reference": "docs/production-readiness/post-r18/gates/g3/REQUIREMENTS.md"
+    },
+    {
+      "id": "r33-financial-operations",
+      "status": "NOT_RUN",
+      "sourceSha": null,
+      "treeSha": null,
+      "reference": "docs/production-readiness/post-r18/gates/g3/REQUIREMENTS.md"
+    },
+    {
+      "id": "integrated-confirmation-activation-refund-outbox",
+      "status": "NOT_RUN",
+      "sourceSha": null,
+      "treeSha": null,
+      "reference": "docs/production-readiness/post-r18/gates/g3/REQUIREMENTS.md"
+    }
+  ],
+  "blockers": [
+    {
+      "id": "G3-R29-IMPLEMENTATION-MISSING",
+      "owner": "G3 coordinator and assigned R29 implementation writer",
+      "reason": "All 24 registered R29 source/test/evidence paths are absent from inspected develop 5ff2b7e6a46b4e42114184fac89928372f4c8d4c. No Stripe collection/refund adapter or webhook module is registered. R30-R33 are merged; see READINESS_REVIEW_2026-10-23.json."
+    },
+    {
+      "id": "G3-REFUND-POLICY-AND-CONSEQUENCE-UNAVAILABLE",
+      "owner": "Product/policy owner and G3 integration coordinator",
+      "reason": "MoneyModule still registers UnavailableRefundPolicySource and UnavailableMoneyRefundConfirmationParticipant. Approved immutable refund rules and entitlement consequences must be supplied and wired through the existing ports; synthetic fixture policies cannot establish approval."
+    },
+    {
+      "id": "G3-COMBINED-REAL-SANDBOX-EVIDENCE-MISSING",
+      "owner": "G3 coordinator and authorized sandbox operator",
+      "reason": "No complete R29-R33 candidate has passed all seven G3 categories using real registered implementations, independent Stripe sandbox operations and approved manual authority. Lane-head green checks and merged source do not replace integrated acceptance, a frozen source/tree, or separately verified G3 publication."
+    }
+  ],
+  "publication": {
+    "branch": "coord/g3-wave4-start-gate",
+    "state": "NOT_PREPARED",
+    "acceptanceRecordCommitSha": null,
+    "verifiedMerge": false
+  },
+  "restrictions": {
+    "liveMoney": false,
+    "deploy": false,
+    "merge": false,
+    "accountGrants": false,
+    "spend": false,
+    "preserveG1": true,
+    "preserveR16R18Holds": true
+  }
+}

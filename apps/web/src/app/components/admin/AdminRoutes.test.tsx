@@ -26,6 +26,11 @@ vi.mock('../../features/admin-verification/components/VerificationPolicyPanel', 
 vi.mock('../../features/admin-verification/components/AdminIdentityCasesPage', () => ({
   AdminIdentityCasesPage: () => <h2>Specialist cases</h2>,
 }));
+vi.mock('../../features/manual-payments/ManualReviewScreen', () => ({
+  ManualReviewScreen: ({ paymentIntentId }: { paymentIntentId?: string }) => (
+    <h2>{paymentIntentId ? `Manual payment ${paymentIntentId}` : 'Manual payment queue'}</h2>
+  ),
+}));
 
 function Harness() {
   const location = useLocation();
@@ -46,6 +51,18 @@ function open(path: string) {
   );
 }
 describe('Admin entry points and preserved review context', () => {
+  it('resolves the manual review queue and exact obligation without a fallback panel', async () => {
+    expect(resolveAdminRoute('/admin/manual-payments')).toEqual({
+      kind: 'manualPayments',
+      section: 'financials',
+    });
+    expect(resolveAdminRoute('/admin/manual-payments/pi-1/unexpected')).toEqual({
+      kind: 'notFound',
+    });
+    open('/admin/manual-payments/pi-1');
+    expect(await screen.findByRole('heading', { name: 'Manual payment pi-1' })).toBeInTheDocument();
+    expect(screen.queryByText('Review requests')).not.toBeInTheDocument();
+  });
   it('an existing verification bookmark reaches application review without legacy policy or case panels', async () => {
     open('/admin/verification?query=Ada');
     expect(await screen.findByRole('heading', { name: 'Review requests' })).toBeInTheDocument();

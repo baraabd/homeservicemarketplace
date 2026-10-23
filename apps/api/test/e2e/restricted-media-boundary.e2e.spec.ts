@@ -149,9 +149,14 @@ describe('GET /v1/media/files/* — restricted keys', () => {
     'verification/case-1/asset-1.pdf',
     'verification/case-1/asset-2.png',
     'verification/anything.jpg',
+    'financial-receipts/intent-1/receipt.png',
+    'FINANCIAL-RECEIPTS/intent-1/receipt.pdf',
+    'financial-receipts%2Fintent-1%2Freceipt.png',
   ])('refuses to serve %s', async (key) => {
     // The adapter above would have served it. The 404 must come from the route.
-    await request(app.getHttpServer()).get(`/v1/media/files/${key}`).expect(404);
+    const response = await request(app.getHttpServer()).get(`/v1/media/files/${key}`).expect(404);
+    expect(response.headers['cache-control']).toBe('private, no-store');
+    expect(permissiveLocal.absolutePathForKey).not.toHaveBeenCalled();
   });
 
   it('answers 404, not 403, so a prober cannot confirm a case exists', async () => {

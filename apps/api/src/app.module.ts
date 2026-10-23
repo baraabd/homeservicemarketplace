@@ -30,6 +30,11 @@ import { BidsModule } from './modules/bids/bids.module';
 import { BookingsModule } from './modules/bookings/bookings.module';
 import { ReviewsModule } from './modules/reviews/reviews.module';
 import { MoneyModule } from './modules/money/money.module';
+import { FinancialReportingModule } from './modules/money/reporting/financial-reporting.module';
+import { RefundsModule } from './modules/money/refunds/refunds.module';
+import { RefundOutboxConsumer } from './modules/money/recovery/refund-outbox.consumer';
+import { SubscriptionsModule } from './modules/money/subscriptions/subscriptions.module';
+import { SubscriptionOutboxHandler } from './modules/money/subscriptions/subscription-outbox.handler';
 import { ConversationsModule } from './modules/conversations/conversations.module';
 import { IamModule } from './modules/iam/iam.module';
 import { MediaModule } from './modules/media/media.module';
@@ -88,6 +93,8 @@ import { SupportModule } from './modules/support/support.module';
         RealtimeModule,
         DisputesModule,
         NotificationsModule,
+        RefundsModule,
+        SubscriptionsModule,
       ],
       handlers: [
         RequestAvailableDispatchHandler,
@@ -100,7 +107,9 @@ import { SupportModule } from './modules/support/support.module';
         WorkspaceEventsHandler,
         NotificationCreatedHandler,
         SubscriptionActivatedHandler,
+        SubscriptionOutboxHandler,
         ProviderStatusEmailHandler,
+        RefundOutboxConsumer,
       ],
     }),
     // Global, transport-agnostic post-commit security notifications
@@ -142,8 +151,12 @@ import { SupportModule } from './modules/support/support.module';
     // R11 — customer reviews of completed bookings, and their moderation.
     ReviewsModule,
     // R24 — one money API composition, containing the existing R15/R19
-    // ledger authority. All external adapters/activation remain unconfigured.
+    // ledger authority. R31 activation enlists in its caller transaction;
+    // external collection/configuration/refund adapters remain unconfigured.
     MoneyModule,
+    // R33 — authorized read-only subscription financial operations.
+    FinancialReportingModule,
+    RefundsModule,
     // R13 — durable, authenticated help/support tickets.
     SupportModule,
     DisputesModule,

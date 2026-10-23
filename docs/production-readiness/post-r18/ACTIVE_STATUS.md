@@ -1,37 +1,67 @@
 # Post-R18 active status index
 
-Authority: `SPRINT_REGISTRY.json`. G2 reconciliation on 2026-10-17.
-G1 remains accepted and owner-published at its immutable frozen source. G2 is **BLOCKED** on integrated candidate evidence and the measured R27 performance decision. No Wave 3 lane starts from this review record.
+G2 technical acceptance: `72b4aaeb0a71d806b7fca7363dd9ca59bbcee644`; all 38 checks and required artifacts verified.
+Owner-merged PR #183 publication is independently verified at
+`986b4707776711e80564f0642133ede90ba16f3c`. R30, R31, R32 and R33 source
+assignments are retained. R30 #184 and R31 #186 are owner-merged; their shared
+leases are completed. R29 and all Wave 4 starts remain held in this branch.
 
-| ID  | Title                                                                              | Wave | Status                   | Branch                             | PR   |
-| --- | ---------------------------------------------------------------------------------- | ---- | ------------------------ | ---------------------------------- | ---- |
-| R19 | Extend and certify the existing money authority; freeze shared financial contracts | 1    | SANDBOX_ACCEPTED         | feat/r19-money-authority-contracts | #159 |
-| R20 | Production storage, private media authorization and persistence                    | 1    | SANDBOX_ACCEPTED         | feat/r20-storage-production        | #161 |
-| R21 | Production email delivery and durable feedback                                     | 1    | SANDBOX_ACCEPTED         | feat/r21-email-production          | #160 |
-| R22 | Outbox and worker execution reliability                                            | 1    | SANDBOX_ACCEPTED         | feat/r22-worker-outbox-reliability | #158 |
-| R23 | Observability, privacy-safe diagnostics and incident detection                     | 1    | SANDBOX_ACCEPTED         | feat/r23-observability-incidents   | #163 |
-| R24 | Money application API and module wiring; freeze adapter integration boundaries     | 2    | READY_TO_START           | feat/r24-money-api-integration     | #176 |
-| R25 | Realtime multi-instance activation and reconnect recovery                          | 2    | READY_TO_START           | feat/r25-realtime-multi-instance   | #175 |
-| R26 | Application security and effective authorization hardening                         | 2    | READY_TO_START           | feat/r26-application-security      | #174 |
-| R27 | Measured startup, bundle and database performance                                  | 2    | READY_TO_START           | feat/r27-performance-capacity      | #173 |
-| R28 | Authorized hosted topology, infrastructure and release inputs                      | 2    | READY_TO_START           | feat/r28-hosted-platform           | #179 |
-| R29 | (pending package)                                                                  | 3    | RESERVED_PENDING_PACKAGE | —                                  | —    |
-| R30 | (pending package)                                                                  | 3    | RESERVED_PENDING_PACKAGE | —                                  | —    |
-| R31 | (pending package)                                                                  | 3    | RESERVED_PENDING_PACKAGE | —                                  | —    |
-| R32 | Refund eligibility, reservations and ambiguous-outcome recovery                    | 3    | PLANNED                  | feat/r32-refund-recovery           | —    |
-| R33 | (pending package)                                                                  | 3    | RESERVED_PENDING_PACKAGE | —                                  | —    |
-| R34 | (pending package)                                                                  | 4    | RESERVED_PENDING_PACKAGE | —                                  | —    |
-| R35 | (pending package)                                                                  | 4    | RESERVED_PENDING_PACKAGE | —                                  | —    |
-| R36 | (pending package)                                                                  | 4    | RESERVED_PENDING_PACKAGE | —                                  | —    |
-| R37 | (pending package)                                                                  | 4    | RESERVED_PENDING_PACKAGE | —                                  | —    |
-| R38 | (pending package)                                                                  | 4    | RESERVED_PENDING_PACKAGE | —                                  | —    |
+Authority: `SPRINT_REGISTRY.json`. Package recovery on 2026-10-22.
+G1 remains accepted and owner-published at its immutable frozen source. The active
+G2 source manifest controls the current integration decision and publication hold.
+R30/R31/R32/R33 retain their historical READY_TO_START source assignments; their
+nested execution records describe progress without claiming assembled acceptance.
+R29 remains PLANNED in this branch, and R34–R38 remain PLANNED behind G3.
 
-## Current execution and acceptance
+| ID  | Title                                                                              | Wave | Status           | Branch                             | PR         |
+| --- | ---------------------------------------------------------------------------------- | ---- | ---------------- | ---------------------------------- | ---------- |
+| R19 | Extend and certify the existing money authority; freeze shared financial contracts | 1    | SANDBOX_ACCEPTED | feat/r19-money-authority-contracts | #159       |
+| R20 | Production storage, private media authorization and persistence                    | 1    | SANDBOX_ACCEPTED | feat/r20-storage-production        | #161       |
+| R21 | Production email delivery and durable feedback                                     | 1    | SANDBOX_ACCEPTED | feat/r21-email-production          | #160       |
+| R22 | Outbox and worker execution reliability                                            | 1    | SANDBOX_ACCEPTED | feat/r22-worker-outbox-reliability | #158       |
+| R23 | Observability, privacy-safe diagnostics and incident detection                     | 1    | SANDBOX_ACCEPTED | feat/r23-observability-incidents   | #163       |
+| R24 | Money application API and module wiring; freeze adapter integration boundaries     | 2    | READY_TO_START   | feat/r24-money-api-integration     | #176       |
+| R25 | Realtime multi-instance activation and reconnect recovery                          | 2    | READY_TO_START   | feat/r25-realtime-multi-instance   | #175       |
+| R26 | Application security and effective authorization hardening                         | 2    | READY_TO_START   | feat/r26-application-security      | #174       |
+| R27 | Measured startup, bundle and database performance                                  | 2    | READY_TO_START   | feat/r27-performance-capacity      | #173       |
+| R28 | Authorized hosted topology, infrastructure and release inputs                      | 2    | READY_TO_START   | feat/r28-hosted-platform           | #179, #181 |
+| R29 | Stripe sandbox subscription collections, signed webhooks and refund adapter        | 3    | PLANNED          | feat/r29-stripe-sandbox-webhooks   | —          |
+| R30 | Manual subscription payment rails and protected receipt review                     | 3    | READY_TO_START   | feat/r30-manual-payment-review     | —          |
+| R31 | Subscription plans, My Plan and atomic entitlements                                | 3    | READY_TO_START   | feat/r31-subscription-entitlements | —          |
+| R32 | Refund eligibility, reservations and ambiguous-outcome recovery                    | 3    | READY_TO_START   | feat/r32-refund-recovery           | —          |
+| R33 | Financial read models and Admin/Provider operations UI                             | 3    | READY_TO_START   | feat/r33-financial-operations-ui   | —          |
+| R34 | Cross-rail reconciliation, settlement exceptions and financial acceptance          | 4    | PLANNED          | feat/r34-reconciliation-settlement | —          |
+| R35 | Three-application and subscription lifecycle acceptance                            | 4    | PLANNED          | test/r35-cross-role-certification  | —          |
+| R36 | Backup restore, disaster recovery and compatible rollback                          | 4    | PLANNED          | test/r36-backup-restore-recovery   | —          |
+| R37 | Hosted security, load and operational failure acceptance                           | 4    | PLANNED          | test/r37-hosted-load-security      | —          |
+| R38 | Release-candidate packaging and final launch certification                         | 4    | PLANNED          | release/r38-release-certification  | —          |
 
-Wave 1 `SANDBOX_ACCEPTED` retains G1 scope. Wave 2 `READY_TO_START` is the historical G1 start contract, not its present implementation state; `execution` now records owner-merged R24 #176, R25 #175, R26 #174 and R27 #173. Their integrated G2 acceptance remains separate. R27 #162 is historical pre-G1 source, superseded for current delivery by #173.
+## Execution, planning and acceptance are separate
 
-R28 Draft #179 supplies the selected checked platform/edge delivery. Its twelve files were imported exactly at the initial G2 source; PR #180 adds one coordinator-owned portable test-fixture correction, while the runtime reader and eleven other peer files remain unchanged. Coordinator CI/shutdown integration has separate exact leases. Parallel G2 Draft #178 remains a historical blocked closeout record and is not merged or overwritten. The absent hosting/registry/DNS/secrets/spend approvals remain `HOSTED_ENVIRONMENT_BLOCKED`. Local configuration validation cannot establish hosting or release acceptance.
+Wave 1 `SANDBOX_ACCEPTED` retains G1 scope. Wave 2 `READY_TO_START` is the
+historical published G1 start contract, not its current implementation verdict.
+The status column preserves that machine contract. All five Wave 2 deliveries are now merged; their nested `execution` records and G2 successor evidence describe actual delivered source and technically accepted integration with G2 owner publication now independently verified. R28 includes the corrective owner-merged PR #181. Retaining historical source identities does not treat
+old checks as proof of a newer build.
 
-R32 is `PLANNED` from the exact supplied full prompt, with a null frozen base and held proposed ownership. R29/R30/R31/R33 and Wave 4 retain their unprovided-package reservations. Their shorthand scope notes are not invented authoritative titles or executable assignments.
+The original full prompt pack for R29–R38 was recovered with its previously
+recorded SHA-256. Every title, branch, dependency and legacy alias now comes from
+`gates/g2/prompts/R29.md` through `R38.md`; provenance is recorded in
+`gates/g2/PROMPT_PROVENANCE.md`. These are planned packages, not implemented work.
+The original 21-file R32 conditional package remains intact.
 
-See `gates/g2/SOURCE_MANIFEST.json`, `gates/g2/OWNERSHIP.md` and `waves/WAVE_03.md`. R16/R18 live-money, payout, verification and release holds remain unchanged. No merge or deployment is performed.
+`waves/wave-03.plan.json` preserves the assigned R30, R31, R32 and R33 source
+sessions. R30 #184 and R31 #186 are owner-merged; completed leases retain their
+original scope and closure identity. The owner's conflict-repair request orders
+source integration as #187 followed by #185. This R33 branch includes corrected
+R32 head `03e99da086cca4f4d7652062c331aee2f000775d`; R32 shared leases have been
+handed off to its sole integration writer, not marked as merged. R29 retains its
+session hold. Frozen G2 source and separate G3 acceptance remain unchanged;
+`waves/wave-04.plan.json` still has no assigned source.
+R38 Phase B additionally requires the serialized R34–R37 final evidence join
+and G4 owner scope approval; Phase A preparation does not certify future peers.
+
+See `waves/OWNERSHIP_R29_R38.md` for exact conditional file scope, existing
+authorities, separate resource/session identities and global coordinator
+boundaries. R16 payout and unresolved R18/live-money/hosting decisions remain
+visible. No planning status, source check or configuration report grants live
+money, resource spend, account access, merge, deployment or release acceptance.

@@ -3,7 +3,7 @@ import type { ProviderProfile } from '@homeservicemarketplace/database';
 import { AppConfigService } from '../../../config/app-config.service';
 import type {
   BookingRepository,
-  BookingWithAdminRelations,
+  AdminFinancialBookingListRow,
 } from '../../../infrastructure/persistence/bookings/booking.repository';
 import type { ProviderProfileRepository } from '../../../infrastructure/persistence/bids/provider-profile.repository';
 import { AdminFinancialsService } from './admin-financials.service';
@@ -37,25 +37,17 @@ function makeAggregate(
   };
 }
 
-function makeBookingRow(over: Partial<BookingWithAdminRelations> = {}): BookingWithAdminRelations {
+function makeBookingRow(
+  over: Partial<AdminFinancialBookingListRow> = {},
+): AdminFinancialBookingListRow {
   const date = new Date('2026-05-02T10:00:00Z');
   return {
     id: 'bk-1',
-    requestId: 'req-1',
-    bidId: 'bid-1',
-    seekerUserId: 'user-seeker-1',
-    providerId: 'pp-1',
-    status: 'COMPLETED',
-    scheduledAt: date,
     priceAmount: 4500,
     currency: 'USD',
-    createdAt: date,
     updatedAt: date,
-    deletedAt: null,
     ...over,
     request: {
-      id: 'req-1',
-      categoryId: 'cat-plumbing',
       customServiceText: null,
       addressSnapshot: { city: 'Riyadh', country: 'SA', line1: 'private' },
       category: {
@@ -65,14 +57,13 @@ function makeBookingRow(over: Partial<BookingWithAdminRelations> = {}): BookingW
         labelAr: 'سباكة',
       },
     },
-    bid: { id: 'bid-1', amount: 4500, currency: 'USD' },
     provider: {
       id: 'pp-1',
       displayName: 'Ada L.',
       user: { id: 'u-prov-1', email: 'p@example.com' },
     },
     seeker: { id: 'user-seeker-1', firstName: 'Ahmed' },
-  } as unknown as BookingWithAdminRelations;
+  };
 }
 
 interface Mocks {
@@ -83,7 +74,7 @@ interface Mocks {
 function makeMocks(
   over: {
     aggregate?: ReturnType<typeof makeAggregate>;
-    bookingRows?: BookingWithAdminRelations[];
+    bookingRows?: AdminFinancialBookingListRow[];
     providerGroups?: Array<{ providerId: string; gross: number; completedCount: number }>;
     providerProfiles?: Array<ProviderProfile & { user: { id: string; email: string } | null }>;
   } = {},
@@ -164,6 +155,30 @@ describe('AdminFinancialsService.listBookings', () => {
     const out = await makeService(m).listBookings({ limit: 2 });
     expect(out.items.map((r) => r.id)).toEqual(['a', 'b']);
     expect(out.nextCursor).toBe('b');
+  });
+
+  it('preserves nullable category/user fields and integer fee rounding in the narrow projection', async () => {
+    const row = makeBookingRow({ priceAmount: 101, currency: 'SAR' });
+    row.request.category = null;
+    row.request.customServiceText = 'Custom service';
+    row.provider.user = null;
+    const out = await makeService(makeMocks({ bookingRows: [row] }), 333).listBookings({
+      cursor: 'prior',
+    });
+    expect(out.items[0]).toMatchObject({
+      amount: 101,
+      platformFee: 3,
+      netAmount: 98,
+      currency: 'SAR',
+      occurredAt: '2026-05-02T10:00:00.000Z',
+      provider: { userId: null, email: null },
+      service: {
+        categorySlug: null,
+        categoryLabelEn: null,
+        categoryLabelAr: null,
+        customServiceText: 'Custom service',
+      },
+    });
   });
 });
 

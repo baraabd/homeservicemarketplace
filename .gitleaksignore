@@ -79,3 +79,7 @@ d316a2f46270024b301c78bfa86d15e94e2350c9:.github/workflows/r13-validation.yml:ge
 736208b70c211c5c1fe931f0a2f0f37c4d55d529:apps/api/test/support/g2-money-ports-consumer.fixture.ts:generic-api-key:53
 736208b70c211c5c1fe931f0a2f0f37c4d55d529:apps/api/test/support/g2-money-ports-consumer.fixture.ts:generic-api-key:74
 736208b70c211c5c1fe931f0a2f0f37c4d55d529:apps/api/test/support/g2-money-ports-consumer.fixture.ts:generic-api-key:105
+
+# G2 R36 — one reviewed recovery-requirements prose match; see section 14
+# of docs/security/gitleaks-historical-baseline.md. Historical occurrence only.
+6c7aac2ea68ee4943d60b0db3be33012d572ac8d:docs/production-readiness/post-r18/gates/g2/prompts/R36.md:generic-api-key:72

@@ -26,6 +26,7 @@ import {
 } from '@homeservicemarketplace/database';
 import { z } from 'zod';
 import { PrismaService } from '../../../infrastructure/prisma/prisma.service';
+import { OutboxRepository } from '../../../infrastructure/outbox/outbox.repository';
 import { TransactionRunner } from '../../../infrastructure/prisma/transaction.runner';
 import { AppError } from '../../../shared/errors/app-error';
 import { AuditService } from '../../iam/audit/audit.service';
@@ -55,7 +56,9 @@ import {
 } from '../ports/collection.port';
 import {
   MONEY_REFUND_ADAPTER,
+  MONEY_REFUND_CONFIRMATION_PARTICIPANT,
   MONEY_REFUND_POLICY,
+  type MoneyRefundConfirmationParticipantPort,
   type MoneyRefundAdapterPort,
   type MoneyRefundObservation,
   type MoneyRefundPolicyPort,
@@ -128,6 +131,18 @@ const DISPATCH_LEASE_MS = 30_000;
 type Actor = { userId: string; system?: never } | { system: string; userId?: never };
 type CommandResult<T> = { value: T; authority: unknown };
 type StoredResult<T> = CommandResult<T> & { request: unknown };
+
+/** Internal operator fence. Only the serializable request is fingerprinted;
+ * the recovery service rechecks its scope/revision and audits in the command tx.
+ */
+export interface RefundRecoveryAuthorization {
+  request: {
+    paymentConfirmationId: string;
+    expectedStateRevision: string;
+    approvalReference: string;
+  };
+  assertCurrent: (tx: PrismaTx) => Promise<void>;
+}
 
 function invalid(reason = 'MONEY_INVALID_COMMAND'): AppError {
   return new AppError('VALIDATION_ERROR', 'Invalid money command.', 400, { reason });
@@ -240,6 +255,9 @@ export class MoneyCommandService {
     private readonly participant: MoneyActivationParticipantPort,
     @Inject(MONEY_REFUND_POLICY) private readonly refundPolicy: MoneyRefundPolicyPort,
     @Inject(MONEY_REFUND_ADAPTER) private readonly refunds: MoneyRefundAdapterPort,
+    @Inject(MONEY_REFUND_CONFIRMATION_PARTICIPANT)
+    private readonly refundParticipant: MoneyRefundConfirmationParticipantPort,
+    private readonly outbox: OutboxRepository,
   ) {}
 
   async quote(userId: string, key: string, input: MoneyPurchaseRequestV1): Promise<QuoteWireV1> {
@@ -590,7 +608,7 @@ export class MoneyCommandService {
         if (!(await tx.moneyRefundRequest.findUnique({ where: { id: refundRequestId } })))
           throw notFound();
       },
-      async (tx) => {
+      async (tx, commandId) => {
         const initial = await tx.moneyRefundRequest.findUniqueOrThrow({
           where: { id: refundRequestId },
         });
@@ -657,6 +675,18 @@ export class MoneyCommandService {
             refundId: refund.id,
           },
         });
+        // The reservation, stable transport identity, command audit and durable
+        // delivery intent commit together. No provider call occurs under locks.
+        await tx.moneyDispatch.create({
+          data: {
+            kind: 'REFUND',
+            commandId,
+            refundId: refund.id,
+            paymentIntentId: intent.id,
+            providerIdempotencyKey: `r24_refund_${hash(refund.id)}`,
+          },
+        });
+        await this.enqueueRefund(refund.id, commandId, tx);
         return { value: refundWire(refund), authority };
       },
     );
@@ -666,16 +696,18 @@ export class MoneyCommandService {
     userId: string,
     key: string,
     refundId: string,
+    recovery?: RefundRecoveryAuthorization,
   ): Promise<MoneyCommandAcceptedV1> {
-    return this.refundTransportCommand(userId, key, refundId, false);
+    return this.refundTransportCommand(userId, key, refundId, false, recovery);
   }
 
   async queryRefund(
     userId: string,
     key: string,
     refundId: string,
+    recovery?: RefundRecoveryAuthorization,
   ): Promise<MoneyCommandAcceptedV1> {
-    return this.refundTransportCommand(userId, key, refundId, true);
+    return this.refundTransportCommand(userId, key, refundId, true, recovery);
   }
 
   /** Internal only: normalize through the configured adapter before durable receipt. */
@@ -730,6 +762,20 @@ export class MoneyCommandService {
         if (event.status === 'PROCESSED') throw conflict('MONEY_EVENT_ALREADY_PROCESSED');
         const normalized = this.eventView(event);
         const { intent, binding } = await this.checkEventBinding(normalized, tx);
+        if (event.source === 'MANUAL_REVIEW') {
+          if (this.receipts.finalizeConfirmation) {
+            // R30 revalidates the inspected revision, fresh reviewer, independent
+            // settlement and unique claim in this same financial transaction.
+            await this.receipts.finalizeConfirmation(normalized, tx);
+          } else {
+            const receipt = await tx.mediaAsset.findUnique({
+              where: { id: event.receiptMediaAssetId! },
+              select: { purpose: true },
+            });
+            if (receipt?.purpose === 'FINANCIAL_RECEIPT')
+              throw unavailableMoneyPort('MONEY_RECEIPT_UNAVAILABLE');
+          }
+        }
         // Delivery identity and economic identity have different lifetimes.
         // Distinct valid deliveries of one confirmation reuse R19's authority.
         const confirmationIdentity = [
@@ -879,9 +925,24 @@ export class MoneyCommandService {
           await tx.moneyRefund.update({ where: { id: refund.id }, data: { status: 'DISPATCHED' } });
         let postingId: string | null = null;
         if (observed.status === 'SUCCEEDED') {
+          if (!this.refundParticipant.isConfigured())
+            throw unavailableMoneyPort('MONEY_REFUND_POLICY_UNAVAILABLE');
+          const approved = await tx.moneyRefundRequest.findUnique({
+            where: { refundId: refund.id },
+          });
+          if (
+            !approved ||
+            approved.status !== 'AUTHORIZED' ||
+            !approved.policyVersion ||
+            approved.paymentConfirmationId !== refund.paymentConfirmationId ||
+            approved.amountMinor !== refund.amountMinor ||
+            approved.currency !== refund.currency
+          )
+            throw conflict('MONEY_REFUND_POLICY_BINDING_MISMATCH');
           const confirmation = await tx.moneyPaymentConfirmation.findUniqueOrThrow({
             where: { id: refund.paymentConfirmationId },
           });
+          await this.assertRefundOriginalOpen(confirmation, tx);
           const original = await tx.ledgerEntry.findMany({
             where: { transactionId: confirmation.ledgerTransactionId },
             orderBy: { lineNo: 'asc' },
@@ -921,6 +982,17 @@ export class MoneyCommandService {
           );
           if (posting.replayed) throw conflict('MONEY_REFUND_COMPENSATION_ORPHAN');
           postingId = posting.transaction.id;
+          await this.refundParticipant.applyConfirmedRefund(
+            {
+              refundId: refund.id,
+              refundRequestId: approved.id,
+              paymentConfirmationId: refund.paymentConfirmationId,
+              policyVersion: approved.policyVersion,
+              amount: toMoneyWire({ amountMinor: refund.amountMinor, currency: refund.currency }),
+              compensatingLedgerTransactionId: postingId,
+            },
+            tx,
+          );
         }
         const row = await tx.moneyRefund.update({
           where: { id: refund.id },
@@ -975,7 +1047,9 @@ export class MoneyCommandService {
     parse(idSchema, userId);
     parse(keySchema, key);
     if (
-      ['r24_event_', 'r24_process_', 'r24_refund_result_'].some((prefix) => key.startsWith(prefix))
+      ['r24_event_', 'r24_process_', 'r24_refund_result_', 'r31_'].some((prefix) =>
+        key.startsWith(prefix),
+      )
     )
       throw invalid('MONEY_INTERNAL_KEY_RESERVED');
     return this.command(
@@ -1056,7 +1130,12 @@ export class MoneyCommandService {
         ['P2002', 'P2004'].includes(error.code)
       )
         throw conflict('MONEY_STORED_STATE_CONFLICT');
-      throw error;
+      if (error instanceof AppError) throw error;
+      // Audit/storage failures are not safe HTTP diagnostics, including in
+      // non-production environments. Preserve typed domain errors only.
+      throw new AppError('INTERNAL_ERROR', 'The money command could not be completed.', 500, {
+        reason: 'MONEY_COMMAND_FAILED',
+      });
     }
   }
 
@@ -1118,6 +1197,50 @@ export class MoneyCommandService {
   }
   private async lockConfirmation(id: string, tx: PrismaTx): Promise<void> {
     await tx.$queryRaw`SELECT "id" FROM "MoneyPaymentConfirmation" WHERE "id" = ${id} FOR UPDATE`;
+  }
+
+  private async assertRefundOriginalOpen(
+    confirmation: { id: string; ledgerTransactionId: string; currency: string },
+    tx: PrismaTx,
+  ): Promise<void> {
+    // The R15 reversal trigger takes FOR SHARE on this original. Hold the
+    // conflicting lock through compensation and read again after any wait;
+    // no transaction or financial lock survives an outbound adapter call.
+    await tx.$queryRaw`SELECT "id" FROM "LedgerTransaction" WHERE "id" = ${confirmation.ledgerTransactionId} FOR UPDATE`;
+    const posting = await tx.ledgerTransaction.findUnique({
+      where: { id: confirmation.ledgerTransactionId },
+      select: {
+        id: true,
+        status: true,
+        kind: true,
+        currency: true,
+        reversedBy: { select: { id: true } },
+      },
+    });
+    if (
+      !posting ||
+      posting.status !== 'POSTED' ||
+      posting.kind !== 'STANDARD' ||
+      posting.currency !== confirmation.currency
+    )
+      throw conflict('MONEY_REFUND_POSTING_MISMATCH');
+    if (posting.reversedBy) throw conflict('MONEY_REFUND_ORIGINAL_REVERSED');
+    const period = await tx.subscriptionPeriod.findUnique({
+      where: { paymentConfirmationId: confirmation.id },
+      select: { id: true },
+    });
+    const exception = await tx.moneyReconciliationException.findFirst({
+      where: {
+        resolvedAt: null,
+        OR: [
+          { subjectType: 'PaymentConfirmation', subjectId: confirmation.id },
+          { subjectType: 'LedgerTransaction', subjectId: confirmation.ledgerTransactionId },
+          ...(period ? [{ subjectType: 'SubscriptionPeriod', subjectId: period.id }] : []),
+        ],
+      },
+      select: { id: true },
+    });
+    if (exception) throw conflict('MONEY_REFUND_ORIGINAL_EXCEPTION');
   }
 
   private async calculateQuote(
@@ -1198,10 +1321,12 @@ export class MoneyCommandService {
     binding: MoneyTransportBinding,
     tx: PrismaTx,
   ): Promise<void> {
-    const configured = await this.configuration.resolve(
-      { planVersionId: binding.planVersionId, method: binding.method },
-      tx,
-    );
+    const configured = this.configuration.resolveBinding
+      ? await this.configuration.resolveBinding(binding, tx)
+      : await this.configuration.resolve(
+          { planVersionId: binding.planVersionId, method: binding.method },
+          tx,
+        );
     if (!configured) throw unavailableMoneyPort('MONEY_CONFIGURATION_UNAVAILABLE');
     this.validateBinding(configured);
     for (const key of Object.keys(binding) as Array<keyof MoneyTransportBinding>)
@@ -1345,9 +1470,19 @@ export class MoneyCommandService {
 
   private async claimDispatch(
     id: string,
-  ): Promise<{ dispatch: MoneyDispatch; claimId: string } | null> {
+  ): Promise<{ dispatch: MoneyDispatch; claimId: string; queryRequired: boolean } | null> {
     const claimId = randomUUID();
     return this.transactions.run(async (tx) => {
+      // Capture uncertainty before the claim changes status to PENDING. A
+      // reclaimed claim may already have reached the rail even without a reply.
+      await tx.$queryRaw`SELECT "id" FROM "MoneyDispatch" WHERE "id" = ${id} FOR UPDATE`;
+      const previous = await tx.moneyDispatch.findUnique({ where: { id } });
+      if (!previous) return null;
+      const queryRequired =
+        previous.status !== 'NOT_DISPATCHED' ||
+        previous.claimId !== null ||
+        previous.externalOperationId !== null ||
+        previous.observation !== null;
       const now = new Date();
       const result = await tx.moneyDispatch.updateMany({
         where: {
@@ -1362,7 +1497,11 @@ export class MoneyCommandService {
         },
       });
       return result.count === 1
-        ? { dispatch: await tx.moneyDispatch.findUniqueOrThrow({ where: { id } }), claimId }
+        ? {
+            dispatch: await tx.moneyDispatch.findUniqueOrThrow({ where: { id } }),
+            claimId,
+            queryRequired,
+          }
         : null;
     }, TX_OPTIONS);
   }
@@ -1452,8 +1591,12 @@ export class MoneyCommandService {
     key: string,
     refundId: string,
     queryOnly: boolean,
+    recovery?: RefundRecoveryAuthorization,
   ): Promise<MoneyCommandAcceptedV1> {
-    const request = { refundId: parse(idSchema, refundId) };
+    const request = {
+      refundId: parse(idSchema, refundId),
+      ...(recovery ? { recovery: recovery.request } : {}),
+    };
     const value = await this.userCommand(
       userId,
       key,
@@ -1467,6 +1610,7 @@ export class MoneyCommandService {
         const initial = await tx.moneyRefund.findUniqueOrThrow({ where: { id: refundId } });
         await this.lockConfirmation(initial.paymentConfirmationId, tx);
         await tx.$queryRaw`SELECT "id" FROM "MoneyRefund" WHERE "id" = ${refundId} FOR UPDATE`;
+        if (recovery) await recovery.assertCurrent(tx);
         const refund = await tx.moneyRefund.findUniqueOrThrow({ where: { id: refundId } });
         if (!['RESERVED', 'DISPATCHED'].includes(refund.status))
           throw conflict('MONEY_REFUND_ALREADY_TERMINAL');
@@ -1478,7 +1622,8 @@ export class MoneyCommandService {
         });
         const binding = await this.binding(intent, tx);
         let dispatch = await tx.moneyDispatch.findUnique({ where: { refundId } });
-        if (!dispatch && queryOnly) throw conflict('MONEY_REFUND_NOT_DISPATCHED');
+        if (queryOnly && (!dispatch || dispatch.status === 'NOT_DISPATCHED'))
+          throw conflict('MONEY_REFUND_NOT_DISPATCHED');
         // Already verified terminal evidence can finish locally through an
         // adapter outage. Fresh reviewer authority and binding still apply.
         if (!this.terminalRefundObservation(dispatch?.observation)) {
@@ -1496,6 +1641,7 @@ export class MoneyCommandService {
               providerIdempotencyKey: `r24_refund_${hash(refund.id)}`,
             },
           });
+        await this.enqueueRefund(refundId, commandId, tx);
         return {
           value: accepted(commandId, 'REFUND', refund.id),
           authority: {
@@ -1506,8 +1652,28 @@ export class MoneyCommandService {
         };
       },
     );
-    await this.dispatchRefundOperation(refundId, queryOnly);
+    try {
+      await this.deliverRefund(refundId, value.commandId, queryOnly);
+    } catch (error) {
+      if (error instanceof AppError) throw error;
+      throw new AppError('INTERNAL_ERROR', 'Refund delivery could not be completed.', 500, {
+        reason: 'MONEY_COMMAND_FAILED',
+      });
+    }
     return value;
+  }
+
+  private async enqueueRefund(refundId: string, commandId: string, tx: PrismaTx): Promise<void> {
+    await this.outbox.enqueue(
+      {
+        aggregateType: 'MoneyRefund',
+        aggregateId: refundId,
+        eventType: 'money.refund.dispatch-requested.v1',
+        dedupeKey: `money.refund.dispatch:${commandId}`,
+        payload: { refundId, commandId },
+      },
+      tx,
+    );
   }
   private refundObservation(input: unknown): MoneyRefundObservation {
     const observed = parse(refundObservationSchema, input);
@@ -1602,9 +1768,78 @@ export class MoneyCommandService {
       return observed;
     }, TX_OPTIONS);
   }
-  private async dispatchRefundOperation(refundId: string, queryOnly: boolean): Promise<void> {
+  /** Internal durable delivery entry point. The command is an immutable
+   * authorization record, not a caller-supplied user identity. Its actor and
+   * scope are rechecked before every attempt, including background recovery.
+   */
+  async deliverRefund(
+    refundId: string,
+    authorizationCommandId?: string,
+    queryOnly = false,
+  ): Promise<void> {
+    parse(idSchema, refundId);
+    if (authorizationCommandId) parse(idSchema, authorizationCommandId);
     const row = await this.prisma.client.moneyDispatch.findUnique({ where: { refundId } });
     if (!row) throw notFound();
+    const context = await this.transactions.run(async (tx) => {
+      // Dispatch identity remains the original reservation command. Recovery
+      // may use a later accepted reviewer command even when its callback was
+      // lost or its outbox event has already been cleaned up. The immutable
+      // command envelope is the durable authority, never a supplied actor ID.
+      const laterAuthorization = authorizationCommandId
+        ? null
+        : await tx.moneyCommand.findFirst({
+            where: {
+              actorUserId: { not: null },
+              action: { in: ['DISPATCH_REFUND', 'QUERY_REFUND'] },
+              response: { path: ['value', 'resourceId'], equals: refundId },
+            },
+            orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+          });
+      const authorization =
+        laterAuthorization ??
+        (await tx.moneyCommand.findUnique({
+          where: { id: authorizationCommandId ?? row.commandId },
+        }));
+      const response = authorization?.response as unknown as StoredResult<
+        RefundWireV1 | MoneyCommandAcceptedV1
+      >;
+      const subject =
+        response?.value &&
+        ('resourceId' in response.value ? response.value.resourceId : response.value.id);
+      if (
+        !authorization?.actorUserId ||
+        !['RESERVE_REFUND', 'DISPATCH_REFUND', 'QUERY_REFUND'].includes(authorization.action) ||
+        subject !== refundId
+      )
+        throw conflict('MONEY_REFUND_DELIVERY_AUTHORITY_MISMATCH');
+      await this.authorize(authorization.actorUserId, 'money:refund:review', tx);
+      const refund = await tx.moneyRefund.findUniqueOrThrow({ where: { id: refundId } });
+      const confirmation = await tx.moneyPaymentConfirmation.findUniqueOrThrow({
+        where: { id: refund.paymentConfirmationId },
+      });
+      const intent = await tx.moneyPaymentIntent.findUniqueOrThrow({
+        where: { id: confirmation.paymentIntentId },
+      });
+      const binding = await this.binding(intent, tx);
+      if (
+        !this.terminalRefundObservation(row.observation) &&
+        !['SUCCEEDED', 'FAILED', 'CANCELLED'].includes(refund.status)
+      ) {
+        await this.requireConfiguredBinding(binding, tx);
+        if (!this.refunds.isConfigured(binding))
+          throw unavailableMoneyPort('MONEY_REFUND_ADAPTER_UNAVAILABLE');
+        if (row.status === 'NOT_DISPATCHED' && !this.refundParticipant.isConfigured())
+          throw unavailableMoneyPort('MONEY_REFUND_POLICY_UNAVAILABLE');
+        if (row.status === 'NOT_DISPATCHED') await this.assertRefundOriginalOpen(confirmation, tx);
+      }
+      return { refund, binding, queryOnly: queryOnly || authorization.action === 'QUERY_REFUND' };
+    }, TX_OPTIONS);
+    if (['SUCCEEDED', 'FAILED', 'CANCELLED'].includes(context.refund.status)) return;
+    // Also fence replay of an older QUERY receipt before claiming an untouched
+    // transport row. An absence-only query must not consume the first submit.
+    if (context.queryOnly && row.status === 'NOT_DISPATCHED')
+      throw conflict('MONEY_REFUND_NOT_DISPATCHED');
     const claimed = await this.claimDispatch(row.id);
     if (!claimed) return;
     try {
@@ -1613,20 +1848,6 @@ export class MoneyCommandService {
         await this.recordRefundResult(row.id, recovered);
         return;
       }
-      const context = await this.transactions.run(async (tx) => {
-        const refund = await tx.moneyRefund.findUniqueOrThrow({ where: { id: refundId } });
-        const confirmation = await tx.moneyPaymentConfirmation.findUniqueOrThrow({
-          where: { id: refund.paymentConfirmationId },
-        });
-        const intent = await tx.moneyPaymentIntent.findUniqueOrThrow({
-          where: { id: confirmation.paymentIntentId },
-        });
-        const binding = await this.binding(intent, tx);
-        await this.requireConfiguredBinding(binding, tx);
-        if (!this.refunds.isConfigured(binding))
-          throw unavailableMoneyPort('MONEY_REFUND_ADAPTER_UNAVAILABLE');
-        return { refund, binding };
-      }, TX_OPTIONS);
       const command = {
         binding: context.binding,
         refundId,
@@ -1642,14 +1863,58 @@ export class MoneyCommandService {
         row.id,
         claimed.claimId,
         this.refundObservation(
-          await (queryOnly ? this.refunds.query(command) : this.refunds.submit(command)),
+          await (context.queryOnly || claimed.queryRequired
+            ? this.refunds.query(command)
+            : this.refunds.submit(command)),
         ),
       );
       if (observed.status === 'SUCCEEDED' || observed.status === 'FAILED') {
         await this.recordRefundResult(row.id, observed);
       }
-    } catch {
+    } catch (error) {
       await this.observeUnknown(row.id, claimed.claimId);
+      if (
+        error instanceof AppError &&
+        ['MONEY_REFUND_ORIGINAL_REVERSED', 'MONEY_REFUND_ORIGINAL_EXCEPTION'].includes(
+          (error.details as { reason?: string } | undefined)?.reason ?? '',
+        )
+      )
+        await this.recordRefundReconciliation(refundId);
     }
+  }
+
+  private async recordRefundReconciliation(refundId: string): Promise<void> {
+    await this.transactions.run(async (tx) => {
+      await tx.$queryRaw`SELECT "id" FROM "MoneyRefund" WHERE "id" = ${refundId} FOR UPDATE`;
+      const refund = await tx.moneyRefund.findUniqueOrThrow({ where: { id: refundId } });
+      const dispatch = await tx.moneyDispatch.findUnique({ where: { refundId } });
+      if (
+        refund.status === 'SUCCEEDED' ||
+        this.terminalRefundObservation(dispatch?.observation)?.status !== 'SUCCEEDED'
+      )
+        return;
+      const identity = {
+        kind: 'REFUND_WITHOUT_COMPENSATION' as const,
+        subjectType: 'Refund',
+        subjectId: refundId,
+      };
+      const previous = await tx.moneyReconciliationException.findUnique({
+        where: { kind_subjectType_subjectId: identity },
+      });
+      if (previous) return;
+      await tx.moneyReconciliationException.create({ data: identity });
+      await this.audit.record(
+        {
+          type: AuditEventType.MONEY_COMMAND_ACCEPTED,
+          metadata: {
+            moneyAction: 'REFUND_RECONCILIATION_REQUIRED',
+            refundId,
+            paymentConfirmationId: refund.paymentConfirmationId,
+            actorSystem: 'money.refund-result',
+          },
+        },
+        tx,
+      );
+    }, TX_OPTIONS);
   }
 }

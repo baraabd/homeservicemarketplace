@@ -9,7 +9,7 @@ import type { BookingStatus } from '@homeservicemarketplace/database';
 
 import {
   BookingRepository,
-  type BookingWithProviderRelations,
+  type ProviderBookingListRow,
 } from '../../../infrastructure/persistence/bookings/booking.repository';
 import { ProviderProfileRepository } from '../../../infrastructure/persistence/bids/provider-profile.repository';
 import { AppError } from '../../../shared/errors/app-error';
@@ -72,7 +72,7 @@ export class ProviderWalletService {
   }
 }
 
-function toTransaction(row: BookingWithProviderRelations): ProviderEarningsTransaction {
+function toTransaction(row: ProviderBookingListRow): ProviderEarningsTransaction {
   // For COMPLETED bookings, surface `updatedAt` as the "occurredAt"
   // — that's the moment the provider marked it complete (the booking
   // row never updates again unless it's deleted). For everything else,

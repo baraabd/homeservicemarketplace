@@ -1,0 +1,2052 @@
+{
+  "schemaVersion": 1,
+  "kind": "R33_SOURCE_AND_EXECUTED_LOCAL_EVIDENCE",
+  "recordedAtUtc": "2026-10-23T05:36:52.534673+00:00",
+  "repository": "baraabd/homeservicemarketplace",
+  "sprint": "R33",
+  "branch": "feat/r33-financial-operations-ui",
+  "session": "r33-5ac99b68f223",
+  "worktree": "/workspace/scratch/5ac99b68f223/hsm-r33",
+  "state": {
+    "implementation": "IMPLEMENTED",
+    "localSource": "SOURCE_VERIFIED",
+    "combinedWave": "INTEGRATION_PENDING",
+    "vendorSandbox": "NOT_ASSERTED",
+    "hosted": "NOT_ASSERTED",
+    "release": "NOT_ASSERTED",
+    "prMustRemainDraft": true
+  },
+  "source": {
+    "frozenExecutionBaseSha": "72b4aaeb0a71d806b7fca7363dd9ca59bbcee644",
+    "frozenExecutionTreeSha": "43e9c6a4e58cfb934b12789feeb38b588e1cb7c6",
+    "ownerPublicationSha": "986b4707776711e80564f0642133ede90ba16f3c",
+    "ownerPublicationTreeSha": "7ab683ea8c5304929a2fa51f1dc824c7cb46f7d5",
+    "ownerPublicationPr": 183,
+    "publicationVerification": "docs/production-readiness/post-r18/gates/g2/PUBLICATION_VERIFICATION.json",
+    "publicationMethod": "Create a remote Git Data commit with the exact normal-hook local tested tree and independently rechecked owner-published parent. No rebase, force-push, merge or deployment.",
+    "containingIdentities": "The current PR body records final remote head/tree, normal-hook local checkpoint/tree, exact-tree secret scan and final-head workflow/artifact IDs after publication. These hashes cannot be embedded self-referentially in their own commit.",
+    "sourceTestCiPathCount": 33,
+    "sourceTestCiSha256": "d0c29f666044b127b034ea012c671b4f4152086a16ac6f79c2e3bc1449e86218",
+    "digestEncoding": "SHA256 of UTF-8 JSON array of path/sha256 objects, paths sorted, object keys sorted, compact separators, ensure_ascii=False.",
+    "sourceTestCiFiles": [
+      {
+        "path": ".github/workflows/ci.yml",
+        "bytes": 110057,
+        "sha256": "c62396ecda36f86e17154ebcd005a51076487f715c2316c5c86a29398b268176",
+        "kind": "CI_CONFIGURATION",
+        "assignedWriter": "/root"
+      },
+      {
+        "path": "apps/api/src/app.module.ts",
+        "bytes": 9487,
+        "sha256": "1e386197d69051bc6224ca97d6332b9f41826396617586faa7e8ee376862fd42",
+        "kind": "APPLICATION_SOURCE",
+        "assignedWriter": "/root"
+      },
+      {
+        "path": "apps/api/src/modules/money/reporting/financial-export.service.spec.ts",
+        "bytes": 3441,
+        "sha256": "fd1926c7ede7d903d0f37bbf19e8bd96ad8153aba082ab647b89047968ce971d",
+        "kind": "TEST",
+        "assignedWriter": "/root/reporting_api (returned to /root)"
+      },
+      {
+        "path": "apps/api/src/modules/money/reporting/financial-export.service.ts",
+        "bytes": 2262,
+        "sha256": "dabcd34f90deef133972810b6676c45c39036f8eb20fb15d509c3bc3a76b8380",
+        "kind": "APPLICATION_SOURCE",
+        "assignedWriter": "/root/reporting_api (returned to /root)"
+      },
+      {
+        "path": "apps/api/src/modules/money/reporting/financial-report.controller.spec.ts",
+        "bytes": 5585,
+        "sha256": "9a4487ff8c636eb59a26980d41b610e294904327c489717fca34f8077c86ffc9",
+        "kind": "TEST",
+        "assignedWriter": "/root/reporting_api (returned to /root)"
+      },
+      {
+        "path": "apps/api/src/modules/money/reporting/financial-report.controller.ts",
+        "bytes": 4981,
+        "sha256": "e53585944a619ce545d4435d79102fd727ef85690fde460107c44c4435091064",
+        "kind": "APPLICATION_SOURCE",
+        "assignedWriter": "/root/reporting_api (returned to /root)"
+      },
+      {
+        "path": "apps/api/src/modules/money/reporting/financial-report.service.spec.ts",
+        "bytes": 19591,
+        "sha256": "85bef572c8de2dd9fe36851ab619d15a42911aed6aca564eed78258b8a58efc7",
+        "kind": "TEST",
+        "assignedWriter": "/root/reporting_api (returned to /root)"
+      },
+      {
+        "path": "apps/api/src/modules/money/reporting/financial-report.service.ts",
+        "bytes": 32902,
+        "sha256": "f8d9ea73c781c0668129136a69dac1fbd7b1489e8105c353d5673a49498b884c",
+        "kind": "APPLICATION_SOURCE",
+        "assignedWriter": "/root/reporting_api (returned to /root)"
+      },
+      {
+        "path": "apps/api/src/modules/money/reporting/financial-reporting.module.spec.ts",
+        "bytes": 2129,
+        "sha256": "d961101c783fb3e0558d664ea582057d0f93de845462af5cdf1c4628d5ee7c49",
+        "kind": "TEST",
+        "assignedWriter": "/root/reporting_api (returned to /root)"
+      },
+      {
+        "path": "apps/api/src/modules/money/reporting/financial-reporting.module.ts",
+        "bytes": 1065,
+        "sha256": "3b5c8aea938950ad7ec0c8a378fd714b0e1cf56898b63b03d20c62d202e21229",
+        "kind": "APPLICATION_SOURCE",
+        "assignedWriter": "/root/reporting_api (returned to /root)"
+      },
+      {
+        "path": "apps/api/test/integration/r33-financial-reporting.integration.spec.ts",
+        "bytes": 30558,
+        "sha256": "4e45685453a7101cd98a48a0d9173715b0ebed2be5f614de4729618da0d1f8dc",
+        "kind": "TEST",
+        "assignedWriter": "/root/reporting_api (returned to /root)"
+      },
+      {
+        "path": "apps/web/e2e/r33-financial-operations/financial-operations.real-api.spec.ts",
+        "bytes": 25508,
+        "sha256": "955df7248b6b8956e720e433609c71d61690c87602fd709fe634eccf7fbe5a78",
+        "kind": "TEST",
+        "assignedWriter": "/root/financial_ui"
+      },
+      {
+        "path": "apps/web/playwright.config.ts",
+        "bytes": 15396,
+        "sha256": "fac336bbfbff8828c0c9e53ee6b157bcf50b1955cbe12da11e3e9d7f180b6196",
+        "kind": "CI_CONFIGURATION",
+        "assignedWriter": "/root"
+      },
+      {
+        "path": "apps/web/src/app/components/admin/AdminRouteContent.tsx",
+        "bytes": 4470,
+        "sha256": "3bc613e7704418d211dfab454d8791143636bd73c33cddef3e9a5bd639cc8ce9",
+        "kind": "APPLICATION_SOURCE",
+        "assignedWriter": "/root"
+      },
+      {
+        "path": "apps/web/src/app/components/provider/screens/WalletScreen.tsx",
+        "bytes": 14223,
+        "sha256": "315932cb9ab4b74989dcaeba5247b7c0c6dbc1ed88ab52eba1586af80549750d",
+        "kind": "APPLICATION_SOURCE",
+        "assignedWriter": "/root"
+      },
+      {
+        "path": "apps/web/src/app/features/financial-operations/AdminFinancialOperations.test.tsx",
+        "bytes": 2298,
+        "sha256": "d736d7f29fa0170076bc53a0eddf8acf51cdbf5e05d92902ea0d69e38cc81b14",
+        "kind": "TEST",
+        "assignedWriter": "/root/financial_ui"
+      },
+      {
+        "path": "apps/web/src/app/features/financial-operations/AdminFinancialOperations.tsx",
+        "bytes": 373,
+        "sha256": "90c1e0e483ede85ccd54874a06fa73ca761e91b10832a56da1bbc8f768ee32e0",
+        "kind": "APPLICATION_SOURCE",
+        "assignedWriter": "/root/financial_ui"
+      },
+      {
+        "path": "apps/web/src/app/features/financial-operations/FinancialOperationsView.test.tsx",
+        "bytes": 19882,
+        "sha256": "eb7f1dc139ddeffc1a8205adfe790fe0e2caeac745130c5ef4b465dc756f60a3",
+        "kind": "TEST",
+        "assignedWriter": "/root/financial_ui"
+      },
+      {
+        "path": "apps/web/src/app/features/financial-operations/FinancialOperationsView.tsx",
+        "bytes": 35544,
+        "sha256": "a494bb449021fcaf3be3f3da7d9f73da1974c5ac31615f35f06aad9fc57cc2b4",
+        "kind": "APPLICATION_SOURCE",
+        "assignedWriter": "/root/financial_ui"
+      },
+      {
+        "path": "apps/web/src/app/features/financial-operations/ProviderFinancialHistory.test.tsx",
+        "bytes": 3331,
+        "sha256": "4a9aa4c321a576a715b68df4a21989213c1cfc461e8b75985b5020458070e419",
+        "kind": "TEST",
+        "assignedWriter": "/root/financial_ui"
+      },
+      {
+        "path": "apps/web/src/app/features/financial-operations/ProviderFinancialHistory.tsx",
+        "bytes": 386,
+        "sha256": "42737b46ca09d0d7cc020eedd528a904ed606c176cc5fe04d90aaf0c13ec5d11",
+        "kind": "APPLICATION_SOURCE",
+        "assignedWriter": "/root/financial_ui"
+      },
+      {
+        "path": "apps/web/src/app/features/financial-operations/financial-operations.api.test.ts",
+        "bytes": 3826,
+        "sha256": "21d45c1b48a764996333e685e7fe749dae159ab9e7b7c839fae9917eb3237a18",
+        "kind": "TEST",
+        "assignedWriter": "/root/financial_ui"
+      },
+      {
+        "path": "apps/web/src/app/features/financial-operations/financial-operations.api.ts",
+        "bytes": 4865,
+        "sha256": "f40abf1b3174d3848a3d9a7a16458482fddd809a7e93e506c7b7a4b69790355f",
+        "kind": "APPLICATION_SOURCE",
+        "assignedWriter": "/root/financial_ui"
+      },
+      {
+        "path": "apps/web/src/app/features/financial-operations/financial-operations.copy.test.ts",
+        "bytes": 2042,
+        "sha256": "e973eb8dd32aebecabee9d34fc2fc53b86e29f138a6a5d1106d82675039f076f",
+        "kind": "TEST",
+        "assignedWriter": "/root/financial_ui"
+      },
+      {
+        "path": "apps/web/src/app/features/financial-operations/financial-operations.copy.ts",
+        "bytes": 18328,
+        "sha256": "eb1e7a1bc2a77b5d3daf94992916804fe10227d02ba3937f751a65402906ba74",
+        "kind": "APPLICATION_SOURCE",
+        "assignedWriter": "/root/financial_ui"
+      },
+      {
+        "path": "apps/web/src/app/features/financial-operations/index.ts",
+        "bytes": 212,
+        "sha256": "1ec1a201bd03b297c14aa45d16a9a532ac3a41d587dd1ffe9525bcd31f867614",
+        "kind": "APPLICATION_SOURCE",
+        "assignedWriter": "/root/financial_ui"
+      },
+      {
+        "path": "apps/web/src/app/features/financial-operations/money-format.test.ts",
+        "bytes": 2335,
+        "sha256": "29a11ca57e6d130a75ea67396b61a04eb8a68b4014ef0c1e466d4e167c2748f2",
+        "kind": "TEST",
+        "assignedWriter": "/root/financial_ui"
+      },
+      {
+        "path": "apps/web/src/app/features/financial-operations/money-format.ts",
+        "bytes": 1435,
+        "sha256": "b5be39cd30e7ed56c390e009158f706b6c23da5154daa46793259f6e995eb900",
+        "kind": "APPLICATION_SOURCE",
+        "assignedWriter": "/root/financial_ui"
+      },
+      {
+        "path": "apps/web/src/app/routes.ts",
+        "bytes": 8478,
+        "sha256": "5661f02d415884e99ff918a4054590d7ff7fc44784eec76cd83f15976f574f2d",
+        "kind": "APPLICATION_SOURCE",
+        "assignedWriter": "/root"
+      },
+      {
+        "path": "packages/contracts/src/money/financial-operations.ts",
+        "bytes": 5411,
+        "sha256": "7d5db17246bd794ed73b2127988fde119f25c997b484362c96ed41b49f4cef69",
+        "kind": "CONTRACT_SOURCE",
+        "assignedWriter": "/root/reporting_api (returned to /root)"
+      },
+      {
+        "path": "packages/contracts/src/money/index.ts",
+        "bytes": 2802,
+        "sha256": "1b367b610260356a460f2db4f6bbf9b99f1ad5418b844fb875919730359b0408",
+        "kind": "CONTRACT_SOURCE",
+        "assignedWriter": "/root"
+      },
+      {
+        "path": "scripts/production/financial-reports/verify-report.cjs",
+        "bytes": 15792,
+        "sha256": "3867de62a8b697ecaa17899ad35176d8a41b053395153956289eff4cde4f18d5",
+        "kind": "REPORT_VERIFIER_SOURCE",
+        "assignedWriter": "/root/gate_audit (returned to /root)"
+      },
+      {
+        "path": "scripts/production/financial-reports/verify-report.test.cjs",
+        "bytes": 16218,
+        "sha256": "6c6b11d5f7a7a3f5786d2947f4b077c4f715754634984e2d3f8783ed97f718e1",
+        "kind": "TEST",
+        "assignedWriter": "/root/gate_audit (returned to /root)"
+      }
+    ]
+  },
+  "ownership": {
+    "record": "docs/production-readiness/r33/OWNERSHIP.md",
+    "sharedChangeRequest": "docs/production-readiness/r33/shared-change-requests/CR-001-integration.md",
+    "owned": [
+      "apps/api/src/modules/money/reporting/financial-export.service.spec.ts",
+      "apps/api/src/modules/money/reporting/financial-export.service.ts",
+      "apps/api/src/modules/money/reporting/financial-report.controller.spec.ts",
+      "apps/api/src/modules/money/reporting/financial-report.controller.ts",
+      "apps/api/src/modules/money/reporting/financial-report.service.spec.ts",
+      "apps/api/src/modules/money/reporting/financial-report.service.ts",
+      "apps/api/src/modules/money/reporting/financial-reporting.module.spec.ts",
+      "apps/api/src/modules/money/reporting/financial-reporting.module.ts",
+      "apps/api/test/integration/r33-financial-reporting.integration.spec.ts",
+      "apps/web/e2e/r33-financial-operations/financial-operations.real-api.spec.ts",
+      "apps/web/src/app/features/financial-operations/AdminFinancialOperations.test.tsx",
+      "apps/web/src/app/features/financial-operations/AdminFinancialOperations.tsx",
+      "apps/web/src/app/features/financial-operations/FinancialOperationsView.test.tsx",
+      "apps/web/src/app/features/financial-operations/FinancialOperationsView.tsx",
+      "apps/web/src/app/features/financial-operations/ProviderFinancialHistory.test.tsx",
+      "apps/web/src/app/features/financial-operations/ProviderFinancialHistory.tsx",
+      "apps/web/src/app/features/financial-operations/financial-operations.api.test.ts",
+      "apps/web/src/app/features/financial-operations/financial-operations.api.ts",
+      "apps/web/src/app/features/financial-operations/financial-operations.copy.test.ts",
+      "apps/web/src/app/features/financial-operations/financial-operations.copy.ts",
+      "apps/web/src/app/features/financial-operations/index.ts",
+      "apps/web/src/app/features/financial-operations/money-format.test.ts",
+      "apps/web/src/app/features/financial-operations/money-format.ts",
+      "docs/production-readiness/r33/ACCEPTANCE.md",
+      "docs/production-readiness/r33/IMPLEMENTATION.md",
+      "docs/production-readiness/r33/OWNERSHIP.md",
+      "docs/production-readiness/r33/RISKS.md",
+      "docs/production-readiness/r33/ROLLBACK.md",
+      "docs/production-readiness/r33/SOURCE_MANIFEST.json",
+      "docs/production-readiness/r33/shared-change-requests/CR-001-integration.md",
+      "scripts/production/financial-reports/verify-report.cjs",
+      "scripts/production/financial-reports/verify-report.test.cjs"
+    ],
+    "shared": [
+      ".github/workflows/ci.yml",
+      "apps/api/src/app.module.ts",
+      "apps/web/playwright.config.ts",
+      "apps/web/src/app/components/admin/AdminRouteContent.tsx",
+      "apps/web/src/app/components/provider/screens/WalletScreen.tsx",
+      "apps/web/src/app/routes.ts",
+      "packages/contracts/src/money/financial-operations.ts",
+      "packages/contracts/src/money/index.ts"
+    ],
+    "coordinator": [
+      "docs/production-readiness/post-r18/ACTIVE_STATUS.md",
+      "docs/production-readiness/post-r18/SPRINT_REGISTRY.json",
+      "docs/production-readiness/post-r18/gates/g2/ACCEPTANCE.md",
+      "docs/production-readiness/post-r18/gates/g2/ACCEPTANCE_EVIDENCE.json",
+      "docs/production-readiness/post-r18/gates/g2/BLOCKERS.md",
+      "docs/production-readiness/post-r18/gates/g2/IMPLEMENTATION.md",
+      "docs/production-readiness/post-r18/gates/g2/PUBLICATION_VERIFICATION.json",
+      "docs/production-readiness/post-r18/gates/g2/SOURCE_MANIFEST.json",
+      "docs/production-readiness/post-r18/gates/g2/evidence/r25-summary.json",
+      "docs/production-readiness/post-r18/gates/g2/evidence/r26-summary.json",
+      "docs/production-readiness/post-r18/gates/g2/evidence/r27-summary.json",
+      "docs/production-readiness/post-r18/gates/g2/evidence/source-provenance.json",
+      "docs/production-readiness/post-r18/waves/wave-02.closeout.json",
+      "docs/production-readiness/post-r18/waves/wave-03.plan.json"
+    ],
+    "allowedPathCount": 54,
+    "outOfScopePaths": [],
+    "changedAgainstFrozen": [
+      ".github/workflows/ci.yml",
+      "apps/api/src/app.module.ts",
+      "apps/api/src/modules/money/reporting/financial-export.service.spec.ts",
+      "apps/api/src/modules/money/reporting/financial-export.service.ts",
+      "apps/api/src/modules/money/reporting/financial-report.controller.spec.ts",
+      "apps/api/src/modules/money/reporting/financial-report.controller.ts",
+      "apps/api/src/modules/money/reporting/financial-report.service.spec.ts",
+      "apps/api/src/modules/money/reporting/financial-report.service.ts",
+      "apps/api/src/modules/money/reporting/financial-reporting.module.spec.ts",
+      "apps/api/src/modules/money/reporting/financial-reporting.module.ts",
+      "apps/api/test/integration/r33-financial-reporting.integration.spec.ts",
+      "apps/web/e2e/r33-financial-operations/financial-operations.real-api.spec.ts",
+      "apps/web/playwright.config.ts",
+      "apps/web/src/app/components/admin/AdminRouteContent.tsx",
+      "apps/web/src/app/components/provider/screens/WalletScreen.tsx",
+      "apps/web/src/app/features/financial-operations/AdminFinancialOperations.test.tsx",
+      "apps/web/src/app/features/financial-operations/AdminFinancialOperations.tsx",
+      "apps/web/src/app/features/financial-operations/FinancialOperationsView.test.tsx",
+      "apps/web/src/app/features/financial-operations/FinancialOperationsView.tsx",
+      "apps/web/src/app/features/financial-operations/ProviderFinancialHistory.test.tsx",
+      "apps/web/src/app/features/financial-operations/ProviderFinancialHistory.tsx",
+      "apps/web/src/app/features/financial-operations/financial-operations.api.test.ts",
+      "apps/web/src/app/features/financial-operations/financial-operations.api.ts",
+      "apps/web/src/app/features/financial-operations/financial-operations.copy.test.ts",
+      "apps/web/src/app/features/financial-operations/financial-operations.copy.ts",
+      "apps/web/src/app/features/financial-operations/index.ts",
+      "apps/web/src/app/features/financial-operations/money-format.test.ts",
+      "apps/web/src/app/features/financial-operations/money-format.ts",
+      "apps/web/src/app/routes.ts",
+      "docs/production-readiness/post-r18/ACTIVE_STATUS.md",
+      "docs/production-readiness/post-r18/SPRINT_REGISTRY.json",
+      "docs/production-readiness/post-r18/gates/g2/ACCEPTANCE.md",
+      "docs/production-readiness/post-r18/gates/g2/ACCEPTANCE_EVIDENCE.json",
+      "docs/production-readiness/post-r18/gates/g2/BLOCKERS.md",
+      "docs/production-readiness/post-r18/gates/g2/IMPLEMENTATION.md",
+      "docs/production-readiness/post-r18/gates/g2/PUBLICATION_VERIFICATION.json",
+      "docs/production-readiness/post-r18/gates/g2/SOURCE_MANIFEST.json",
+      "docs/production-readiness/post-r18/gates/g2/evidence/r25-summary.json",
+      "docs/production-readiness/post-r18/gates/g2/evidence/r26-summary.json",
+      "docs/production-readiness/post-r18/gates/g2/evidence/r27-summary.json",
+      "docs/production-readiness/post-r18/gates/g2/evidence/source-provenance.json",
+      "docs/production-readiness/post-r18/waves/wave-02.closeout.json",
+      "docs/production-readiness/post-r18/waves/wave-03.plan.json",
+      "docs/production-readiness/r33/ACCEPTANCE.md",
+      "docs/production-readiness/r33/IMPLEMENTATION.md",
+      "docs/production-readiness/r33/OWNERSHIP.md",
+      "docs/production-readiness/r33/RISKS.md",
+      "docs/production-readiness/r33/ROLLBACK.md",
+      "docs/production-readiness/r33/SOURCE_MANIFEST.json",
+      "docs/production-readiness/r33/shared-change-requests/CR-001-integration.md",
+      "packages/contracts/src/money/financial-operations.ts",
+      "packages/contracts/src/money/index.ts",
+      "scripts/production/financial-reports/verify-report.cjs",
+      "scripts/production/financial-reports/verify-report.test.cjs"
+    ],
+    "changedAgainstPublication": [
+      ".github/workflows/ci.yml",
+      "apps/api/src/app.module.ts",
+      "apps/api/src/modules/money/reporting/financial-export.service.spec.ts",
+      "apps/api/src/modules/money/reporting/financial-export.service.ts",
+      "apps/api/src/modules/money/reporting/financial-report.controller.spec.ts",
+      "apps/api/src/modules/money/reporting/financial-report.controller.ts",
+      "apps/api/src/modules/money/reporting/financial-report.service.spec.ts",
+      "apps/api/src/modules/money/reporting/financial-report.service.ts",
+      "apps/api/src/modules/money/reporting/financial-reporting.module.spec.ts",
+      "apps/api/src/modules/money/reporting/financial-reporting.module.ts",
+      "apps/api/test/integration/r33-financial-reporting.integration.spec.ts",
+      "apps/web/e2e/r33-financial-operations/financial-operations.real-api.spec.ts",
+      "apps/web/playwright.config.ts",
+      "apps/web/src/app/components/admin/AdminRouteContent.tsx",
+      "apps/web/src/app/components/provider/screens/WalletScreen.tsx",
+      "apps/web/src/app/features/financial-operations/AdminFinancialOperations.test.tsx",
+      "apps/web/src/app/features/financial-operations/AdminFinancialOperations.tsx",
+      "apps/web/src/app/features/financial-operations/FinancialOperationsView.test.tsx",
+      "apps/web/src/app/features/financial-operations/FinancialOperationsView.tsx",
+      "apps/web/src/app/features/financial-operations/ProviderFinancialHistory.test.tsx",
+      "apps/web/src/app/features/financial-operations/ProviderFinancialHistory.tsx",
+      "apps/web/src/app/features/financial-operations/financial-operations.api.test.ts",
+      "apps/web/src/app/features/financial-operations/financial-operations.api.ts",
+      "apps/web/src/app/features/financial-operations/financial-operations.copy.test.ts",
+      "apps/web/src/app/features/financial-operations/financial-operations.copy.ts",
+      "apps/web/src/app/features/financial-operations/index.ts",
+      "apps/web/src/app/features/financial-operations/money-format.test.ts",
+      "apps/web/src/app/features/financial-operations/money-format.ts",
+      "apps/web/src/app/routes.ts",
+      "docs/production-readiness/post-r18/ACTIVE_STATUS.md",
+      "docs/production-readiness/post-r18/SPRINT_REGISTRY.json",
+      "docs/production-readiness/post-r18/gates/g2/ACCEPTANCE.md",
+      "docs/production-readiness/post-r18/gates/g2/ACCEPTANCE_EVIDENCE.json",
+      "docs/production-readiness/post-r18/gates/g2/BLOCKERS.md",
+      "docs/production-readiness/post-r18/gates/g2/IMPLEMENTATION.md",
+      "docs/production-readiness/post-r18/gates/g2/PUBLICATION_VERIFICATION.json",
+      "docs/production-readiness/post-r18/gates/g2/SOURCE_MANIFEST.json",
+      "docs/production-readiness/post-r18/waves/wave-02.closeout.json",
+      "docs/production-readiness/post-r18/waves/wave-03.plan.json",
+      "docs/production-readiness/r33/ACCEPTANCE.md",
+      "docs/production-readiness/r33/IMPLEMENTATION.md",
+      "docs/production-readiness/r33/OWNERSHIP.md",
+      "docs/production-readiness/r33/RISKS.md",
+      "docs/production-readiness/r33/ROLLBACK.md",
+      "docs/production-readiness/r33/SOURCE_MANIFEST.json",
+      "docs/production-readiness/r33/shared-change-requests/CR-001-integration.md",
+      "packages/contracts/src/money/financial-operations.ts",
+      "packages/contracts/src/money/index.ts",
+      "scripts/production/financial-reports/verify-report.cjs",
+      "scripts/production/financial-reports/verify-report.test.cjs"
+    ],
+    "alreadyIdenticalToPublication": [
+      "docs/production-readiness/post-r18/gates/g2/evidence/r25-summary.json",
+      "docs/production-readiness/post-r18/gates/g2/evidence/r26-summary.json",
+      "docs/production-readiness/post-r18/gates/g2/evidence/r27-summary.json",
+      "docs/production-readiness/post-r18/gates/g2/evidence/source-provenance.json"
+    ]
+  },
+  "evidenceFiles": [
+    {
+      "path": "docs/production-readiness/post-r18/ACTIVE_STATUS.md",
+      "bytes": 6982,
+      "sha256": "7f6d6d003c0d1c8c044eea4e656a9fa0d8d16edb502884930a67f71fde3aae20"
+    },
+    {
+      "path": "docs/production-readiness/post-r18/SPRINT_REGISTRY.json",
+      "bytes": 123020,
+      "sha256": "6b6ec1915eb4560f8bbfa439abd8d527868839de150b50f9c6de3d02ae4308d2"
+    },
+    {
+      "path": "docs/production-readiness/post-r18/gates/g2/ACCEPTANCE.md",
+      "bytes": 14029,
+      "sha256": "7cd2ac9de4bc7fd9d6f8811737837d23b48cb83665e40275014ba3fe57852d69"
+    },
+    {
+      "path": "docs/production-readiness/post-r18/gates/g2/ACCEPTANCE_EVIDENCE.json",
+      "bytes": 98903,
+      "sha256": "291f20e842938e816b14ab466b64f847d9d925104afcd526882f13f01c0085df"
+    },
+    {
+      "path": "docs/production-readiness/post-r18/gates/g2/BLOCKERS.md",
+      "bytes": 2600,
+      "sha256": "2ba5c84ca5936b9789c822ddac3bad16368ed4da56b1b090244f498ac3f1654e"
+    },
+    {
+      "path": "docs/production-readiness/post-r18/gates/g2/IMPLEMENTATION.md",
+      "bytes": 17996,
+      "sha256": "ba72827fbd6457a5bb25da5b5e2707ad4ed5123496e6864db7ea43c2773c7000"
+    },
+    {
+      "path": "docs/production-readiness/post-r18/gates/g2/PUBLICATION_VERIFICATION.json",
+      "bytes": 17371,
+      "sha256": "17ffef07e5c3d5bde7d75a61184121d6445419bd80d4df5eb00de9c06de9d5c5"
+    },
+    {
+      "path": "docs/production-readiness/post-r18/gates/g2/SOURCE_MANIFEST.json",
+      "bytes": 27112,
+      "sha256": "a538e8fde12d674d4cb7a5722803299526fa1449925213f481f1ca0077a0f204"
+    },
+    {
+      "path": "docs/production-readiness/post-r18/gates/g2/evidence/r25-summary.json",
+      "bytes": 4829,
+      "sha256": "1655ecc94ec48db74e93e47167498346b007690cb228127678974b10728b321d"
+    },
+    {
+      "path": "docs/production-readiness/post-r18/gates/g2/evidence/r26-summary.json",
+      "bytes": 2439,
+      "sha256": "364848836eec4029b6a3d452177379144a5d3565795003ff45fda07a0644f05b"
+    },
+    {
+      "path": "docs/production-readiness/post-r18/gates/g2/evidence/r27-summary.json",
+      "bytes": 3300,
+      "sha256": "b0ff4228180771649e47435c89505656d21a724755f5fa8b63c1752ab1ade544"
+    },
+    {
+      "path": "docs/production-readiness/post-r18/gates/g2/evidence/source-provenance.json",
+      "bytes": 1554,
+      "sha256": "d3b3f00d867eeb707df3292195a808320b1823d532e3e08acde18aaba22314e7"
+    },
+    {
+      "path": "docs/production-readiness/post-r18/waves/wave-02.closeout.json",
+      "bytes": 3449,
+      "sha256": "a3c431331aa04ef0baa1df468715b3ae7f722f6a2e007af2b5afbb0049035249"
+    },
+    {
+      "path": "docs/production-readiness/post-r18/waves/wave-03.plan.json",
+      "bytes": 30147,
+      "sha256": "f26ad3c0c24b2ec9d2a6ceadb61dbc9601ecececd2d76c07884cab402ed817f8"
+    },
+    {
+      "path": "docs/production-readiness/r33/ACCEPTANCE.md",
+      "bytes": 25078,
+      "sha256": "fcf60b117fe51057e6dd8e5437091e2ebd1950a249437ccb7e11ea2000e4a38a"
+    },
+    {
+      "path": "docs/production-readiness/r33/IMPLEMENTATION.md",
+      "bytes": 14287,
+      "sha256": "e2d6146918fd0752664d65f0146c5aaae24ddcbfacc3de64e582032e7b2dce9b"
+    },
+    {
+      "path": "docs/production-readiness/r33/OWNERSHIP.md",
+      "bytes": 7654,
+      "sha256": "ff2ade15102da9e7fda888dc50ddbdac23453554a9c56b6e09cd1b365a6999a5"
+    },
+    {
+      "path": "docs/production-readiness/r33/RISKS.md",
+      "bytes": 7235,
+      "sha256": "da11b06e578ad18869c986d5b60ae040a89eabd9b75cde63861f86547974af6d"
+    },
+    {
+      "path": "docs/production-readiness/r33/ROLLBACK.md",
+      "bytes": 3977,
+      "sha256": "12eaaff756e486a11e7cf3be1b5ea857828e3c4d099c5abde60d182eb60433e9"
+    },
+    {
+      "path": "docs/production-readiness/r33/shared-change-requests/CR-001-integration.md",
+      "bytes": 5928,
+      "sha256": "13071f733bdd2b8098d2cf10306c9b203a4013a23e3ab6fdef8c46949517b142"
+    }
+  ],
+  "selfHashPolicy": "This manifest excludes its own hash. Containing tree SHA is independently recorded in the PR body.",
+  "contracts": {
+    "additive": "hsm.finance-operations.v1",
+    "existingMoney": "hsm.money.v1 unchanged",
+    "schemaChange": false,
+    "migrationChange": false,
+    "dependencyChange": false
+  },
+  "protectedFiles": {
+    "allUnchangedBytes": true,
+    "pathCount": 82,
+    "countsByCategory": {
+      "DATABASE_MIGRATION": 73,
+      "DEPENDENCY_LOCKFILE": 1,
+      "PACKAGE_MANIFEST": 6,
+      "PRISMA_SCHEMA": 1,
+      "WORKSPACE_CONFIGURATION": 1
+    },
+    "files": [
+      {
+        "path": "apps/api/package.json",
+        "category": "PACKAGE_MANIFEST",
+        "baselineSha256": "722fe6472a35fd9b53e0a15dafb6962854e3aa737eaf2e248d0124f0116dc7ae",
+        "sha256": "722fe6472a35fd9b53e0a15dafb6962854e3aa737eaf2e248d0124f0116dc7ae",
+        "unchangedBytes": true
+      },
+      {
+        "path": "apps/web/package.json",
+        "category": "PACKAGE_MANIFEST",
+        "baselineSha256": "b13bd4912a2ec005d79096b98b2b953da61920f8ff8a8f22f5dc604dfabf5429",
+        "sha256": "b13bd4912a2ec005d79096b98b2b953da61920f8ff8a8f22f5dc604dfabf5429",
+        "unchangedBytes": true
+      },
+      {
+        "path": "package.json",
+        "category": "PACKAGE_MANIFEST",
+        "baselineSha256": "0531f716047ee05770bcf9bb9884004e2b936bb3a98890536256867cd81c889a",
+        "sha256": "0531f716047ee05770bcf9bb9884004e2b936bb3a98890536256867cd81c889a",
+        "unchangedBytes": true
+      },
+      {
+        "path": "packages/contracts/package.json",
+        "category": "PACKAGE_MANIFEST",
+        "baselineSha256": "89202eabd12de5a1e553c814a1af5c1f2e620e9d9bc2c8c0fd3ff8a2e4a3c148",
+        "sha256": "89202eabd12de5a1e553c814a1af5c1f2e620e9d9bc2c8c0fd3ff8a2e4a3c148",
+        "unchangedBytes": true
+      },
+      {
+        "path": "packages/database/package.json",
+        "category": "PACKAGE_MANIFEST",
+        "baselineSha256": "9e95d6dc0ddd17f2f8baf8464d8dff6b0651b1bea32bb120d89be5480a66e117",
+        "sha256": "9e95d6dc0ddd17f2f8baf8464d8dff6b0651b1bea32bb120d89be5480a66e117",
+        "unchangedBytes": true
+      },
+      {
+        "path": "packages/database/prisma/migrations/20260414201645_init_iam/migration.sql",
+        "category": "DATABASE_MIGRATION",
+        "baselineSha256": "13ab4edd3c77f019ce2dfb0eb7ee97e6e864a7e099a465bae8aad5aba928f449",
+        "sha256": "13ab4edd3c77f019ce2dfb0eb7ee97e6e864a7e099a465bae8aad5aba928f449",
+        "unchangedBytes": true
+      },
+      {
+        "path": "packages/database/prisma/migrations/20260415192428_add_iam_sessions_tokens/migration.sql",
+        "category": "DATABASE_MIGRATION",
+        "baselineSha256": "589a2cba98f7a1a1a30cddefbf0a03bb51733789c9d7b4e5289c37b2ee43bf82",
+        "sha256": "589a2cba98f7a1a1a30cddefbf0a03bb51733789c9d7b4e5289c37b2ee43bf82",
+        "unchangedBytes": true
+      },
+      {
+        "path": "packages/database/prisma/migrations/20260419130000_add_user_profile_and_address/migration.sql",
+        "category": "DATABASE_MIGRATION",
+        "baselineSha256": "99e869a523acc16a68e8f8d573fde8d14ee151359dea9d8101672fd524e4babc",
+        "sha256": "99e869a523acc16a68e8f8d573fde8d14ee151359dea9d8101672fd524e4babc",
+        "unchangedBytes": true
+      },
+      {
+        "path": "packages/database/prisma/migrations/20260420120000_add_email_otp_challenge_fields/migration.sql",
+        "category": "DATABASE_MIGRATION",
+        "baselineSha256": "d27960e7d8f52d7d4e61b1ef34d6bef9da6080760b6cebe2d405609aa41cc343",
+        "sha256": "d27960e7d8f52d7d4e61b1ef34d6bef9da6080760b6cebe2d405609aa41cc343",
+        "unchangedBytes": true
+      },
+      {
+        "path": "packages/database/prisma/migrations/20260426120000_add_service_categories/migration.sql",
+        "category": "DATABASE_MIGRATION",
+        "baselineSha256": "bf02eec70b5ff55ab6a96a53b0bc8006c84c99c434eee76cbdb1cfbdf1d2a1e4",
+        "sha256": "bf02eec70b5ff55ab6a96a53b0bc8006c84c99c434eee76cbdb1cfbdf1d2a1e4",
+        "unchangedBytes": true
+      },
+      {
+        "path": "packages/database/prisma/migrations/20260427130000_align_addresses_for_slice2/migration.sql",
+        "category": "DATABASE_MIGRATION",
+        "baselineSha256": "6067451b158b905004e4457d164c9970297515265ee32cb8297945269762510a",
+        "sha256": "6067451b158b905004e4457d164c9970297515265ee32cb8297945269762510a",
+        "unchangedBytes": true
+      },
+      {
+        "path": "packages/database/prisma/migrations/20260428120000_add_service_requests/migration.sql",
+        "category": "DATABASE_MIGRATION",
+        "baselineSha256": "64be323f26297d4c821880554c78dbb8ba857578b4c5b63299d47fd0a5d07411",
+        "sha256": "64be323f26297d4c821880554c78dbb8ba857578b4c5b63299d47fd0a5d07411",
+        "unchangedBytes": true
+      },
+      {
+        "path": "packages/database/prisma/migrations/20260428130000_add_bids_and_provider_profiles/migration.sql",
+        "category": "DATABASE_MIGRATION",
+        "baselineSha256": "b2b392552177bb53729d9a2a0a702f802ffb2de5406ca730b8ae6a63dbc71f11",
+        "sha256": "b2b392552177bb53729d9a2a0a702f802ffb2de5406ca730b8ae6a63dbc71f11",
+        "unchangedBytes": true
+      },
+      {
+        "path": "packages/database/prisma/migrations/20260428140000_add_bookings/migration.sql",
+        "category": "DATABASE_MIGRATION",
+        "baselineSha256": "0444d6cfe9f9900444af850c3b22ee1baa278cbdd3493c1ab71a4e36b0b51002",
+        "sha256": "0444d6cfe9f9900444af850c3b22ee1baa278cbdd3493c1ab71a4e36b0b51002",
+        "unchangedBytes": true
+      },
+      {
+        "path": "packages/database/prisma/migrations/20260428150000_add_booking_events/migration.sql",
+        "category": "DATABASE_MIGRATION",
+        "baselineSha256": "85cf0ffc2a0871811f7bd680b0253301991650686facedebc4f40922768735b1",
+        "sha256": "85cf0ffc2a0871811f7bd680b0253301991650686facedebc4f40922768735b1",
+        "unchangedBytes": true
+      },
+      {
+        "path": "packages/database/prisma/migrations/20260429120000_add_notifications/migration.sql",
+        "category": "DATABASE_MIGRATION",
+        "baselineSha256": "d03d9fdc5d3ce4f6e2dffce4c30a50beef6bb23f61a5c0ca62dce94b2d5bdd5d",
+        "sha256": "d03d9fdc5d3ce4f6e2dffce4c30a50beef6bb23f61a5c0ca62dce94b2d5bdd5d",
+        "unchangedBytes": true
+      },
+      {
+        "path": "packages/database/prisma/migrations/20260429140000_add_conversations_and_messages/migration.sql",
+        "category": "DATABASE_MIGRATION",
+        "baselineSha256": "9af146dd80acce8a622100904e2f1c79bd0b81ae1a5db3537079ab4aee1275c3",
+        "sha256": "9af146dd80acce8a622100904e2f1c79bd0b81ae1a5db3537079ab4aee1275c3",
+        "unchangedBytes": true
+      },
+      {
+        "path": "packages/database/prisma/migrations/20260430120000_add_city_to_user_profile/migration.sql",
+        "category": "DATABASE_MIGRATION",
+        "baselineSha256": "cbd27bdf657a20289ddffdb57083e67f37ef7ae654ea97fc7755b83f8b0eb711",
+        "sha256": "cbd27bdf657a20289ddffdb57083e67f37ef7ae654ea97fc7755b83f8b0eb711",
+        "unchangedBytes": true
+      },
+      {
+        "path": "packages/database/prisma/migrations/20260501003603_rename_tables_to_pascal_case/migration.sql",
+        "category": "DATABASE_MIGRATION",
+        "baselineSha256": "8c7f1aca94f5a2ad2d580f6b45bc799a8e8f8a1a4a08ff8bf1b1da47fd4df6fa",
+        "sha256": "8c7f1aca94f5a2ad2d580f6b45bc799a8e8f8a1a4a08ff8bf1b1da47fd4df6fa",
+        "unchangedBytes": true
+      },
+      {
+        "path": "packages/database/prisma/migrations/20260501010000_add_provider_profile_extensions/migration.sql",
+        "category": "DATABASE_MIGRATION",
+        "baselineSha256": "9e9e4a637a6cc6871750c03d5e7e0369651231ae0c9ac7cf6677a13d2dde4e24",
+        "sha256": "9e9e4a637a6cc6871750c03d5e7e0369651231ae0c9ac7cf6677a13d2dde4e24",
+        "unchangedBytes": true
+      },
+      {
+        "path": "packages/database/prisma/migrations/20260501020000_add_provider_profile_status/migration.sql",
+        "category": "DATABASE_MIGRATION",
+        "baselineSha256": "5d96cd64de17274754b8bd891dad5a3dbcdd8d8f8c0edf6be205265be184e648",
+        "sha256": "5d96cd64de17274754b8bd891dad5a3dbcdd8d8f8c0edf6be205265be184e648",
+        "unchangedBytes": true
+      },
+      {
+        "path": "packages/database/prisma/migrations/20260502000000_add_admin_audit_event_types/migration.sql",
+        "category": "DATABASE_MIGRATION",
+        "baselineSha256": "682f9b1065996fdd15af28ae2ca1f346d42b7e3e93704983ceded48c164f2dcd",
+        "sha256": "682f9b1065996fdd15af28ae2ca1f346d42b7e3e93704983ceded48c164f2dcd",
+        "unchangedBytes": true
+      },
+      {
+        "path": "packages/database/prisma/migrations/20260502010000_add_disputes_and_settings/migration.sql",
+        "category": "DATABASE_MIGRATION",
+        "baselineSha256": "47cb45c661a5b9b1fdab545e7699a259c04fd784376280dc04d016aa48d342e1",
+        "sha256": "47cb45c661a5b9b1fdab545e7699a259c04fd784376280dc04d016aa48d342e1",
+        "unchangedBytes": true
+      },
+      {
+        "path": "packages/database/prisma/migrations/20260502020000_add_provider_review_notes/migration.sql",
+        "category": "DATABASE_MIGRATION",
+        "baselineSha256": "439e0e8228c88848c0c1ae2316bd7095e88a5776970273d8b24644a946876817",
+        "sha256": "439e0e8228c88848c0c1ae2316bd7095e88a5776970273d8b24644a946876817",
+        "unchangedBytes": true
+      },
+      {
+        "path": "packages/database/prisma/migrations/20260502030000_add_dispute_priority_and_events/migration.sql",
+        "category": "DATABASE_MIGRATION",
+        "baselineSha256": "000363cf65ae8d6c7a0ba2fe40d88e45b9f4406df87e1d3f69be7e60aa4c105c",
+        "sha256": "000363cf65ae8d6c7a0ba2fe40d88e45b9f4406df87e1d3f69be7e60aa4c105c",
+        "unchangedBytes": true
+      },
+      {
+        "path": "packages/database/prisma/migrations/20260503000000_add_request_media_urls/migration.sql",
+        "category": "DATABASE_MIGRATION",
+        "baselineSha256": "f9476aaca1eba1316ed2c37a520a70422d8a4a76f67527a9b146e67aee28ddf0",
+        "sha256": "f9476aaca1eba1316ed2c37a520a70422d8a4a76f67527a9b146e67aee28ddf0",
+        "unchangedBytes": true
+      },
+      {
+        "path": "packages/database/prisma/migrations/20260507214217_add_provider_category_applications/migration.sql",
+        "category": "DATABASE_MIGRATION",
+        "baselineSha256": "b23f4930773c20e9d1337926e96f45099bc287d70ae65a52ef22a054ed65972f",
+        "sha256": "b23f4930773c20e9d1337926e96f45099bc287d70ae65a52ef22a054ed65972f",
+        "unchangedBytes": true
+      },
+      {
+        "path": "packages/database/prisma/migrations/20260530120000_sprint73_conversations_correctness/migration.sql",
+        "category": "DATABASE_MIGRATION",
+        "baselineSha256": "def89b8e2403ae8ffa29e6212b30227ad488d8fa6c83a8ef79adba2da078d9b3",
+        "sha256": "def89b8e2403ae8ffa29e6212b30227ad488d8fa6c83a8ef79adba2da078d9b3",
+        "unchangedBytes": true
+      },
+      {
+        "path": "packages/database/prisma/migrations/20260531120000_add_request_available_notification_type/migration.sql",
+        "category": "DATABASE_MIGRATION",
+        "baselineSha256": "8b9c96a4b5b700aaf7f6f3fee9982bc9a6c46d93c4c7b3b207896f9e32c4b6ca",
+        "sha256": "8b9c96a4b5b700aaf7f6f3fee9982bc9a6c46d93c4c7b3b207896f9e32c4b6ca",
+        "unchangedBytes": true
+      },
+      {
+        "path": "packages/database/prisma/migrations/20260601120000_add_booking_in_progress_notification_type/migration.sql",
+        "category": "DATABASE_MIGRATION",
+        "baselineSha256": "fde1fcdddef59cf2c32a6a1aac79ecb7134fe04c875baecfdf23c54ab2c7c3ce",
+        "sha256": "fde1fcdddef59cf2c32a6a1aac79ecb7134fe04c875baecfdf23c54ab2c7c3ce",
+        "unchangedBytes": true
+      },
+      {
+        "path": "packages/database/prisma/migrations/20260821120000_add_admin_access_requests_and_provider_onboarding/migration.sql",
+        "category": "DATABASE_MIGRATION",
+        "baselineSha256": "3b7844e960e4e588e95d081f6e378735c33d9d3b76c2b03492df634ffc180a15",
+        "sha256": "3b7844e960e4e588e95d081f6e378735c33d9d3b76c2b03492df634ffc180a15",
+        "unchangedBytes": true
+      },
+      {
+        "path": "packages/database/prisma/migrations/20260822090000_sprint02_moderation_schema/migration.sql",
+        "category": "DATABASE_MIGRATION",
+        "baselineSha256": "25e569a3e417fda4af233a093b03cf7da432cb9023edbe1eb27d0017f2cfd721",
+        "sha256": "25e569a3e417fda4af233a093b03cf7da432cb9023edbe1eb27d0017f2cfd721",
+        "unchangedBytes": true
+      },
+      {
+        "path": "packages/database/prisma/migrations/20260822091000_sprint02_one_pending_category_application/migration.sql",
+        "category": "DATABASE_MIGRATION",
+        "baselineSha256": "092706961f29fc1357b2f5f6b64832864c4fb862d7fb409401cb83d0cc3dfe0c",
+        "sha256": "092706961f29fc1357b2f5f6b64832864c4fb862d7fb409401cb83d0cc3dfe0c",
+        "unchangedBytes": true
+      },
+      {
+        "path": "packages/database/prisma/migrations/20260822092000_sprint02_case_insensitive_unique_email/migration.sql",
+        "category": "DATABASE_MIGRATION",
+        "baselineSha256": "58cc2e34cbc2837903f16077296fe9b7e40474da704b77d0a707e6f212cf1ba5",
+        "sha256": "58cc2e34cbc2837903f16077296fe9b7e40474da704b77d0a707e6f212cf1ba5",
+        "unchangedBytes": true
+      },
+      {
+        "path": "packages/database/prisma/migrations/20260822093000_sprint02_one_default_address_per_user/migration.sql",
+        "category": "DATABASE_MIGRATION",
+        "baselineSha256": "c47c8547443aa818b85b251663b030cdc09067b200d796e59a1ebf55bf334c68",
+        "sha256": "c47c8547443aa818b85b251663b030cdc09067b200d796e59a1ebf55bf334c68",
+        "unchangedBytes": true
+      },
+      {
+        "path": "packages/database/prisma/migrations/20260822094000_sprint02_one_active_bid_per_provider_request/migration.sql",
+        "category": "DATABASE_MIGRATION",
+        "baselineSha256": "df786e1031d76603a1e33c16f9d6fcc84dda8f8d36667850fd85910cba705679",
+        "sha256": "df786e1031d76603a1e33c16f9d6fcc84dda8f8d36667850fd85910cba705679",
+        "unchangedBytes": true
+      },
+      {
+        "path": "packages/database/prisma/migrations/20260822205824_sprint06_geo_columns_and_outbox/migration.sql",
+        "category": "DATABASE_MIGRATION",
+        "baselineSha256": "758ce99f5c2e016092c38c6d135dd893284d5e3c7be339e395d0b650b5023cc2",
+        "sha256": "758ce99f5c2e016092c38c6d135dd893284d5e3c7be339e395d0b650b5023cc2",
+        "unchangedBytes": true
+      },
+      {
+        "path": "packages/database/prisma/migrations/20260823120235_sprint07_provider_lifecycle_axes/migration.sql",
+        "category": "DATABASE_MIGRATION",
+        "baselineSha256": "d5c2d79bd923f63c30828e9f3b0eabd4e66fd56fb0c8dd3d2f3cd8fd207cbfb4",
+        "sha256": "d5c2d79bd923f63c30828e9f3b0eabd4e66fd56fb0c8dd3d2f3cd8fd207cbfb4",
+        "unchangedBytes": true
+      },
+      {
+        "path": "packages/database/prisma/migrations/20260823224144_sprint08_onboarding_wizard_foundation/migration.sql",
+        "category": "DATABASE_MIGRATION",
+        "baselineSha256": "0c340950002398287eff2f821316a4a9cb13527891f4875752b3add106100701",
+        "sha256": "0c340950002398287eff2f821316a4a9cb13527891f4875752b3add106100701",
+        "unchangedBytes": true
+      },
+      {
+        "path": "packages/database/prisma/migrations/20260824030000_sprint08_catalog_audit_events/migration.sql",
+        "category": "DATABASE_MIGRATION",
+        "baselineSha256": "795f4043fd4b7c2b6cbc00ef10107962cc3af98e5dce3b083e403a7c4338705a",
+        "sha256": "795f4043fd4b7c2b6cbc00ef10107962cc3af98e5dce3b083e403a7c4338705a",
+        "unchangedBytes": true
+      },
+      {
+        "path": "packages/database/prisma/migrations/20260824084629_sprint09_verification_restricted_media_work_access/migration.sql",
+        "category": "DATABASE_MIGRATION",
+        "baselineSha256": "cfed8ea812ac649268758692ed3aecf3eb258b607265b9bcc4f0c638da139871",
+        "sha256": "cfed8ea812ac649268758692ed3aecf3eb258b607265b9bcc4f0c638da139871",
+        "unchangedBytes": true
+      },
+      {
+        "path": "packages/database/prisma/migrations/20260824084700_sprint09_backfill_legacy_work_access_grants/migration.sql",
+        "category": "DATABASE_MIGRATION",
+        "baselineSha256": "92997a76f8c56b028d90cb05d74e009bb47b67e92071491695dd2df802a28784",
+        "sha256": "92997a76f8c56b028d90cb05d74e009bb47b67e92071491695dd2df802a28784",
+        "unchangedBytes": true
+      },
+      {
+        "path": "packages/database/prisma/migrations/20260825060000_sprint09b2_verification_policy_and_case_constraints/migration.sql",
+        "category": "DATABASE_MIGRATION",
+        "baselineSha256": "17ad48d5eeee4dec5eff60a1e64d6a944819252d431d23ed215fbee50ec10075",
+        "sha256": "17ad48d5eeee4dec5eff60a1e64d6a944819252d431d23ed215fbee50ec10075",
+        "unchangedBytes": true
+      },
+      {
+        "path": "packages/database/prisma/migrations/20260825120000_sprint09b3_prepared_evidence_case_link/migration.sql",
+        "category": "DATABASE_MIGRATION",
+        "baselineSha256": "011cea426ede729cda1e0b0706ed2d5785d75e36aef1bb81f9b914c05a62539b",
+        "sha256": "011cea426ede729cda1e0b0706ed2d5785d75e36aef1bb81f9b914c05a62539b",
+        "unchangedBytes": true
+      },
+      {
+        "path": "packages/database/prisma/migrations/20260825123000_sprint09b3_evidence_preparation_slot/migration.sql",
+        "category": "DATABASE_MIGRATION",
+        "baselineSha256": "5f0c3bfae516adac9c57193d72d29cc3eb628df4e9492462b23fd5db7c984e3f",
+        "sha256": "5f0c3bfae516adac9c57193d72d29cc3eb628df4e9492462b23fd5db7c984e3f",
+        "unchangedBytes": true
+      },
+      {
+        "path": "packages/database/prisma/migrations/20260825130000_sprint09b3_evidence_audit_events/migration.sql",
+        "category": "DATABASE_MIGRATION",
+        "baselineSha256": "320bdd1929ae3b4e1d49b11ba2242aac4f22ceea538d2abab1b7d35577f57b89",
+        "sha256": "320bdd1929ae3b4e1d49b11ba2242aac4f22ceea538d2abab1b7d35577f57b89",
+        "unchangedBytes": true
+      },
+      {
+        "path": "packages/database/prisma/migrations/20260825140000_sprint09b4_evidence_rejected_scan_state/migration.sql",
+        "category": "DATABASE_MIGRATION",
+        "baselineSha256": "12bbbae1227e71e3520db58d6aa6dceee7c733f4554f1be71ac0f0f4c59aa601",
+        "sha256": "12bbbae1227e71e3520db58d6aa6dceee7c733f4554f1be71ac0f0f4c59aa601",
+        "unchangedBytes": true
+      },
+      {
+        "path": "packages/database/prisma/migrations/20260825150000_sprint09b4_evidence_scan_audit_events/migration.sql",
+        "category": "DATABASE_MIGRATION",
+        "baselineSha256": "9fbb3b9a0c6fd9ea3dd016acfeebbfb6eac526b396b386469829c1108decf04b",
+        "sha256": "9fbb3b9a0c6fd9ea3dd016acfeebbfb6eac526b396b386469829c1108decf04b",
+        "unchangedBytes": true
+      },
+      {
+        "path": "packages/database/prisma/migrations/20260826090000_sprint09b5_verification_notifications/migration.sql",
+        "category": "DATABASE_MIGRATION",
+        "baselineSha256": "7a3babeebdeebf9a9245a53f7ed6229155ae8c416ee5318a057829c9c14d8484",
+        "sha256": "7a3babeebdeebf9a9245a53f7ed6229155ae8c416ee5318a057829c9c14d8484",
+        "unchangedBytes": true
+      },
+      {
+        "path": "packages/database/prisma/migrations/20260826093000_sprint09b5_case_workflow_audit_events/migration.sql",
+        "category": "DATABASE_MIGRATION",
+        "baselineSha256": "0192a53d26dcee88dc4d6d007d7ac304d2ecdf04a460ee98873733badf37b438",
+        "sha256": "0192a53d26dcee88dc4d6d007d7ac304d2ecdf04a460ee98873733badf37b438",
+        "unchangedBytes": true
+      },
+      {
+        "path": "packages/database/prisma/migrations/20260826120000_sprint09b6_verification_rejected_notification/migration.sql",
+        "category": "DATABASE_MIGRATION",
+        "baselineSha256": "e37d8c55827ed37b8391f800b829ad49564be728df8b740217e5fe8bb3df6ad0",
+        "sha256": "e37d8c55827ed37b8391f800b829ad49564be728df8b740217e5fe8bb3df6ad0",
+        "unchangedBytes": true
+      },
+      {
+        "path": "packages/database/prisma/migrations/20260826120000_verification_expiry_enums/migration.sql",
+        "category": "DATABASE_MIGRATION",
+        "baselineSha256": "c3368148979ec9f34cffef7467036685ec84b312c6e2112bee7ff2e423146553",
+        "sha256": "c3368148979ec9f34cffef7467036685ec84b312c6e2112bee7ff2e423146553",
+        "unchangedBytes": true
+      },
+      {
+        "path": "packages/database/prisma/migrations/20260826123000_sprint09b6_case_rejected_audit_event/migration.sql",
+        "category": "DATABASE_MIGRATION",
+        "baselineSha256": "6c1c5a35d1eac7f43cf92b5e6bbae5130442a6b690237643be895d8acdaf7807",
+        "sha256": "6c1c5a35d1eac7f43cf92b5e6bbae5130442a6b690237643be895d8acdaf7807",
+        "unchangedBytes": true
+      },
+      {
+        "path": "packages/database/prisma/migrations/20260826153000_sprint09b7_decision_audit_and_notification/migration.sql",
+        "category": "DATABASE_MIGRATION",
+        "baselineSha256": "5ecc4db13e9a868037c3e5b7003b3f658c7a57e92d38cc4a139e1b5a8bb2f1d6",
+        "sha256": "5ecc4db13e9a868037c3e5b7003b3f658c7a57e92d38cc4a139e1b5a8bb2f1d6",
+        "unchangedBytes": true
+      },
+      {
+        "path": "packages/database/prisma/migrations/20260828160000_sprint09b18_primary_specialty_and_transport_modes/migration.sql",
+        "category": "DATABASE_MIGRATION",
+        "baselineSha256": "f18a12cb86724b47fa18466048f5c06c8df827eb9a46830ea9d31ad5a57d415d",
+        "sha256": "f18a12cb86724b47fa18466048f5c06c8df827eb9a46830ea9d31ad5a57d415d",
+        "unchangedBytes": true
+      },
+      {
+        "path": "packages/database/prisma/migrations/20260828190000_sprint09b19_service_area_country_code/migration.sql",
+        "category": "DATABASE_MIGRATION",
+        "baselineSha256": "8d3396b3e2734b564a2b939566b5e14737fc2d65f3363c8d4c018c9234400717",
+        "sha256": "8d3396b3e2734b564a2b939566b5e14737fc2d65f3363c8d4c018c9234400717",
+        "unchangedBytes": true
+      },
+      {
+        "path": "packages/database/prisma/migrations/20260828220000_sprint09b20_earned_service_area_expansion/migration.sql",
+        "category": "DATABASE_MIGRATION",
+        "baselineSha256": "2c10fc91c228fa2dad9377a66f88fe6cc907195a840603c93a3655b3a22b1ed2",
+        "sha256": "2c10fc91c228fa2dad9377a66f88fe6cc907195a840603c93a3655b3a22b1ed2",
+        "unchangedBytes": true
+      },
+      {
+        "path": "packages/database/prisma/migrations/20260915010000_admin_provider_review/migration.sql",
+        "category": "DATABASE_MIGRATION",
+        "baselineSha256": "d697b397631a62ae02b8d4d75acd987ba1e36fa4a1815c5f2b4ed05eaa5509b0",
+        "sha256": "d697b397631a62ae02b8d4d75acd987ba1e36fa4a1815c5f2b4ed05eaa5509b0",
+        "unchangedBytes": true
+      },
+      {
+        "path": "packages/database/prisma/migrations/20260915120000_verification_policy_management_permission/migration.sql",
+        "category": "DATABASE_MIGRATION",
+        "baselineSha256": "9a2b9040d1ddf88c20e5caa7169f6bd4c3babc2e8bc3510d93b57c5e6ffc5c57",
+        "sha256": "9a2b9040d1ddf88c20e5caa7169f6bd4c3babc2e8bc3510d93b57c5e6ffc5c57",
+        "unchangedBytes": true
+      },
+      {
+        "path": "packages/database/prisma/migrations/20260917150000_dispute_one_active_per_booking/migration.sql",
+        "category": "DATABASE_MIGRATION",
+        "baselineSha256": "625dc7e10f205a264f4cf97b12f2de9dd60e67b0dcd84949ec85f2a4477a74f6",
+        "sha256": "625dc7e10f205a264f4cf97b12f2de9dd60e67b0dcd84949ec85f2a4477a74f6",
+        "unchangedBytes": true
+      },
+      {
+        "path": "packages/database/prisma/migrations/20260917210000_sprint12_retention_jobs/migration.sql",
+        "category": "DATABASE_MIGRATION",
+        "baselineSha256": "004c01275c73ad4012c07f64f938c5aa1ded3d6aa1904b45c0df2a4e7babb6cb",
+        "sha256": "004c01275c73ad4012c07f64f938c5aa1ded3d6aa1904b45c0df2a4e7babb6cb",
+        "unchangedBytes": true
+      },
+      {
+        "path": "packages/database/prisma/migrations/20260918160000_sprint12_dispute_collaboration/migration.sql",
+        "category": "DATABASE_MIGRATION",
+        "baselineSha256": "a68a125bfe91e4a1f21cc22bc1dbe1086707e81603c3ba34089e31e93e31ed3b",
+        "sha256": "a68a125bfe91e4a1f21cc22bc1dbe1086707e81603c3ba34089e31e93e31ed3b",
+        "unchangedBytes": true
+      },
+      {
+        "path": "packages/database/prisma/migrations/20260920103000_dispute_private_retention/migration.sql",
+        "category": "DATABASE_MIGRATION",
+        "baselineSha256": "90d0d9c6691fb9dd24033c9fe646e05187676016d31544cc6fdb7833119bb056",
+        "sha256": "90d0d9c6691fb9dd24033c9fe646e05187676016d31544cc6fdb7833119bb056",
+        "unchangedBytes": true
+      },
+      {
+        "path": "packages/database/prisma/migrations/20260920103100_dispute_private_retention_audit/migration.sql",
+        "category": "DATABASE_MIGRATION",
+        "baselineSha256": "2362729f6ca60d16dfea5aeba17db48afc0e6544f6ed9c7f71ab938229a58bfc",
+        "sha256": "2362729f6ca60d16dfea5aeba17db48afc0e6544f6ed9c7f71ab938229a58bfc",
+        "unchangedBytes": true
+      },
+      {
+        "path": "packages/database/prisma/migrations/20260920103200_dispute_privacy_permissions/migration.sql",
+        "category": "DATABASE_MIGRATION",
+        "baselineSha256": "3cac2a2022f1f6929767772901e1f9608deb7735f7e4d49b133fc447eb9c99ba",
+        "sha256": "3cac2a2022f1f6929767772901e1f9608deb7735f7e4d49b133fc447eb9c99ba",
+        "unchangedBytes": true
+      },
+      {
+        "path": "packages/database/prisma/migrations/20261001030000_r05_address_default_uniqueness/migration.sql",
+        "category": "DATABASE_MIGRATION",
+        "baselineSha256": "7147e40a8fde9ad4c8d19bda982e10323a9d288e9f32abab325e9b9ee21a1311",
+        "sha256": "7147e40a8fde9ad4c8d19bda982e10323a9d288e9f32abab325e9b9ee21a1311",
+        "unchangedBytes": true
+      },
+      {
+        "path": "packages/database/prisma/migrations/20261002090000_r06_request_media_authority/migration.sql",
+        "category": "DATABASE_MIGRATION",
+        "baselineSha256": "29eeeaf0c2bb31019a7cc59e734aa7a43083396062e885f4bc6df697dfb6e956",
+        "sha256": "29eeeaf0c2bb31019a7cc59e734aa7a43083396062e885f4bc6df697dfb6e956",
+        "unchangedBytes": true
+      },
+      {
+        "path": "packages/database/prisma/migrations/20261002120000_r07_request_creation_idempotency/migration.sql",
+        "category": "DATABASE_MIGRATION",
+        "baselineSha256": "e967a55961bbdbbeb0cfe6cff2a2890b1b90fffbd3b45988f41ff47a5358257b",
+        "sha256": "e967a55961bbdbbeb0cfe6cff2a2890b1b90fffbd3b45988f41ff47a5358257b",
+        "unchangedBytes": true
+      },
+      {
+        "path": "packages/database/prisma/migrations/20261003090000_r11_booking_reviews/migration.sql",
+        "category": "DATABASE_MIGRATION",
+        "baselineSha256": "afb3f142c21075c28153e709c72f9a85116531cea9620c3edfce97fabf07d78f",
+        "sha256": "afb3f142c21075c28153e709c72f9a85116531cea9620c3edfce97fabf07d78f",
+        "unchangedBytes": true
+      },
+      {
+        "path": "packages/database/prisma/migrations/20261004090000_r12_message_send_idempotency/migration.sql",
+        "category": "DATABASE_MIGRATION",
+        "baselineSha256": "b7d9f5f1c45682addbac60601d308a1a44649c3e7f4ee3d0fe6959654a6fb21d",
+        "sha256": "b7d9f5f1c45682addbac60601d308a1a44649c3e7f4ee3d0fe6959654a6fb21d",
+        "unchangedBytes": true
+      },
+      {
+        "path": "packages/database/prisma/migrations/20261004120000_r13_support_tickets/migration.sql",
+        "category": "DATABASE_MIGRATION",
+        "baselineSha256": "bfadaa952066dd8c2544ed777aba924862bd98e3bb7a7b41e885f0b4bf2a0c99",
+        "sha256": "bfadaa952066dd8c2544ed777aba924862bd98e3bb7a7b41e885f0b4bf2a0c99",
+        "unchangedBytes": true
+      },
+      {
+        "path": "packages/database/prisma/migrations/20261004150000_r15_ledger_foundation/migration.sql",
+        "category": "DATABASE_MIGRATION",
+        "baselineSha256": "ce012c1fbcd7cc17b06ea69abf487ccf4a8cad1a58c474ead37f4994b2148212",
+        "sha256": "ce012c1fbcd7cc17b06ea69abf487ccf4a8cad1a58c474ead37f4994b2148212",
+        "unchangedBytes": true
+      },
+      {
+        "path": "packages/database/prisma/migrations/20261014090000_r19_subscription_money_foundation/migration.sql",
+        "category": "DATABASE_MIGRATION",
+        "baselineSha256": "b032b2d46461ab9311baab8654e792505d57219e062739eeea98be70bc97a8c2",
+        "sha256": "b032b2d46461ab9311baab8654e792505d57219e062739eeea98be70bc97a8c2",
+        "unchangedBytes": true
+      },
+      {
+        "path": "packages/database/prisma/migrations/20261014100000_r21_email_delivery/migration.sql",
+        "category": "DATABASE_MIGRATION",
+        "baselineSha256": "a60cf0eefb8f339b0ecdf4aeffbc5134ea8e020bbe622b1d6e1c8e30cfa31e08",
+        "sha256": "a60cf0eefb8f339b0ecdf4aeffbc5134ea8e020bbe622b1d6e1c8e30cfa31e08",
+        "unchangedBytes": true
+      },
+      {
+        "path": "packages/database/prisma/migrations/20261016203000_g1_refund_binding_and_replay_audit/migration.sql",
+        "category": "DATABASE_MIGRATION",
+        "baselineSha256": "b6683264b321f43bb1af21f5a499fd58c14228640b4e8a6dee51dc03931a4df0",
+        "sha256": "b6683264b321f43bb1af21f5a499fd58c14228640b4e8a6dee51dc03931a4df0",
+        "unchangedBytes": true
+      },
+      {
+        "path": "packages/database/prisma/migrations/20261017163000_r24_money_api_orchestration/migration.sql",
+        "category": "DATABASE_MIGRATION",
+        "baselineSha256": "0e1df768f525607252ed4b9293078745a92be07d59fd47bf0bf0700458af5deb",
+        "sha256": "0e1df768f525607252ed4b9293078745a92be07d59fd47bf0bf0700458af5deb",
+        "unchangedBytes": true
+      },
+      {
+        "path": "packages/database/prisma/migrations/20261017220000_g2_completed_booking_read_index/migration.sql",
+        "category": "DATABASE_MIGRATION",
+        "baselineSha256": "33e36f89f515e3e171fab2ddf51a10aa787499658e7bb3f50242246647853df3",
+        "sha256": "33e36f89f515e3e171fab2ddf51a10aa787499658e7bb3f50242246647853df3",
+        "unchangedBytes": true
+      },
+      {
+        "path": "packages/database/prisma/migrations/migration_lock.toml",
+        "category": "DATABASE_MIGRATION",
+        "baselineSha256": "693566b52c49db47a2b0901d12400aa3d710d13a49f4a2a154b80c0505ed737c",
+        "sha256": "693566b52c49db47a2b0901d12400aa3d710d13a49f4a2a154b80c0505ed737c",
+        "unchangedBytes": true
+      },
+      {
+        "path": "packages/database/prisma/schema.prisma",
+        "category": "PRISMA_SCHEMA",
+        "baselineSha256": "09a67fe6add9c8acc69ad1b74490b6997de40fbb8d3d20cefa30dc6023f318d6",
+        "sha256": "09a67fe6add9c8acc69ad1b74490b6997de40fbb8d3d20cefa30dc6023f318d6",
+        "unchangedBytes": true
+      },
+      {
+        "path": "packages/ui/package.json",
+        "category": "PACKAGE_MANIFEST",
+        "baselineSha256": "16a4a27ea14a8dc507e4a5fa62c526bb84718379c0d132860bd74c1659727d92",
+        "sha256": "16a4a27ea14a8dc507e4a5fa62c526bb84718379c0d132860bd74c1659727d92",
+        "unchangedBytes": true
+      },
+      {
+        "path": "pnpm-lock.yaml",
+        "category": "DEPENDENCY_LOCKFILE",
+        "baselineSha256": "38c763b2348edacd22c88f61d7efbae67455ca92e5fb23320e3a5543e0a9d7c4",
+        "sha256": "38c763b2348edacd22c88f61d7efbae67455ca92e5fb23320e3a5543e0a9d7c4",
+        "unchangedBytes": true
+      },
+      {
+        "path": "pnpm-workspace.yaml",
+        "category": "WORKSPACE_CONFIGURATION",
+        "baselineSha256": "f0124972a7557b788d3cc7c82e4c8e2294212eb5d0027b784bdb00ef9023abb0",
+        "sha256": "f0124972a7557b788d3cc7c82e4c8e2294212eb5d0027b784bdb00ef9023abb0",
+        "unchangedBytes": true
+      }
+    ]
+  },
+  "runtime": {
+    "scope": "R33-only disposable local integration runtime; no hosted or vendor money acceptance",
+    "node": "24.21.0",
+    "pnpm": "10.32.1",
+    "prisma": "6.12.0",
+    "api": {
+      "origin": "http://127.0.0.1:4333",
+      "NODE_ENV": "development",
+      "APP_ENV": "test",
+      "VERIFICATION_ENFORCED": true,
+      "WORK_ACCESS_ENFORCED": true,
+      "corsOrigin": "http://127.0.0.1:4433",
+      "mongoEnabled": false,
+      "loginLimit": "Existing 10/IP/minute, unchanged; natural expiry between suites",
+      "fixtureLimits": "Register 200, OTP 400, global 5000 in this disposable test runtime only",
+      "outbox": "Enabled in the separate PostgreSQL database",
+      "scanner": "Existing test fixture configuration; no production scanner claim; scan workers disabled"
+    },
+    "web": {
+      "origin": "http://127.0.0.1:4433",
+      "NODE_ENV": "production",
+      "VITE_API_URL": "http://127.0.0.1:4333",
+      "VITE_PROVIDER_ONBOARDING_V2": true,
+      "build": "Clean production output with served-index/asset equality verified before browser acceptance"
+    },
+    "postgres": {
+      "version": "16.14",
+      "port": 5533,
+      "timezone": "UTC",
+      "database": "hsm_r33_reporting",
+      "role": "hsm_r33_reporting",
+      "roleAttributes": ["NOSUPERUSER", "CREATEDB", "NOCREATEROLE"],
+      "dataDirectory": "/tmp/hsm-r33-postgres/data",
+      "migrationsApplied": 72,
+      "seeded": true,
+      "integrationIsolation": "Dedicated suite creates, migrates and drops its own random database"
+    },
+    "redis": {
+      "version": "7.4.7",
+      "port": 6433,
+      "database": 0,
+      "directory": "/tmp/hsm-r33-redis",
+      "shared": false,
+      "persistence": false
+    },
+    "mailpit": {
+      "version": "1.32.0",
+      "smtpPort": 10333,
+      "httpPort": 8033,
+      "database": "/tmp/hsm-r33-runtime/mailpit.db"
+    },
+    "storage": {
+      "driver": "local",
+      "root": "/tmp/hsm-r33-runtime/storage",
+      "directories": ["public", "restricted", "staging"]
+    },
+    "browser": {
+      "playwright": "1.62.1",
+      "chromium": "151.0.7922.34",
+      "revision": 1234,
+      "cache": "/tmp/hsm-r33-playwright",
+      "contexts": "New disposable cookie jar for each actor",
+      "trace": false,
+      "video": false,
+      "workers": 1,
+      "retries": 0,
+      "trust": "Normal NSS verification, task-only XDG_DATA_HOME with the existing environment public CA; no certificate-ignore flags or global trust edits",
+      "XDG_DATA_HOME": "/tmp/hsm-r33-browser-trust/xdg"
+    },
+    "compose": null,
+    "secrets": "Generated disposable credentials, DSNs, JWT keys, OTPs, cookies and raw environment are excluded"
+  },
+  "runtimeSha256": "f309dbdb41e6dedf1c8458306a2119bb304a7764e8625f831301c6249369a0f8",
+  "runtimeDigestEncoding": "SHA256 of canonical UTF-8 JSON with sorted keys and compact separators.",
+  "toolProvenance": {
+    "nodeArchiveVerifiedSha256": "fd8e59d5a511510f6a298afb548f18c7d2b1be404d8b4a27d94fbe49f56cb2d6",
+    "pnpm": "Version and integrity verified against unchanged packageManager pin",
+    "postgresArchiveSha256": "dfe7ecd8365ab907786e5f3d69179399f9675ac800153219efb2590257c2d551",
+    "redisServerSha256": "0f9e6e8a1ec48f733d4fa6d2de632906750d3ad31a288e5cd20f623bcdbe0bc9",
+    "redisCliSha256": "ea55be3971d31b710b2f8c78bce65b954c04be975bc1d3701b4df472a059738e",
+    "mailpitArchiveSha256": "4b5993c978e8604c70d43927e2ad103b311bba3b1822fa0cf1d4ee4ec890a93c",
+    "chromiumExecutableSha256": "0b20b130e7edd9dd51873be867761295fe0cfad490c2b9a64f95bd3cfc08fa71",
+    "chromiumHeadlessSha256": "e11fc9ce65c96313476f7ee9844b6fb6a9220fb048693cfe9eee00acf4170a9f",
+    "gitleaks": "8.24.3; existing CI-pinned archive verified; exact final tree result recorded in PR body",
+    "gitleaksArchiveSha256": "9991e0b2903da4c8f6122b5c3186448b927a5da4deef1fe45271c3793f4ee29c",
+    "nssToolsOfficialArchive": "https://archive.ubuntu.com/ubuntu/pool/main/n/nss/libnss3-tools_3.98-1ubuntu0.3_amd64.deb",
+    "nssToolsObservedArchiveSha256": "0bb7919188cb21d3bfba5d45b5aa45848aa61b92ced34ff3f8ecda7b92d788c0",
+    "nssExistingEnvironmentCaDerSha256": "c71b4d1e9d7775c538c688ab10cea9ce417d7312e89838f9d15ff73256cd7fc3",
+    "nssTaskConfig": {
+      "path": "/tmp/hsm-r33-browser-trust/playwright.local.config.ts",
+      "bytes": 967,
+      "sha256": "ddb91d31d3e675d57c132f894aa2d6cc6307d7cabde850fd50be75165a3fac42"
+    },
+    "nssOfficialReferences": [
+      "https://chromium.googlesource.com/chromium/src/crypto/+/refs/heads/main/nss_util.cc",
+      "https://chromium.googlesource.com/chromium/src/+/main/docs/linux/cert_management.md"
+    ]
+  },
+  "testResults": [
+    {
+      "name": "reporting_units",
+      "artifact": {
+        "path": "/tmp/hsm-r33-reporting-unit-results.json",
+        "bytes": 45865,
+        "sha256": "9873b645ea3b463008501fc9eaffbf68535bceda798b02340ee878e4fb9c01d6"
+      },
+      "passed": 96,
+      "failed": 0,
+      "skipped": 0,
+      "sourceScope": "Final reporting source"
+    },
+    {
+      "name": "money_and_appmodule_units",
+      "artifact": {
+        "path": "/tmp/hsm-r33-money-units-final.json",
+        "bytes": 168695,
+        "sha256": "c3da81274be0b20fbe599d8ffc8ee6881703bca8b4f015d86b7ecbaeb91659e8"
+      },
+      "passed": 341,
+      "failed": 0,
+      "skipped": 0,
+      "sourceScope": "Final backend source; includes reporting units"
+    },
+    {
+      "name": "real_postgresql",
+      "artifact": {
+        "path": "/tmp/hsm-r33-reporting-db-results.json",
+        "bytes": 8710,
+        "sha256": "1b3c3ff8d2ad9ef7c2ac8fe26234dd4c2127b4f4f69170132d8fb1175e078bd5"
+      },
+      "passed": 15,
+      "failed": 0,
+      "skipped": 0,
+      "sourceScope": "Final reporting source; real PostgreSQL suite"
+    },
+    {
+      "name": "ui_and_existing_inventory",
+      "artifact": {
+        "path": "/tmp/hsm-r33-ui-focused-final.json",
+        "bytes": 22795,
+        "sha256": "8dd7fc76b86d495a60decd689cf842bc40d58712d8e53623f3e1aba9d0efa8d2"
+      },
+      "passed": 60,
+      "failed": 0,
+      "skipped": 0,
+      "sourceScope": "Final UI source: 57 feature assertions plus 3 existing inventory assertions"
+    },
+    {
+      "name": "existing_routes_and_wallet",
+      "artifact": {
+        "path": "/tmp/hsm-r33-entry-tests.json",
+        "bytes": 4481,
+        "sha256": "dd9cb8847be04b35d17ffe9a694cba4af61045b6986b3ea7d92e95c16d843e53"
+      },
+      "passed": 10,
+      "failed": 0,
+      "skipped": 0,
+      "sourceScope": "Leased route and wallet integration source"
+    },
+    {
+      "name": "whole_web_before_final_status_copy",
+      "artifact": {
+        "path": "/tmp/hsm-r33-web-units-final.json",
+        "bytes": 892638,
+        "sha256": "95ca93ed39241c618f65ce6b5c4cb0dcbe41b39005e908f50f7cd31914caa2a1"
+      },
+      "passed": 2581,
+      "failed": 0,
+      "skipped": 0,
+      "sourceScope": "Earlier complete checkpoint after offline handling; predates final localized status mapping. Final affected 60-test run covers the final change; final-PR CI covers the exact published head."
+    }
+  ],
+  "additionalChecks": {
+    "verifier": {
+      "passed": 47,
+      "failed": 0,
+      "skipped": 0
+    },
+    "governance": {
+      "passed": 480,
+      "failed": 0,
+      "skipped": 0
+    },
+    "browserCountGuard": {
+      "passed": 1,
+      "failed": 0
+    },
+    "logArtifacts": [
+      {
+        "path": "/tmp/hsm-r33-install.log",
+        "bytes": 3494,
+        "sha256": "0419e5666fef609cc1ba7e9c34b8f55ba6d436bbecdd95acdabdaef287f86d6b"
+      },
+      {
+        "path": "/tmp/hsm-r33-generate-approved.log",
+        "bytes": 663,
+        "sha256": "48221b4e957dde2709b20412025f8cddeebb8012376b1b3fa3cb9cb060483ed0"
+      },
+      {
+        "path": "/tmp/hsm-r33-migrate.log",
+        "bytes": 11274,
+        "sha256": "49a839356d696740e90abba2c570380619729a2cefabc106eac59f8ba78820a8"
+      },
+      {
+        "path": "/tmp/hsm-r33-database-build.log",
+        "bytes": 136,
+        "sha256": "cbc45a6afcc6dab6c7008b599a6ec5faf6aa414ea64ba25df4ee978d15c99f06"
+      },
+      {
+        "path": "/tmp/hsm-r33-contracts-typecheck.log",
+        "bytes": 128,
+        "sha256": "58b1f4138afff54f46b99c8509921ffbf26e14eaab4043cf4fd7e2e872ea60e3"
+      },
+      {
+        "path": "/tmp/hsm-r33-api-build-final.log",
+        "bytes": 609,
+        "sha256": "e4497759622568ebd38c1e6f2aa7e38f4379ed4d07c0772dc58938a6737b4ca4"
+      },
+      {
+        "path": "/tmp/hsm-r33-api-lint.log",
+        "bytes": 115,
+        "sha256": "99a977ecae05b81fa4d46c8087685976bfe0e34b0ddd3e5cc7f5d787c033a94b"
+      },
+      {
+        "path": "/tmp/hsm-r33-web-lint.log",
+        "bytes": 18751,
+        "sha256": "1748a58f5d13af43980b9b9c4748e045b7e79dccaee625f0fe0fbaa0c422f8ec"
+      },
+      {
+        "path": "/tmp/hsm-r33-web-build-clean-final.log",
+        "bytes": 8220,
+        "sha256": "33e78a76c88bde6ad64702d4e9630433bbfe6163ddf95a3270216fb4f5e34c1f"
+      },
+      {
+        "path": "/tmp/hsm-r33-glue-lint.log",
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "/tmp/hsm-r33-glue-format.log",
+        "bytes": 66,
+        "sha256": "17aa973d3f004560237d9a95171210b0671deff23d61628eecf7322ff5938f20"
+      },
+      {
+        "path": "/tmp/hsm-r33-verifier-tests.log",
+        "bytes": 3725,
+        "sha256": "f39d724bff433abf34c15135c9da8a298a313f65f092cc01d781336d7205177e"
+      },
+      {
+        "path": "/tmp/hsm-r33-governance-final.log",
+        "bytes": 30079,
+        "sha256": "b73cb4c2d4fe935374017c4c92afd49f31795e7143b154a3842c3ff461317fac"
+      },
+      {
+        "path": "/tmp/hsm-r33-browser-counter-tests.log",
+        "bytes": 174,
+        "sha256": "f80cba1400f6ba1e0f4d4ff430183c593c89f08b3812a8251c285d998cce73a6"
+      },
+      {
+        "path": "/tmp/hsm-r33-wire-verification-final.json",
+        "bytes": 3219,
+        "sha256": "d0d5078109e642ee15e44a1254672da24767498c058978467fa04f20d62c4e78"
+      },
+      {
+        "path": "/tmp/hsm-r33-browser-final-summary.json",
+        "bytes": 160,
+        "sha256": "69792c633b25a3d92393c6a371e98424b25a7cf8267cd76b50af0e39312e671a"
+      },
+      {
+        "path": "/tmp/hsm-r33-served-build-final.json",
+        "bytes": 841,
+        "sha256": "9d796c2ba972c53abdb9ee70b6aaa7a6b20ae631c334a443115cc1473ee2a718"
+      }
+    ]
+  },
+  "dependencyAudits": [
+    {
+      "path": "/tmp/hsm-r33-audit-full.json",
+      "bytes": 312,
+      "sha256": "137406d6a7203e02dc822cb20f033959391ab4c13765f8c13203faf09193c198"
+    },
+    {
+      "path": "/tmp/hsm-r33-audit-production.json",
+      "bytes": 310,
+      "sha256": "1880b619f39c3c9cadaba46553ae80b5e4acf05999f2e0fb8a64e47bc5b798dd"
+    }
+  ],
+  "browser": {
+    "report": {
+      "path": "/tmp/hsm-r33-browser-final.json",
+      "bytes": 7789,
+      "sha256": "2e0217e9c4c2f2ace303b8482e0723e661e203acc91de76d2eea2094904aae64"
+    },
+    "stats": {
+      "startTime": "2026-10-23T05:33:00.314Z",
+      "duration": 13603.814999999999,
+      "expected": 3,
+      "skipped": 0,
+      "unexpected": 0,
+      "flaky": 0
+    },
+    "sourceBinding": "Uncommitted local source bytes above, unchanged through normal-hook commit; exact published head reruns in CI",
+    "uiSourceBinding": {
+      "path": "/tmp/hsm-r33-ui-source-manifest.json",
+      "bytes": 2830,
+      "sha256": "c2a3326eb5504ce4a627e39897a45ba39c23509fe4997176349533fdc9857993"
+    },
+    "matrix": {
+      "surfaces": ["admin", "provider"],
+      "languages": ["en", "ar"],
+      "lightWidths": [320, 390, 430, 768, 1024, 1440],
+      "darkDesktop": 1440,
+      "cssLayoutZoomPercent": 200,
+      "mobileDetailWidth": 320,
+      "axeChecks": 4,
+      "axeViolations": 0,
+      "keyboard": ["Enter", "Tab", "Escape", "focus return"]
+    },
+    "screenshots": [
+      {
+        "path": "/tmp/hsm-r33-browser-final-artifacts/r33-financial-operations-f-55310-ccessible-bilingual-layouts-chromium-desktop/admin-ar-1024.png",
+        "bytes": 243720,
+        "sha256": "9cc773f9a46d1565fef39246b025bddaf57be7acb4ad2c4de486cec6d31f3c5b"
+      },
+      {
+        "path": "/tmp/hsm-r33-browser-final-artifacts/r33-financial-operations-f-55310-ccessible-bilingual-layouts-chromium-desktop/admin-ar-1440.png",
+        "bytes": 247533,
+        "sha256": "2fa1394f7d24f9f99b69b0972ff75c4d7d564bf00befda876fec321771b5f91a"
+      },
+      {
+        "path": "/tmp/hsm-r33-browser-final-artifacts/r33-financial-operations-f-55310-ccessible-bilingual-layouts-chromium-desktop/admin-ar-320.png",
+        "bytes": 312071,
+        "sha256": "920b4de7a54fc3f9cc975ac385fd5219c206b9c8a14d145b632bc23b3fb7ed32"
+      },
+      {
+        "path": "/tmp/hsm-r33-browser-final-artifacts/r33-financial-operations-f-55310-ccessible-bilingual-layouts-chromium-desktop/admin-ar-390.png",
+        "bytes": 316727,
+        "sha256": "b700b9f98fd104622c95cf711d48fea13279b8e88ce833a6b4082ad75043efe0"
+      },
+      {
+        "path": "/tmp/hsm-r33-browser-final-artifacts/r33-financial-operations-f-55310-ccessible-bilingual-layouts-chromium-desktop/admin-ar-430.png",
+        "bytes": 312787,
+        "sha256": "f2b8942cfaaabec3fba35a19c42e329395f636a4cdfd44ff935c552e30ba1bdc"
+      },
+      {
+        "path": "/tmp/hsm-r33-browser-final-artifacts/r33-financial-operations-f-55310-ccessible-bilingual-layouts-chromium-desktop/admin-ar-768.png",
+        "bytes": 244776,
+        "sha256": "9d5d291428ed1f86f93ed896bf10658d07de54c7bf4b1d5e09e2069d0708becc"
+      },
+      {
+        "path": "/tmp/hsm-r33-browser-final-artifacts/r33-financial-operations-f-55310-ccessible-bilingual-layouts-chromium-desktop/admin-ar-mobile-detail-320.png",
+        "bytes": 40390,
+        "sha256": "e1af4a83fb0a0c101805ef4c1c1f8b7508f98f6d8e5de56df9b422d4331e61b4"
+      },
+      {
+        "path": "/tmp/hsm-r33-browser-final-artifacts/r33-financial-operations-f-55310-ccessible-bilingual-layouts-chromium-desktop/admin-en-1024.png",
+        "bytes": 337333,
+        "sha256": "1f7f0aa9f4388904f556c7fd54c1689282cf3df51e62f35c1175193091c60a86"
+      },
+      {
+        "path": "/tmp/hsm-r33-browser-final-artifacts/r33-financial-operations-f-55310-ccessible-bilingual-layouts-chromium-desktop/admin-en-1440.png",
+        "bytes": 324727,
+        "sha256": "ab0f06ecea6083341e765b53122ec199753325d7f5f88c543c06d3ae3f1aa8eb"
+      },
+      {
+        "path": "/tmp/hsm-r33-browser-final-artifacts/r33-financial-operations-f-55310-ccessible-bilingual-layouts-chromium-desktop/admin-en-200-percent-1440.png",
+        "bytes": 804756,
+        "sha256": "6435dcd5486114773f23fbec4e47d7610214ad59668d19528b118df91854ec6a"
+      },
+      {
+        "path": "/tmp/hsm-r33-browser-final-artifacts/r33-financial-operations-f-55310-ccessible-bilingual-layouts-chromium-desktop/admin-en-320.png",
+        "bytes": 442241,
+        "sha256": "098fece2c525fae925be5a94d0f5dc54c84e357fde4763390213e0602e6841c7"
+      },
+      {
+        "path": "/tmp/hsm-r33-browser-final-artifacts/r33-financial-operations-f-55310-ccessible-bilingual-layouts-chromium-desktop/admin-en-390.png",
+        "bytes": 443369,
+        "sha256": "e87c24f781af3ff0216eb4c503cf72eba9c430a43cddfaf038affbda411ff3a8"
+      },
+      {
+        "path": "/tmp/hsm-r33-browser-final-artifacts/r33-financial-operations-f-55310-ccessible-bilingual-layouts-chromium-desktop/admin-en-430.png",
+        "bytes": 443100,
+        "sha256": "2ca9d8944781b5ad13250c4220f550b93e88f8e9073dfc819784abf1be9762e3"
+      },
+      {
+        "path": "/tmp/hsm-r33-browser-final-artifacts/r33-financial-operations-f-55310-ccessible-bilingual-layouts-chromium-desktop/admin-en-768.png",
+        "bytes": 342816,
+        "sha256": "313a081b68b0b0e877e0d6e9027a33a402e6b69287e86b7a93a51efdb90ae3fe"
+      },
+      {
+        "path": "/tmp/hsm-r33-browser-final-artifacts/r33-financial-operations-f-55310-ccessible-bilingual-layouts-chromium-desktop/admin-en-dark-1440.png",
+        "bytes": 329492,
+        "sha256": "4ee7f3a6cb19ab3875cd39a0eddeebbf212d5e0aa0689dddecaf82c7632d150b"
+      },
+      {
+        "path": "/tmp/hsm-r33-browser-final-artifacts/r33-financial-operations-f-55310-ccessible-bilingual-layouts-chromium-desktop/admin-en-mobile-detail-320.png",
+        "bytes": 56209,
+        "sha256": "cba9eb6b4ca55dff3f9b9958ec5742c836ce9a3ca66035ac7d2ecabcfafd9de6"
+      },
+      {
+        "path": "/tmp/hsm-r33-browser-final-artifacts/r33-financial-operations-f-a97b6-d-from-unpaid-subscriptions-chromium-desktop/provider-ar-1024.png",
+        "bytes": 73670,
+        "sha256": "5df42d8acb39201920771d4edebce5a51b6605ee56868386144e889b12d534fd"
+      },
+      {
+        "path": "/tmp/hsm-r33-browser-final-artifacts/r33-financial-operations-f-a97b6-d-from-unpaid-subscriptions-chromium-desktop/provider-ar-1440.png",
+        "bytes": 75273,
+        "sha256": "74fb622b7ed0b4150af0c19b50802fa7f0e5502d868e4e76787a5c745cf2423d"
+      },
+      {
+        "path": "/tmp/hsm-r33-browser-final-artifacts/r33-financial-operations-f-a97b6-d-from-unpaid-subscriptions-chromium-desktop/provider-ar-320.png",
+        "bytes": 80075,
+        "sha256": "239605d320de08d2fa4c1b0415b2b483f3f1e9844228e57a35b80d139ef68c2a"
+      },
+      {
+        "path": "/tmp/hsm-r33-browser-final-artifacts/r33-financial-operations-f-a97b6-d-from-unpaid-subscriptions-chromium-desktop/provider-ar-390.png",
+        "bytes": 80098,
+        "sha256": "a1222257a39a758945415464b38e149a29cd394aad76f7d6c788bc935cc592a8"
+      },
+      {
+        "path": "/tmp/hsm-r33-browser-final-artifacts/r33-financial-operations-f-a97b6-d-from-unpaid-subscriptions-chromium-desktop/provider-ar-430.png",
+        "bytes": 77604,
+        "sha256": "f97fd2d565b20f2c61c00a44b10a476261641e7132700bb897ab999338968df5"
+      },
+      {
+        "path": "/tmp/hsm-r33-browser-final-artifacts/r33-financial-operations-f-a97b6-d-from-unpaid-subscriptions-chromium-desktop/provider-ar-768.png",
+        "bytes": 72694,
+        "sha256": "6bb89e8addd394651ef50d9d47d30c06c14b9411c74f8b1acda6bd32d6abd6a1"
+      },
+      {
+        "path": "/tmp/hsm-r33-browser-final-artifacts/r33-financial-operations-f-a97b6-d-from-unpaid-subscriptions-chromium-desktop/provider-ar-mobile-detail-320.png",
+        "bytes": 43783,
+        "sha256": "d110b8f78b6fb08c3d9d107e214b594f2ad28755e1cc0562b3fc1ea6f490a8f2"
+      },
+      {
+        "path": "/tmp/hsm-r33-browser-final-artifacts/r33-financial-operations-f-a97b6-d-from-unpaid-subscriptions-chromium-desktop/provider-en-1024.png",
+        "bytes": 102355,
+        "sha256": "819450b3069e155f124f3c7d0f2cb2aeca1990c501c7004aaf7e43eecd7523db"
+      },
+      {
+        "path": "/tmp/hsm-r33-browser-final-artifacts/r33-financial-operations-f-a97b6-d-from-unpaid-subscriptions-chromium-desktop/provider-en-1440.png",
+        "bytes": 100120,
+        "sha256": "04cba334f8f79df7e65287ced4995defe60768ab352ca0ffc57118340d2c86ff"
+      },
+      {
+        "path": "/tmp/hsm-r33-browser-final-artifacts/r33-financial-operations-f-a97b6-d-from-unpaid-subscriptions-chromium-desktop/provider-en-200-percent-1440.png",
+        "bytes": 241032,
+        "sha256": "9a0876bfe79f84dbcb373ee7fc7cbe37d7b3e572f9676d1127f4d1a2ddf50bd8"
+      },
+      {
+        "path": "/tmp/hsm-r33-browser-final-artifacts/r33-financial-operations-f-a97b6-d-from-unpaid-subscriptions-chromium-desktop/provider-en-320.png",
+        "bytes": 115243,
+        "sha256": "9aa186812a59da8806c0e5623c86a74e836ea1468238de7d4281c0aae15c5f3f"
+      },
+      {
+        "path": "/tmp/hsm-r33-browser-final-artifacts/r33-financial-operations-f-a97b6-d-from-unpaid-subscriptions-chromium-desktop/provider-en-390.png",
+        "bytes": 114373,
+        "sha256": "035e21c9be1a22a6af31da70dc9ec31527a2adc34b5cad2074bcf89d052f7d82"
+      },
+      {
+        "path": "/tmp/hsm-r33-browser-final-artifacts/r33-financial-operations-f-a97b6-d-from-unpaid-subscriptions-chromium-desktop/provider-en-430.png",
+        "bytes": 114294,
+        "sha256": "7c30f96f376c41be06fd4a7e3670b1f5f43f9c6a712099ba5474be212c4acaac"
+      },
+      {
+        "path": "/tmp/hsm-r33-browser-final-artifacts/r33-financial-operations-f-a97b6-d-from-unpaid-subscriptions-chromium-desktop/provider-en-768.png",
+        "bytes": 105376,
+        "sha256": "1ea0bc25c97961e7684a48b234a3de04543f87eb4230833093ff7e8e77139f9b"
+      },
+      {
+        "path": "/tmp/hsm-r33-browser-final-artifacts/r33-financial-operations-f-a97b6-d-from-unpaid-subscriptions-chromium-desktop/provider-en-dark-1440.png",
+        "bytes": 100890,
+        "sha256": "8d16c26b8b2912fef2ddfeb6f1ed3f762e325bf30569d34eab8c6d8f70667a97"
+      },
+      {
+        "path": "/tmp/hsm-r33-browser-final-artifacts/r33-financial-operations-f-a97b6-d-from-unpaid-subscriptions-chromium-desktop/provider-en-mobile-detail-320.png",
+        "bytes": 60887,
+        "sha256": "316befc172671aa44251484b2cf2ba32ac2f55768b6202483761383310fbbeb5"
+      }
+    ],
+    "wireArtifacts": [
+      {
+        "path": "/tmp/hsm-r33-browser-final-artifacts/r33-financial-operations-f-55310-ccessible-bilingual-layouts-chromium-desktop/admin-detail.wire.json",
+        "bytes": 1390,
+        "sha256": "80146e8a87b567d0b67c096ac7d87d9ef7d3e0be16242b5fbbcb27f89ca284f9"
+      },
+      {
+        "path": "/tmp/hsm-r33-browser-final-artifacts/r33-financial-operations-f-55310-ccessible-bilingual-layouts-chromium-desktop/admin-reconciliation.wire.json",
+        "bytes": 4111,
+        "sha256": "85051b3843a1f5a0e9cab3c5b029e09d9d2410e8cdb0aa937b3ea68b356a59bb"
+      },
+      {
+        "path": "/tmp/hsm-r33-browser-final-artifacts/r33-financial-operations-f-55310-ccessible-bilingual-layouts-chromium-desktop/admin-records.wire.json",
+        "bytes": 14609,
+        "sha256": "59d1f94faade7e77a447b2685c56dc76d6cdbf048f7fcd27614de91f42da5ca5"
+      },
+      {
+        "path": "/tmp/hsm-r33-browser-final-artifacts/r33-financial-operations-f-55310-ccessible-bilingual-layouts-chromium-desktop/admin-summary.wire.json",
+        "bytes": 1530,
+        "sha256": "e06a76651132401e9417f0d5e545acdf0780cfde39be8cd015890cc43e73c816"
+      },
+      {
+        "path": "/tmp/hsm-r33-browser-final-artifacts/r33-financial-operations-f-a97b6-d-from-unpaid-subscriptions-chromium-desktop/provider-paid-subscription.wire.json",
+        "bytes": 1493,
+        "sha256": "25dfde43313268a65673973535646c9de01a3e33114faaacc5b94167c0c9c58c"
+      },
+      {
+        "path": "/tmp/hsm-r33-browser-final-artifacts/r33-financial-operations-f-a97b6-d-from-unpaid-subscriptions-chromium-desktop/provider-records.wire.json",
+        "bytes": 13880,
+        "sha256": "327f5a05a99fc13f684a23ed4e4acdfc3dd7fcd3e8df2a6914f7a5ed74607eb3"
+      },
+      {
+        "path": "/tmp/hsm-r33-browser-final-artifacts/r33-financial-operations-f-a97b6-d-from-unpaid-subscriptions-chromium-desktop/provider-unpaid-subscription.wire.json",
+        "bytes": 1212,
+        "sha256": "0c0cd01e29521c5002bb503c9c6a54303ab568f8ffbe576bd9143988680b5466"
+      }
+    ],
+    "wireVerification": "Seven actual read-response documents passed WIRE_CONSISTENCY_ONLY validation. Raw documents are ephemeral and excluded from uploaded artifacts.",
+    "humanInspection": {
+      "acceptedRun": true,
+      "inspectedAtUtc": "2026-10-23T05:36:51.829384+00:00",
+      "root": {
+        "reviewer": "/root",
+        "inspected": [
+          {
+            "path": "/tmp/hsm-r33-browser-final-artifacts/r33-financial-operations-f-55310-ccessible-bilingual-layouts-chromium-desktop/admin-ar-1440.png",
+            "sha256": "2fa1394f7d24f9f99b69b0972ff75c4d7d564bf00befda876fec321771b5f91a"
+          },
+          {
+            "path": "/tmp/hsm-r33-browser-final-artifacts/r33-financial-operations-f-55310-ccessible-bilingual-layouts-chromium-desktop/admin-en-mobile-detail-320.png",
+            "sha256": "cba9eb6b4ca55dff3f9b9958ec5742c836ce9a3ca66035ac7d2ecabcfafd9de6"
+          },
+          {
+            "path": "/tmp/hsm-r33-browser-final-artifacts/r33-financial-operations-f-55310-ccessible-bilingual-layouts-chromium-desktop/admin-ar-mobile-detail-320.png",
+            "sha256": "e1af4a83fb0a0c101805ef4c1c1f8b7508f98f6d8e5de56df9b422d4331e61b4"
+          },
+          {
+            "path": "/tmp/hsm-r33-browser-final-artifacts/r33-financial-operations-f-a97b6-d-from-unpaid-subscriptions-chromium-desktop/provider-ar-390.png",
+            "sha256": "a1222257a39a758945415464b38e149a29cd394aad76f7d6c788bc935cc592a8"
+          },
+          {
+            "path": "/tmp/hsm-r33-browser-final-artifacts/r33-financial-operations-f-a97b6-d-from-unpaid-subscriptions-chromium-desktop/provider-en-768.png",
+            "sha256": "1ea0bc25c97961e7684a48b234a3de04543f87eb4230833093ff7e8e77139f9b"
+          }
+        ],
+        "findings": [
+          "Arabic admin desktop hierarchy, per-currency totals and unavailable reconciliation copy are readable.",
+          "English and Arabic 320px detail headings, exact amounts and bounded internal scroll are visible.",
+          "Arabic provider 390px cards show localized awaiting-payment and exact large confirmed amount.",
+          "English provider 768px table distinguishes unavailable unpaid amount from confirmed paid period; UUID wrapping is intentional."
+        ],
+        "visualBlockers": []
+      },
+      "independentReviewer": {
+        "schemaVersion": 1,
+        "inspector": "/root/gate_audit",
+        "inspectedAt": "2026-10-23T05:35:38.945269+00:00",
+        "scope": "Final local browser run and direct representative screenshot inspection only",
+        "acceptedRun": true,
+        "runReport": {
+          "path": "/tmp/hsm-r33-browser-final.json",
+          "sha256": "2e0217e9c4c2f2ace303b8482e0723e661e203acc91de76d2eea2094904aae64",
+          "startTime": "2026-10-23T05:33:00.314Z",
+          "durationMs": 13603.814999999999,
+          "expected": 3,
+          "unexpected": 0,
+          "skipped": 0,
+          "flaky": 0,
+          "runnerErrorCount": 0,
+          "tests": [
+            {
+              "title": "admin real reports retain exact currency values, bounded export and accessible bilingual layouts",
+              "ok": true,
+              "status": "expected",
+              "expectedStatus": "passed",
+              "results": [
+                {
+                  "status": "passed",
+                  "retry": 0,
+                  "durationMs": 6267,
+                  "errorCount": 0
+                }
+              ]
+            },
+            {
+              "title": "provider real history isolates ownership and distinguishes paid from unpaid subscriptions",
+              "ok": true,
+              "status": "expected",
+              "expectedStatus": "passed",
+              "results": [
+                {
+                  "status": "passed",
+                  "retry": 0,
+                  "durationMs": 3632,
+                  "errorCount": 0
+                }
+              ]
+            },
+            {
+              "title": "revoking current permission hides cached values and a fresh OTP login remains denied",
+              "ok": true,
+              "status": "expected",
+              "expectedStatus": "passed",
+              "results": [
+                {
+                  "status": "passed",
+                  "retry": 0,
+                  "durationMs": 1920,
+                  "errorCount": 0
+                }
+              ]
+            }
+          ]
+        },
+        "artifactRoot": "/tmp/hsm-r33-browser-final-artifacts",
+        "availableArtifactCounts": {
+          "png": 32,
+          "wireJson": 7
+        },
+        "inspectedCount": 12,
+        "inspectedImages": [
+          {
+            "path": "/tmp/hsm-r33-browser-final-artifacts/r33-financial-operations-f-55310-ccessible-bilingual-layouts-chromium-desktop/admin-en-320.png",
+            "sha256": "098fece2c525fae925be5a94d0f5dc54c84e357fde4763390213e0602e6841c7",
+            "imageWidth": 320,
+            "imageHeight": 8144,
+            "surface": "Admin",
+            "language": "en",
+            "viewportWidth": 320,
+            "theme": "light",
+            "cssZoomPercent": 100,
+            "view": "list",
+            "inspectedDirectlyWith": "view_image(detail=original)",
+            "result": "NO_VISUAL_BLOCKER_OBSERVED",
+            "finding": "Single-column cards, wrapped identifiers and visible controls fit the narrow page. Confirmed currency totals remain separate; unavailable reconciliation is clearly stated."
+          },
+          {
+            "path": "/tmp/hsm-r33-browser-final-artifacts/r33-financial-operations-f-55310-ccessible-bilingual-layouts-chromium-desktop/admin-ar-320.png",
+            "sha256": "920b4de7a54fc3f9cc975ac385fd5219c206b9c8a14d145b632bc23b3fb7ed32",
+            "imageWidth": 320,
+            "imageHeight": 7695,
+            "surface": "Admin",
+            "language": "ar",
+            "viewportWidth": 320,
+            "theme": "light",
+            "cssZoomPercent": 100,
+            "view": "list",
+            "inspectedDirectlyWith": "view_image(detail=original)",
+            "result": "NO_VISUAL_BLOCKER_OBSERVED",
+            "finding": "Arabic right-to-left headings, labels, dates and digits are readable; currency codes and record identifiers remain distinguishable. Cards and controls stay within the page width."
+          },
+          {
+            "path": "/tmp/hsm-r33-browser-final-artifacts/r33-financial-operations-f-a97b6-d-from-unpaid-subscriptions-chromium-desktop/provider-en-320.png",
+            "sha256": "9aa186812a59da8806c0e5623c86a74e836ea1468238de7d4281c0aae15c5f3f",
+            "imageWidth": 320,
+            "imageHeight": 2048,
+            "surface": "Provider",
+            "language": "en",
+            "viewportWidth": 320,
+            "theme": "light",
+            "cssZoomPercent": 100,
+            "view": "list",
+            "inspectedDirectlyWith": "view_image(detail=original)",
+            "result": "NO_VISUAL_BLOCKER_OBSERVED",
+            "finding": "Awaiting payment is localized, with amount unavailable and not confirmed distinct from the active confirmed subscription. The exact large integer remains readable in its card."
+          },
+          {
+            "path": "/tmp/hsm-r33-browser-final-artifacts/r33-financial-operations-f-a97b6-d-from-unpaid-subscriptions-chromium-desktop/provider-ar-320.png",
+            "sha256": "239605d320de08d2fa4c1b0415b2b483f3f1e9844228e57a35b80d139ef68c2a",
+            "imageWidth": 320,
+            "imageHeight": 1921,
+            "surface": "Provider",
+            "language": "ar",
+            "viewportWidth": 320,
+            "theme": "light",
+            "cssZoomPercent": 100,
+            "view": "list",
+            "inspectedDirectlyWith": "view_image(detail=original)",
+            "result": "NO_VISUAL_BLOCKER_OBSERVED",
+            "finding": "The pending state renders as بانتظار الدفع, not its raw enum. Right-to-left cards distinguish unavailable amount/unconfirmed state from the confirmed period and preserve Arabic numeric output."
+          },
+          {
+            "path": "/tmp/hsm-r33-browser-final-artifacts/r33-financial-operations-f-55310-ccessible-bilingual-layouts-chromium-desktop/admin-en-mobile-detail-320.png",
+            "sha256": "cba9eb6b4ca55dff3f9b9958ec5742c836ce9a3ca66035ac7d2ecabcfafd9de6",
+            "imageWidth": 320,
+            "imageHeight": 900,
+            "surface": "Admin",
+            "language": "en",
+            "viewportWidth": 320,
+            "theme": "light",
+            "cssZoomPercent": 100,
+            "view": "detail",
+            "inspectedDirectlyWith": "view_image(detail=original)",
+            "result": "NO_VISUAL_BLOCKER_OBSERVED",
+            "finding": "The title and description are visible at the top. Long references wrap within the modal. The viewport bounds the dialog and lower fields continue in its intended vertical scroll area."
+          },
+          {
+            "path": "/tmp/hsm-r33-browser-final-artifacts/r33-financial-operations-f-55310-ccessible-bilingual-layouts-chromium-desktop/admin-ar-mobile-detail-320.png",
+            "sha256": "e1af4a83fb0a0c101805ef4c1c1f8b7508f98f6d8e5de56df9b422d4331e61b4",
+            "imageWidth": 320,
+            "imageHeight": 900,
+            "surface": "Admin",
+            "language": "ar",
+            "viewportWidth": 320,
+            "theme": "light",
+            "cssZoomPercent": 100,
+            "view": "detail",
+            "inspectedDirectlyWith": "view_image(detail=original)",
+            "result": "NO_VISUAL_BLOCKER_OBSERVED",
+            "finding": "The title تفاصيل السجل المالي and description are visibly present at the top. Arabic labels and Latin identifiers remain separated and wrap within the dialog; lower fields use internal scrolling."
+          },
+          {
+            "path": "/tmp/hsm-r33-browser-final-artifacts/r33-financial-operations-f-a97b6-d-from-unpaid-subscriptions-chromium-desktop/provider-en-mobile-detail-320.png",
+            "sha256": "316befc172671aa44251484b2cf2ba32ac2f55768b6202483761383310fbbeb5",
+            "imageWidth": 320,
+            "imageHeight": 900,
+            "surface": "Provider",
+            "language": "en",
+            "viewportWidth": 320,
+            "theme": "light",
+            "cssZoomPercent": 100,
+            "view": "detail",
+            "inspectedDirectlyWith": "view_image(detail=original)",
+            "result": "NO_VISUAL_BLOCKER_OBSERVED",
+            "finding": "The title is visible, and 9,007,199,254,740,993 XTS is shown with confirmed subscription-period meaning. Long references wrap; content beyond the lower edge uses the bounded internal scroll."
+          },
+          {
+            "path": "/tmp/hsm-r33-browser-final-artifacts/r33-financial-operations-f-a97b6-d-from-unpaid-subscriptions-chromium-desktop/provider-ar-mobile-detail-320.png",
+            "sha256": "d110b8f78b6fb08c3d9d107e214b594f2ad28755e1cc0562b3fc1ea6f490a8f2",
+            "imageWidth": 320,
+            "imageHeight": 900,
+            "surface": "Provider",
+            "language": "ar",
+            "viewportWidth": 320,
+            "theme": "light",
+            "cssZoomPercent": 100,
+            "view": "detail",
+            "inspectedDirectlyWith": "view_image(detail=original)",
+            "result": "NO_VISUAL_BLOCKER_OBSERVED",
+            "finding": "The Arabic title is visible. Exact Arabic digits, XTS and confirmed-period labels fit the dialog; reference identifiers wrap without overlapping labels."
+          },
+          {
+            "path": "/tmp/hsm-r33-browser-final-artifacts/r33-financial-operations-f-55310-ccessible-bilingual-layouts-chromium-desktop/admin-en-dark-1440.png",
+            "sha256": "4ee7f3a6cb19ab3875cd39a0eddeebbf212d5e0aa0689dddecaf82c7632d150b",
+            "imageWidth": 1440,
+            "imageHeight": 2971,
+            "surface": "Admin",
+            "language": "en",
+            "viewportWidth": 1440,
+            "theme": "dark",
+            "cssZoomPercent": 100,
+            "view": "list",
+            "inspectedDirectlyWith": "view_image(detail=original)",
+            "result": "NO_VISUAL_BLOCKER_OBSERVED",
+            "finding": "Headings, two currency cards, unavailable notices, financial table, action controls and exception cards are visually readable on the dark background without observed overlap."
+          },
+          {
+            "path": "/tmp/hsm-r33-browser-final-artifacts/r33-financial-operations-f-a97b6-d-from-unpaid-subscriptions-chromium-desktop/provider-en-dark-1440.png",
+            "sha256": "8d16c26b8b2912fef2ddfeb6f1ed3f762e325bf30569d34eab8c6d8f70667a97",
+            "imageWidth": 1440,
+            "imageHeight": 969,
+            "surface": "Provider",
+            "language": "en",
+            "viewportWidth": 1440,
+            "theme": "dark",
+            "cssZoomPercent": 100,
+            "view": "list",
+            "inspectedDirectlyWith": "view_image(detail=original)",
+            "result": "NO_VISUAL_BLOCKER_OBSERVED",
+            "finding": "The dark table distinguishes the localized awaiting-payment row from the active confirmed period. Large exact values, dates and both detail controls are visible."
+          },
+          {
+            "path": "/tmp/hsm-r33-browser-final-artifacts/r33-financial-operations-f-55310-ccessible-bilingual-layouts-chromium-desktop/admin-en-200-percent-1440.png",
+            "sha256": "6435dcd5486114773f23fbec4e47d7610214ad59668d19528b118df91854ec6a",
+            "imageWidth": 1440,
+            "imageHeight": 7041,
+            "surface": "Admin",
+            "language": "en",
+            "viewportWidth": 1440,
+            "theme": "light",
+            "cssZoomPercent": 200,
+            "view": "list",
+            "inspectedDirectlyWith": "view_image(detail=original)",
+            "result": "NO_VISUAL_BLOCKER_OBSERVED",
+            "finding": "Enlarged text and controls remain readable. The visible state fits the table columns and detail controls; long identifiers and text wrap. This is CSS layout zoom, not native browser zoom."
+          },
+          {
+            "path": "/tmp/hsm-r33-browser-final-artifacts/r33-financial-operations-f-a97b6-d-from-unpaid-subscriptions-chromium-desktop/provider-en-200-percent-1440.png",
+            "sha256": "9a0876bfe79f84dbcb373ee7fc7cbe37d7b3e572f9676d1127f4d1a2ddf50bd8",
+            "imageWidth": 1440,
+            "imageHeight": 2276,
+            "surface": "Provider",
+            "language": "en",
+            "viewportWidth": 1440,
+            "theme": "light",
+            "cssZoomPercent": 200,
+            "view": "list",
+            "inspectedDirectlyWith": "view_image(detail=original)",
+            "result": "NO_VISUAL_BLOCKER_OBSERVED",
+            "finding": "Both localized states, exact large amount and rightmost detail buttons are visible in the final capture. The earlier partially hidden action-column observation is not present in this final localized build. This is CSS layout zoom."
+          }
+        ],
+        "result": "PASS_NO_VISUAL_BLOCKER_OBSERVED",
+        "mustFixFindings": [],
+        "observations": [
+          "Final English and Arabic provider screenshots show localized pending-payment labels.",
+          "The final 200% CSS zoom screenshots show detail action buttons visibly; prior-build clipping concerns are not attributed to these final images.",
+          "Mobile dialogs intentionally scroll internally; screenshots do not show all lower fields or the Close control simultaneously. The accepted browser scenarios separately verify Escape and focus restoration."
+        ],
+        "limitations": [
+          "Representative inspection covers 12 of 32 PNGs; the coordinator is reviewing complementary captures.",
+          "This is local synthetic-data evidence and does not assert combined-wave, payment-provider, hosted-release or production acceptance.",
+          "Visual readability observations are not a measured contrast-ratio certification.",
+          "CSS layout zoom is not claimed as native browser zoom."
+        ],
+        "imageEdits": false,
+        "repositoryWrites": false
+      },
+      "scope": "Actual human inspection is the enumerated subset; automated geometry and four axe checks cover the executed matrix. CSS layout zoom is described explicitly."
+    },
+    "failedAttempts": [
+      {
+        "artifact": {
+          "path": "/tmp/hsm-r33-browser-attempt-environment-ca.json",
+          "bytes": 13969,
+          "sha256": "648c3c82f8ebc7fde23dbc210c2cd4cec80d08663cd8cf4b51cdcf0c99a57977"
+        },
+        "stats": {
+          "startTime": "2026-10-23T05:06:03.180Z",
+          "duration": 187860.76499999998,
+          "expected": 0,
+          "skipped": 0,
+          "unexpected": 3,
+          "flaky": 0
+        },
+        "accepted": false
+      },
+      {
+        "artifact": {
+          "path": "/tmp/hsm-r33-browser-attempt-reconnect-race.json",
+          "bytes": 10793,
+          "sha256": "4936f27cbde6884cd3379efe8327f5004c5cdfdd6a73e4346b6afa5351914c79"
+        },
+        "stats": {
+          "startTime": "2026-10-23T05:22:09.431Z",
+          "duration": 22846.471,
+          "expected": 2,
+          "skipped": 0,
+          "unexpected": 1,
+          "flaky": 0
+        },
+        "accepted": false
+      },
+      {
+        "artifact": {
+          "path": "/tmp/hsm-r33-browser-attempt-sandbox-blocked.json",
+          "bytes": 8742,
+          "sha256": "54fe08b876e6b79e366f0475da8568fe4ef890d1439e08be08c30d4e4d88d97e"
+        },
+        "stats": {
+          "startTime": "2026-10-23T05:05:19.052Z",
+          "duration": 925.9190000000001,
+          "expected": 0,
+          "skipped": 2,
+          "unexpected": 1,
+          "flaky": 0
+        },
+        "accepted": false
+      },
+      {
+        "artifact": {
+          "path": "/tmp/hsm-r33-browser-attempt-selectors.json",
+          "bytes": 11515,
+          "sha256": "25ce0bafb624ccec013af274443a3350940796da3f8725737872aba15a0fd221"
+        },
+        "stats": {
+          "startTime": "2026-10-23T05:16:58.567Z",
+          "duration": 128385.466,
+          "expected": 1,
+          "skipped": 0,
+          "unexpected": 2,
+          "flaky": 0
+        },
+        "accepted": false
+      },
+      {
+        "artifact": {
+          "path": "/tmp/hsm-r33-browser-attempt-stale-artifact.json",
+          "bytes": 15367,
+          "sha256": "20534ff0f0713bf922bc33851e90d066fe3d6044ac9dfcb84e6e7c049d889003"
+        },
+        "stats": {
+          "startTime": "2026-10-23T05:27:18.063Z",
+          "duration": 22804.408,
+          "expected": 2,
+          "skipped": 0,
+          "unexpected": 1,
+          "flaky": 0
+        },
+        "accepted": false
+      }
+    ],
+    "ciArtifacts": "Only synthetic PNGs and sanitized test counts; current final-head IDs/digests are in the PR body"
+  },
+  "limits": [
+    "R30 receipt review, R31 My Plan, R32 refund commands and R34 reconciliation runtime remain unavailable pending coordinated integration",
+    "Settlement authority and currency scale/payout policy remain unresolved; exact stored minor units only",
+    "No vendor-sandbox, hosted, policy, integrated-wave or release acceptance is inferred",
+    "No merge, deployment, live money, real account grant, dependency update or security-budget increase"
+  ]
+}

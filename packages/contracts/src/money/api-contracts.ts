@@ -11,6 +11,8 @@ export const MONEY_API_CAPABILITIES = [
   'money:refund:request:self',
   'money:review:read',
   'money:receipt:review',
+  'money:receipt:view',
+  'money:receipt:settlement',
   'money:refund:review',
 ] as const;
 export type MoneyApiCapability = (typeof MONEY_API_CAPABILITIES)[number];

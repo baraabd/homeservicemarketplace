@@ -18,8 +18,26 @@ const HomePage = lazyPage(() =>
 const ProviderPage = lazyPage(() =>
   import('./pages/ProviderPage').then((module) => ({ default: module.ProviderPage })),
 );
+const MyPlanPage = lazyPage(
+  () => import('./features/subscriptions').then((module) => ({ default: module.MyPlanScreen })),
+  { standalone: true },
+);
 const AdminPage = lazyPage(
   () => import('./pages/AdminPage').then((module) => ({ default: module.AdminPage })),
+  { standalone: true },
+);
+const AdminFinancialOperations = lazyPage(
+  () =>
+    import('./features/financial-operations').then((module) => ({
+      default: module.AdminFinancialOperations,
+    })),
+  { standalone: true },
+);
+const ProviderFinancialHistory = lazyPage(
+  () =>
+    import('./features/financial-operations').then((module) => ({
+      default: module.ProviderFinancialHistory,
+    })),
   { standalone: true },
 );
 const LoginPage = lazyPage(() =>
@@ -60,6 +78,11 @@ const ProviderVerificationPage = lazyPage(() =>
     default: module.ProviderVerificationPage,
   })),
 );
+const ManualPaymentPage = lazyPage(() =>
+  import('./features/manual-payments/ManualPaymentScreen').then((module) => ({
+    default: module.ManualPaymentPage,
+  })),
+);
 
 // ─── Router ───────────────────────────────────────────────────────────────────
 //
@@ -74,10 +97,19 @@ export const router = createBrowserRouter([
   // A participant may need help with a past booking even when work access is restricted.
   // Authentication is required here; current booking ownership is enforced by the API.
   { Component: RequireAuth, children: [{ path: 'disputes/*', Component: DisputesPage }] },
+  // Subscription history grants no work access. The API freshly verifies
+  // the provider role, money permission and each row's ownership.
+  {
+    Component: RequireAuth,
+    children: [{ path: 'provider/financial-history', Component: ProviderFinancialHistory }],
+  },
   // ── Admin (full-width, no phone container, role-gated) ───────────────────
   {
     Component: RequireAdmin,
-    children: [{ path: 'admin/*', Component: AdminPage }],
+    children: [
+      { path: 'admin/financial-operations', Component: AdminFinancialOperations },
+      { path: 'admin/*', Component: AdminPage },
+    ],
   },
 
   {
@@ -115,6 +147,9 @@ export const router = createBrowserRouter([
           // Applicants must be able to provide identity evidence before the
           // workspace becomes active. The API owns eligibility and actions.
           { path: 'provider/verification', Component: ProviderVerificationPage },
+          // Payment ownership, receipt access and available actions are checked
+          // by the API independently of current provider workspace access.
+          { path: 'provider/manual-payments/:paymentIntentId', Component: ManualPaymentPage },
           // Sprint 9B.16 — the V2 onboarding surface. Full-screen, so it is a
           // ROUTE rather than a tab inside ProviderApp: the task the provider
           // is on has to survive a reload and a login round-trip, and tab
@@ -149,6 +184,9 @@ export const router = createBrowserRouter([
           // component state survives neither a reload nor a login round-trip,
           // and cannot be linked to at all. Kept as a splat rather than
           // spelled out here so the workspace stays one mountable unit.
+          // Subscription billing stays separate from verification/work-access
+          // routing. The real money API enforces current provider permissions.
+          { path: 'provider/my-plan', Component: MyPlanPage },
           { path: 'provider/*', Component: ProviderPage },
         ],
       },

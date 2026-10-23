@@ -470,3 +470,39 @@ The corrected-tree verification uses a complete private copy of the reported
 tracked tree with only these three leased file changes overlaid. It creates
 no source commit or Git ref and cannot stand in for the coordinator's final
 commit-bound scan. Final remote CI remains an acceptance requirement.
+
+## 14. PR183 R36 recovery-inventory prose (2026-10-23)
+
+CI run `39863810716`, job `120122846166`, reported one `generic-api-key`
+finding in both its historical scan and tracked-source scan. The exact
+historical fingerprint is:
+
+`6c7aac2ea68ee4943d60b0db3be33012d572ac8d:docs/production-readiness/post-r18/gates/g2/prompts/R36.md:generic-api-key:72`
+
+The Codex coordinator reviewed that complete requirement at its introducing
+commit and the current source. It describes recovery inventory and build
+artifact names, with no assigned credential or runtime value. The prompt's
+recorded source provenance and surrounding recovery requirements confirm its
+documentation purpose. This is an agent classification under the owner's PR
+repair request, not independent human security approval or a credential-store
+audit. Verdict: one ordinary-prose false positive; rotation does not apply.
+
+Only this exact historical fingerprint is added; all 26 earlier entries remain
+unchanged. The current prompt changes one space into a Markdown continuation
+newline. Its normalized text is identical, and PROMPT_PROVENANCE.md records the
+new retained-file digest. No scanner rule, scan range, blocking status or path
+exclusion changes. A new occurrence outside the exact historical fingerprint
+continues to fail. Review/remove this entry using section 5 when its originating
+commit is no longer reachable and at each release review.
+
+Verification used Gitleaks 8.24.3 from the archive matching the workflow's
+pinned SHA-256 `9991e0b2903da4c8f6122b5c3186448b927a5da4deef1fe45271c3793f4ee29c`.
+The unchanged first-parent/non-merge PR range from `3139cafe` to `7843ed58`
+scanned three commits and 687,365 bytes, returning exactly that one finding
+with exit 2 before correction, then zero findings and exit 0 after the exact
+fingerprint. With the updated baseline, two freshly generated canaries in a
+separate temporary repository were both detected (`generic-api-key` and
+`github-pat`, exit 2). Canary values were never printed or committed here;
+their temporary repository was removed. All seven existing tracked-tree scanner
+policy tests also passed. Final corrected-commit tree scanning and exact-head
+CI remain required; the earlier failed run is retained.

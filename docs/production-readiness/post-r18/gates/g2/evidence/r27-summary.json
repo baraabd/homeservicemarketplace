@@ -1,0 +1,68 @@
+{
+  "schemaVersion": 1,
+  "sourceSha": "72b4aaeb0a71d806b7fca7363dd9ca59bbcee644",
+  "treeSha": "43e9c6a4e58cfb934b12789feeb38b588e1cb7c6",
+  "verified": true,
+  "runId": 39870749808,
+  "runUrl": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39870749808",
+  "comparisonPassed": true,
+  "originalBudgetsPassed": true,
+  "budgetChecks": {
+    "passed": 52,
+    "failed": 0,
+    "authority": "Original budget file and comparator unchanged; proposed budget ownership status is preserved."
+  },
+  "artifacts": {
+    "repair-baseline": {
+      "artifactId": 12467160085,
+      "runId": 39870749808,
+      "zipSha256": "32b7fe3f88530531f61be3fa5f4918affac3a0b3ea84aee8fcbc9e763593a906",
+      "zipDigestVerified": true
+    },
+    "acceptance": {
+      "artifactId": 12467045827,
+      "runId": 39870749808,
+      "zipSha256": "8271427f7d708d2ab5d313deebc0548ef7ce31e94156cf0f9582c8c21a1af361",
+      "zipDigestVerified": true
+    },
+    "candidate": {
+      "artifactId": 12466636431,
+      "runId": 39870749808,
+      "zipSha256": "12bfdd8929caac4f423fa4c47cc7fe57536ca73b7e81b0eed69f2d164af0c4d4",
+      "zipDigestVerified": true
+    },
+    "baseline": {
+      "artifactId": 12466038443,
+      "runId": 39870749808,
+      "zipSha256": "339083b8fdcc8c4747e160a2622cfcec7ee695f6d6ff51951c821728e3cf95ea",
+      "zipDigestVerified": true
+    }
+  },
+  "runtimeSources": {
+    "baseline": "96e92825f9b65cf124317f43b55ce42fc97f5b49",
+    "repair-baseline": "3139cafea088c9c5c44182c2e5f0a17777af021d",
+    "candidate": "72b4aaeb0a71d806b7fca7363dd9ca59bbcee644"
+  },
+  "measurementHarnessCommit": "72b4aaeb0a71d806b7fca7363dd9ca59bbcee644",
+  "lockfileSha256": "38c763b2348edacd22c88f61d7efbae67455ca92e5fb23320e3a5543e0a9d7c4",
+  "browserMatrix": {
+    "status": "OBSERVED_COMPLETE_MATRIX",
+    "missing": []
+  },
+  "comparabilityWarnings": [
+    "CPU model mismatch among declared core/browser hosts (baseline: AMD EPYC 9V74 80-Core Processor; candidate: AMD EPYC 7763 64-Core Processor). Source identities were validated separately. All boot, browser, query and workload timing deltas are hardware-confounded; do not interpret them as causal implementation effects."
+  ],
+  "provenanceWarnings": [],
+  "limits": [
+    "Same harness and declared dataset; separate hosts, shared-VM contention and run times remain potential confounders even when CPU models match. No production capacity or release acceptance claim.",
+    "Boot/browser statistics use recorded observations only. Query/workload statistics are retained summaries, not reconstructed raw samples.",
+    "p95 omitted below 20 observations; p99 omitted below 100. Reportable tails are empirical, not production SLO confidence.",
+    "Missing browser locale, viewport, mode or repetitions remain pending; screenshots alone do not complete a measurement cell.",
+    "A missing or null metric is unknown; zero baseline has no percentage delta. Build time is not a page metric."
+  ],
+  "independentVerification": "All four ZIP digests verified. Every core report source/tree/harness/lock checked; local unchanged budget and comparison CLIs plus exact-source postcondition passed. CI comparison JSON and full budget text exactly match independent local results.",
+  "providerBookingStatements": {
+    "base": 7,
+    "amplified": 7
+  }
+}

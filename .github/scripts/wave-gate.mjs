@@ -22,6 +22,8 @@ const safe = (p) =>
 const list = (v) => (Array.isArray(v) ? v : []);
 
 export function waveGateProblems(gate, wave, registry) {
+  if (gate?.gateId === 'G3' || wave?.wave === 4 || wave?.startGate === 'G3')
+    return g3WaveGateProblems(gate, wave, registry);
   if (gate?.gateId === 'G2' || wave?.wave === 3 || wave?.startGate === 'G2')
     return g2WaveGateProblems(gate, wave, registry);
   const errors = [];
@@ -148,6 +150,345 @@ export function waveGateProblems(gate, wave, registry) {
     errors.push('start requires accepted G1');
   if (wave?.status === 'BLOCKED' && startable.length)
     errors.push('blocked wave cannot have startable lanes');
+  return errors;
+}
+
+// The future gate is deliberately separate from the published G1/G2 contracts.
+// A blocked plan is valid without a fabricated candidate; it grants no start.
+export const G3_REQUIRED_EVIDENCE = Object.freeze([
+  'combined-wave3-checks',
+  'r29-real-stripe-sandbox',
+  'r30-real-manual-review',
+  'r31-atomic-subscription-entitlements',
+  'r32-refund-ambiguity-recovery',
+  'r33-financial-operations',
+  'integrated-confirmation-activation-refund-outbox',
+]);
+const G3_SPRINTS = ['R29', 'R30', 'R31', 'R32', 'R33'];
+const G3_CHECKS = [
+  'CI gate',
+  'Analyze JavaScript/TypeScript',
+  'Production governance',
+  'R18 functional completion acceptance',
+  'R25 real replicas and recovery',
+  'R27 comparable measurements and unchanged budgets',
+];
+const G3_PARTICIPANTS = ['stripe', 'manual', 'activation', 'refund', 'finance-read'];
+const G3_BOUNDARIES = [
+  'route-handler-discovery',
+  'atomic-rollback',
+  'retry-concurrency',
+  'post-commit-outbox',
+];
+const G4_JOIN = ['R34', 'R35', 'R36', 'R37'];
+const BASE = 'docs/production-readiness/post-r18/';
+const fullSha = (value) => typeof value === 'string' && /^(?!0{40}$)[a-f0-9]{40}$/u.test(value);
+const digest = (value) => typeof value === 'string' && /^[a-f0-9]{64}$/u.test(value);
+const positiveId = (value) => Number.isSafeInteger(value) && value > 0;
+const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+
+function g3WaveGateProblems(gate, wave, registry) {
+  const errors = [];
+  const require = (condition, message) => {
+    if (!condition) errors.push(message);
+  };
+  require(record(gate) && gate.schemaVersion === 1 && gate.gateId === 'G3', 'invalid G3 record');
+  require(record(wave) &&
+    wave.schemaVersion === 1 &&
+    wave.wave === 4 &&
+    wave.startGate === 'G3', 'invalid Wave 4 manifest: G2 cannot release Wave 4');
+  if (!record(gate) || !record(wave)) return errors;
+  require(['BLOCKED', 'ACCEPTED'].includes(gate.decision), 'unsupported G3 decision');
+  require(['BLOCKED', 'READY_TO_START'].includes(wave.status), 'unsupported Wave 4 status');
+  require(nonempty(gate.authority), 'G3 coordinator identity is required');
+  require(registry?.gates?.G3 === `${BASE}gates/g3/SOURCE_MANIFEST.json` &&
+    registry?.waveManifests?.['4'] === `${BASE}waves/wave-04.plan.json` &&
+    wave.decisionRecord === registry.gates.G3, 'G3 records must use the canonical paths');
+  require(!Object.hasOwn(gate, 'gate') &&
+    !Object.hasOwn(gate, 'candidate') &&
+    !Object.hasOwn(wave, 'gate') &&
+    !Object.hasOwn(wave, 'frozenBaseSha'), 'Ambiguous G3 record format');
+  const absentCandidate = gate.candidateSourceSha === null && gate.candidateTreeSha === null;
+  require(absentCandidate ||
+    (fullSha(gate.candidateSourceSha) &&
+      fullSha(gate.candidateTreeSha) &&
+      gate.candidateSourceSha !==
+        gate.candidateTreeSha), 'G3 candidate requires full distinct source/tree SHAs or an explicit null pair');
+  const prerequisite = gate.prerequisite;
+  require(prerequisite?.gateId === 'G2' &&
+    prerequisite?.record ===
+      `${BASE}gates/g2/SOURCE_MANIFEST.json`, 'G3 requires the canonical G2 prerequisite');
+  require((prerequisite?.frozenBaseSha === null &&
+    prerequisite?.acceptanceRecordCommitSha === null) ||
+    (fullSha(prerequisite?.frozenBaseSha) &&
+      fullSha(prerequisite?.acceptanceRecordCommitSha) &&
+      prerequisite.frozenBaseSha !==
+        prerequisite.acceptanceRecordCommitSha), 'G3 prerequisite identities must be a full separate source/publication pair or both null');
+  require(Array.isArray(gate.blockers) &&
+    list(gate.blockers).every(
+      (entry) =>
+        record(entry) && nonempty(entry.id) && nonempty(entry.owner) && nonempty(entry.reason),
+    ), 'G3 blockers need an explicit identity, owner and reason');
+  const evidence = list(gate.mandatoryEvidence);
+  require(evidence.length === G3_REQUIRED_EVIDENCE.length &&
+    evidence.every(
+      (entry, index) => record(entry) && entry.id === G3_REQUIRED_EVIDENCE[index],
+    ), 'Mandatory G3 evidence cannot be removed, duplicated or reordered');
+  require(evidence.every(
+    (entry) =>
+      ['PASS', 'FAIL', 'NOT_RUN', 'PENDING', 'BLOCKED'].includes(entry?.status) &&
+      entry?.sourceSha === gate.candidateSourceSha &&
+      entry?.treeSha === gate.candidateTreeSha &&
+      nonempty(entry?.reference) &&
+      (!absentCandidate || entry.status === 'NOT_RUN'),
+  ), 'G3 evidence must identify its actual candidate, status and reference');
+  const accepted = list(gate.acceptedSprints);
+  require(Array.isArray(gate.acceptedSprints) &&
+    new Set(accepted).size === accepted.length &&
+    accepted.every((id) =>
+      list(registry?.sprints).some((sprint) => sprint?.id === id && sprint.wave < 4),
+    ), 'G3 accepted dependencies must be unique earlier-wave sprint IDs');
+  const publication = gate.publication;
+  require(nonempty(publication?.branch) &&
+    ['NOT_PREPARED', 'DRAFT_PENDING_OWNER_REVIEW', 'MERGED'].includes(
+      publication?.state,
+    ), 'G3 publication identity/state is required');
+  if (publication?.state !== 'MERGED') {
+    require(publication?.acceptanceRecordCommitSha === null &&
+      publication?.verifiedMerge === false, 'Unpublished G3 cannot claim a verified merge');
+  } else {
+    require(gate.decision === 'ACCEPTED' &&
+      publication.verifiedMerge === true &&
+      fullSha(publication.acceptanceRecordCommitSha) &&
+      publication.acceptanceRecordCommitSha !==
+        gate.candidateSourceSha, 'G3 requires a separately verified merged acceptance publication');
+  }
+  require(record(gate.restrictions) &&
+    ['liveMoney', 'deploy', 'merge', 'accountGrants', 'spend'].every(
+      (key) => gate.restrictions[key] === false,
+    ) &&
+    gate.restrictions.preserveG1 === true &&
+    gate.restrictions.preserveR16R18Holds ===
+      true, 'G3 grants no operational authority and preserves existing policy holds');
+
+  if (gate.decision === 'BLOCKED') {
+    require(gate.frozenBaseSha === null &&
+      gate.frozenTreeSha === null &&
+      wave.baseSha === null, 'Blocked G3 cannot freeze a source');
+    require(gate.blockers?.length > 0 &&
+      accepted.length === 0 &&
+      wave.status === 'BLOCKED' &&
+      list(wave.startableLanes).length === 0 &&
+      publication?.state !==
+        'MERGED', 'Blocked G3 cannot accept sprints, publish acceptance or release a lane');
+  } else if (gate.decision === 'ACCEPTED') {
+    require(!absentCandidate &&
+      gate.frozenBaseSha === gate.candidateSourceSha &&
+      gate.frozenTreeSha === gate.candidateTreeSha &&
+      wave.baseSha === gate.frozenBaseSha, 'Inconsistent G3 frozen source');
+    require(fullSha(prerequisite?.frozenBaseSha) &&
+      fullSha(
+        prerequisite?.acceptanceRecordCommitSha,
+      ), 'Accepted G3 must bind its verified G2 prerequisite');
+    require(publication?.state !==
+      'NOT_PREPARED', 'Accepted G3 needs a prepared publication record');
+    require(list(gate.blockers).length === 0 &&
+      evidence.every(
+        (entry) =>
+          entry?.status === 'PASS' &&
+          nonempty(entry?.artifact?.reference) &&
+          digest(entry?.artifact?.sha256) &&
+          positiveId(entry?.artifact?.artifactId) &&
+          positiveId(entry?.artifact?.runId),
+      ), 'Accepted G3 requires source-bound successful artifacts for every mandatory category');
+    require(G3_SPRINTS.every((id) =>
+      accepted.includes(id),
+    ), 'G3 must accept all five Wave 3 lanes');
+    const checks = list(gate.checks?.observed);
+    require(gate.checks?.completeInventoryVerified === true &&
+      checks.length > 0 &&
+      new Set(checks.map((check) => check?.name)).size === checks.length &&
+      G3_CHECKS.every((name) => checks.some((check) => check?.name === name)) &&
+      checks.every(
+        (check) =>
+          nonempty(check?.name) &&
+          positiveId(check?.id) &&
+          check?.headSha === gate.candidateSourceSha &&
+          check?.status === 'completed' &&
+          check?.conclusion === 'success',
+      ), 'Accepted G3 requires the complete successful exact-source check inventory');
+    const official = gate.checks?.officialCodeQL;
+    require(positiveId(official?.id) &&
+      official?.headSha === gate.candidateSourceSha &&
+      official?.appSlug === 'github-advanced-security' &&
+      official?.conclusion === 'success' &&
+      official?.annotationsCount === 0, 'G3 requires official successful exact-source CodeQL');
+    require(gate.sourceArtifact?.sourceSha === gate.candidateSourceSha &&
+      gate.sourceArtifact?.treeSha === gate.candidateTreeSha &&
+      positiveId(gate.sourceArtifact?.artifactId) &&
+      positiveId(gate.sourceArtifact?.runId) &&
+      digest(gate.sourceArtifact?.innerArchiveSha256) &&
+      gate.sourceArtifact?.treeRecomputed === true &&
+      positiveId(gate.sourceArtifact?.trackedBlobsVerified) &&
+      digest(
+        gate.sourceArtifact?.zipSha256,
+      ), 'G3 requires verified source archive and tree identity');
+    const sourceLanes = list(gate.lanes);
+    require(same(
+      sourceLanes.map((lane) => lane?.id),
+      G3_SPRINTS,
+    ) &&
+      sourceLanes.every(
+        (lane) =>
+          lane?.merged === true &&
+          lane?.integration === 'PASS' &&
+          positiveId(lane?.pr) &&
+          lane?.prUrl === `https://github.com/baraabd/homeservicemarketplace/pull/${lane?.pr}` &&
+          fullSha(lane?.sourceHeadSha) &&
+          fullSha(lane?.mergeCommitSha) &&
+          list(registry?.sprints).some(
+            (sprint) =>
+              sprint?.id === lane?.id && sprint.wave === 3 && sprint.branch === lane.branch,
+          ),
+      ), 'G3 requires the actual five-lane merged source closeout');
+    const integration = gate.integration;
+    require(integration?.sourceSha === gate.candidateSourceSha &&
+      integration?.treeSha === gate.candidateTreeSha &&
+      integration?.execution === 'REAL_REGISTERED_IMPLEMENTATIONS' &&
+      nonempty(integration?.reference) &&
+      same(
+        list(integration?.participants).map((entry) => entry?.id),
+        G3_PARTICIPANTS,
+      ) &&
+      list(integration?.participants).every(
+        (entry) => nonempty(entry?.implementation) && nonempty(entry?.registrationReference),
+      ) &&
+      same(
+        list(integration?.boundaries).map((entry) => entry?.id),
+        G3_BOUNDARIES,
+      ) &&
+      list(integration?.boundaries).every(
+        (entry) => entry?.status === 'PASS' && nonempty(entry?.reference),
+      ), 'G3 requires actual registered implementations and atomic/retry/outbox integration evidence');
+  }
+
+  const lanes = list(wave.lanes);
+  const startable = list(wave.startableLanes);
+  const held = list(wave.blockedLanes);
+  require(lanes.length === 5 &&
+    new Set(lanes.map((lane) => lane?.id)).size ===
+      5, 'Wave 4 requires five unique complete packages');
+  require(Array.isArray(wave.startableLanes) &&
+    Array.isArray(wave.blockedLanes) &&
+    [...startable, ...held].length === 5 &&
+    new Set([...startable, ...held]).size === 5 &&
+    [...startable, ...held].every((id) =>
+      lanes.some((lane) => lane?.id === id),
+    ), 'Startable and blocked lanes must partition Wave 4');
+  if (wave.status === 'BLOCKED')
+    require(startable.length === 0, 'Blocked Wave 4 has no startable lanes');
+  if (wave.status === 'READY_TO_START')
+    require(gate.decision === 'ACCEPTED' &&
+      publication?.state === 'MERGED' &&
+      publication?.verifiedMerge === true &&
+      startable.length > 0, 'Wave 4 start requires accepted and separately verified published G3');
+  const writers = [];
+  lanes.forEach((lane, index) => {
+    if (!record(lane)) {
+      errors.push('Invalid Wave 4 lane');
+      return;
+    }
+    const sprint = list(registry?.sprints).find((entry) => entry?.id === lane.id);
+    require(lane.id === `R${34 + index}` &&
+      lane.wave === 4 &&
+      lane.lane === index + 1 &&
+      sprint?.wave === 4, 'Wave 4 lane identity mismatch');
+    require(nonempty(lane.title) &&
+      nonempty(lane.branch) &&
+      namedOwner(lane.owner) &&
+      same(lane.title, sprint?.title) &&
+      same(lane.branch, sprint?.branch) &&
+      same(lane.owner, sprint?.owner) &&
+      Array.isArray(lane.dependencies) &&
+      same(
+        lane.dependencies,
+        sprint?.dependencies,
+      ), `${lane.id}: registry differs from the complete Wave 4 package`);
+    require(lane.sourcePrompt === `${BASE}gates/g2/prompts/${lane.id}.md` &&
+      sprint?.sourcePrompt ===
+        lane.sourcePrompt, `${lane.id}: complete original source prompt required`);
+    require(lane.frozenBaseSha === wave.baseSha &&
+      sprint?.frozenBase === wave.baseSha &&
+      sprint?.startBarrier?.gate === 'G3', `${lane.id}: inconsistent Wave 4 bases/start gate`);
+    require(Array.isArray(lane.exactFiles) &&
+      lane.exactFiles.length > 0 &&
+      Array.isArray(lane.leases) &&
+      same(sprint?.ownedPaths?.exact, lane.exactFiles) &&
+      same(sprint?.ownedPaths?.leases, lane.leases) &&
+      list(sprint?.ownedPaths?.prefixes).length ===
+        0, `${lane.id}: ownership differs from exact Wave 4 manifest`);
+    for (const dependency of list(lane.dependencies)) {
+      require(list(registry?.sprints).some(
+        (entry) => entry?.id === dependency && entry.wave < 4,
+      ), `${lane.id}: dependencies must belong to earlier waves`);
+      if (startable.includes(lane.id))
+        require(accepted.includes(dependency), `${lane.id}: unresolved dependency ${dependency}`);
+    }
+    if (held.includes(lane.id))
+      require(lane.status === 'BLOCKED' &&
+        sprint?.status === 'PLANNED', `${lane.id}: held Wave 4 lane cannot claim readiness`);
+    if (startable.includes(lane.id))
+      require(lane.status === 'READY_TO_START' &&
+        sprint?.status === 'READY_TO_START' &&
+        lane.ownershipApproval === 'APPROVED_AFTER_VERIFIED_G3_PUBLICATION' &&
+        same(lane.ownershipApproval, sprint?.ownershipApproval) &&
+        nonempty(lane.sessionAssignment?.sessionId) &&
+        nonempty(lane.sessionAssignment?.assignedBy) &&
+        nonempty(
+          lane.sessionAssignment?.assignedAt,
+        ), `${lane.id}: start requires status agreement and exact writer assignment`);
+    const paths = [...list(lane.exactFiles)];
+    for (const lease of list(lane.leases)) {
+      require(record(lease) &&
+        nonempty(lease.grantedBy) &&
+        nonempty(lease.scope) &&
+        nonempty(lease.expires) &&
+        nonempty(lease.handoff) &&
+        list(lease.paths).length > 0 &&
+        lease.sourcePrompt === lane.sourcePrompt &&
+        lease.startPrerequisite?.gate === 'G3' &&
+        lease.startPrerequisite?.requiredDecision === 'ACCEPTED' &&
+        lease.startPrerequisite?.requiredPublication === 'MERGED_AND_VERIFIED' &&
+        lease.startPrerequisite?.requiresSessionAssignment ===
+          true, `${lane.id}: incomplete conditional Wave 4 lease`);
+      paths.push(...list(lease?.paths));
+    }
+    for (const file of paths) {
+      require(safe(file) &&
+        ![...file].some(
+          (character) => character.charCodeAt(0) <= 31 || character.charCodeAt(0) === 127,
+        ), `${lane.id}: unsafe or non-exact ownership`);
+      if (typeof file !== 'string') continue;
+      require(!writers.some(
+        (prior) => prior === file || prior.startsWith(`${file}/`) || file.startsWith(`${prior}/`),
+      ), `${lane.id}: conflicting Wave 4 ownership/leases`);
+      writers.push(file);
+    }
+  });
+  const finalization = wave.r38Finalization;
+  const r38 = lanes.find((lane) => lane?.id === 'R38');
+  require(finalization?.gate === 'G4' &&
+    finalization?.mode === 'SERIALIZED_AFTER_PEER_EVIDENCE' &&
+    same(finalization?.requiredSprints, G4_JOIN) &&
+    finalization?.status === 'BLOCKED' &&
+    finalization?.acceptanceRecord === null &&
+    same(r38?.finalEvidenceJoin, G4_JOIN) &&
+    same(
+      list(registry?.sprints).find((sprint) => sprint?.id === 'R38')?.finalEvidenceJoin,
+      G4_JOIN,
+    ) &&
+    r38?.parallelScope ===
+      'PHASE_A_PREPARATION_ONLY', 'Wave 4 preparation must preserve the separate serialized R38/G4 final evidence join');
   return errors;
 }
 
@@ -361,6 +702,18 @@ function g2WaveGateProblems(gate, wave, registry) {
       (lane.status !== 'READY_TO_START' || sprint?.status !== 'READY_TO_START')
     )
       errors.push(`${lane.id}: Wave 3 start status must agree with registry`);
+    if (
+      startable.includes(lane.id) &&
+      (lane.ownershipApproval !== 'APPROVED_AFTER_VERIFIED_G2_PUBLICATION' ||
+        lane.ownershipApproval !== sprint?.ownershipApproval ||
+        !record(lane.sessionAssignment) ||
+        !nonempty(lane.sessionAssignment.sessionId) ||
+        !nonempty(lane.sessionAssignment.assignedBy) ||
+        !nonempty(lane.sessionAssignment.assignedAt))
+    )
+      errors.push(
+        `${lane.id}: Wave 3 start requires approved ownership and exact writer assignment`,
+      );
     if (
       held.includes(lane.id) &&
       (lane.status !== 'BLOCKED' || sprint?.status === 'READY_TO_START')
