@@ -1,58 +1,27 @@
-# Dependency upgrade hold for PR #188
+# Historical dependency hold — superseded by the Zod security repair
 
-## Decision and scope
+The initial Zod upgrade in PR #188 changed the performance dependency graph.
+R27 run `40016123413`, job `120628504400`, correctly rejected its repair
+baseline because the candidate and baseline lockfiles differed. The unchanged
+comparison and acceptance programs also require identical dependency digests.
 
-Defer the Zod 3-to-4 upgrade in PR #188. Restore `apps/api/package.json`
-and `pnpm-lock.yaml` byte-for-byte from develop
-`5ff2b7e6a46b4e42114184fac89928372f4c8d4c`.
-This is a dependency-upgrade deferral, not a successful Zod 4 migration.
+An interim correction restored the develop manifests/lockfile and deferred
+Zod 4. That state is preserved historically at
+`4a471c20f3681e5fa7f37bc0701d01b56336e558`; it is **not the final solution**.
+The fresh audit on that source reported `GHSA-mrhx-c7xc-m3w5` in the API's
+Zod 3.25.76 and the lint plugin's Zod 4.3.6. Retaining the hold would leave a
+known security failure.
 
-The owner requested repair of the open PR before G3 and R34. The current R27
-experiment requires equal dependency digests for its immutable baseline and
-candidate. Its repair-baseline job also requires the PR base lockfile to match
-the candidate harness. PR #188 changes that experimental input. Updating PR
-metadata alone cannot satisfy the measured-performance gate.
+The current repair pins direct and affected transitive Zod dependencies to
+4.6.6 and supplies independently verifiable immutable controls with exactly
+the same dependency files. See [ZOD_SECURITY_REPAIR.md](ZOD_SECURITY_REPAIR.md)
+and [r27-dependency-controls.json](r27-dependency-controls.json).
 
-## Observed failures
+The original measurement jobs, comparison semantics, complete browser matrix,
+query/bundle budgets, CodeQL and zero-finding audit remain required. Historical
+measurements are not relabelled as current evidence. Dependabot remains enabled.
 
-- Head: `88c4fb7186d6d64ed07b518d5fcc54de41fbce2d`.
-- Governance run `40016123505`, job `120628504615`: all fourteen required PR
-  metadata fields were absent. The corrected body passes the existing metadata
-  validator; the subsequent commit requires a new Final SHA in that body.
-- R27 run `40016123413`, job `120628504400`: the immutable repair-baseline
-  checkout is the correct develop SHA, but
-  `cmp --silent pnpm-lock.yaml ../harness/pnpm-lock.yaml` exits 1. Missing
-  artifacts are a consequence of
-  stopping before measurement.
-- The unchanged comparison and acceptance programs also reject unequal
-  `lockfileSha256` values. Removing only the early comparison would not
-  establish a comparable experiment.
-
-## Corrective change
-
-Restore the two existing dependency blobs together, without regenerating or
-hand-editing the lockfile. Retain the existing Zod 3.25.76 API resolution and
-all reviewed dependency overrides. Do not alter R27 source checks, budgets,
-assertions, measurement jobs, CodeQL, security audit policy or Dependabot
-configuration. This file is the only net change relative to the PR base.
-
-All final-head CI remains required. Earlier-head successful checks cannot
-validate the corrective commit. Local validation covers the unchanged metadata
-validator and R27 workflow/acceptance regressions only; local application,
-database, browser and security checks are not claimed.
-
-## Follow-up and rollback
-
-The coordinator should prepare a separately reviewed dependency experiment
-before resubmitting Zod 4: immutable dependency-matched controls, authenticated
-source/tree and lock digests, migration compatibility checks, full real-service
-and browser measurements, unchanged budgets, and fresh security results.
-Historical measurements must not be relabelled as evidence for new dependencies.
-Dependabot remains enabled; this document does not suppress advisories or
-future version proposals.
-
-To resume the upgrade, submit a new reviewed PR restoring the intended package
-and lockfile changes together with its comparable experiment and evidence.
-Reverting this correction alone would reintroduce the recorded R27 failure.
-G3 and R34 remain independently blocked until their actual dependencies and
-integration evidence are accepted.
+Reverting the dependency security correction restores the known advisory;
+reverting its control registration alone restores the incomparable-baseline
+failure. G3/R34 still require their separate implementation and acceptance
+evidence.

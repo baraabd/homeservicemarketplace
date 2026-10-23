@@ -42,3 +42,23 @@ test('repair-baseline identity and dependency checks stay mandatory', () => {
   assert.match(workflow, /node scripts\/perf\/post-r18\/check-budgets.mjs/u);
   assert.doesNotMatch(workflow, /continue-on-error:/u);
 });
+
+test('every runtime validates immutable dependency controls before checkout', () => {
+  const selection = workflow
+    .split('- name: Verify dependency-only controls')[1]
+    ?.split('- name:')[0];
+  assert.ok(selection, 'control validation is mandatory');
+  assert.doesNotMatch(selection, /\bif:/u);
+  assert.match(selection, /node \.github\/scripts\/r27-dependency-controls.mjs/u);
+  for (const flag of ['candidate', 'repair-base', 'baseline', 'github-env', 'report'])
+    assert.ok(selection.includes(`--${flag} `));
+  assert.ok(
+    workflow.indexOf('- name: Verify dependency-only controls') <
+      workflow.indexOf('- name: Checkout immutable runtime under test'),
+  );
+  assert.match(workflow, /fetch-depth: 0/u);
+  assert.match(
+    workflow,
+    /cp "\$RUNNER_TEMP\/r27-dependency-controls.json" r27-evidence\/dependency-controls.json/u,
+  );
+});
