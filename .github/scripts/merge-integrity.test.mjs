@@ -85,15 +85,18 @@ test('SupportModule coexists with one AppModule to MoneyModule to LedgerModule c
 
 test('the money composition fence rejects missing or duplicate mounts and lost exports', () => {
   const money = read('apps/api/src/modules/money/money.module.ts');
-  // Mutate the named metadata array so formatting and new reviewed imports
-  // cannot turn a negative fixture into an unchanged source string.
-  const mutateLedger = (section, replacement) => {
-    const result = money.replace(new RegExp(`${section}:\\s*\\[([^\\]]+)\\]`), (full, body) =>
-      full.replace(body, body.replace(/\bLedgerModule\s*,?/, replacement)),
+  const mutateLedger = (field, replacement) => {
+    const mutated = money.replace(
+      new RegExp(`(${field}:\\s*\\[)([^\\]]+)(\\])`),
+      (_, opening, body, closing) =>
+        `${opening}${body.replace(/\bLedgerModule\b,?/, replacement)}${closing}`,
     );
-    assert.notEqual(result, money, `The ${section} negative fixture must change its source`);
-    return result;
+    assert.notEqual(mutated, money, `${field} fixture must change LedgerModule`);
+    return mutated;
   };
+  const withoutLedgerImport = mutateLedger('imports', '');
+  const duplicateLedgerImport = mutateLedger('imports', 'LedgerModule, LedgerModule,');
+  const withoutLedgerExport = mutateLedger('exports', '');
   assert.throws(() => assertMoneyComposition(app.replace(/^\s*MoneyModule,/m, ''), money));
   assert.throws(() =>
     assertMoneyComposition(
@@ -102,11 +105,9 @@ test('the money composition fence rejects missing or duplicate mounts and lost e
     ),
   );
   assert.throws(() => assertMoneyComposition(app.replace(/^\s*SupportModule,/m, ''), money));
-  assert.throws(() => assertMoneyComposition(app, mutateLedger('imports', '')));
-  assert.throws(() =>
-    assertMoneyComposition(app, mutateLedger('imports', 'LedgerModule, LedgerModule,')),
-  );
-  assert.throws(() => assertMoneyComposition(app, mutateLedger('exports', '')));
+  assert.throws(() => assertMoneyComposition(app, withoutLedgerImport));
+  assert.throws(() => assertMoneyComposition(app, duplicateLedgerImport));
+  assert.throws(() => assertMoneyComposition(app, withoutLedgerExport));
 });
 
 test('support and ledger audit identifiers both remain allowlisted', () => {

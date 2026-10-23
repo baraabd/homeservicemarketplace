@@ -77,8 +77,10 @@ or grant owner approval.
 
 Each released lane starts its assigned clean worktree with independent
 dependencies, generated Prisma output, build/cache directories and the planned
-database/user, Redis, storage, queue, container/volume and port identities. The
-runtime entries are unallocated templates. Session tags and effective
+database/user, Redis, storage, queue, container/volume and port identities. The R31 runtime is provisioned with task-owned PostgreSQL/Redis, separate
+disposable fixture databases and private browser contexts. Exact effective
+configuration is recorded in the lane and R31 acceptance evidence; peer
+entries remain unallocated templates. Session tags and effective
 configuration checks are mandatory. Separate browser contexts and host-only
 cookies on separate hosts are required; changing only a localhost port does not
 isolate cookies. See [`OWNERSHIP_R29_R38.md`](OWNERSHIP_R29_R38.md).

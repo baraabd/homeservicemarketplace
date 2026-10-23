@@ -96,6 +96,9 @@ export default defineConfig({
     // R30 requires its real AppModule, independent roles, private receipt store
     // and ClamAV. Its required CI harness owns playwright.r30.config.ts.
     '**/r30-manual-payments/**',
+    // R31 requires its disposable API/database and private actor credentials.
+    // The required r31-subscriptions job owns playwright.r31.config.ts.
+    '**/r31-subscriptions/**',
     // Disposable R26 services and built CSP acceptance have their own config/job.
     '**/r26-security.real-api.spec.ts',
     // Requires native Vite dev transforms; owned by playwright.dev.config.ts.

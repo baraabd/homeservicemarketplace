@@ -1,6 +1,45 @@
 # G2 — Wave 2 acceptance repair and future-wave preparation
 
-## Verified technical acceptance — 2026-10-22T23:38:30.107Z
+## Verified owner publication and R31 start — 2026-10-23
+
+Owner-merged PR #183 is published at
+`986b4707776711e80564f0642133ede90ba16f3c` (merged
+2026-10-23T04:11:34Z). Its reviewed head
+`d2c0a9ab8862ffff886346a21377839f996152ca` and merge share tree
+`7ab683ea8c5304929a2fa51f1dc824c7cb46f7d5`. Git ancestry and the complete
+thirteen-file descendant difference were checked: all differences from the
+accepted source are documentation, registry or evidence. Product code, schema,
+contracts, workflows and dependencies are identical to the frozen source.
+
+The GitHub check inventories were re-fetched at 2026-10-23T04:47:33Z. The reviewed head
+has 38 latest distinct successful checks; two older governance checks are
+superseded. The owner merge has 30 successful checks across eight workflow
+families, including all 19 main CI jobs. Its real PostgreSQL/Redis job records
+6,586 passing tests and 81 pre-existing gated tests; compiled workers pass 3/3.
+The web suite passes 2,525 tests; the broad browser invocation records 836
+passed and 349 pre-existing gated tests plus six setup passes. Skips are not
+counted as successful assertions. These are G2 publication results, not proof
+of an R31 implementation. The full compact check inventory and inspected job
+identities are in `PUBLICATION_VERIFICATION.json`. The separate official CodeQL
+result belongs to the reviewed head and has zero annotations; postmerge proof
+separately identifies its successful CodeQL analysis workflow.
+
+The continuing owner delegation and the supplied R31 request permit the
+coordinator to assign only `r31-20261023-d799cbee` to the original exact 31-file
+R31 package on `feat/r31-subscription-entitlements`. The branch starts from
+frozen source `72b4aaeb0a71d806b7fca7363dd9ca59bbcee644`; root first applied the
+thirteen already owner-merged record blobs and then reconciled publication.
+The frozen source/tree, original acceptance artifacts and policy holds remain
+unchanged. This imports no unmerged peer runtime. Root recorded the serialized
+record lease in `../../../r31/OWNERSHIP.md` before these changes; the canonical
+path is `docs/production-readiness/r31/OWNERSHIP.md`, with its approved CR-001.
+
+R31 is `READY_TO_START`; R29/R30/R32/R33 remain held for their own assignments.
+The session has named isolated resource identities but they are not provisioned
+by this record. Wave 4 remains blocked by G3, and no commercial policy, live
+rail, permission grant, hosting, spend, merge or deployment is authorized.
+
+## Prior technical acceptance checkpoint — 2026-10-22T23:38:30.107Z
 
 Candidate `72b4aaeb0a71d806b7fca7363dd9ca59bbcee644`, tree `43e9c6a4e58cfb934b12789feeb38b588e1cb7c6`, passed all 38 exact-source checks,
 including the independent official CodeQL result with zero annotations.
@@ -17,17 +56,22 @@ explicitly excluded from the pass count. Both projection suites execute all
 64 cases without skips, including isolated schemas and generic plans.
 The three separate compiled-worker recovery tests also pass.
 
-G2 is **technically ACCEPTED**. PR #183 is the separate review publication and
-has not been merged. Wave 3 remains BLOCKED until owner-reviewed merged
-publication is verified and lane sessions are explicitly assigned. Wave 4
-additionally requires G3; R38 final certification requires G4. R39 has no package
-in this registry. R28 hosted prerequisites and R16/R18 policy holds remain.
+At this earlier checkpoint G2 was **technically ACCEPTED** and PR #183 was
+still awaiting owner merge. The verified publication and R31-only assignment
+above supersede that publication hold; its original acceptance evidence is
+preserved. Wave 4 additionally requires G3; R38 final certification requires
+G4. R39 has no package in this registry. R28 hosted prerequisites and R16/R18
+policy holds remain.
 
 Evidence: `SOURCE_MANIFEST.json`, `ACCEPTANCE_EVIDENCE.json`, and `evidence/`.
 No containing commit SHA, owner approval, hosted acceptance or lane execution
 is inferred from these results.
 
-## PR183 merged-source correction — 2026-10-23
+## Historical PR183 candidate corrections — 2026-10-23
+
+The following records retain failures and pending states from earlier candidate
+checks. They are historical; the accepted source and verified publication above
+control the current G2 decision.
 
 The exact `c49bc75c07592135fc07538737fa9b652f309ab8` API job passes 6,585
 tests, including all 36 G2 and 27 R27 projection cases without skips. However,
