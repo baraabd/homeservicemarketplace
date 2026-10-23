@@ -1,3 +1,4 @@
+import { readOtpFromMailbox } from './otp-mailbox';
 import type { Page } from '@playwright/test';
 import { expect } from '@playwright/test';
 
@@ -95,49 +96,9 @@ export async function apiAt<T = unknown>(
   return { status: res.status, body: body as T };
 }
 
-/**
- * Read a one-time code out of the mail catcher.
- *
- * The OTP is never persisted in plaintext, so the mailbox is the only place it
- * can be read — which is exactly how a real provider gets it. Read the TEXT
- * part rather than the serialised envelope: mailpit's own metadata contains
- * six-digit runs, and matching those yields codes that were never OTPs.
- */
-export async function otpFor(email: string): Promise<string> {
-  const wanted = email.toLowerCase();
-  for (let attempt = 0; attempt < 75; attempt += 1) {
-    const list = (await (await fetch(`${MAILPIT}/api/v1/messages?limit=50`)).json()) as {
-      messages?: { ID: string; To?: { Address?: string }[] }[];
-    };
-    const hits = (list.messages ?? []).filter((m) =>
-      (m.To ?? []).some((t) => t.Address?.toLowerCase() === wanted),
-    );
-    if (hits.length > 0) {
-      const full = (await (await fetch(`${MAILPIT}/api/v1/message/${hits[0].ID}`)).json()) as {
-        Text?: string;
-      };
-      const code = (full.Text ?? '').match(/code is (\d{6})/)?.[1];
-      if (code) {
-        // Consume ONLY the message whose code is being used.
-        //
-        // Deleting every message for the address looks tidier and is wrong for
-        // the one mailbox more than one worker shares — the seeded admin. Two
-        // parallel workers each trigger a login, two codes arrive, and a
-        // sweep-all deletes the other worker's code before it has read it,
-        // turning a fixture collision into an "invalid OTP" that looks like an
-        // auth bug. Provider accounts are unique per test and unaffected
-        // either way.
-        await fetch(`${MAILPIT}/api/v1/messages`, {
-          method: 'DELETE',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ IDs: [hits[0].ID] }),
-        });
-        return code;
-      }
-    }
-    await new Promise((r) => setTimeout(r, 400));
-  }
-  throw new Error(`no OTP mail arrived for ${email}`);
+/** Read and consume this recipient's OTP from the real mail catcher. */
+export function otpFor(email: string): Promise<string> {
+  return readOtpFromMailbox(MAILPIT, email);
 }
 
 export interface Account {
