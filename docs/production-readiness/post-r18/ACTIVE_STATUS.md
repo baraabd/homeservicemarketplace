@@ -27,7 +27,7 @@ PLANNED behind the separate G3 gate.
 | R28 | Authorized hosted topology, infrastructure and release inputs                      | 2    | READY_TO_START   | feat/r28-hosted-platform           | #179, #181 |
 | R29 | Stripe sandbox subscription collections, signed webhooks and refund adapter        | 3    | PLANNED          | feat/r29-stripe-sandbox-webhooks   | —          |
 | R30 | Manual subscription payment rails and protected receipt review                     | 3    | READY_TO_START   | feat/r30-manual-payment-review     | —          |
-| R31 | Subscription plans, My Plan and atomic entitlements                                | 3    | PLANNED          | feat/r31-subscription-entitlements | —          |
+| R31 | Subscription plans, My Plan and atomic entitlements                                | 3    | READY_TO_START   | feat/r31-subscription-entitlements | —          |
 | R32 | Refund eligibility, reservations and ambiguous-outcome recovery                    | 3    | PLANNED          | feat/r32-refund-recovery           | —          |
 | R33 | Financial read models and Admin/Provider operations UI                             | 3    | READY_TO_START   | feat/r33-financial-operations-ui   | —          |
 | R34 | Cross-rail reconciliation, settlement exceptions and financial acceptance          | 4    | PLANNED          | feat/r34-reconciliation-settlement | —          |
@@ -52,6 +52,10 @@ The original 21-file R32 conditional package remains intact.
 `waves/wave-03.plan.json` releases the assigned R30 and R33 source sessions after
 accepted source-bound G2 evidence and verified owner-merged publication. The
 other three lanes retain their unassigned-session holds. The frozen source is
+`waves/wave-03.plan.json` preserves the assigned R30 and R31 source sessions after
+accepted source-bound G2 evidence and verified owner-merged publication. R30 PR #184
+is merged and its shared leases are closed. Other lanes retain their
+unassigned-session holds in this branch. The frozen source is
 preserved; recording a factual owner merge does not accept any R30 runtime. `waves/wave-04.plan.json` has no source assigned and
 requires a separate accepted and published G3 after actual Wave 3 integration.
 R38 Phase B additionally requires the serialized R34–R37 final evidence join

@@ -18,10 +18,9 @@ import {
 } from './manual-review/manual-review.controller';
 import { ReceiptAcceptanceParticipant } from './manual-review/receipt-acceptance.participant';
 import { ManualEventProcessingJob } from './manual-review/manual-event-processing.job';
-import {
-  MONEY_ACTIVATION_PARTICIPANT,
-  UnavailableMoneyActivationParticipant,
-} from './ports/activation.port';
+import { MONEY_ACTIVATION_PARTICIPANT } from './ports/activation.port';
+import { SubscriptionActivationParticipant } from './subscriptions/subscription-activation.participant';
+import { SubscriptionsModule } from './subscriptions/subscriptions.module';
 import {
   MONEY_CATALOG,
   MONEY_COLLECTION_ADAPTER,
@@ -39,7 +38,8 @@ import {
 } from './ports/refund.port';
 
 // One composition boundary. R30 provides sandbox-only manual transports through
-// the existing R24 ports. No instruction, permission grant, activation policy or
+// the existing R24 ports; R31 supplies the transaction-bound activation participant.
+// No instruction, permission grant, activation policy or
 // refund policy is created by module boot; every live rail remains unavailable.
 @Module({
   imports: [
@@ -48,6 +48,7 @@ import {
     AuditModule,
     LedgerModule,
     ManualReviewModule,
+    SubscriptionsModule,
   ],
   controllers: [
     MoneyController,
@@ -64,7 +65,7 @@ import {
     { provide: MONEY_CATALOG, useClass: PrismaMoneyCatalogFactory },
     { provide: MONEY_COLLECTION_ADAPTER, useExisting: ManualCollectionAdapter },
     { provide: MONEY_RECEIPT_ACCEPTANCE, useExisting: ReceiptAcceptanceParticipant },
-    { provide: MONEY_ACTIVATION_PARTICIPANT, useClass: UnavailableMoneyActivationParticipant },
+    { provide: MONEY_ACTIVATION_PARTICIPANT, useExisting: SubscriptionActivationParticipant },
     { provide: MONEY_REFUND_POLICY, useClass: UnavailableMoneyRefundPolicy },
     { provide: MONEY_REFUND_ADAPTER, useExisting: ManualRefundAdapter },
     {

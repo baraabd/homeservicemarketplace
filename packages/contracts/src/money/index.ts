@@ -105,3 +105,4 @@ export * from './financial-contracts';
 export * from './api-contracts';
 export * from './manual-payment-contracts';
 export * from './financial-operations';
+export * from './subscription-contracts';

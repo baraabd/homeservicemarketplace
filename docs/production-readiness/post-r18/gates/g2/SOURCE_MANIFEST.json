@@ -3,7 +3,7 @@
   "gateId": "G2",
   "decision": "ACCEPTED",
   "recordedAtUtc": "2026-10-22T23:38:30.107Z",
-  "authority": "baraabd requested G2 unblock engineering on 2026-10-22. Delegated coordinator may repair, verify and publish one review PR; no merge, deployment, live activation, resource spend or permission grants.",
+  "authority": "/root — owner-delegated engineering coordinator for baraabd under continuing G2 coordination authority and the 2026-10-23 R31 execution request. This update verifies the existing owner merge of PR #183 and assigns only R31; no merge, deployment, live activation, spend or permission grant is performed.",
   "candidateSourceSha": "72b4aaeb0a71d806b7fca7363dd9ca59bbcee644",
   "candidateTreeSha": "43e9c6a4e58cfb934b12789feeb38b588e1cb7c6",
   "frozenBaseSha": "72b4aaeb0a71d806b7fca7363dd9ca59bbcee644",

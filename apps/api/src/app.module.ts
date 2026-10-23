@@ -31,6 +31,8 @@ import { BookingsModule } from './modules/bookings/bookings.module';
 import { ReviewsModule } from './modules/reviews/reviews.module';
 import { MoneyModule } from './modules/money/money.module';
 import { FinancialReportingModule } from './modules/money/reporting/financial-reporting.module';
+import { SubscriptionsModule } from './modules/money/subscriptions/subscriptions.module';
+import { SubscriptionOutboxHandler } from './modules/money/subscriptions/subscription-outbox.handler';
 import { ConversationsModule } from './modules/conversations/conversations.module';
 import { IamModule } from './modules/iam/iam.module';
 import { MediaModule } from './modules/media/media.module';
@@ -89,6 +91,7 @@ import { SupportModule } from './modules/support/support.module';
         RealtimeModule,
         DisputesModule,
         NotificationsModule,
+        SubscriptionsModule,
       ],
       handlers: [
         RequestAvailableDispatchHandler,
@@ -101,6 +104,7 @@ import { SupportModule } from './modules/support/support.module';
         WorkspaceEventsHandler,
         NotificationCreatedHandler,
         SubscriptionActivatedHandler,
+        SubscriptionOutboxHandler,
         ProviderStatusEmailHandler,
       ],
     }),
@@ -143,7 +147,8 @@ import { SupportModule } from './modules/support/support.module';
     // R11 — customer reviews of completed bookings, and their moderation.
     ReviewsModule,
     // R24 — one money API composition, containing the existing R15/R19
-    // ledger authority. All external adapters/activation remain unconfigured.
+    // ledger authority. R31 activation enlists in its caller transaction;
+    // external collection/configuration/refund adapters remain unconfigured.
     MoneyModule,
     // R33 — authorized read-only subscription financial operations.
     FinancialReportingModule,

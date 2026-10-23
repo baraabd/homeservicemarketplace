@@ -9,6 +9,11 @@
   "coordinator": "Owner-delegated engineering coordinator for baraabd",
   "decisionRecord": "docs/production-readiness/post-r18/gates/g2/SOURCE_MANIFEST.json",
   "publicationRequirement": "Preserve verified G2 publication and historical R30/R33 source assignments. R30 PR #184 is merged as aaa22a9a04025fc312cbcc2121687aca2e467cac and its shared leases are closed. R33 correction work follows the owner request to repair PR #185. Source readiness does not accept assembled Wave 3 or live policy.",
+  "startableLanes": ["R30", "R31"],
+  "blockedLanes": ["R29", "R32", "R33"],
+  "coordinator": "Owner-delegated engineering coordinator for baraabd",
+  "decisionRecord": "docs/production-readiness/post-r18/gates/g2/SOURCE_MANIFEST.json",
+  "publicationRequirement": "Preserve verified G2 publication and the historical R30/R31 source assignments. R30 PR #184 is merged as aaa22a9a04025fc312cbcc2121687aca2e467cac and its shared leases are closed. R31 correction work follows the owner request to repair PR #186. Source readiness does not accept assembled Wave 3 or live policy.",
   "promptProvenance": "docs/production-readiness/post-r18/gates/g2/PROMPT_PROVENANCE.md",
   "ownershipRecord": "docs/production-readiness/post-r18/waves/OWNERSHIP_R29_R38.md",
   "lanes": [
@@ -274,10 +279,10 @@
       "lane": 3,
       "branch": "feat/r31-subscription-entitlements",
       "owner": {
-        "lane": "R31 future lane session; coordinator assigns the writer only after verified G2 publication",
-        "coordinator": "Owner-delegated engineering coordinator for baraabd"
+        "lane": "/root — accountable R31 writer coordinator for session r31-20261023-d799cbee; finite backend/frontend delegation in docs/production-readiness/r31/OWNERSHIP.md",
+        "coordinator": "/root — owner-delegated engineering coordinator for baraabd"
       },
-      "status": "BLOCKED",
+      "status": "READY_TO_START",
       "frozenBaseSha": "72b4aaeb0a71d806b7fca7363dd9ca59bbcee644",
       "dependencies": ["R24", "R21", "R22", "R23"],
       "exactFiles": [
@@ -311,9 +316,64 @@
         "docs/production-readiness/r31/RISKS.md",
         "docs/production-readiness/r31/ROLLBACK.md",
         "docs/production-readiness/r31/OWNERSHIP.md",
-        "docs/production-readiness/r31/shared-change-requests/CR-001-integration.md"
+        "docs/production-readiness/r31/shared-change-requests/CR-001-integration.md",
+        "apps/api/test/support/r31-browser.fixture.ts",
+        "scripts/production/subscriptions/verify-my-plan.cjs",
+        "apps/web/playwright.r31.config.ts"
       ],
-      "leases": [],
+      "leases": [
+        {
+          "paths": [
+            "packages/contracts/src/money/subscription-contracts.ts",
+            "packages/contracts/src/money/index.ts",
+            "apps/api/src/modules/money/money.module.ts",
+            "apps/api/src/modules/money/money.module.spec.ts",
+            "apps/api/src/app.module.ts",
+            "apps/api/src/app.module.spec.ts",
+            "apps/api/src/infrastructure/outbox/outbox.tokens.ts",
+            "apps/web/src/app/routes.ts",
+            "apps/web/src/app/components/provider/screens/ProviderProfileScreen.tsx",
+            "apps/web/playwright.config.ts",
+            ".github/workflows/ci.yml"
+          ],
+          "kind": "SERIALIZED_R31_COORDINATOR_INTEGRATION",
+          "grantedBy": "/root — owner-delegated engineering coordinator for baraabd; recorded before shared edits for session r31-20261023-d799cbee",
+          "scope": "Publish additive hsm.money.v1 subscription read DTOs; bind the existing R24 activation token to R31 and register lifecycle events/handler; mount the authenticated provider My Plan route and profile entry; add explicit real-API browser discovery and CI invocation. Preserve existing ledger and collection/refund defaults, permission grants, commercial policy, all tests and acceptance budgets. No schema, migration, dependency or live money change. Exact patch in r31/shared-change-requests/CR-001-integration.md.",
+          "expires": "R31 PR closure or coordinator revocation, whichever occurs first",
+          "handoff": "Root is sole shared writer. Apply serially in the isolated R31 branch. No unmerged peer dependency. Keep source72, accepted G2 records and separate release boundaries."
+        },
+        {
+          "paths": [
+            "apps/api/src/modules/money/application/money-command.service.ts",
+            "apps/api/src/modules/money/application/money-command.service.spec.ts"
+          ],
+          "kind": "SERIALIZED_R31_SYSTEM_KEY_RESERVATION",
+          "grantedBy": "/root — owner-delegated coordinator; before edits for R31",
+          "scope": "Extend the existing user-command reserved-prefix check with r31_ and preserve prior prefixes; test rejection before any financial write. Allows R31 internal lifecycle receipts in the existing immutable MoneyCommand table under actorSystem money.subscription-lifecycle, explicit named policy and canonical request digest. No schema, financial state model, R24 port or existing confirmation behavior changes.",
+          "expires": "R31 PR closure or coordinator revocation",
+          "handoff": "Root is the only writer of the two R24 files; r31_backend may use the existing frozen persistence inside its owned lifecycle service, not edit R24 files."
+        },
+        {
+          "paths": [".github/scripts/merge-integrity.test.mjs"],
+          "kind": "SERIALIZED_R31_COMPOSITION_FIXTURE",
+          "grantedBy": "/root — owner-delegated coordinator; recorded before edits for R31",
+          "scope": "Make the existing missing/duplicate LedgerModule and lost-export negative fixtures identify the imports/exports arrays regardless of formatter whitespace. Keep every rejection assertion and the production composition fence unchanged; explicitly assert that each fixture mutation changed its target. Needed after additive SubscriptionsModule made Prettier wrap the existing import array.",
+          "expires": "R31 PR closure or coordinator revocation",
+          "handoff": "Root is sole writer. No test skip, budget change, validator relaxation or permission change."
+        },
+        {
+          "id": "R31-CI-20261023",
+          "grantedBy": "Owner request to repair PRs #185/#186/#187; root serializes shared changes",
+          "writer": "root PR repair session aa623b77a7b8",
+          "scope": "Exclude unrelated asynchronous mail dispatch from request SQL measurements, with regression coverage. Original budgets and production defaults unchanged.",
+          "paths": [
+            "scripts/perf/post-r18/lib/lane-env.mjs",
+            "scripts/perf/post-r18/lib/runtime.test.mjs"
+          ],
+          "expires": "PR #186 closure or coordinator revocation",
+          "handoff": "docs/production-readiness/r31/ACCEPTANCE.md"
+        }
+      ],
       "requiredEvidence": [
         "docs/production-readiness/r31/IMPLEMENTATION.md",
         "docs/production-readiness/r31/ACCEPTANCE.md",
@@ -322,26 +382,47 @@
         "All behavioral, negative and integration tests in gates/g2/prompts/R31.md",
         "Exact source/base/tree and contract/schema versions; checked command exit codes and test counts; source-bound artifacts; final-PR CI and official CodeQL; explicit skipped, blocked, sandbox and hosted states"
       ],
-      "ownershipApproval": "CONDITIONAL_AFTER_VERIFIED_G2_PUBLICATION_AND_SESSION_ASSIGNMENT",
-      "blockedBy": ["G2_VERIFIED_OWNER_MERGED_PUBLICATION", "EXACT_SESSION_ASSIGNMENT"],
+      "ownershipApproval": "APPROVED_AFTER_VERIFIED_G2_PUBLICATION",
+      "blockedBy": [],
       "isolatedRuntime": {
-        "allocationStatus": "PLANNED_NOT_PROVISIONED",
-        "composeProject": "hsm-r31-<session>",
-        "database": "hsm_r31_<session>",
-        "databaseUser": "hsm_r31_<session>",
-        "redis": "Separate disposable instance or demonstrated lane/session namespace; no shared flush",
-        "storage": "r31/<session>/ with separate public, restricted and staging namespaces",
-        "queues": "r31:<session>:<queue>",
+        "allocationStatus": "PROVISIONED_DISPOSABLE_LOCAL_ONLY",
+        "composeProject": "NOT_USED: task-owned unprivileged PostgreSQL and managed Redis processes",
+        "database": "r31_20261023_d799cbee plus independently generated disposable fixture databases",
+        "databaseUser": "r31_db_admin (task-only disposable administrator)",
+        "redis": "Separate task-only Redis instance on loopback6431; fixture namespaces; no shared flush",
+        "storage": "Private task temporary build/credential directories; no hosted storage or production media",
+        "queues": "Existing outbox rows are isolated in each disposable fixture database; task-only Redis namespace",
         "apiPort": 4331,
         "webPort": 4431,
         "postgresPort": 5531,
         "redisPort": 6431,
-        "browserOrigin": "http://r31.<session>.localhost:4431",
-        "browserContexts": "Independent Seeker, Provider and Admin contexts with host-only cookies; different ports alone do not isolate cookies",
-        "effectiveConfiguration": "Inspect resolved container names, explicit volume names, bucket/directory prefixes and ports before allocating; a Compose project name alone is insufficient",
+        "browserOrigin": "http://127.0.0.1:4431",
+        "browserContexts": "Dedicated fresh contexts per actor/login, host-only cookies; no shared browser session",
+        "effectiveConfiguration": "Real PostgreSQL16.15 SELECT and Redis7.0.15 PONG verified; owned API4331/web4431 port checks precede each harness run; no Docker or shared volume names",
         "secrets": "Task-issued disposable values only; never copy an unreviewed .env or use the user working database"
       },
-      "sourcePrompt": "docs/production-readiness/post-r18/gates/g2/prompts/R31.md"
+      "sourcePrompt": "docs/production-readiness/post-r18/gates/g2/prompts/R31.md",
+      "sessionAssignment": {
+        "sessionId": "r31-20261023-d799cbee",
+        "assignedBy": "/root — owner-delegated engineering coordinator for baraabd",
+        "assignedAt": "2026-10-23T04:47:33Z",
+        "authorizationRecords": [
+          "docs/production-readiness/r31/OWNERSHIP.md",
+          "docs/production-readiness/r31/shared-change-requests/CR-001-integration.md"
+        ]
+      },
+      "execution": {
+        "state": "IMPLEMENTED_LOCAL_VERIFICATION_COMPLETE",
+        "sessionId": "r31-20261023-d799cbee",
+        "sourceBaseSha": "72b4aaeb0a71d806b7fca7363dd9ca59bbcee644",
+        "branch": "feat/r31-subscription-entitlements",
+        "evidence": "docs/production-readiness/r31/ACCEPTANCE.md",
+        "integration": "INTEGRATION_PENDING: actual R29 sandbox and R30 manual collections require the separate G3 candidate",
+        "policy": "POLICY_BLOCKED: unapproved commerce, cancellation, grace, consent, refunds and usage reset remain fail-closed",
+        "hosted": "NOT_RUN",
+        "release": "NOT_ACCEPTED",
+        "finalHeadEvidence": "Current PR metadata and source-bound CI artifacts; exact final commit required, no inherited baseline PASS"
+      }
     },
     {
       "id": "R32",

@@ -22,7 +22,16 @@ import { useAuth } from '../../../../lib/auth-provider';
 import { clearIntendedApp } from '../../../../lib/intended-app';
 import { EditProfilePage } from '../../profile/EditProfilePage';
 import type { ProviderAvailability } from '@homeservicemarketplace/contracts';
-import { User, ChevronRight, CheckCircle2, WifiOff, Award, Clock, LogOut } from 'lucide-react';
+import {
+  User,
+  ChevronRight,
+  CheckCircle2,
+  WifiOff,
+  Award,
+  Clock,
+  LogOut,
+  CreditCard,
+} from 'lucide-react';
 
 // ─── Provider Profile ─────────────────────────────────────────────────────────
 // Tailwind palette for skill chips. Cycled by index so the chip colours
@@ -127,6 +136,7 @@ export function ProviderProfileScreen() {
     rating: lang === 'ar' ? 'التقييم' : 'Rating',
     reviews: lang === 'ar' ? 'مراجعات' : 'Reviews',
     editProfile: lang === 'ar' ? 'تعديل الملف' : 'Edit Profile',
+    myPlan: lang === 'ar' ? 'خطتي واستخدامي' : 'My plan and usage',
     settings: lang === 'ar' ? 'الإعدادات' : 'Settings',
     support: lang === 'ar' ? 'الدعم الفني' : 'Support',
     signOut: lang === 'ar' ? 'تسجيل الخروج' : 'Sign Out',
@@ -407,15 +417,19 @@ export function ProviderProfileScreen() {
         {/* Menu */}
         <div className="bg-white dark:bg-slate-800 rounded-3xl border border-slate-100 dark:border-slate-700 shadow-sm overflow-hidden mb-4">
           {[
-            // R18 — Edit Profile is the only row with a destination. "My
-            // Analytics", "Notifications" and "My Reviews" looked enabled and
-            // did nothing; they are gone (notifications have the header bell,
-            // and the rating is shown on this screen).
+            // Every row has a real destination. R31 billing remains separate
+            // from the verification and work-access controls below.
             {
               icon: <User size={16} />,
               label: L.editProfile,
               onClick: () => setView('editProfile'),
               testId: 'provider-menu-edit-profile',
+            },
+            {
+              icon: <CreditCard size={16} />,
+              label: L.myPlan,
+              onClick: () => navigate('/provider/my-plan'),
+              testId: 'provider-menu-my-plan',
             },
           ].map(({ icon, label, onClick, testId }, i) => (
             <button
