@@ -1,5 +1,15 @@
 # G2 — Acceptance evidence
 
+## Current source reconciliation — 2026-10-23
+
+The earlier single-lane handoffs below are historical. The owner merged R30
+#184 and R31 #186 and requested repair of conflicts between #187 and #185.
+The current Wave 3 plan retains all four R30/R31/R32/R33 source assignments;
+R33 includes corrected R32 head `03e99da086cca4f4d7652062c331aee2f000775d`.
+R32 shared leases are handed off serially, not marked as owner-merged.
+Merge #187 before #185. G2's frozen acceptance evidence is unchanged, and G3,
+commercial/refund policy, hosted and release acceptance remain separate.
+
 ## Verified technical acceptance — 2026-10-22T23:38:30.107Z
 
 Candidate `72b4aaeb0a71d806b7fca7363dd9ca59bbcee644`, tree `43e9c6a4e58cfb934b12789feeb38b588e1cb7c6`, passed all 38 exact-source checks,
@@ -17,11 +27,16 @@ explicitly excluded from the pass count. Both projection suites execute all
 64 cases without skips, including isolated schemas and generic plans.
 The three separate compiled-worker recovery tests also pass.
 
-G2 is **technically ACCEPTED**. PR #183 is the separate review publication and
-has not been merged. Wave 3 remains BLOCKED until owner-reviewed merged
-publication is verified and lane sessions are explicitly assigned. Wave 4
-additionally requires G3; R38 final certification requires G4. R39 has no package
-in this registry. R28 hosted prerequisites and R16/R18 policy holds remain.
+G2 is **technically ACCEPTED**. Owner `baraabd` merged the separate publication
+PR #183 at `986b4707776711e80564f0642133ede90ba16f3c` on
+2026-10-23T04:11:34Z. Independent postmerge verification found all 30 checks
+successful, accepted-source ancestry, and only the 13 reviewed documentation
+changes between frozen source and publication. `PUBLICATION_VERIFICATION.json`
+records the complete observed inventory. R33 alone is assigned to session
+`r33-5ac99b68f223`; unassigned R29-R32 remain held. Wave 4 additionally requires
+G3; R38 final certification requires G4. R39 has no package in this registry.
+R28 hosted prerequisites and R16/R18 policy holds remain. This is start
+authorization only; it does not accept R33 implementation or any live operation.
 
 Evidence: `SOURCE_MANIFEST.json`, `ACCEPTANCE_EVIDENCE.json`, and `evidence/`.
 No containing commit SHA, owner approval, hosted acceptance or lane execution

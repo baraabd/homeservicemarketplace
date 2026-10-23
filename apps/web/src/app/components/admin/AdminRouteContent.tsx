@@ -108,6 +108,9 @@ export function AdminRouteContent({ route }: { route: AdminRoute }) {
     case 'financials':
       return (
         <div className="ar-stack">
+          <Link className="ar-button" to="/admin/financial-operations">
+            {lang === 'ar' ? 'عمليات مدفوعات الاشتراكات' : 'Subscription payment operations'}
+          </Link>
           <Link className="ar-button" to="/admin/manual-payments">
             {lang === 'ar' ? 'مراجعة الدفعات اليدوية' : 'Review manual payments'}
           </Link>

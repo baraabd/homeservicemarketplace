@@ -5,6 +5,7 @@ import { MODULE_METADATA } from '@nestjs/common/constants';
 import { AppModule } from './app.module';
 import { LedgerModule } from './modules/money/ledger/ledger.module';
 import { MoneyModule } from './modules/money/money.module';
+import { FinancialReportingModule } from './modules/money/reporting/financial-reporting.module';
 import { RefundsModule } from './modules/money/refunds/refunds.module';
 import { RefundOutboxConsumer } from './modules/money/recovery/refund-outbox.consumer';
 import { SubscriptionsModule } from './modules/money/subscriptions/subscriptions.module';
@@ -45,6 +46,7 @@ describe('AppModule feature registration', () => {
 
     expect(imports.filter((entry) => entry === SupportModule)).toHaveLength(1);
     expect(imports.filter((entry) => entry === MoneyModule)).toHaveLength(1);
+    expect(imports.filter((entry) => entry === FinancialReportingModule)).toHaveLength(1);
     expect(imports.filter((entry) => entry === LedgerModule)).toHaveLength(0);
     const moneyImports = Reflect.getMetadata(MODULE_METADATA.IMPORTS, MoneyModule) as unknown[];
     expect(moneyImports.filter((entry) => entry === LedgerModule)).toHaveLength(1);

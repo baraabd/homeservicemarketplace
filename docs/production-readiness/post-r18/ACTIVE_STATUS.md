@@ -2,16 +2,16 @@
 
 G2 technical acceptance: `72b4aaeb0a71d806b7fca7363dd9ca59bbcee644`; all 38 checks and required artifacts verified.
 Owner-merged PR #183 publication is independently verified at
-`986b4707776711e80564f0642133ede90ba16f3c`. R30, R31 and R32 source
+`986b4707776711e80564f0642133ede90ba16f3c`. R30, R31, R32 and R33 source
 assignments are retained. R30 #184 and R31 #186 are owner-merged; their shared
-leases are completed. R29/R33 and all Wave 4 starts remain held in this branch.
+leases are completed. R29 and all Wave 4 starts remain held in this branch.
 
 Authority: `SPRINT_REGISTRY.json`. Package recovery on 2026-10-22.
 G1 remains accepted and owner-published at its immutable frozen source. The active
 G2 source manifest controls the current integration decision and publication hold.
-R30/R31/R32 retain their historical READY_TO_START source assignments; their
+R30/R31/R32/R33 retain their historical READY_TO_START source assignments; their
 nested execution records describe progress without claiming assembled acceptance.
-R29/R33 remain PLANNED in this branch, and R34–R38 remain PLANNED behind G3.
+R29 remains PLANNED in this branch, and R34–R38 remain PLANNED behind G3.
 
 | ID  | Title                                                                              | Wave | Status           | Branch                             | PR         |
 | --- | ---------------------------------------------------------------------------------- | ---- | ---------------- | ---------------------------------- | ---------- |
@@ -29,7 +29,7 @@ R29/R33 remain PLANNED in this branch, and R34–R38 remain PLANNED behind G3.
 | R30 | Manual subscription payment rails and protected receipt review                     | 3    | READY_TO_START   | feat/r30-manual-payment-review     | —          |
 | R31 | Subscription plans, My Plan and atomic entitlements                                | 3    | READY_TO_START   | feat/r31-subscription-entitlements | —          |
 | R32 | Refund eligibility, reservations and ambiguous-outcome recovery                    | 3    | READY_TO_START   | feat/r32-refund-recovery           | —          |
-| R33 | Financial read models and Admin/Provider operations UI                             | 3    | PLANNED          | feat/r33-financial-operations-ui   | —          |
+| R33 | Financial read models and Admin/Provider operations UI                             | 3    | READY_TO_START   | feat/r33-financial-operations-ui   | —          |
 | R34 | Cross-rail reconciliation, settlement exceptions and financial acceptance          | 4    | PLANNED          | feat/r34-reconciliation-settlement | —          |
 | R35 | Three-application and subscription lifecycle acceptance                            | 4    | PLANNED          | test/r35-cross-role-certification  | —          |
 | R36 | Backup restore, disaster recovery and compatible rollback                          | 4    | PLANNED          | test/r36-backup-restore-recovery   | —          |
@@ -49,11 +49,13 @@ recorded SHA-256. Every title, branch, dependency and legacy alias now comes fro
 `gates/g2/PROMPT_PROVENANCE.md`. These are planned packages, not implemented work.
 The original 21-file R32 conditional package remains intact.
 
-`waves/wave-03.plan.json` preserves the assigned R30, R31 and R32 source
+`waves/wave-03.plan.json` preserves the assigned R30, R31, R32 and R33 source
 sessions. R30 #184 and R31 #186 are owner-merged; completed leases retain their
 original scope and closure identity. The owner's conflict-repair request orders
-source integration as #187 followed by #185. R29/R33 retain their session holds
-in this branch. Frozen G2 source and separate G3 acceptance remain unchanged;
+source integration as #187 followed by #185. This R33 branch includes corrected
+R32 head `03e99da086cca4f4d7652062c331aee2f000775d`; R32 shared leases have been
+handed off to its sole integration writer, not marked as merged. R29 retains its
+session hold. Frozen G2 source and separate G3 acceptance remain unchanged;
 `waves/wave-04.plan.json` still has no assigned source.
 R38 Phase B additionally requires the serialized R34–R37 final evidence join
 and G4 owner scope approval; Phase A preparation does not certify future peers.

@@ -1680,7 +1680,8 @@
           "docs/production-readiness/r32/shared-change-requests/CR-001-integration.md"
         ],
         "prefixes": [],
-        "leases": [
+        "leases": [],
+        "completedLeases": [
           {
             "id": "R32-CORE-01",
             "grantedBy": "/root owner-delegated coordinator for baraabd",
@@ -1697,7 +1698,12 @@
               "apps/api/src/app.module.spec.ts",
               "apps/api/test/support/r24-money-http.fixture.ts",
               "apps/api/test/integration/r24-money-api.integration.spec.ts"
-            ]
+            ],
+            "closure": {
+              "sourcePr": 187,
+              "sourceSha": "03e99da086cca4f4d7652062c331aee2f000775d",
+              "reason": "Root completed the R32 repair and hands shared files to the R33 integration writer in this stacked branch. This is a serialized source handoff, not a claim that PR #187 is merged."
+            }
           },
           {
             "id": "R32-G2-01",
@@ -1720,7 +1726,12 @@
               "docs/production-readiness/post-r18/gates/g2/evidence/source-provenance.json",
               "docs/production-readiness/post-r18/waves/wave-02.closeout.json",
               "docs/production-readiness/post-r18/waves/wave-03.plan.json"
-            ]
+            ],
+            "closure": {
+              "sourcePr": 187,
+              "sourceSha": "03e99da086cca4f4d7652062c331aee2f000775d",
+              "reason": "Root completed the R32 repair and hands shared files to the R33 integration writer in this stacked branch. This is a serialized source handoff, not a claim that PR #187 is merged."
+            }
           },
           {
             "id": "R32-CI-01",
@@ -1732,7 +1743,12 @@
             "paths": [
               "scripts/perf/post-r18/lib/lane-env.mjs",
               "scripts/perf/post-r18/lib/runtime.test.mjs"
-            ]
+            ],
+            "closure": {
+              "sourcePr": 187,
+              "sourceSha": "03e99da086cca4f4d7652062c331aee2f000775d",
+              "reason": "Root completed the R32 repair and hands shared files to the R33 integration writer in this stacked branch. This is a serialized source handoff, not a claim that PR #187 is merged."
+            }
           },
           {
             "id": "R32-R30-TEST-20261023",
@@ -1744,7 +1760,12 @@
               "apps/api/test/integration/r30-manual-payments.integration.spec.ts"
             ],
             "expires": "PR #187 closure or coordinator revocation",
-            "handoff": "docs/production-readiness/r32/ACCEPTANCE.md"
+            "handoff": "docs/production-readiness/r32/ACCEPTANCE.md",
+            "closure": {
+              "sourcePr": 187,
+              "sourceSha": "03e99da086cca4f4d7652062c331aee2f000775d",
+              "reason": "Root completed the R32 repair and hands shared files to the R33 integration writer in this stacked branch. This is a serialized source handoff, not a claim that PR #187 is merged."
+            }
           }
         ]
       },
@@ -1790,10 +1811,10 @@
       "lane": 5,
       "branch": "feat/r33-financial-operations-ui",
       "owner": {
-        "lane": "R33 future lane session; coordinator assigns the writer only after verified G2 publication",
-        "coordinator": "Owner-delegated engineering coordinator for baraabd"
+        "lane": "r33-5ac99b68f223; /root accountable writer with exact delegated subleases",
+        "coordinator": "Owner-delegated engineering coordinator for baraabd (/root)"
       },
-      "status": "PLANNED",
+      "status": "READY_TO_START",
       "frozenBase": "72b4aaeb0a71d806b7fca7363dd9ca59bbcee644",
       "dependencies": ["R24", "R20", "R23"],
       "legacyAliases": ["P43-ui"],
@@ -1827,10 +1848,96 @@
           "docs/production-readiness/r33/RISKS.md",
           "docs/production-readiness/r33/ROLLBACK.md",
           "docs/production-readiness/r33/OWNERSHIP.md",
-          "docs/production-readiness/r33/shared-change-requests/CR-001-integration.md"
+          "docs/production-readiness/r33/shared-change-requests/CR-001-integration.md",
+          "apps/web/src/app/features/financial-operations/FinancialOperationsView.tsx",
+          "apps/web/src/app/features/financial-operations/FinancialOperationsView.test.tsx",
+          "docs/production-readiness/r33/SOURCE_MANIFEST.json",
+          "docs/production-readiness/r33/G2_PUBLICATION_VERIFICATION.json"
         ],
         "prefixes": [],
-        "leases": []
+        "leases": [
+          {
+            "grantedBy": "Owner-delegated engineering coordinator for baraabd (/root)",
+            "grantedAt": "2026-10-23T04:48:12Z",
+            "expires": "Completion of this R33 PR or explicit coordinator revocation, whichever is first",
+            "ownershipRecord": "docs/production-readiness/r33/OWNERSHIP.md",
+            "writer": "/root/gate_audit",
+            "paths": [
+              "docs/production-readiness/post-r18/ACTIVE_STATUS.md",
+              "docs/production-readiness/post-r18/SPRINT_REGISTRY.json",
+              "docs/production-readiness/post-r18/gates/g2/ACCEPTANCE.md",
+              "docs/production-readiness/post-r18/gates/g2/ACCEPTANCE_EVIDENCE.json",
+              "docs/production-readiness/post-r18/gates/g2/BLOCKERS.md",
+              "docs/production-readiness/post-r18/gates/g2/IMPLEMENTATION.md",
+              "docs/production-readiness/post-r18/gates/g2/SOURCE_MANIFEST.json",
+              "docs/production-readiness/post-r18/gates/g2/evidence/r25-summary.json",
+              "docs/production-readiness/post-r18/gates/g2/evidence/r26-summary.json",
+              "docs/production-readiness/post-r18/gates/g2/evidence/r27-summary.json",
+              "docs/production-readiness/post-r18/gates/g2/evidence/source-provenance.json",
+              "docs/production-readiness/post-r18/waves/wave-02.closeout.json",
+              "docs/production-readiness/post-r18/waves/wave-03.plan.json",
+              "docs/production-readiness/post-r18/gates/g2/PUBLICATION_VERIFICATION.json"
+            ],
+            "scope": "Materialize the exact owner-merged 13-file G2 record overlay; record actual publication verification and only R33 session/exact ownership, preserving frozen source and all other lane/policy holds. No validator or test changes.",
+            "handoff": "Return exact 14 paths to root after canonical governance/readiness validation; only root may later amend these records."
+          },
+          {
+            "grantedBy": "Owner-delegated engineering coordinator for baraabd (/root)",
+            "grantedAt": "2026-10-23T04:48:12Z",
+            "expires": "Completion of this R33 PR or explicit coordinator revocation, whichever is first",
+            "ownershipRecord": "docs/production-readiness/r33/OWNERSHIP.md",
+            "writer": "/root/reporting_api",
+            "paths": ["packages/contracts/src/money/financial-operations.ts"],
+            "scope": "Additive serialized financial reporting/read/export/reconciliation contract types, using accepted money wire semantics; no prior contract change or runtime policy.",
+            "handoff": "Root publishes the contract from existing money barrel after review; all consumers import published workspace contracts."
+          },
+          {
+            "grantedBy": "Owner-delegated engineering coordinator for baraabd (/root)",
+            "grantedAt": "2026-10-23T04:48:12Z",
+            "expires": "Completion of this R33 PR or explicit coordinator revocation, whichever is first",
+            "ownershipRecord": "docs/production-readiness/r33/OWNERSHIP.md",
+            "writer": "/root",
+            "paths": [
+              "packages/contracts/src/money/index.ts",
+              "apps/api/src/app.module.ts",
+              "apps/web/src/app/routes.ts",
+              "apps/web/src/app/components/admin/AdminRouteContent.tsx",
+              "apps/web/src/app/components/provider/screens/WalletScreen.tsx"
+            ],
+            "scope": "Serialize additive contract export, mount FinancialReportingModule importing MoneyModule without token rebinding, guarded lazy /admin/financial-operations and /provider/financial-history routes, and links from existing financial/Wallet surfaces. Preserve existing screens, work permissions, auth and policy. No peer source, schema, migration, package or CI edits.",
+            "handoff": "Root applies only reviewed exact integration changes and verifies real route/API behavior before final handoff."
+          },
+          {
+            "grantedBy": "Owner-delegated engineering coordinator for baraabd (/root)",
+            "grantedAt": "2026-10-23T04:48:12Z",
+            "expires": "Completion of this R33 PR or explicit coordinator revocation, whichever is first",
+            "writer": "/root",
+            "paths": ["apps/web/playwright.config.ts", ".github/workflows/ci.yml"],
+            "scope": "Minimal R33 real-browser discovery: exclude its dedicated real-API spec from the mocked suite and run it after existing admin-review-real-api tests against that disposable real API job, with explicit no-skip counts and retained artifacts. Preserve existing test assertions, matrix, permissions, budgets, timeouts and job dependencies.",
+            "handoff": "Root verifies existing tests remain intact and R33 real API tests actually execute before final PR evidence.",
+            "ownershipRecord": "docs/production-readiness/r33/OWNERSHIP.md"
+          },
+          {
+            "id": "R33-CI-20261023",
+            "grantedBy": "Owner request to repair PRs #185/#186/#187; root serializes shared changes",
+            "writer": "root PR repair session aa623b77a7b8",
+            "scope": "Exclude unrelated asynchronous mail dispatch from request SQL measurements, with regression coverage. Original budgets and production defaults unchanged.",
+            "paths": [
+              "scripts/perf/post-r18/lib/lane-env.mjs",
+              "scripts/perf/post-r18/lib/runtime.test.mjs"
+            ],
+            "expires": "PR #185 closure or coordinator revocation",
+            "handoff": "docs/production-readiness/r33/ACCEPTANCE.md"
+          },
+          {
+            "id": "R33-STACK-20261023",
+            "paths": ["apps/api/src/app.module.spec.ts"],
+            "grantedBy": "Owner request to repair conflicts between #187 and #185; root serializes the R32 to R33 handoff",
+            "scope": "Assert that R33 reporting remains mounted alongside R31 subscriptions and R32 refund recovery after the ordered merge. Existing security and runtime gates remain required.",
+            "expires": "PR #185 closure or coordinator revocation",
+            "handoff": "docs/production-readiness/r33/ACCEPTANCE.md"
+          }
+        ]
       },
       "requiredEvidence": [
         "docs/production-readiness/r33/IMPLEMENTATION.md",
@@ -1845,11 +1952,50 @@
       "startBarrier": {
         "gate": "G2",
         "decision": "ACCEPTED",
-        "publication": "NOT_RELEASED",
-        "sourceRecord": "docs/production-readiness/post-r18/gates/g2/SOURCE_MANIFEST.json"
+        "publication": "MERGED_AND_VERIFIED",
+        "sourceRecord": "docs/production-readiness/post-r18/gates/g2/SOURCE_MANIFEST.json",
+        "acceptanceRecordCommitSha": "986b4707776711e80564f0642133ede90ba16f3c",
+        "verificationRecord": "docs/production-readiness/post-r18/gates/g2/PUBLICATION_VERIFICATION.json"
       },
-      "ownershipApproval": "CONDITIONAL_AFTER_VERIFIED_G2_PUBLICATION_AND_SESSION_ASSIGNMENT",
-      "sourcePrompt": "docs/production-readiness/post-r18/gates/g2/prompts/R33.md"
+      "ownershipApproval": "APPROVED_AFTER_VERIFIED_G2_PUBLICATION",
+      "sourcePrompt": "docs/production-readiness/post-r18/gates/g2/prompts/R33.md",
+      "sessionAssignment": {
+        "sessionId": "r33-5ac99b68f223",
+        "assignedBy": "Owner-delegated engineering coordinator for baraabd (/root)",
+        "assignedAt": "2026-10-23T04:48:12Z",
+        "worktree": "/workspace/scratch/5ac99b68f223/hsm-r33",
+        "ownershipRecord": "docs/production-readiness/r33/OWNERSHIP.md",
+        "publicationVerification": "docs/production-readiness/post-r18/gates/g2/PUBLICATION_VERIFICATION.json"
+      },
+      "isolatedRuntime": {
+        "allocationStatus": "PROVISIONED_DISPOSABLE",
+        "composeProject": null,
+        "provisioningMethod": "Native task-local disposable processes; no Compose containers or volumes were used.",
+        "database": "hsm_r33_reporting",
+        "databaseUser": "hsm_r33_reporting",
+        "postgresPort": 5533,
+        "redisPort": 6433,
+        "apiPort": 4333,
+        "webPort": 4433,
+        "redis": "Separate R33-only Redis 7.4.7 instance; no shared reset or flush.",
+        "storage": "/tmp/hsm-r33-runtime/storage/public, restricted and staging; task-only local directories.",
+        "queues": "Existing PostgreSQL outbox in the separate R33 database; no shared external queue was provisioned.",
+        "browserOrigin": "http://127.0.0.1:4433",
+        "browserContexts": "Fresh disposable per-actor contexts/cookie jars; no session reuse across lanes. Different ports alone are not isolation.",
+        "effectiveConfiguration": "Actual non-secret runtime, provenance and fingerprint are recorded in the R33 source manifest.",
+        "secrets": "Generated disposable values remain outside Git/artifacts; no working user database or copied environment.",
+        "evidenceRecord": "docs/production-readiness/r33/SOURCE_MANIFEST.json"
+      },
+      "execution": {
+        "state": "SOURCE_VERIFIED",
+        "acceptance": "INTEGRATION_PENDING",
+        "sourceVerificationScope": "Final local source, contracts, affected units, real PostgreSQL, clean production build and three real API/browser scenarios; exact final PR CI is recorded separately in the PR body.",
+        "browserEvidence": "PASSED_LOCAL_3_OF_3_ZERO_RETRIES_32_SCREENSHOTS_7_WIRE_CHECKS",
+        "finalPrCi": "RECORDED_IN_CURRENT_PR_BODY_AFTER_PUBLICATION",
+        "ownershipRecord": "docs/production-readiness/r33/OWNERSHIP.md",
+        "evidenceRecord": "docs/production-readiness/r33/ACCEPTANCE.md",
+        "sourceManifest": "docs/production-readiness/r33/SOURCE_MANIFEST.json"
+      }
     },
     {
       "id": "R34",

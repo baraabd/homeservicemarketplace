@@ -1356,6 +1356,54 @@ jobs:
           retention-days: 14
           if-no-files-found: error
 
+      # R33 uses the same built API/SPA and disposable services after the
+      # original Admin acceptance. Let the unchanged 10/IP/minute login
+      # budget expire naturally between independent suites; never reset
+      # rate-limit keys or raise the server's security budgets.
+      - name: Test R33 financial wire verification
+        run: node --test scripts/production/financial-reports/verify-report.test.cjs
+      - name: Allow the existing login rate window to expire
+        run: |
+          sleep 60
+          sleep 1
+      - name: Accept R33 financial reports through real API routes
+        env:
+          E2E_REAL_API: http://127.0.0.1:4010
+          E2E_MAILPIT: http://127.0.0.1:8025
+          E2E_BASE_URL: http://127.0.0.1:4173
+          PLAYWRIGHT_JSON_OUTPUT_FILE: test-results/r33-financial-operations-report.json
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          mkdir -p apps/web/test-results
+          set +e
+          pnpm --filter @homeservicemarketplace/web exec playwright test \
+            e2e/r33-financial-operations/financial-operations.real-api.spec.ts \
+            --project=chromium-desktop --workers=1 --trace=off \
+            --reporter=line,json --output=test-results/r33-financial-operations
+          r33_status=$?
+          set -e
+          node scripts/ci/assert-playwright-run.cjs \
+            apps/web/test-results/r33-financial-operations-report.json 3 \
+            R33-financial-operations \
+            apps/web/test-results/r33-financial-operations-summary.json
+          test "$r33_status" -eq 0
+          shopt -s globstar nullglob
+          r33_wires=(apps/web/test-results/r33-financial-operations/**/*.wire.json)
+          test "${#r33_wires[@]}" -eq 7
+          for r33_wire in "${r33_wires[@]}"; do
+            node scripts/production/financial-reports/verify-report.cjs "$r33_wire"
+          done
+      - name: Upload R33 sanitized financial browser evidence
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: r33-financial-operations-evidence
+          path: |
+            apps/web/test-results/r33-financial-operations/**/*.png
+            apps/web/test-results/r33-financial-operations-summary.json
+          retention-days: 14
+          if-no-files-found: error
+
   # ── cookies / CSRF / refresh / logout, in a REAL browser ──────────────────
   # These behaviours are defined by rules only a browser implements: HttpOnly
   # hides a cookie from document.cookie, SameSite withholds it cross-site, and
