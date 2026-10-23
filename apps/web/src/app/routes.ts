@@ -22,6 +22,20 @@ const AdminPage = lazyPage(
   () => import('./pages/AdminPage').then((module) => ({ default: module.AdminPage })),
   { standalone: true },
 );
+const AdminFinancialOperations = lazyPage(
+  () =>
+    import('./features/financial-operations').then((module) => ({
+      default: module.AdminFinancialOperations,
+    })),
+  { standalone: true },
+);
+const ProviderFinancialHistory = lazyPage(
+  () =>
+    import('./features/financial-operations').then((module) => ({
+      default: module.ProviderFinancialHistory,
+    })),
+  { standalone: true },
+);
 const LoginPage = lazyPage(() =>
   import('./pages/AuthPages').then((module) => ({ default: module.LoginPage })),
 );
@@ -74,10 +88,19 @@ export const router = createBrowserRouter([
   // A participant may need help with a past booking even when work access is restricted.
   // Authentication is required here; current booking ownership is enforced by the API.
   { Component: RequireAuth, children: [{ path: 'disputes/*', Component: DisputesPage }] },
+  // Subscription history grants no work access. The API freshly verifies
+  // the provider role, money permission and each row's ownership.
+  {
+    Component: RequireAuth,
+    children: [{ path: 'provider/financial-history', Component: ProviderFinancialHistory }],
+  },
   // ── Admin (full-width, no phone container, role-gated) ───────────────────
   {
     Component: RequireAdmin,
-    children: [{ path: 'admin/*', Component: AdminPage }],
+    children: [
+      { path: 'admin/financial-operations', Component: AdminFinancialOperations },
+      { path: 'admin/*', Component: AdminPage },
+    ],
   },
 
   {

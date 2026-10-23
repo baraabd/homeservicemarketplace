@@ -1,13 +1,14 @@
 # Post-R18 active status index
 
 G2 technical acceptance: `72b4aaeb0a71d806b7fca7363dd9ca59bbcee644`; all 38 checks and required artifacts verified.
-PR #183 publication remains unmerged. Wave 3 and Wave 4 remain blocked.
+PR #183 was owner-merged at `986b4707776711e80564f0642133ede90ba16f3c`; all 30 postmerge checks and source ancestry were independently verified. R33 is session-assigned and READY_TO_START; R29-R32 and Wave 4 remain held.
 
 Authority: `SPRINT_REGISTRY.json`. Package recovery on 2026-10-22.
 G1 remains accepted and owner-published at its immutable frozen source. The active
 G2 source manifest controls the current integration decision and publication hold.
-All restored R29–R33 packages remain PLANNED behind G2; R34–R38 remain PLANNED
-behind the separate G3 gate. No future lane is released by this preparation.
+R33 alone has an exact assigned writer and approved ownership after verified G2
+publication. Unassigned R29-R32 remain PLANNED; R34-R38 remain PLANNED behind the
+separate G3 gate. Start authorization does not assert implementation acceptance.
 
 | ID  | Title                                                                              | Wave | Status           | Branch                             | PR         |
 | --- | ---------------------------------------------------------------------------------- | ---- | ---------------- | ---------------------------------- | ---------- |
@@ -25,7 +26,7 @@ behind the separate G3 gate. No future lane is released by this preparation.
 | R30 | Manual subscription payment rails and protected receipt review                     | 3    | PLANNED          | feat/r30-manual-payment-review     | —          |
 | R31 | Subscription plans, My Plan and atomic entitlements                                | 3    | PLANNED          | feat/r31-subscription-entitlements | —          |
 | R32 | Refund eligibility, reservations and ambiguous-outcome recovery                    | 3    | PLANNED          | feat/r32-refund-recovery           | —          |
-| R33 | Financial read models and Admin/Provider operations UI                             | 3    | PLANNED          | feat/r33-financial-operations-ui   | —          |
+| R33 | Financial read models and Admin/Provider operations UI                             | 3    | READY_TO_START   | feat/r33-financial-operations-ui   | —          |
 | R34 | Cross-rail reconciliation, settlement exceptions and financial acceptance          | 4    | PLANNED          | feat/r34-reconciliation-settlement | —          |
 | R35 | Three-application and subscription lifecycle acceptance                            | 4    | PLANNED          | test/r35-cross-role-certification  | —          |
 | R36 | Backup restore, disaster recovery and compatible rollback                          | 4    | PLANNED          | test/r36-backup-restore-recovery   | —          |
@@ -34,9 +35,11 @@ behind the separate G3 gate. No future lane is released by this preparation.
 
 ## Execution, planning and acceptance are separate
 
+R33 now has a locally source-verified candidate, three passing real-route browser scenarios and a provisioned disposable runtime. Its `READY_TO_START` row preserves the published G2 start contract; the R33 nested `execution` and `docs/production-readiness/r33/ACCEPTANCE.md` describe source/browser evidence and the retained `INTEGRATION_PENDING` state. Current final-head PR checks are recorded separately after publication; no combined-wave, hosted or release acceptance is asserted.
+
 Wave 1 `SANDBOX_ACCEPTED` retains G1 scope. Wave 2 `READY_TO_START` is the
 historical published G1 start contract, not its current implementation verdict.
-The status column preserves that machine contract. All five Wave 2 deliveries are now merged; their nested `execution` records and G2 successor evidence describe actual delivered source and technically accepted integration pending G2 publication. R28 includes the corrective owner-merged PR #181. Retaining historical source identities does not treat
+The status column preserves that machine contract. All five Wave 2 deliveries are now merged; their nested `execution` records and G2 successor evidence describe actual delivered source and technically accepted integration and verified owner-merged G2 publication. R28 includes the corrective owner-merged PR #181. Retaining historical source identities does not treat
 old checks as proof of a newer build.
 
 The original full prompt pack for R29–R38 was recovered with its previously
@@ -45,10 +48,9 @@ recorded SHA-256. Every title, branch, dependency and legacy alias now comes fro
 `gates/g2/PROMPT_PROVENANCE.md`. These are planned packages, not implemented work.
 The original 21-file R32 conditional package remains intact.
 
-`waves/wave-03.plan.json` holds all five Wave 3 lanes until accepted source-bound
-G2 evidence and a separately verified merged owner-reviewed publication. A
-technically accepted review record can retain a tested frozen source while start
-readiness remains blocked. `waves/wave-04.plan.json` has no source assigned and
+`waves/wave-03.plan.json` records the immutable accepted G2 source and verified
+owner-merged publication. Only R33 is assigned to session `r33-5ac99b68f223`; the
+other four lanes remain held until their exact coordinator session assignments. `waves/wave-04.plan.json` has no source assigned and
 requires a separate accepted and published G3 after actual Wave 3 integration.
 R38 Phase B additionally requires the serialized R34–R37 final evidence join
 and G4 owner scope approval; Phase A preparation does not certify future peers.

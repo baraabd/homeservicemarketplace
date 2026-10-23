@@ -3,12 +3,12 @@
   "wave": 3,
   "startGate": "G2",
   "baseSha": "72b4aaeb0a71d806b7fca7363dd9ca59bbcee644",
-  "status": "BLOCKED",
-  "startableLanes": [],
-  "blockedLanes": ["R29", "R30", "R31", "R32", "R33"],
+  "status": "READY_TO_START",
+  "startableLanes": ["R33"],
+  "blockedLanes": ["R29", "R30", "R31", "R32"],
   "coordinator": "Owner-delegated engineering coordinator for baraabd",
   "decisionRecord": "docs/production-readiness/post-r18/gates/g2/SOURCE_MANIFEST.json",
-  "publicationRequirement": "All lanes remain held until accepted exact-source G2 evidence and a separate owner-reviewed, merged and verified publication. A plan, local test pass or review PR cannot release a lane.",
+  "publicationRequirement": "Accepted exact-source G2 evidence and owner-merged PR183 were independently verified. R33 is assigned to r33-5ac99b68f223; all unassigned lanes remain held. A new session requires explicit coordinator assignment; G3 remains required for Wave 4.",
   "promptProvenance": "docs/production-readiness/post-r18/gates/g2/PROMPT_PROVENANCE.md",
   "ownershipRecord": "docs/production-readiness/post-r18/waves/OWNERSHIP_R29_R38.md",
   "lanes": [
@@ -308,10 +308,10 @@
       "lane": 5,
       "branch": "feat/r33-financial-operations-ui",
       "owner": {
-        "lane": "R33 future lane session; coordinator assigns the writer only after verified G2 publication",
-        "coordinator": "Owner-delegated engineering coordinator for baraabd"
+        "lane": "r33-5ac99b68f223; /root accountable writer with exact delegated subleases",
+        "coordinator": "Owner-delegated engineering coordinator for baraabd (/root)"
       },
-      "status": "BLOCKED",
+      "status": "READY_TO_START",
       "frozenBaseSha": "72b4aaeb0a71d806b7fca7363dd9ca59bbcee644",
       "dependencies": ["R24", "R20", "R23"],
       "exactFiles": [
@@ -343,9 +343,74 @@
         "docs/production-readiness/r33/RISKS.md",
         "docs/production-readiness/r33/ROLLBACK.md",
         "docs/production-readiness/r33/OWNERSHIP.md",
-        "docs/production-readiness/r33/shared-change-requests/CR-001-integration.md"
+        "docs/production-readiness/r33/shared-change-requests/CR-001-integration.md",
+        "apps/web/src/app/features/financial-operations/FinancialOperationsView.tsx",
+        "apps/web/src/app/features/financial-operations/FinancialOperationsView.test.tsx",
+        "docs/production-readiness/r33/SOURCE_MANIFEST.json"
       ],
-      "leases": [],
+      "leases": [
+        {
+          "grantedBy": "Owner-delegated engineering coordinator for baraabd (/root)",
+          "grantedAt": "2026-10-23T04:48:12Z",
+          "expires": "Completion of this R33 PR or explicit coordinator revocation, whichever is first",
+          "ownershipRecord": "docs/production-readiness/r33/OWNERSHIP.md",
+          "writer": "/root/gate_audit",
+          "paths": [
+            "docs/production-readiness/post-r18/ACTIVE_STATUS.md",
+            "docs/production-readiness/post-r18/SPRINT_REGISTRY.json",
+            "docs/production-readiness/post-r18/gates/g2/ACCEPTANCE.md",
+            "docs/production-readiness/post-r18/gates/g2/ACCEPTANCE_EVIDENCE.json",
+            "docs/production-readiness/post-r18/gates/g2/BLOCKERS.md",
+            "docs/production-readiness/post-r18/gates/g2/IMPLEMENTATION.md",
+            "docs/production-readiness/post-r18/gates/g2/SOURCE_MANIFEST.json",
+            "docs/production-readiness/post-r18/gates/g2/evidence/r25-summary.json",
+            "docs/production-readiness/post-r18/gates/g2/evidence/r26-summary.json",
+            "docs/production-readiness/post-r18/gates/g2/evidence/r27-summary.json",
+            "docs/production-readiness/post-r18/gates/g2/evidence/source-provenance.json",
+            "docs/production-readiness/post-r18/waves/wave-02.closeout.json",
+            "docs/production-readiness/post-r18/waves/wave-03.plan.json",
+            "docs/production-readiness/post-r18/gates/g2/PUBLICATION_VERIFICATION.json"
+          ],
+          "scope": "Materialize the exact owner-merged 13-file G2 record overlay; record actual publication verification and only R33 session/exact ownership, preserving frozen source and all other lane/policy holds. No validator or test changes.",
+          "handoff": "Return exact 14 paths to root after canonical governance/readiness validation; only root may later amend these records."
+        },
+        {
+          "grantedBy": "Owner-delegated engineering coordinator for baraabd (/root)",
+          "grantedAt": "2026-10-23T04:48:12Z",
+          "expires": "Completion of this R33 PR or explicit coordinator revocation, whichever is first",
+          "ownershipRecord": "docs/production-readiness/r33/OWNERSHIP.md",
+          "writer": "/root/reporting_api",
+          "paths": ["packages/contracts/src/money/financial-operations.ts"],
+          "scope": "Additive serialized financial reporting/read/export/reconciliation contract types, using accepted money wire semantics; no prior contract change or runtime policy.",
+          "handoff": "Root publishes the contract from existing money barrel after review; all consumers import published workspace contracts."
+        },
+        {
+          "grantedBy": "Owner-delegated engineering coordinator for baraabd (/root)",
+          "grantedAt": "2026-10-23T04:48:12Z",
+          "expires": "Completion of this R33 PR or explicit coordinator revocation, whichever is first",
+          "ownershipRecord": "docs/production-readiness/r33/OWNERSHIP.md",
+          "writer": "/root",
+          "paths": [
+            "packages/contracts/src/money/index.ts",
+            "apps/api/src/app.module.ts",
+            "apps/web/src/app/routes.ts",
+            "apps/web/src/app/components/admin/AdminRouteContent.tsx",
+            "apps/web/src/app/components/provider/screens/WalletScreen.tsx"
+          ],
+          "scope": "Serialize additive contract export, mount FinancialReportingModule importing MoneyModule without token rebinding, guarded lazy /admin/financial-operations and /provider/financial-history routes, and links from existing financial/Wallet surfaces. Preserve existing screens, work permissions, auth and policy. No peer source, schema, migration, package or CI edits.",
+          "handoff": "Root applies only reviewed exact integration changes and verifies real route/API behavior before final handoff."
+        },
+        {
+          "grantedBy": "Owner-delegated engineering coordinator for baraabd (/root)",
+          "grantedAt": "2026-10-23T04:48:12Z",
+          "expires": "Completion of this R33 PR or explicit coordinator revocation, whichever is first",
+          "writer": "/root",
+          "paths": ["apps/web/playwright.config.ts", ".github/workflows/ci.yml"],
+          "scope": "Minimal R33 real-browser discovery: exclude its dedicated real-API spec from the mocked suite and run it after existing admin-review-real-api tests against that disposable real API job, with explicit no-skip counts and retained artifacts. Preserve existing test assertions, matrix, permissions, budgets, timeouts and job dependencies.",
+          "handoff": "Root verifies existing tests remain intact and R33 real API tests actually execute before final PR evidence.",
+          "ownershipRecord": "docs/production-readiness/r33/OWNERSHIP.md"
+        }
+      ],
       "requiredEvidence": [
         "docs/production-readiness/r33/IMPLEMENTATION.md",
         "docs/production-readiness/r33/ACCEPTANCE.md",
@@ -354,26 +419,46 @@
         "All behavioral, negative and integration tests in gates/g2/prompts/R33.md",
         "Exact source/base/tree and contract/schema versions; checked command exit codes and test counts; source-bound artifacts; final-PR CI and official CodeQL; explicit skipped, blocked, sandbox and hosted states"
       ],
-      "ownershipApproval": "CONDITIONAL_AFTER_VERIFIED_G2_PUBLICATION_AND_SESSION_ASSIGNMENT",
-      "blockedBy": ["G2_VERIFIED_OWNER_MERGED_PUBLICATION", "EXACT_SESSION_ASSIGNMENT"],
+      "ownershipApproval": "APPROVED_AFTER_VERIFIED_G2_PUBLICATION",
+      "blockedBy": [],
       "isolatedRuntime": {
-        "allocationStatus": "PLANNED_NOT_PROVISIONED",
-        "composeProject": "hsm-r33-<session>",
-        "database": "hsm_r33_<session>",
-        "databaseUser": "hsm_r33_<session>",
-        "redis": "Separate disposable instance or demonstrated lane/session namespace; no shared flush",
-        "storage": "r33/<session>/ with separate public, restricted and staging namespaces",
-        "queues": "r33:<session>:<queue>",
-        "apiPort": 4333,
-        "webPort": 4433,
+        "allocationStatus": "PROVISIONED_DISPOSABLE",
+        "composeProject": null,
+        "provisioningMethod": "Native task-local disposable processes; no Compose containers or volumes were used.",
+        "database": "hsm_r33_reporting",
+        "databaseUser": "hsm_r33_reporting",
         "postgresPort": 5533,
         "redisPort": 6433,
-        "browserOrigin": "http://r33.<session>.localhost:4433",
-        "browserContexts": "Independent Seeker, Provider and Admin contexts with host-only cookies; different ports alone do not isolate cookies",
-        "effectiveConfiguration": "Inspect resolved container names, explicit volume names, bucket/directory prefixes and ports before allocating; a Compose project name alone is insufficient",
-        "secrets": "Task-issued disposable values only; never copy an unreviewed .env or use the user working database"
+        "apiPort": 4333,
+        "webPort": 4433,
+        "redis": "Separate R33-only Redis 7.4.7 instance; no shared reset or flush.",
+        "storage": "/tmp/hsm-r33-runtime/storage/public, restricted and staging; task-only local directories.",
+        "queues": "Existing PostgreSQL outbox in the separate R33 database; no shared external queue was provisioned.",
+        "browserOrigin": "http://127.0.0.1:4433",
+        "browserContexts": "Fresh disposable per-actor contexts/cookie jars; no session reuse across lanes. Different ports alone are not isolation.",
+        "effectiveConfiguration": "Actual non-secret runtime, provenance and fingerprint are recorded in the R33 source manifest.",
+        "secrets": "Generated disposable values remain outside Git/artifacts; no working user database or copied environment.",
+        "evidenceRecord": "docs/production-readiness/r33/SOURCE_MANIFEST.json"
       },
-      "sourcePrompt": "docs/production-readiness/post-r18/gates/g2/prompts/R33.md"
+      "sourcePrompt": "docs/production-readiness/post-r18/gates/g2/prompts/R33.md",
+      "sessionAssignment": {
+        "sessionId": "r33-5ac99b68f223",
+        "assignedBy": "Owner-delegated engineering coordinator for baraabd (/root)",
+        "assignedAt": "2026-10-23T04:48:12Z",
+        "worktree": "/workspace/scratch/5ac99b68f223/hsm-r33",
+        "ownershipRecord": "docs/production-readiness/r33/OWNERSHIP.md",
+        "publicationVerification": "docs/production-readiness/post-r18/gates/g2/PUBLICATION_VERIFICATION.json"
+      },
+      "execution": {
+        "state": "SOURCE_VERIFIED",
+        "acceptance": "INTEGRATION_PENDING",
+        "sourceVerificationScope": "Final local source, contracts, affected units, real PostgreSQL, clean production build and three real API/browser scenarios; exact final PR CI is recorded separately in the PR body.",
+        "browserEvidence": "PASSED_LOCAL_3_OF_3_ZERO_RETRIES_32_SCREENSHOTS_7_WIRE_CHECKS",
+        "finalPrCi": "RECORDED_IN_CURRENT_PR_BODY_AFTER_PUBLICATION",
+        "ownershipRecord": "docs/production-readiness/r33/OWNERSHIP.md",
+        "evidenceRecord": "docs/production-readiness/r33/ACCEPTANCE.md",
+        "sourceManifest": "docs/production-readiness/r33/SOURCE_MANIFEST.json"
+      }
     }
   ]
 }

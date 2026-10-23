@@ -16,7 +16,7 @@
       "sourceHeadSha": "22e25216f0b27ebdd0f6454842d43f35fafa8d34",
       "mergeCommitSha": "820913a87c90fd283df58e00827bcc79a1e0ca39",
       "integration": "PASS",
-      "finding": "Exact-source integrated evidence accepted by G2; owner-reviewed publication remains pending."
+      "finding": "Exact-source integrated evidence accepted by G2; separate owner-reviewed publication PR183 merged and verified. Scope limits remain unchanged."
     },
     {
       "id": "R25",
@@ -27,7 +27,7 @@
       "sourceHeadSha": "3fdfddc6599fcd2f5d79b176c2e28471f327fe21",
       "mergeCommitSha": "4e87bf03663fb3c72ffee983fdb70c2863e1ce8a",
       "integration": "PASS",
-      "finding": "Exact-source integrated evidence accepted by G2; owner-reviewed publication remains pending."
+      "finding": "Exact-source integrated evidence accepted by G2; separate owner-reviewed publication PR183 merged and verified. Scope limits remain unchanged."
     },
     {
       "id": "R26",
@@ -38,7 +38,7 @@
       "sourceHeadSha": "6bf2669700e80e1727549e17374db40f18111c77",
       "mergeCommitSha": "6c599618f2a97407093b37ddfa93ad21a41ea7a1",
       "integration": "PASS",
-      "finding": "Exact-source integrated evidence accepted by G2; owner-reviewed publication remains pending."
+      "finding": "Exact-source integrated evidence accepted by G2; separate owner-reviewed publication PR183 merged and verified. Scope limits remain unchanged."
     },
     {
       "id": "R27",
@@ -49,7 +49,7 @@
       "sourceHeadSha": "8be5ad3f5cc22f350388e2bec854e809e03b487d",
       "mergeCommitSha": "21089a5065169b78bea5e711a4839e1a467531dc",
       "integration": "PASS",
-      "finding": "Exact-source integrated evidence accepted by G2; owner-reviewed publication remains pending."
+      "finding": "Exact-source integrated evidence accepted by G2; separate owner-reviewed publication PR183 merged and verified. Scope limits remain unchanged."
     },
     {
       "id": "R28",
@@ -60,11 +60,12 @@
       "sourceHeadSha": "70b7225727d89df0fd040b00ebd37c09383e7d30",
       "mergeCommitSha": "96e92825f9b65cf124317f43b55ce42fc97f5b49",
       "integration": "PASS",
-      "finding": "Exact-source integrated evidence accepted by G2; owner-reviewed publication remains pending.",
+      "finding": "Exact-source integrated evidence accepted by G2; separate owner-reviewed publication PR183 merged and verified. Scope limits remain unchanged.",
       "earlierImplementationPr": 179,
       "scope": "CONFIGURATION_ONLY",
       "hostedAcceptance": false
     }
   ],
-  "qualification": "Five owner-merged source lanes verified as ancestors of the accepted candidate; complete exact-source integration evidence passed. R28 remains configuration-only. G2 publication is not merged."
+  "qualification": "Five owner-merged source lanes verified as ancestors of the accepted candidate; complete exact-source integration evidence passed. R28 remains configuration-only. Separate G2 publication PR183 was owner-merged and verified; only explicitly assigned Wave3 sessions may start.",
+  "publicationVerification": "docs/production-readiness/post-r18/gates/g2/PUBLICATION_VERIFICATION.json"
 }

@@ -30,6 +30,7 @@ import { BidsModule } from './modules/bids/bids.module';
 import { BookingsModule } from './modules/bookings/bookings.module';
 import { ReviewsModule } from './modules/reviews/reviews.module';
 import { MoneyModule } from './modules/money/money.module';
+import { FinancialReportingModule } from './modules/money/reporting/financial-reporting.module';
 import { ConversationsModule } from './modules/conversations/conversations.module';
 import { IamModule } from './modules/iam/iam.module';
 import { MediaModule } from './modules/media/media.module';
@@ -144,6 +145,8 @@ import { SupportModule } from './modules/support/support.module';
     // R24 — one money API composition, containing the existing R15/R19
     // ledger authority. All external adapters/activation remain unconfigured.
     MoneyModule,
+    // R33 — authorized read-only subscription financial operations.
+    FinancialReportingModule,
     // R13 — durable, authenticated help/support tickets.
     SupportModule,
     DisputesModule,

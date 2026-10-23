@@ -120,6 +120,7 @@ export default defineConfig({
     ...(REAL_API_RUN
       ? []
       : [
+          '**/r33-financial-operations/financial-operations.real-api.spec.ts',
           '**/auth-cookies.spec.ts',
           '**/provider-onboarding-v2-real-api.spec.ts',
           '**/provider-onboarding-repairs.real-api.spec.ts',

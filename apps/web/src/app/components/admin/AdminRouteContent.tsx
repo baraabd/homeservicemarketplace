@@ -91,7 +91,14 @@ export function AdminRouteContent({ route }: { route: AdminRoute }) {
     case 'identity-cases':
       return <AdminIdentityCasesPage />;
     case 'financials':
-      return <FinancialsSection lang={lang} />;
+      return (
+        <div className="ar-stack">
+          <Link className="ar-button" to="/admin/financial-operations">
+            {lang === 'ar' ? 'عمليات مدفوعات الاشتراكات' : 'Subscription payment operations'}
+          </Link>
+          <FinancialsSection lang={lang} />
+        </div>
+      );
     case 'disputes':
       return <AdminDisputeInbox />;
     case 'support':

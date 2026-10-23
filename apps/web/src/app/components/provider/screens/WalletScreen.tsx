@@ -9,6 +9,7 @@
 // move.
 
 import { useMemo, useState } from 'react';
+import { Link } from 'react-router';
 import { useLang } from '../../../i18n/LanguageContext';
 import {
   useProviderEarningsChart,
@@ -109,6 +110,12 @@ export function WalletScreen() {
       className="absolute inset-0 flex flex-col bg-slate-50 dark:bg-slate-900 overflow-y-auto"
       style={{ scrollbarWidth: 'none' }}
     >
+      <Link
+        to="/provider/financial-history"
+        className="mx-4 mt-4 inline-flex min-h-11 items-center justify-center rounded-xl border border-slate-300 px-4 py-2 text-sm font-medium text-slate-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 dark:border-slate-600 dark:text-slate-100"
+      >
+        {lang === 'ar' ? 'سجل مدفوعات الاشتراكات' : 'Subscription payment history'}
+      </Link>
       {/* Header card — the value of completed bookings is the headline. It is
          not a balance: nothing is held, deducted or paid out. */}
       <div className="bg-gradient-to-br from-blue-600 via-indigo-600 to-purple-700 mx-4 mt-4 rounded-3xl p-6 relative overflow-hidden">
