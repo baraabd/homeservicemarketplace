@@ -473,7 +473,8 @@ test('real sandbox receipt replacement, private previews and independent review 
         .fill('1000');
       await recorder
         .getByLabel('Deposit time (UTC)', { exact: true })
-        .fill(new Date().toISOString().slice(0, 19));
+        // datetime-local normalizes zero seconds away; use its canonical minute form.
+        .fill(new Date().toISOString().slice(0, 16));
       const settlement = postResponse(recorder, reviewUrl + '/settlements');
       await recorder.getByRole('button', { name: 'Record simulated deposit', exact: true }).click();
       expect((await settlement).status()).toBe(201);
