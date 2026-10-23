@@ -322,3 +322,11 @@ unchanged. This is fixture setup separation, not a production-authentication
 change or an automatic retry of a failing assertion. The user-requested
 cross-PR integration repair covers this inherited R31 test. Fresh final-head
 CI must verify it in both the R32 and combined R33 source.
+
+The R31 harness also opts into the existing per-fixture rate-limit namespace
+already used by R30. R24, R31 and R32 run concurrently against Redis database
+12; without a namespace their independent loopback login attempts share an IP
+bucket. The existing adapter prefixes only the bucket name and delegates to
+the real RateLimitStore and Redis script with every limit/window unchanged.
+This removes cross-suite interference without mocking authentication, changing
+worker parallelism, flushing another suite's keys or widening a timeout.

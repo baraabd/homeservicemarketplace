@@ -115,6 +115,8 @@ dbDescribe('R31 subscription/entitlement atomicity and concurrency (real Postgre
 
   beforeAll(async () => {
     h = await r24MoneyHttpFixture({
+      // Parallel suites share Redis; retain real limits in a per-fixture bucket.
+      isolateRateLimits: true,
       adapters: [
         { token: MONEY_CONFIGURATION, value: configuration },
         { token: MONEY_COLLECTION_ADAPTER, value: collection },
