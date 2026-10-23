@@ -9,8 +9,8 @@ Bring accepted dependencies/workflows into this branch with a normal merge,
 keeping original history. No peer product source, force push, gate waiver,
 merge to develop, deployment or live operation.
 
-Shared test fixes preserve real behavior: canonical datetime-local minute
-input avoids Chromium's zero-second normalization; the R27 same-browser
+Shared test fixes preserve real behavior: canonical datetime-local values preserve
+nonzero seconds while matching Chromium's zero-second normalization; the R27 same-browser
 account switch awaits the final Admin sign-out navigation and a real 204,
 without reloading the SPA or clearing caches.
 
@@ -19,9 +19,10 @@ G3 acceptance remains subject to real integrated provider/policy evidence.
 
 ## Confirmed causes and repairs
 
-- R30 datetime-local: canonical minute precision avoids Playwright rejecting
-  a value whose zero seconds were normalized by the browser. Keep the original
-  input, route, assertions and timeout.
+- R30 datetime-local: the first minute-only correction was rejected by real CI
+  because it could backdate settlement before intent creation. The follow-up
+  preserves nonzero seconds and removes only zero seconds. Financial guards,
+  input, route, assertions and timeout remain unchanged.
 - R27 same-browser account switch: await successful logout response and its
   final `/login?app=admin` destination before starting the next login. Keep the
   same SPA and caches; no reload, storage clear or authorization bypass.
@@ -132,3 +133,11 @@ Configuration fingerprint (SHA-256 of nonsecret test configuration): `5c73452ab5
 ## Nodemailer variant
 
 Keep the original Nodemailer 10.1.4 update. Its comparison baseline and repair control have identical dependency inputs, including the parser security fix. The prior Nodemailer-only control `0be750b996dcd1ae1090f8cc5addb665445a6538` is preserved as historical provenance, not used as the final comparison.
+
+## Follow-up verification correction
+
+Shared coordinator commit 61fb7a6b9591d89bd4f94f49519bd26278362917 corrects
+settlement time precision and hardens the legacy CommonJS test boundary.
+See the shared G3 PR repair evidence for the failed R30 run, Windows diagnostic
+limits and 12 passing local regression tests. Final-head browser/service CI is
+required; no prior green run is substituted for this source tree.
