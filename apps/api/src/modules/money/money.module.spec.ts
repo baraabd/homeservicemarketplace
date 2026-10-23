@@ -182,10 +182,15 @@ describe('R24/R31 MoneyModule composition and unavailable external defaults', ()
 
   it('has no implicit refund eligibility policy', async () => {
     expect(providers).toContain(RefundEligibilityPolicy);
-    expect(providers).toContainEqual({
-      provide: MONEY_REFUND_POLICY,
-      useExisting: RefundEligibilityPolicy,
-    });
+    expect(
+      providers.filter(
+        (entry) =>
+          typeof entry === 'object' &&
+          entry !== null &&
+          'provide' in entry &&
+          entry.provide === MONEY_REFUND_POLICY,
+      ),
+    ).toEqual([{ provide: MONEY_REFUND_POLICY, useExisting: RefundEligibilityPolicy }]);
     await expect(configuredProvider(REFUND_POLICY_SOURCE).resolve()).resolves.toBeNull();
   });
 

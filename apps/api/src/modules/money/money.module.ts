@@ -69,12 +69,10 @@ import {
     { provide: MONEY_CATALOG, useClass: PrismaMoneyCatalogFactory },
     { provide: MONEY_COLLECTION_ADAPTER, useExisting: ManualCollectionAdapter },
     { provide: MONEY_RECEIPT_ACCEPTANCE, useExisting: ReceiptAcceptanceParticipant },
-    { provide: MONEY_ACTIVATION_PARTICIPANT, useClass: UnavailableMoneyActivationParticipant },
     { provide: REFUND_POLICY_SOURCE, useClass: UnavailableRefundPolicySource },
     RefundEligibilityPolicy,
     { provide: MONEY_REFUND_POLICY, useExisting: RefundEligibilityPolicy },
     { provide: MONEY_ACTIVATION_PARTICIPANT, useExisting: SubscriptionActivationParticipant },
-    { provide: MONEY_REFUND_POLICY, useClass: UnavailableMoneyRefundPolicy },
     { provide: MONEY_REFUND_ADAPTER, useExisting: ManualRefundAdapter },
     {
       provide: MONEY_REFUND_CONFIRMATION_PARTICIPANT,

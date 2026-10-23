@@ -273,3 +273,35 @@ replays the query to prove no duplicate ledger or consequence effect. All 16
 mandatory cases remain. Two exact R30 test files transfer to the serialized R32
 repair lease with prior ownership retained. Local governance passes; the real
 service result is pending the new GitHub head due to the local runtime limit.
+
+## Post-R31 conflict repair and ordered integration — 2026-10-23
+
+Mode A — integration and bug fix. The owner merged R31 #186 as
+`c3c080cf28f142ed46495ec7e5d549937da90096`, then explicitly requested correction
+of conflicts between #187 and #185. The submitted R32 merge
+`2f3925fbe350ed514cbd404bacb37249c5f23aac` contained duplicate activation and
+refund-policy providers, including undefined fallback classes. It also repeated
+Wave 3 JSON keys and status rows, and retained expired R31 shared leases.
+
+Keep exactly one R31 activation participant and one R32 refund eligibility
+evaluator. The strengthened composition assertion rejects a second refund
+policy binding; the existing R31 assertion rejects a second activation binding.
+Retain all R30 transports and fail-closed policy/consequence defaults. Reconcile
+the retained R30/R31/R32 assignments, remove duplicate records and preserve
+the complete R31 leases as completed with their actual owner-merge identity.
+The existing R32 serialized integration and coordinator scopes cover these edits.
+
+Executed with Node 24.21.0 and pnpm 10.32.1: frozen offline installation,
+database client generation, API lint, typecheck and build passed;
+`pnpm --filter @homeservicemarketplace/api exec jest src/modules/money
+src/app.module.spec.ts --runInBand` passed 33 suites / 520 tests, with zero
+failures or skipped cases. `node --test .github/scripts/*.test.mjs` passed all
+480 tests with zero failures/skips. Sprint-registry and G2 consistency checks
+passed, and both coordination JSON documents have unique keys. Real database
+and browser execution remains assigned to mandatory final-head GitHub CI;
+this host has neither PostgreSQL nor an unprivileged UID mapping.
+
+The requested integration order is #187, then #185. R33 will contain the exact
+corrected R32 head as a merge parent, so a normal merge of #187 cannot reintroduce
+the same content conflicts in #185. No merge to develop, force push, schema
+change, policy approval, G3 acceptance or deployment is part of this repair.

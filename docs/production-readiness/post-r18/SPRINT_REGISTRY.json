@@ -1525,7 +1525,8 @@
           "apps/web/playwright.r31.config.ts"
         ],
         "prefixes": [],
-        "leases": [
+        "leases": [],
+        "completedLeases": [
           {
             "paths": [
               "packages/contracts/src/money/subscription-contracts.ts",
@@ -1544,7 +1545,12 @@
             "grantedBy": "/root — owner-delegated engineering coordinator for baraabd; recorded before shared edits for session r31-20261023-d799cbee",
             "scope": "Publish additive hsm.money.v1 subscription read DTOs; bind the existing R24 activation token to R31 and register lifecycle events/handler; mount the authenticated provider My Plan route and profile entry; add explicit real-API browser discovery and CI invocation. Preserve existing ledger and collection/refund defaults, permission grants, commercial policy, all tests and acceptance budgets. No schema, migration, dependency or live money change. Exact patch in r31/shared-change-requests/CR-001-integration.md.",
             "expires": "R31 PR closure or coordinator revocation, whichever occurs first",
-            "handoff": "Root is sole shared writer. Apply serially in the isolated R31 branch. No unmerged peer dependency. Keep source72, accepted G2 records and separate release boundaries."
+            "handoff": "Root is sole shared writer. Apply serially in the isolated R31 branch. No unmerged peer dependency. Keep source72, accepted G2 records and separate release boundaries.",
+            "closure": {
+              "pr": 186,
+              "mergeSha": "c3c080cf28f142ed46495ec7e5d549937da90096",
+              "reason": "Owner merged R31; serialized source leases are complete, not active competing writers."
+            }
           },
           {
             "paths": [
@@ -1555,7 +1561,12 @@
             "grantedBy": "/root — owner-delegated coordinator; before edits for R31",
             "scope": "Extend the existing user-command reserved-prefix check with r31_ and preserve prior prefixes; test rejection before any financial write. Allows R31 internal lifecycle receipts in the existing immutable MoneyCommand table under actorSystem money.subscription-lifecycle, explicit named policy and canonical request digest. No schema, financial state model, R24 port or existing confirmation behavior changes.",
             "expires": "R31 PR closure or coordinator revocation",
-            "handoff": "Root is the only writer of the two R24 files; r31_backend may use the existing frozen persistence inside its owned lifecycle service, not edit R24 files."
+            "handoff": "Root is the only writer of the two R24 files; r31_backend may use the existing frozen persistence inside its owned lifecycle service, not edit R24 files.",
+            "closure": {
+              "pr": 186,
+              "mergeSha": "c3c080cf28f142ed46495ec7e5d549937da90096",
+              "reason": "Owner merged R31; serialized source leases are complete, not active competing writers."
+            }
           },
           {
             "paths": [".github/scripts/merge-integrity.test.mjs"],
@@ -1563,7 +1574,12 @@
             "grantedBy": "/root — owner-delegated coordinator; recorded before edits for R31",
             "scope": "Make the existing missing/duplicate LedgerModule and lost-export negative fixtures identify the imports/exports arrays regardless of formatter whitespace. Keep every rejection assertion and the production composition fence unchanged; explicitly assert that each fixture mutation changed its target. Needed after additive SubscriptionsModule made Prettier wrap the existing import array.",
             "expires": "R31 PR closure or coordinator revocation",
-            "handoff": "Root is sole writer. No test skip, budget change, validator relaxation or permission change."
+            "handoff": "Root is sole writer. No test skip, budget change, validator relaxation or permission change.",
+            "closure": {
+              "pr": 186,
+              "mergeSha": "c3c080cf28f142ed46495ec7e5d549937da90096",
+              "reason": "Owner merged R31; serialized source leases are complete, not active competing writers."
+            }
           },
           {
             "id": "R31-CI-20261023",
@@ -1575,7 +1591,12 @@
               "scripts/perf/post-r18/lib/runtime.test.mjs"
             ],
             "expires": "PR #186 closure or coordinator revocation",
-            "handoff": "docs/production-readiness/r31/ACCEPTANCE.md"
+            "handoff": "docs/production-readiness/r31/ACCEPTANCE.md",
+            "closure": {
+              "pr": 186,
+              "mergeSha": "c3c080cf28f142ed46495ec7e5d549937da90096",
+              "reason": "Owner merged R31; serialized source leases are complete, not active competing writers."
+            }
           }
         ]
       },
