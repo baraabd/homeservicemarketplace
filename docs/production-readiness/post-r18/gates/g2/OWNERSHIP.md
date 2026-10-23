@@ -682,3 +682,51 @@ Reproduce the missing binding with explicitly synthetic fixtures, then require s
 ### Source artifact correction handoff — 2026-10-22
 
 All three correction files are returned to root after the two original wrong-source/tree negatives reproduced the defect (exit 1), then 14/14 focused and 464/464 full governance cases passed (exit 0; zero failures/cancellations/skips/todo). Scoped lint, formatting and diff checks passed. The 12 added regressions cover source/tree mismatch, missing identities/digest, invalid run/artifact identifiers and G3 prerequisite propagation. Root is again the sole writer for publication and real-evidence recording.
+
+## Verified owner publication and R31 assignment — 2026-10-23
+
+Mode A. The owner-merged PR #183 and the continuing G2 coordination delegation
+permit this publication reconciliation. Root recorded the exact serialized
+lease before edits in `docs/production-readiness/r31/OWNERSHIP.md` and approved
+its scope in `docs/production-readiness/r31/shared-change-requests/CR-001-integration.md`.
+Exclusive delegated writer: `/root/pr_ci_audit`; accountable coordinator:
+`/root — owner-delegated engineering coordinator for baraabd`.
+
+The ten exact files in that lease are:
+
+- `docs/production-readiness/post-r18/gates/g2/SOURCE_MANIFEST.json`
+- `docs/production-readiness/post-r18/gates/g2/PUBLICATION_VERIFICATION.json`
+- `docs/production-readiness/post-r18/gates/g2/OWNERSHIP.md`
+- `docs/production-readiness/post-r18/gates/g2/BLOCKERS.md`
+- `docs/production-readiness/post-r18/gates/g2/IMPLEMENTATION.md`
+- `docs/production-readiness/post-r18/waves/wave-03.plan.json`
+- `docs/production-readiness/post-r18/waves/WAVE_03.md`
+- `docs/production-readiness/post-r18/waves/OWNERSHIP_R29_R38.md`
+- `docs/production-readiness/post-r18/SPRINT_REGISTRY.json`
+- `docs/production-readiness/post-r18/ACTIVE_STATUS.md`
+
+The separate verified publication is merge
+`986b4707776711e80564f0642133ede90ba16f3c`, with reviewed head
+`d2c0a9ab8862ffff886346a21377839f996152ca` and identical tree
+`7ab683ea8c5304929a2fa51f1dc824c7cb46f7d5`. The accepted frozen source remains
+`72b4aaeb0a71d806b7fca7363dd9ca59bbcee644`; its complete descendant delta is
+thirteen documentation/registry/evidence files only. Root applied those exact
+owner-merged blobs before this lease. No unmerged peer implementation is used.
+
+This assignment releases only session `r31-20261023-d799cbee` on
+`feat/r31-subscription-entitlements`, with the initial exact 31 paths unchanged.
+R29/R30/R32/R33 remain held for their own coordinator assignment; Wave 4 remains
+behind G3. Validators, mandatory evidence, prices, currencies, live-money
+settings, account grants, hosting/spending and R16/R18 decisions are unchanged.
+The lease expires on explicit handoff to root. No commit or remote write is
+delegated to this writer.
+
+### R31 publication lease handoff — 2026-10-23
+
+The ten coordinator files are saved and returned to `/root`. Existing G2
+consistency, R31 readiness and sprint-registry commands pass with exit 0 under
+Node 24.21.0. Only R31 is startable; the initial exact 31-file list remains
+unchanged. `/root/pr_ci_audit` is read-only after this handoff. Root may now
+record bounded shared integration leases and exact file extensions before
+product edits. Further governance/negative checks run read-only; no commit or
+remote mutation was performed by the publication writer.

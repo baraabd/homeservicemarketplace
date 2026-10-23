@@ -93,6 +93,9 @@ export default defineConfig({
   // preview built with VITE_PROVIDER_ONBOARDING_V2=true. Both run locally with
   // E2E_REAL_API set — see docs/sprint-09b26/PROVIDER_ONBOARDING_V2_RELEASE.md.
   testIgnore: [
+    // R31 owns an isolated real API, private fixture credentials and database.
+    // Its dedicated config is executed by the required subscription CI job.
+    '**/r31-subscriptions/**',
     // Disposable R26 services and built CSP acceptance have their own config/job.
     '**/r26-security.real-api.spec.ts',
     // Requires native Vite dev transforms; owned by playwright.dev.config.ts.

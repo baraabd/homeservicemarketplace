@@ -197,7 +197,7 @@ function harness() {
 }
 
 describe('R24 money command boundary (contract components)', () => {
-  it.each(['r24_event_', 'r24_process_', 'r24_refund_result_'])(
+  it.each(['r24_event_', 'r24_process_', 'r24_refund_result_', 'r31_'])(
     'reserves the exact internal command namespace %s before transaction access',
     async (prefix) => {
       const h = harness();

@@ -18,6 +18,10 @@ const HomePage = lazyPage(() =>
 const ProviderPage = lazyPage(() =>
   import('./pages/ProviderPage').then((module) => ({ default: module.ProviderPage })),
 );
+const MyPlanPage = lazyPage(
+  () => import('./features/subscriptions').then((module) => ({ default: module.MyPlanScreen })),
+  { standalone: true },
+);
 const AdminPage = lazyPage(
   () => import('./pages/AdminPage').then((module) => ({ default: module.AdminPage })),
   { standalone: true },
@@ -149,6 +153,9 @@ export const router = createBrowserRouter([
           // component state survives neither a reload nor a login round-trip,
           // and cannot be linked to at all. Kept as a splat rather than
           // spelled out here so the workspace stays one mountable unit.
+          // Subscription billing stays separate from verification/work-access
+          // routing. The real money API enforces current provider permissions.
+          { path: 'provider/my-plan', Component: MyPlanPage },
           { path: 'provider/*', Component: ProviderPage },
         ],
       },

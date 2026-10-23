@@ -7,10 +7,9 @@ import { MoneyController, MoneyReviewController } from './api/money.controller';
 import { MoneyCommandService } from './application/money-command.service';
 import { MoneyQueryService } from './application/money-query.service';
 import { LedgerModule } from './ledger/ledger.module';
-import {
-  MONEY_ACTIVATION_PARTICIPANT,
-  UnavailableMoneyActivationParticipant,
-} from './ports/activation.port';
+import { MONEY_ACTIVATION_PARTICIPANT } from './ports/activation.port';
+import { SubscriptionActivationParticipant } from './subscriptions/subscription-activation.participant';
+import { SubscriptionsModule } from './subscriptions/subscriptions.module';
 import {
   MONEY_CATALOG,
   MONEY_COLLECTION_ADAPTER,
@@ -31,11 +30,17 @@ import {
   UnavailableMoneyRefundPolicy,
 } from './ports/refund.port';
 
-// One composition boundary. R29–R32 must provide reviewed, configured
-// participants through these exact tokens. Default providers are unavailable;
-// booting the module grants no money permission and enables no payment rail.
+// One composition boundary. R31 supplies the transaction-bound participant.
+// Collection, configuration and refund ports remain unavailable; booting the
+// module grants no money permission and enables no payment rail.
 @Module({
-  imports: [AuthenticationModule, AuthorizationModule, AuditModule, LedgerModule],
+  imports: [
+    AuthenticationModule,
+    AuthorizationModule,
+    SubscriptionsModule,
+    AuditModule,
+    LedgerModule,
+  ],
   controllers: [MoneyController, MoneyReviewController],
   providers: [
     MoneyCommandService,
@@ -44,7 +49,7 @@ import {
     { provide: MONEY_CATALOG, useClass: PrismaMoneyCatalogFactory },
     { provide: MONEY_COLLECTION_ADAPTER, useClass: UnavailableMoneyCollectionAdapter },
     { provide: MONEY_RECEIPT_ACCEPTANCE, useClass: UnavailableMoneyReceiptAcceptance },
-    { provide: MONEY_ACTIVATION_PARTICIPANT, useClass: UnavailableMoneyActivationParticipant },
+    { provide: MONEY_ACTIVATION_PARTICIPANT, useExisting: SubscriptionActivationParticipant },
     { provide: MONEY_REFUND_POLICY, useClass: UnavailableMoneyRefundPolicy },
     { provide: MONEY_REFUND_ADAPTER, useClass: UnavailableMoneyRefundAdapter },
     {

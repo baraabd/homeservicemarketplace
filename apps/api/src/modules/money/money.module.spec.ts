@@ -9,6 +9,8 @@ import { LedgerModule } from './ledger/ledger.module';
 import { SubscriptionActivationService } from './domain/subscription-activation.service';
 import { MoneyModule } from './money.module';
 import { MONEY_ACTIVATION_PARTICIPANT } from './ports/activation.port';
+import { SubscriptionActivationParticipant } from './subscriptions/subscription-activation.participant';
+import { SubscriptionsModule } from './subscriptions/subscriptions.module';
 import {
   MONEY_COLLECTION_ADAPTER,
   MONEY_CONFIGURATION,
@@ -48,7 +50,7 @@ function configuredProvider(token: symbol) {
   return new matches[0]!.useClass();
 }
 
-describe('R24 MoneyModule composition and unavailable defaults', () => {
+describe('R24/R31 MoneyModule composition and unavailable external defaults', () => {
   it('imports and exports the existing ledger once without creating another posting authority', () => {
     expect(
       (Reflect.getMetadata(MODULE_METADATA.IMPORTS, MoneyModule) as unknown[]).filter(
@@ -80,10 +82,30 @@ describe('R24 MoneyModule composition and unavailable defaults', () => {
     await expect(configuredProvider(MONEY_CONFIGURATION).resolve()).resolves.toBeNull();
   });
 
+  it('binds exactly one real R31 participant from its owning module', () => {
+    expect(Reflect.getMetadata(MODULE_METADATA.IMPORTS, MoneyModule)).toContain(
+      SubscriptionsModule,
+    );
+    expect(
+      providers.filter(
+        (entry) =>
+          typeof entry === 'object' &&
+          entry !== null &&
+          'provide' in entry &&
+          entry.provide === MONEY_ACTIVATION_PARTICIPANT,
+      ),
+    ).toEqual([
+      { provide: MONEY_ACTIVATION_PARTICIPANT, useExisting: SubscriptionActivationParticipant },
+    ]);
+    expect(Reflect.getMetadata(MODULE_METADATA.EXPORTS, SubscriptionsModule)).toContain(
+      SubscriptionActivationParticipant,
+    );
+    expect(providers).not.toContain(SubscriptionActivationParticipant);
+  });
+
   it.each([
     [MONEY_COLLECTION_ADAPTER, 'createOrResume', 'MONEY_COLLECTION_UNAVAILABLE'],
     [MONEY_RECEIPT_ACCEPTANCE, 'accept', 'MONEY_RECEIPT_UNAVAILABLE'],
-    [MONEY_ACTIVATION_PARTICIPANT, 'activatePeriod', 'MONEY_ACTIVATION_UNAVAILABLE'],
     [MONEY_REFUND_ADAPTER, 'submit', 'MONEY_REFUND_ADAPTER_UNAVAILABLE'],
   ] as const)(
     'never reports a configured or successful default for %s',

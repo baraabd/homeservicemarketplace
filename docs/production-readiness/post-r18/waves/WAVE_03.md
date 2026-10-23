@@ -1,14 +1,18 @@
 # Wave 3: R29–R33
 
-The complete original lane prompts are recovered. All five packages are
-**PLANNED**, and the executable wave remains **BLOCKED**. Its only start gate is
-G2. The active `gates/g2/SOURCE_MANIFEST.json` decides technical acceptance;
-accepted source evidence and separately verified owner-reviewed publication are
-both required before a coordinator can release a lane.
+The complete original lane prompts are recovered. G2 technical acceptance and
+owner-merged PR #183 publication are verified. The executable wave is
+**READY_TO_START for R31 only**, session `r31-20261023-d799cbee`. R29/R30/R32/R33
+remain **PLANNED** and their plan lanes remain **BLOCKED** until the coordinator
+assigns their exact writers. The active `gates/g2/SOURCE_MANIFEST.json` and
+`gates/g2/PUBLICATION_VERIFICATION.json` retain the accepted source and separate
+merged publication identities.
 
-`wave-03.plan.json` is the exact conditional file plan. It is not a ready
-manifest, does not prove implementation, and does not authorize a fresh worktree
-to start from the historical G1 source or an unreviewed develop head.
+`wave-03.plan.json` is the exact file and session plan. R31 ownership is approved
+for its original 31 paths plus three exactly recorded test-harness files, matching `SPRINT_REGISTRY.json` and
+`docs/production-readiness/r31/OWNERSHIP.md`. This authorizes bounded source
+work; it does not prove implementation or permit a start from historical G1
+or an unreviewed develop head.
 
 ## Recovered assignments
 
@@ -33,7 +37,11 @@ any necessary exact extension before writing outside the list.
 
 The inspection base is `96e92825f9b65cf124317f43b55ce42fc97f5b49`, tree
 `68f4e926eabeb37bb70382c62b75272cf67bd02c`. This identifies package inspection
-only; it does not assign the eventual Wave 3 execution base.
+only. The actual approved Wave 3 frozen source is
+`72b4aaeb0a71d806b7fca7363dd9ca59bbcee644`, tree
+`43e9c6a4e58cfb934b12789feeb38b588e1cb7c6`. The separate owner-merged acceptance
+publication is `986b4707776711e80564f0642133ede90ba16f3c`; its difference from
+the frozen source contains thirteen record files and no runtime change.
 
 R24 already owns durable payment attempts, verified external-event inbox,
 confirmation, reservation/dispatch/result orchestration and the caller's
@@ -64,8 +72,10 @@ or grant owner approval.
 
 Each released lane starts its assigned clean worktree with independent
 dependencies, generated Prisma output, build/cache directories and the planned
-database/user, Redis, storage, queue, container/volume and port identities. The
-runtime entries are unallocated templates. Session tags and effective
+database/user, Redis, storage, queue, container/volume and port identities. The R31 runtime is provisioned with task-owned PostgreSQL/Redis, separate
+disposable fixture databases and private browser contexts. Exact effective
+configuration is recorded in the lane and R31 acceptance evidence; peer
+entries remain unallocated templates. Session tags and effective
 configuration checks are mandatory. Separate browser contexts and host-only
 cookies on separate hosts are required; changing only a localhost port does not
 isolate cookies. See [`OWNERSHIP_R29_R38.md`](OWNERSHIP_R29_R38.md).

@@ -12,6 +12,9 @@ export const OUTBOX_HANDLERS = Symbol('OUTBOX_HANDLERS');
  *  do not repurpose old ones. */
 export const OutboxEventType = {
   MONEY_SUBSCRIPTION_ACTIVATED: 'money.subscription.activated.v1',
+  /** R31: period-bound scheduled work; neither event is payment confirmation. */
+  MONEY_SUBSCRIPTION_EXPIRY_DUE: 'money.subscription.expiry-due.v1',
+  MONEY_SUBSCRIPTION_REMINDER_DUE: 'money.subscription.reminder-due.v1',
   /** A request was created and should be fanned out to matching providers.
    *  Consumed by the dispatcher, which resolves recipients and emits slices. */
   REQUEST_AVAILABLE: 'request.available',
