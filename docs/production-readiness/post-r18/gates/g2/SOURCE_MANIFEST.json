@@ -56,13 +56,17 @@
     }
   ],
   "publication": {
-    "state": "DRAFT_PENDING_OWNER_REVIEW",
+    "state": "MERGED",
     "branch": "coord/g2-wave3-start-gate",
     "pr": 183,
-    "acceptanceRecordCommitSha": null,
-    "verifiedMerge": false,
-    "requirement": "Owner review/approval and separately verified merged publication are required before releasing R29–R33. R34–R38 additionally require G3. This task never merges.",
-    "prUrl": "https://github.com/baraabd/homeservicemarketplace/pull/183"
+    "acceptanceRecordCommitSha": "986b4707776711e80564f0642133ede90ba16f3c",
+    "verifiedMerge": true,
+    "requirement": "The owner merged PR #183. Ancestry, identical reviewed/merged trees and postmerge checks were independently verified. Only explicitly assigned Wave 3 sessions may start; R34\u2013R38 additionally require G3. No new merge or operational authority is granted.",
+    "prUrl": "https://github.com/baraabd/homeservicemarketplace/pull/183",
+    "mergedBy": "baraabd",
+    "mergedAtUtc": "2026-10-23T04:11:34Z",
+    "verifiedAtUtc": "2026-10-23T04:46:36Z",
+    "verificationRecord": "docs/production-readiness/post-r18/gates/g2/PUBLICATION_VERIFICATION.json"
   },
   "externalBlockers": [
     {
@@ -82,7 +86,7 @@
   ],
   "evidenceRecord": "docs/production-readiness/post-r18/gates/g2/ACCEPTANCE_EVIDENCE.json",
   "preservedG1SourceSha": "40cdac5c9ce6acaa8dedc0385984a807ae9a84d0",
-  "identityResolution": "Technical acceptance binds the exact tested source and independently reconstructed tree. This separate record-only descendant is review publication; its containing commit is not invented. Owner-reviewed merge, postmerge verification and explicit session assignments remain required before lane starts.",
+  "identityResolution": "Technical acceptance remains bound to the exact tested source and independently reconstructed tree. The separate owner-merged publication 986b4707776711e80564f0642133ede90ba16f3c is verified by ancestry, identical reviewed/merged record trees and postmerge checks. Source execution is released only for the assigned R30 session; other sessions remain unassigned and all operational restrictions persist.",
   "restrictions": {
     "liveMoney": false,
     "deploy": false,

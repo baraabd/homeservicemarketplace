@@ -28,6 +28,12 @@ const ALLOWED_METADATA_KEYS = new Set<string>([
   'refundId',
   'subscriptionId',
   'subscriptionPeriodId',
+  // R30: link restricted financial history without copying notes or references.
+  'receiptVersionId',
+  'receiptInspectionId',
+  'manualDecisionId',
+  'manualSettlementId',
+  'manualRefundEventId',
   // R13 — support identifiers only. Message bodies and subjects are never
   // duplicated into the audit log.
   'supportTicketId',

@@ -730,6 +730,20 @@ export class MoneyCommandService {
         if (event.status === 'PROCESSED') throw conflict('MONEY_EVENT_ALREADY_PROCESSED');
         const normalized = this.eventView(event);
         const { intent, binding } = await this.checkEventBinding(normalized, tx);
+        if (event.source === 'MANUAL_REVIEW') {
+          if (this.receipts.finalizeConfirmation) {
+            // R30 revalidates the inspected revision, fresh reviewer, independent
+            // settlement and unique claim in this same financial transaction.
+            await this.receipts.finalizeConfirmation(normalized, tx);
+          } else {
+            const receipt = await tx.mediaAsset.findUnique({
+              where: { id: event.receiptMediaAssetId! },
+              select: { purpose: true },
+            });
+            if (receipt?.purpose === 'FINANCIAL_RECEIPT')
+              throw unavailableMoneyPort('MONEY_RECEIPT_UNAVAILABLE');
+          }
+        }
         // Delivery identity and economic identity have different lifetimes.
         // Distinct valid deliveries of one confirmation reuse R19's authority.
         const confirmationIdentity = [
@@ -1198,10 +1212,12 @@ export class MoneyCommandService {
     binding: MoneyTransportBinding,
     tx: PrismaTx,
   ): Promise<void> {
-    const configured = await this.configuration.resolve(
-      { planVersionId: binding.planVersionId, method: binding.method },
-      tx,
-    );
+    const configured = this.configuration.resolveBinding
+      ? await this.configuration.resolveBinding(binding, tx)
+      : await this.configuration.resolve(
+          { planVersionId: binding.planVersionId, method: binding.method },
+          tx,
+        );
     if (!configured) throw unavailableMoneyPort('MONEY_CONFIGURATION_UNAVAILABLE');
     this.validateBinding(configured);
     for (const key of Object.keys(binding) as Array<keyof MoneyTransportBinding>)

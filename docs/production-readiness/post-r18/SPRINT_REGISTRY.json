@@ -1284,10 +1284,10 @@
       "lane": 2,
       "branch": "feat/r30-manual-payment-review",
       "owner": {
-        "lane": "R30 future lane session; coordinator assigns the writer only after verified G2 publication",
+        "lane": "root — R30 session hsm-r30-590834e66da5",
         "coordinator": "Owner-delegated engineering coordinator for baraabd"
       },
-      "status": "PLANNED",
+      "status": "READY_TO_START",
       "frozenBase": "72b4aaeb0a71d806b7fca7363dd9ca59bbcee644",
       "dependencies": ["R24", "R20", "R21", "R22", "R23"],
       "legacyAliases": ["P40", "P41-manual-adapter"],
@@ -1325,10 +1325,98 @@
           "docs/production-readiness/r30/RISKS.md",
           "docs/production-readiness/r30/ROLLBACK.md",
           "docs/production-readiness/r30/OWNERSHIP.md",
-          "docs/production-readiness/r30/shared-change-requests/CR-001-integration.md"
+          "docs/production-readiness/r30/shared-change-requests/CR-001-integration.md",
+          "apps/api/src/modules/money/manual-review/receipt-upload.service.ts",
+          "apps/api/src/modules/money/manual-review/receipt-upload.service.spec.ts",
+          "apps/api/src/modules/money/manual-review/receipt-read.service.ts",
+          "apps/api/src/modules/money/manual-review/receipt-read.service.spec.ts",
+          "apps/api/src/modules/money/manual-review/manual-event-processing.job.ts",
+          "apps/api/src/modules/money/manual-review/manual-event-processing.job.spec.ts",
+          "apps/api/src/modules/money/manual-review/manual-refund-review.service.ts",
+          "apps/api/src/modules/money/manual-review/manual-refund-review.service.spec.ts",
+          "apps/web/src/app/features/manual-payments/ReceiptPreview.tsx",
+          "apps/web/src/app/features/manual-payments/ReceiptPreview.test.tsx",
+          "apps/web/src/app/features/manual-payments/useManualPaymentResource.ts",
+          "apps/web/src/app/features/manual-payments/useManualPaymentResource.test.tsx",
+          "apps/web/src/app/features/manual-payments/manual-payments.css",
+          "docs/production-readiness/r30/G2_REVIEW.md",
+          "docs/production-readiness/r30/PROMPT.md",
+          "docs/production-readiness/r30/PROPOSED_OWNERSHIP.json",
+          "docs/production-readiness/r30/RUNTIME_OWNERSHIP.json",
+          "docs/production-readiness/r30/SOURCE_MANIFEST.json",
+          "docs/production-readiness/r30/VERIFICATION_PLAN.md",
+          "docs/production-readiness/r30/shared-change-requests/CR-001-g2-registration.md",
+          "docs/production-readiness/r30/shared-change-requests/CR-002-receipt-persistence.md",
+          "docs/production-readiness/r30/shared-change-requests/CR-003-private-evidence.md",
+          "docs/production-readiness/r30/shared-change-requests/CR-004-atomic-confirmation.md",
+          "docs/production-readiness/r30/shared-change-requests/CR-005-web-contracts.md",
+          "apps/api/test/support/r30-manual-http.fixture.ts",
+          "docs/production-readiness/r30/shared-change-requests/CR-006-final-ci-remediation.md"
         ],
         "prefixes": [],
-        "leases": []
+        "leases": [
+          {
+            "id": "R30-SHARED-20261023",
+            "grantedBy": "Owner-delegated G2 coordinator / root",
+            "writer": "root",
+            "scope": "Serialized R30 schema/migration, receipt-purpose storage and retention isolation, published DTOs, atomic confirmation, module/routes/CI integration and required regression updates only. No peer implementation or live operational authority. Serialized final-CI extension: fixed Alpine musl package floors in every API image stage and exact R19 capability-catalog regression update, as CR-006; no scanner or permission-grant relaxation.",
+            "paths": [
+              "packages/database/prisma/schema.prisma",
+              "packages/database/prisma/migrations/20261023080000_r30_manual_receipts/migration.sql",
+              "docs/production-readiness/baseline/MODEL_MIGRATION_INDEX.json",
+              "packages/contracts/src/money/manual-payment-contracts.ts",
+              "packages/contracts/src/money/index.ts",
+              "packages/contracts/src/money/api-contracts.ts",
+              "apps/api/src/modules/money/ports/collection.port.ts",
+              "apps/api/src/modules/money/application/money-command.service.ts",
+              "apps/api/src/modules/money/application/money-command.service.spec.ts",
+              "apps/api/src/modules/money/money.module.ts",
+              "apps/api/src/modules/money/money.module.spec.ts",
+              "apps/api/src/modules/iam/audit/audit.service.ts",
+              "apps/api/src/modules/iam/audit/audit.service.spec.ts",
+              "apps/api/src/modules/provider/verification/media/evidence-keys.ts",
+              "apps/api/src/modules/provider/verification/media/evidence-keys.spec.ts",
+              "apps/api/src/modules/provider/verification/media/evidence-scan.service.ts",
+              "apps/api/src/modules/provider/verification/media/evidence-scan.service.spec.ts",
+              "apps/api/src/modules/provider/verification/media/evidence-cleanup.service.ts",
+              "apps/api/src/modules/provider/verification/retention/retention.service.ts",
+              "apps/api/src/modules/provider/verification/retention/retention.repository.ts",
+              "apps/api/src/modules/provider/verification/retention/retention.service.spec.ts",
+              "apps/api/test/e2e/restricted-media-boundary.e2e.spec.ts",
+              "apps/api/test/e2e/app-module-di.e2e.spec.ts",
+              "apps/api/test/integration/evidence-cleanup.integration.spec.ts",
+              "apps/api/test/integration/evidence-scan.integration.spec.ts",
+              "apps/api/test/integration/r24-money-api.integration.spec.ts",
+              "packages/database/src/seed.ts",
+              "apps/api/test/unit/seed.spec.ts",
+              "apps/api/test/integration/seed-idempotency.spec.ts",
+              "apps/web/src/app/routes.ts",
+              "apps/web/src/app/App.router.test.tsx",
+              "apps/web/src/app/components/admin/admin-routes.ts",
+              "apps/web/src/app/components/admin/AdminRoutes.test.tsx",
+              "apps/web/src/app/components/admin/AdminRouteContent.tsx",
+              "apps/web/src/app/components/admin/AdminRouteContent.test.tsx",
+              ".github/workflows/ci.yml",
+              "apps/web/playwright.r30.config.ts",
+              "apps/api/test/support/r24-money-http.fixture.ts",
+              "apps/api/src/main.ts",
+              "apps/api/test/e2e/r30-browser-runtime.e2e.spec.ts",
+              "apps/web/playwright.config.ts",
+              ".github/scripts/merge-integrity.test.mjs",
+              "apps/api/Dockerfile",
+              "apps/api/test/integration/r19-subscription-money.integration.spec.ts"
+            ],
+            "expires": "R30 PR closure or coordinator revocation",
+            "handoff": "Root is the sole schema and shared-runtime writer; source writers return their exclusive leases before root integration or amendments. Exact writer mapping: docs/production-readiness/r30/RUNTIME_OWNERSHIP.json.",
+            "sourcePrompt": "docs/production-readiness/post-r18/gates/g2/prompts/R30.md",
+            "startPrerequisite": {
+              "gate": "G2",
+              "requiredDecision": "ACCEPTED",
+              "requiredPublication": "MERGED_AND_VERIFIED",
+              "requiresSessionAssignment": true
+            }
+          }
+        ]
       },
       "requiredEvidence": [
         "docs/production-readiness/r30/IMPLEMENTATION.md",
@@ -1343,11 +1431,33 @@
       "startBarrier": {
         "gate": "G2",
         "decision": "ACCEPTED",
-        "publication": "NOT_RELEASED",
-        "sourceRecord": "docs/production-readiness/post-r18/gates/g2/SOURCE_MANIFEST.json"
+        "publication": "MERGED_AND_VERIFIED",
+        "sourceRecord": "docs/production-readiness/post-r18/gates/g2/SOURCE_MANIFEST.json",
+        "acceptanceRecordCommitSha": "986b4707776711e80564f0642133ede90ba16f3c"
       },
-      "ownershipApproval": "CONDITIONAL_AFTER_VERIFIED_G2_PUBLICATION_AND_SESSION_ASSIGNMENT",
-      "sourcePrompt": "docs/production-readiness/post-r18/gates/g2/prompts/R30.md"
+      "ownershipApproval": "APPROVED_AFTER_VERIFIED_G2_PUBLICATION",
+      "sourcePrompt": "docs/production-readiness/post-r18/gates/g2/prompts/R30.md",
+      "sessionAssignment": {
+        "sessionId": "hsm-r30-590834e66da5",
+        "assignedBy": "root — owner-delegated G2 coordinator for baraabd",
+        "assignedAt": "2026-10-23T04:46:36Z",
+        "writer": "root; exact delegated writers recorded in docs/production-readiness/r30/OWNERSHIP.md",
+        "branch": "feat/r30-manual-payment-review",
+        "worktree": "/workspace/scratch/590834e66da5/homeservicemarketplace",
+        "checkoutStartSha": "986b4707776711e80564f0642133ede90ba16f3c",
+        "runtimeBaseSha": "72b4aaeb0a71d806b7fca7363dd9ca59bbcee644",
+        "publicationVerification": "docs/production-readiness/post-r18/gates/g2/PUBLICATION_VERIFICATION.json",
+        "scope": "Requested R30 implementation and isolated verification only; no live method or policy activation.",
+        "ownershipRecord": "docs/production-readiness/r30/RUNTIME_OWNERSHIP.json"
+      },
+      "execution": {
+        "status": "IMPLEMENTED_SOURCE_VERIFIED",
+        "scope": "Local real-service16, browser2, scoped API213/web54 and governance480 pass; final-head publication checks recorded externally. R31/R32 actual integration and hosted/live remain pending.",
+        "checkoutStartSha": "986b4707776711e80564f0642133ede90ba16f3c",
+        "runtimeBaseSha": "72b4aaeb0a71d806b7fca7363dd9ca59bbcee644",
+        "evidenceDirectory": "docs/production-readiness/r30/",
+        "liveMethodsEnabled": false
+      }
     },
     {
       "id": "R31",
@@ -1952,6 +2062,11 @@
       "observedAt": "2026-10-22",
       "by": "Owner-delegated G2 successor coordinator",
       "note": "Recovered the complete original R29-R38 prompt pack and verified SHA-256 bf82bef2f6417450b5c411f1f396f39ef966c4dbfb00747edd1e6c6c60798920. Restored exact titles, branches, earlier-wave dependencies and conditional file packages. This preparation does not assert implementation, G2 acceptance, publication, G3 acceptance or any future lane start. Existing R19-R28 gate histories remain preserved."
+    },
+    {
+      "observedAt": "2026-10-23T04:46:36Z",
+      "by": "Owner-delegated G2 coordinator / R30 root session",
+      "note": "Owner merged PR #183 as 986b4707776711e80564f0642133ede90ba16f3c. Independently verified frozen-source ancestry, identical reviewed/merged publication trees, 38 latest distinct successful PR-head checks and 30 successful postmerge checks across eight workflows. Preserve frozen source 72b4aaeb0a71d806b7fca7363dd9ca59bbcee644; assign only R30 session hsm-r30-590834e66da5. Other lane records and G1/G3 identities remain unchanged. Source readiness does not accept R30 or grant live funds, policy, account, merge or deployment authority. Evidence: gates/g2/PUBLICATION_VERIFICATION.json."
     }
   ],
   "gates": {

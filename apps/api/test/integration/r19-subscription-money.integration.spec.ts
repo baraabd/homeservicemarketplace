@@ -630,13 +630,15 @@ d('R19 - subscription confirmation, ledger posting and periods (real Postgres)',
         ],
       },
     });
-    // R24 registers its exact capability catalog without enabling a live
+    // R24/R30 register their exact capability catalog without enabling a live
     // caller. This preserves and explicitly checks the original no-grant
-    // invariant; R24's synthetic grant/financial fixtures use a separate DB.
+    // invariant; their synthetic grant/financial fixtures use separate DBs.
     expect(moneyPermissions.map((row: { key: string }) => row.key).sort()).toEqual([
       'money:purchase:self',
       'money:read:self',
       'money:receipt:review',
+      'money:receipt:settlement',
+      'money:receipt:view',
       'money:refund:request:self',
       'money:refund:review',
       'money:review:read',

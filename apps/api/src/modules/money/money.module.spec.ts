@@ -8,6 +8,17 @@ import { LedgerService } from './ledger/ledger.service';
 import { LedgerModule } from './ledger/ledger.module';
 import { SubscriptionActivationService } from './domain/subscription-activation.service';
 import { MoneyModule } from './money.module';
+import { ManualReviewModule } from './manual-review/manual-review.module';
+import { ManualRailConfiguration } from './adapters/manual/manual-rail.config';
+import { ManualCollectionAdapter } from './adapters/manual/manual-collection.adapter';
+import { ManualRefundAdapter } from './adapters/manual/manual-refund.adapter';
+import { ReceiptAcceptanceParticipant } from './manual-review/receipt-acceptance.participant';
+import {
+  ManualPaymentController,
+  ManualReceiptReadController,
+  ManualFinanceReviewController,
+} from './manual-review/manual-review.controller';
+import type { PrismaTx } from '@homeservicemarketplace/database';
 import { MONEY_ACTIVATION_PARTICIPANT } from './ports/activation.port';
 import {
   MONEY_COLLECTION_ADAPTER,
@@ -48,7 +59,7 @@ function configuredProvider(token: symbol) {
   return new matches[0]!.useClass();
 }
 
-describe('R24 MoneyModule composition and unavailable defaults', () => {
+describe('R24 MoneyModule composition with R30 manual transports', () => {
   it('imports and exports the existing ledger once without creating another posting authority', () => {
     expect(
       (Reflect.getMetadata(MODULE_METADATA.IMPORTS, MoneyModule) as unknown[]).filter(
@@ -66,6 +77,9 @@ describe('R24 MoneyModule composition and unavailable defaults', () => {
     expect(Reflect.getMetadata(MODULE_METADATA.CONTROLLERS, MoneyModule)).toEqual([
       MoneyController,
       MoneyReviewController,
+      ManualPaymentController,
+      ManualReceiptReadController,
+      ManualFinanceReviewController,
     ]);
   });
 
@@ -77,14 +91,46 @@ describe('R24 MoneyModule composition and unavailable defaults', () => {
   });
 
   it('contains no configured purchase binding by default', async () => {
-    await expect(configuredProvider(MONEY_CONFIGURATION).resolve()).resolves.toBeNull();
+    const tx = { moneyManualInstructionVersion: { findMany: jest.fn().mockResolvedValue([]) } };
+    await expect(
+      new ManualRailConfiguration().resolve(
+        { planVersionId: 'absent-plan', method: 'SHAM_CASH' },
+        tx as unknown as PrismaTx,
+      ),
+    ).resolves.toBeNull();
+    expect(tx.moneyManualInstructionVersion.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { planVersionId: 'absent-plan', method: 'SHAM_CASH', enabled: true },
+      }),
+    );
+  });
+
+  it('reuses exactly one manual participant per port through the reviewed module', () => {
+    expect(
+      (Reflect.getMetadata(MODULE_METADATA.IMPORTS, MoneyModule) as unknown[]).filter(
+        (entry) => entry === ManualReviewModule,
+      ),
+    ).toHaveLength(1);
+    for (const [provide, useExisting] of [
+      [MONEY_CONFIGURATION, ManualRailConfiguration],
+      [MONEY_COLLECTION_ADAPTER, ManualCollectionAdapter],
+      [MONEY_RECEIPT_ACCEPTANCE, ReceiptAcceptanceParticipant],
+      [MONEY_REFUND_ADAPTER, ManualRefundAdapter],
+    ]) {
+      expect(
+        providers.filter(
+          (entry) =>
+            typeof entry === 'object' &&
+            entry !== null &&
+            'provide' in entry &&
+            entry.provide === provide,
+        ),
+      ).toEqual([{ provide, useExisting }]);
+    }
   });
 
   it.each([
-    [MONEY_COLLECTION_ADAPTER, 'createOrResume', 'MONEY_COLLECTION_UNAVAILABLE'],
-    [MONEY_RECEIPT_ACCEPTANCE, 'accept', 'MONEY_RECEIPT_UNAVAILABLE'],
     [MONEY_ACTIVATION_PARTICIPANT, 'activatePeriod', 'MONEY_ACTIVATION_UNAVAILABLE'],
-    [MONEY_REFUND_ADAPTER, 'submit', 'MONEY_REFUND_ADAPTER_UNAVAILABLE'],
   ] as const)(
     'never reports a configured or successful default for %s',
     async (token, method, reason) => {

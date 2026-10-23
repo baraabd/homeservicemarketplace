@@ -30,6 +30,8 @@ export const R24_PERMISSIONS = {
   requestRefund: 'money:refund:request:self',
   review: 'money:review:read',
   receiptReview: 'money:receipt:review',
+  receiptView: 'money:receipt:view',
+  receiptSettlement: 'money:receipt:settlement',
   refundReview: 'money:refund:review',
 } as const;
 
@@ -47,9 +49,23 @@ export interface R24Actor {
 export interface R24HttpOptions {
   method?: string;
   body?: unknown;
+  rawBody?: Uint8Array;
+  responseType?: 'bytes';
   idempotencyKey?: string;
   csrf?: boolean;
   headers?: Record<string, string>;
+}
+
+/** Only cookies actually returned by the real login/OTP HTTP exchange. */
+export interface R24BrowserCookie {
+  name: string;
+  value: string;
+  domain: string;
+  path: string;
+  expires: number;
+  httpOnly: boolean;
+  secure: boolean;
+  sameSite: 'Strict' | 'Lax' | 'None';
 }
 
 export interface R24HttpResponse<T> {
@@ -64,6 +80,7 @@ export interface R24HttpSession {
     options?: R24HttpOptions,
   ): Promise<R24HttpResponse<T>>;
   login(actor: R24ActorName): Promise<R24HttpSession>;
+  storageState(): { cookies: R24BrowserCookie[]; origins: [] };
 }
 
 export interface R24MoneyPortOverride {
@@ -99,8 +116,9 @@ const ALLOWED_PORTS = new Set([
 
 /**
  * Real AppModule, HTTP, cookie/OTP authentication, guards, PostgreSQL and Redis.
- * The sole infrastructure substitution is a real PrismaService instance using
- * the newly migrated database. Its genuine startup/ping/teardown hooks remain.
+ * PrismaService uses the newly migrated database and retains its genuine
+ * startup/ping/teardown hooks. Optional limiter namespacing isolates fixture
+ * traffic while preserving the real Redis Lua, identities, limits and TTLs.
  * Explicit money-port overrides are contract components, never rail acceptance.
  * Test mail and scanner adapters establish neither SMTP nor malware acceptance.
  *
@@ -108,7 +126,12 @@ const ALLOWED_PORTS = new Set([
  * boundary. No shared seed, global table cleanup or Redis flush is performed.
  */
 export async function r24MoneyHttpFixture(
-  options: { adapters?: readonly R24MoneyPortOverride[] } = {},
+  options: {
+    adapters?: readonly R24MoneyPortOverride[];
+    /** R30 must exercise actual ClamAV; existing R24 contract tests keep their explicit double. */
+    scannerDriver?: 'test' | 'clamav';
+    isolateRateLimits?: boolean;
+  } = {},
 ): Promise<R24MoneyHttpFixture> {
   if (process.env.RUN_DB_INTEGRATION !== '1') {
     throw new Error('R24 HTTP evidence requires RUN_DB_INTEGRATION=1.');
@@ -184,7 +207,7 @@ export async function r24MoneyHttpFixture(
       STORAGE_DRIVER: 'local',
       LOCAL_STORAGE_DIR: join(storageRoot, 'public'),
       RESTRICTED_STORAGE_DIR: join(storageRoot, 'restricted'),
-      EVIDENCE_SCANNER_DRIVER: 'test',
+      EVIDENCE_SCANNER_DRIVER: options.scannerDriver ?? 'test',
       DISPUTE_PRIVATE_ACTIVE_KEY: 'r24',
       DISPUTE_PRIVATE_KEYS_JSON: JSON.stringify({ r24: randomBytes(32).toString('base64') }),
       LOG_LEVEL: 'error',
@@ -198,6 +221,7 @@ export async function r24MoneyHttpFixture(
     const { AppConfigService } = await import('../../src/config/app-config.service');
     const { PrismaService } = await import('../../src/infrastructure/prisma/prisma.service');
     const { RedisService } = await import('../../src/infrastructure/redis/redis.service');
+    const { RateLimitStore } = await import('../../src/infrastructure/throttle/rate-limit.store');
     const { PasswordService } =
       await import('../../src/modules/iam/authentication/services/password.service');
 
@@ -215,6 +239,20 @@ export async function r24MoneyHttpFixture(
     for (const override of options.adapters ?? []) {
       builder.overrideProvider(override.token).useValue(override.value);
     }
+    if (options.isolateRateLimits) {
+      class IsolatedRateLimitStore extends RateLimitStore {
+        override consume(params: Parameters<InstanceType<typeof RateLimitStore>['consume']>[0]) {
+          return super.consume({ ...params, bucket: prefix + params.bucket });
+        }
+      }
+      builder.overrideProvider(RateLimitStore).useFactory({
+        inject: [RedisService, AppConfigService],
+        factory: (
+          redis: InstanceType<typeof RedisService>,
+          config: InstanceType<typeof AppConfigService>,
+        ) => new IsolatedRateLimitStore(redis, config),
+      });
+    }
     const module = await builder.compile();
     app = module.createNestApplication<NestExpressApplication>({
       bodyParser: false,
@@ -227,7 +265,7 @@ export async function r24MoneyHttpFixture(
     app.enableCors({
       origin: ['http://127.0.0.1:5324'],
       credentials: true,
-      exposedHeaders: ['Content-Disposition'],
+      exposedHeaders: ['Content-Disposition', 'X-Receipt-Inspection-Id'],
     });
     app.enableVersioning({ type: VersioningType.URI, defaultVersion: '1' });
     app.useGlobalPipes(
@@ -328,11 +366,15 @@ export async function r24MoneyHttpFixture(
 
     function session(): R24HttpSession {
       const cookies = new Map<string, string>();
+      const browserCookies = new Map<string, R24BrowserCookie>();
       const client: R24HttpSession = {
         async request<T = Record<string, unknown>>(
           path: string,
           input: R24HttpOptions = {},
         ): Promise<R24HttpResponse<T>> {
+          if (input.body !== undefined && input.rawBody !== undefined) {
+            throw new Error('Use one HTTP body representation per request.');
+          }
           const headers: Record<string, string> = { 'X-Client-Kind': 'web', ...input.headers };
           if (cookies.size) headers.cookie = [...cookies].map(([k, v]) => `${k}=${v}`).join('; ');
           if (input.csrf !== false && cookies.has('hsm_csrf')) {
@@ -343,18 +385,58 @@ export async function r24MoneyHttpFixture(
           const response = await fetch(url + path, {
             method: input.method ?? 'GET',
             headers,
-            body: input.body === undefined ? undefined : JSON.stringify(input.body),
+            body:
+              input.rawBody !== undefined
+                ? Buffer.from(input.rawBody)
+                : input.body === undefined
+                  ? undefined
+                  : JSON.stringify(input.body),
             signal: AbortSignal.timeout(30_000),
           });
           for (const cookie of response.headers.getSetCookie()) {
-            const pair = cookie.split(';')[0]!;
+            const [pair, ...attributes] = cookie.split(';');
+            if (!pair) continue;
             const separator = pair.indexOf('=');
-            cookies.set(pair.slice(0, separator), pair.slice(separator + 1));
+            const name = pair.slice(0, separator);
+            const value = pair.slice(separator + 1);
+            const options = new Map(
+              attributes.map((attribute) => {
+                const [key, ...rest] = attribute.trim().split('=');
+                return [key!.toLowerCase(), rest.join('=')] as const;
+              }),
+            );
+            const sameSite = options.get('samesite')?.toLowerCase();
+            const maxAge = options.get('max-age');
+            const expires =
+              maxAge !== undefined
+                ? Math.floor(Date.now() / 1000) + Number(maxAge)
+                : options.has('expires')
+                  ? Date.parse(options.get('expires')!) / 1000
+                  : -1;
+            if (value === '' || (expires !== -1 && expires <= Date.now() / 1000)) {
+              cookies.delete(name);
+              browserCookies.delete(name);
+            } else {
+              cookies.set(name, value);
+              browserCookies.set(name, {
+                name,
+                value,
+                domain: options.get('domain') ?? new URL(url).hostname,
+                path: options.get('path') ?? '/',
+                expires,
+                httpOnly: options.has('httponly'),
+                secure: options.has('secure'),
+                sameSite: sameSite === 'strict' ? 'Strict' : sameSite === 'none' ? 'None' : 'Lax',
+              });
+            }
           }
-          const text = await response.text();
+          const body =
+            input.responseType === 'bytes'
+              ? new Uint8Array(await response.arrayBuffer())
+              : await response.text().then((value) => (value ? JSON.parse(value) : {}));
           return {
             status: response.status,
-            body: (text ? JSON.parse(text) : {}) as T,
+            body: body as T,
             headers: response.headers,
           };
         },
@@ -394,6 +476,10 @@ export async function r24MoneyHttpFixture(
           }
           return client;
         },
+        storageState: () => ({
+          cookies: [...browserCookies.values()].map((cookie) => ({ ...cookie })),
+          origins: [],
+        }),
       };
       return client;
     }

@@ -85,6 +85,15 @@ test('SupportModule coexists with one AppModule to MoneyModule to LedgerModule c
 
 test('the money composition fence rejects missing or duplicate mounts and lost exports', () => {
   const money = read('apps/api/src/modules/money/money.module.ts');
+  // Mutate the named metadata array so formatting and new reviewed imports
+  // cannot turn a negative fixture into an unchanged source string.
+  const mutateLedger = (section, replacement) => {
+    const result = money.replace(new RegExp(`${section}:\\s*\\[([^\\]]+)\\]`), (full, body) =>
+      full.replace(body, body.replace(/\bLedgerModule\s*,?/, replacement)),
+    );
+    assert.notEqual(result, money, `The ${section} negative fixture must change its source`);
+    return result;
+  };
   assert.throws(() => assertMoneyComposition(app.replace(/^\s*MoneyModule,/m, ''), money));
   assert.throws(() =>
     assertMoneyComposition(
@@ -93,16 +102,11 @@ test('the money composition fence rejects missing or duplicate mounts and lost e
     ),
   );
   assert.throws(() => assertMoneyComposition(app.replace(/^\s*SupportModule,/m, ''), money));
+  assert.throws(() => assertMoneyComposition(app, mutateLedger('imports', '')));
   assert.throws(() =>
-    assertMoneyComposition(app, money.replace('AuditModule, LedgerModule', 'AuditModule')),
+    assertMoneyComposition(app, mutateLedger('imports', 'LedgerModule, LedgerModule,')),
   );
-  assert.throws(() =>
-    assertMoneyComposition(
-      app,
-      money.replace('AuditModule, LedgerModule', 'AuditModule, LedgerModule, LedgerModule'),
-    ),
-  );
-  assert.throws(() => assertMoneyComposition(app, money.replace('    LedgerModule,', '')));
+  assert.throws(() => assertMoneyComposition(app, mutateLedger('exports', '')));
 });
 
 test('support and ledger audit identifiers both remain allowlisted', () => {

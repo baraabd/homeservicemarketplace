@@ -208,6 +208,11 @@ const UNGRANTED_MONEY_PERMISSIONS: PermissionSpec[] = [
     description: 'Request review of a refund for an owned confirmed subscription payment',
   },
   { key: 'money:review:read', description: 'Read subscription money review projections' },
+  { key: 'money:receipt:view', description: 'Read audited private subscription receipts' },
+  {
+    key: 'money:receipt:settlement',
+    description: 'Record independently permitted incoming subscription settlement evidence',
+  },
   {
     key: 'money:receipt:review',
     description: 'Accept verified restricted subscription receipt evidence',
