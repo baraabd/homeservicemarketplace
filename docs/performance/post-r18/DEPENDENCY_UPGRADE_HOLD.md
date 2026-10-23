@@ -20,8 +20,9 @@ metadata alone cannot satisfy the measured-performance gate.
   metadata fields were absent. The corrected body passes the existing metadata
   validator; the subsequent commit requires a new Final SHA in that body.
 - R27 run `40016123413`, job `120628504400`: the immutable repair-baseline
-  checkout is the correct develop SHA, but `cmp --silent pnpm-lock.yaml
-  ../harness/pnpm-lock.yaml` exits 1. Missing artifacts are a consequence of
+  checkout is the correct develop SHA, but
+  `cmp --silent pnpm-lock.yaml ../harness/pnpm-lock.yaml` exits 1. Missing
+  artifacts are a consequence of
   stopping before measurement.
 - The unchanged comparison and acceptance programs also reject unequal
   `lockfileSha256` values. Removing only the early comparison would not
