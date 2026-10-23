@@ -9,8 +9,8 @@ Bring accepted dependencies/workflows into this branch with a normal merge,
 keeping original history. No peer product source, force push, gate waiver,
 merge to develop, deployment or live operation.
 
-Shared test fixes preserve real behavior: canonical datetime-local minute
-input avoids Chromium's zero-second normalization; the R27 same-browser
+Shared test fixes preserve real behavior: canonical datetime-local values preserve
+nonzero seconds while matching Chromium's zero-second normalization; the R27 same-browser
 account switch awaits the final Admin sign-out navigation and a real 204,
 without reloading the SPA or clearing caches.
 
@@ -19,9 +19,10 @@ G3 acceptance remains subject to real integrated provider/policy evidence.
 
 ## Confirmed causes and repairs
 
-- R30 datetime-local: canonical minute precision avoids Playwright rejecting
-  a value whose zero seconds were normalized by the browser. Keep the original
-  input, route, assertions and timeout.
+- R30 datetime-local: the first minute-only correction was rejected by real CI
+  because it could backdate settlement before intent creation. The follow-up
+  preserves nonzero seconds and removes only zero seconds. Financial guards,
+  input, route, assertions and timeout remain unchanged.
 - R27 same-browser account switch: await successful logout response and its
   final `/login?app=admin` destination before starting the next login. Keep the
   same SPA and caches; no reload, storage clear or authorization bypass.
@@ -132,3 +133,11 @@ Configuration fingerprint (SHA-256 of nonsecret test configuration): `e2304e6282
 ## Superseded baseline proposal
 
 Owner-merged #194 already supplies the historical Zod comparison control. This PR incorporates accepted develop and preserves the old branch history; it does not introduce Zod 4.6.7 or remove accepted R31 source. Its remaining purpose is the documented reconciliation and common PR repair. The final diff is reviewed against current develop, not mistaken for an empty historical-runtime replacement.
+
+## Follow-up verification correction
+
+Shared coordinator commit 61fb7a6b9591d89bd4f94f49519bd26278362917 corrects
+settlement time precision and hardens the legacy CommonJS test boundary.
+See the shared G3 PR repair evidence for the failed R30 run, Windows diagnostic
+limits and 12 passing local regression tests. Final-head browser/service CI is
+required; no prior green run is substituted for this source tree.
