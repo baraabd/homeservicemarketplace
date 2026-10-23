@@ -270,12 +270,20 @@ test('isolates the selector and recovers the affected admin route when an old co
     const screenshot = info.outputPath('before-legacy-recovery.png');
     await page.screenshot({ path: screenshot, fullPage: true });
     await info.attach('before-legacy-recovery', { path: screenshot, contentType: 'image/png' });
+  } catch (error) {
+    const screenshot = info.outputPath('legacy-failure.png');
+    await page.screenshot({ path: screenshot, fullPage: true });
+    await info.attach('legacy-failure', { path: screenshot, contentType: 'image/png' });
+    throw error;
+  } finally {
+    // Preserve the actual module error even when the negative-control assertion
+    // fails. A timeout without this evidence cannot distinguish a broken
+    // failure fixture from a regression in the real application's recovery.
     await info.attach('legacy-errors', {
       body: JSON.stringify({ errors, contractRequests }, null, 2),
       contentType: 'application/json',
     });
-    console.log('REPRODUCED', JSON.stringify(errors));
-  } finally {
+    console.log('LEGACY_MODULE_DIAGNOSTICS', JSON.stringify({ errors, contractRequests }));
     await server.close();
   }
 });
