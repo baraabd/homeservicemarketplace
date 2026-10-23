@@ -161,6 +161,32 @@ Other Wave 3 lane assignments remain untouched; this session cannot claim their
 implementation or acceptance. R34–R38 remain behind G3. This lease expires when
 the author returns it to the coordinator after canonical validators pass.
 
+## Serialized measured-CI correction lease R32-CI-01
+
+After PR #187 run `39942195745` failed its unchanged R27 page-size budget, the
+coordinator verified the candidate artifact: provider bids use the same eleven
+request statements at limits 5 and 20, but the larger-page capture also contains
+one `SELECT EmailDelivery` and one `WITH EmailDelivery` from the R21 retry worker.
+The ordinary small/large-dataset measurements remain eleven/eleven; the repair
+baseline's page probe is also eleven/eleven. The R32 refund worker is already
+disabled by this harness. This is a demonstrated measurement-isolation defect.
+
+Before the corrective edit, the coordinator grants `/root` the following exact
+additional shared paths, with no concurrent subtask writer:
+
+```text
+scripts/perf/post-r18/lib/lane-env.mjs
+scripts/perf/post-r18/lib/runtime.test.mjs
+```
+
+Set the existing `MAIL_DISPATCHER_ENABLED` flag to `false` only in the fixed R27
+measurement environment and test both profiles and forbidden overrides. The
+same harness runs against baseline, candidate and repair-baseline sources.
+Immediate post-commit SMTP delivery remains active; no production mail setting,
+SQL/bundle ceiling, query classification, sample or assertion is relaxed.
+CR-001 records the patch, observed artifact identities and validation plan.
+This lease expires on R32 PR closure, G3 integration or coordinator revocation.
+
 ## Isolated verification resources
 
 Task-local Node 24.21.0 and pnpm 10.32.1 are used through a process-local PATH;

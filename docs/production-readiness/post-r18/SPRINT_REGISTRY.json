@@ -1501,6 +1501,18 @@
               "docs/production-readiness/post-r18/waves/wave-02.closeout.json",
               "docs/production-readiness/post-r18/waves/wave-03.plan.json"
             ]
+          },
+          {
+            "id": "R32-CI-01",
+            "grantedBy": "/root owner-delegated coordinator for baraabd",
+            "writer": "/root",
+            "scope": "Correct proven R21 mail-worker contamination of R27 per-request SQL captures by setting its existing worker flag false in the fixed measurement environment; regression covers both profiles and forbidden overrides. Original budgets and production defaults unchanged.",
+            "expires": "R32 PR closure, G3 integration or coordinator revocation, whichever occurs first.",
+            "handoff": "docs/production-readiness/r32/shared-change-requests/CR-001-integration.md",
+            "paths": [
+              "scripts/perf/post-r18/lib/lane-env.mjs",
+              "scripts/perf/post-r18/lib/runtime.test.mjs"
+            ]
           }
         ]
       },

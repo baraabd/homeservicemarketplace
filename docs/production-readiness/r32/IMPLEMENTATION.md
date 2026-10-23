@@ -53,6 +53,14 @@ The complete exact path list is in OWNERSHIP.md. No root dependency manifests,
 lockfile, shared public contract, R15 ledger implementation, schema/migration,
 CI workflow, frontend or sibling lane implementation is modified.
 
+The first PR performance run exposed R21 mail-worker statements in R27's
+database-wide request captures. The coordinator's additional R32-CI-01 lease
+covers exactly the fixed measurement environment and its runtime regression
+test. It adds the missing `MAIL_DISPATCHER_ENABLED=false` alongside existing
+worker switches for every measured source. Production behavior, immediate OTP
+mail and the original query/bundle budgets are unchanged. ACCEPTANCE.md retains
+the failed run and artifact evidence; this brings the authorized diff to 39 files.
+
 ## Eligibility from an explicit policy
 
 The default `REFUND_POLICY_SOURCE` returns no policy. A configured source must

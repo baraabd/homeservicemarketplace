@@ -43,6 +43,36 @@ imported. This satisfies the unchanged R27 PR-base ancestry check. It creates
 no merge commit and changes neither `develop` nor the frozen-source identity.
 The exact branch and checkpoint procedure are recorded in `../OWNERSHIP.md`.
 
+## Measured-CI correction authorization R32-CI-01
+
+Status: APPROVED_FOR_IMPLEMENTATION by `/root`, the owner-delegated coordinator,
+after inspecting failed R27 run `39942195745`, job `120382164330`, on source
+`19cf2f660d24dbe502810d0a95b53be1c8f1f576`.
+
+Exact added shared paths are `scripts/perf/post-r18/lib/lane-env.mjs` and
+`scripts/perf/post-r18/lib/runtime.test.mjs`; `/root` is their sole writer.
+The existing workers-off measurement environment omitted the R21 mail retry
+worker's flag. Candidate artifact `12496404956` shows provider-bids page counts
+11/13; the two extra statements are `SELECT EmailDelivery` and
+`WITH EmailDelivery`. Its normal dataset measurements and repair-baseline
+artifact `12496529955` are 11/11. Every bundle ceiling and absolute statement
+ceiling passed; the isolated page-invariance failure is retained as evidence.
+
+Minimal patch: explicitly set the existing `MAIL_DISPATCHER_ENABLED=false` in
+the shared R27 API environment, alongside its existing worker switches. Add a
+regression covering fixture and production measurement profiles plus rejection
+of attempts to re-enable it through overrides. Baseline, candidate and repair
+baseline use this same harness. Immediate post-commit mail delivery remains
+active, preserving real OTP/browser fixtures. No worker default, API product
+source, schema, dependency, workflow, timeout, query filter or budget changes.
+
+Validation: first demonstrate the new isolation assertion failing against the
+omitted flag; apply the one-line environment correction; run the full R27
+library/acceptance/budget regression scope, formatting/lint, canonical ownership
+validators and normal hooks. Re-run all applicable remote checks on the new
+published head. Record exact results and the earlier failure in ACCEPTANCE.md;
+never substitute an old green job for the corrected head.
+
 ## Verification and consequences
 
 No dependency, lockfile, contract version, schema or migration changes are

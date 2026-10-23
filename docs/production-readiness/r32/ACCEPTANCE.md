@@ -188,6 +188,43 @@ Existing warnings: ts-jest's isolatedModules deprecation; frozen-install
 blocked optional build scripts for @parcel/watcher and unrs-resolver. No runtime,
 package manager or lockfile was upgraded to hide them.
 
+## First PR performance failure and bounded correction
+
+On initial PR head `19cf2f660d24dbe502810d0a95b53be1c8f1f576`, R27 run
+`39942195745` / aggregate job `120382164330` passed 51 original budget checks
+and failed provider-bids page-size invariance. Candidate artifact `12496404956`
+recorded 11 statements for five items and 13 for twenty. The eleven endpoint
+statements were identical; the two extras were `SELECT EmailDelivery x1` and
+`WITH EmailDelivery x1`. The candidate's ordinary base/amplified dataset counts
+were 11/11, as were repair-baseline artifact `12496529955`'s page-size counts.
+
+Verified candidate ZIP SHA-256:
+`583bc84ab0f8987f7728c63b1cd344b536d1d5ca817f9519f4ce2963ded7508b`.
+Verified repair-baseline ZIP SHA-256:
+`f23fab999dbad95c8428c7062b649c1f92460ebad48cfcc62578ddd5254bde7e`.
+
+The database-wide capture included the R21 mail dispatcher's five-second retry
+and queue-gauge queries. The R27 environment promised workers-off measurement
+but omitted `MAIL_DISPATCHER_ENABLED`, whose application default is true.
+The R32 refund scanner was already disabled; no MoneyDispatch query appeared.
+Lease R32-CI-01 therefore adds only the existing mail-worker switch to the fixed
+measurement environment plus a regression covering both profiles, inherited
+environment and forbidden overrides. All three measurement sources use the
+same harness. Production defaults, immediate post-commit SMTP/OTP delivery,
+query capture/filtering and every original budget remain unchanged.
+
+The new focused assertion first failed with actual `undefined` versus expected
+`false`, then passed after the one-line environment correction. The full R27
+library and acceptance scope passed 119 tests with no failures/skips. The final
+combined command `node --test scripts/perf/post-r18/lib/*.test.mjs
+.github/scripts/*.test.mjs` passed 588 tests with zero failures/skips; six
+canonical validators, exact 39-file ownership, changed-file ESLint/Prettier and
+diff checks also passed. Corrected-head remote evidence is recorded in the PR.
+This correction adds two expressly leased paths,
+bringing the actual PR scope to 39 files; refund application source is unchanged
+from the published implementation source above. Initial-head green checks do
+not certify the later corrective head.
+
 ## Acceptance still required
 
 The coordinator must assemble approved R29/R30 adapters and the R31 confirmed
