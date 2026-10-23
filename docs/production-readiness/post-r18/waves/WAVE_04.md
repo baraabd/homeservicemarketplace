@@ -1,8 +1,9 @@
 # Wave 4: R34–R38
 
 All five recovered packages are **PLANNED** behind **G3**. G2 can release Wave 3
-only. Wave 4 has no candidate or frozen execution source, no accepted G3
-evidence, no assigned active writer and no startable lane.
+only. Wave 4 has no frozen execution source, accepted G3 evidence, assigned active
+writer or startable lane. The G3 coordinator has inspected a partial Wave 3
+candidate; that observation is not a released execution source.
 
 `wave-04.plan.json` is the exact conditional file plan. Its titles, branches,
 dependencies and two-phase R38 boundary come from the original full prompts,
@@ -27,9 +28,12 @@ coupling.
 
 ## G3 start barrier
 
-The [G3 source manifest](../gates/g3/SOURCE_MANIFEST.json) remains blocked, with
-null candidate/frozen source identities and `NOT_RUN` evidence. The coordinator
-must integrate the actual Wave 3 implementations, verify real registered
+The [G3 source manifest](../gates/g3/SOURCE_MANIFEST.json) remains blocked. The
+supplemental G3 inspection anchors owner-merged R30–R33 in its evidence
+snapshot; it does not update the canonical candidate or frozen identities. R29, actual refund policy/consequence wiring and
+combined-rail evidence are missing, as detailed in
+[the G3 acceptance inspection](../gates/g3/ACCEPTANCE.md). The coordinator
+must integrate the remaining actual Wave 3 implementation, verify real registered
 providers/controllers/handlers and execute every
 [G3 requirement](../gates/g3/REQUIREMENTS.md) on a single final source. The
 accepted G2 prerequisite and its separate merged publication must also be
