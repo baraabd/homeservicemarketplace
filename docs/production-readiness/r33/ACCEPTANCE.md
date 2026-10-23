@@ -245,3 +245,27 @@ timeouts and permission assertions remain unchanged. The original R32 shared
 file handoff above remains historical evidence; this additional normal merge
 retains the later test correction without reopening competing shared edits.
 Latest-head CI, including the complete real-service suite, must pass again.
+
+### Review follow-up: include the safe first refund submission
+
+This combined source also incorporates R32 review correction
+`ea3c4c1eab49901106f59ea3a7724ae6cbe98b2f` as a normal merge parent. An untouched
+refund must permit DISPATCH but reject QUERY, including dry-run recovery,
+direct command and internal delivery. An absence-only manual-adapter query
+must not turn a never-submitted refund into a permanently query-only UNKNOWN
+reservation. The rejection preserves the provider idempotency key and the
+first legitimate submission; existing ambiguous states are never reset.
+
+The additional unit regressions failed before the correction. The R30 manual
+adapter regression now rejects a pre-submit query, creates the operation with
+an explicit dispatch and continues through independent confirmation and
+exactly-once finalization. The R32 real-service coverage verifies all query
+entry points, unchanged durable records on rejection and successful first
+submission, while retaining genuine query recovery after a timed-out attempt.
+Fresh combined-head CI must pass before the review is resolved and source
+readiness is declared. This changes no policy, schema, gate, timeout or live
+money authorization.
+
+The combined local money/AppModule run passed 37 suites / 618 tests with zero
+failures or skips. API typecheck/build, canonical sprint registry, repository
+governance and whitespace checks passed before the normal merge commit.

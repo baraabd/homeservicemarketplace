@@ -209,6 +209,30 @@ describe('R32 authorized, scoped refund recovery', () => {
     );
   });
 
+  it.each([true, false])(
+    'rejects QUERY for an untouched dispatch (dryRun=%s) without consuming its first submission',
+    async (dryRun) => {
+      const h = harness();
+      const input = await h.body({ operation: 'QUERY', dryRun, approvalReference: 'ops-case-32' });
+      await expect(h.service.replay(USER, KEY, REFUND, input)).rejects.toMatchObject({
+        status: 409,
+        details: { reason: 'MONEY_REFUND_NOT_DISPATCHED' },
+      });
+      expect(h.outbound).toEqual([]);
+      expect(h.saved.size).toBe(0);
+      expect(h.dispatch.status).toBe('NOT_DISPATCHED');
+      expect(await h.service.inspect(USER, REFUND, PAYMENT)).toMatchObject({
+        state: 'RESERVED',
+        allowedOperations: ['DISPATCH'],
+        reservationHeld: true,
+      });
+      await expect(
+        h.service.replay(USER, KEY, REFUND, { ...input, dryRun: false, operation: 'DISPATCH' }),
+      ).resolves.toMatchObject({ outcome: 'ACCEPTED' });
+      expect(h.outbound).toEqual(['DISPATCH']);
+    },
+  );
+
   it.each(['money:review:read', 'admin'])(
     'refuses stale inspection authority %s before reading the refund',
     async (missing) => {

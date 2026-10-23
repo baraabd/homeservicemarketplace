@@ -1622,7 +1622,8 @@ export class MoneyCommandService {
         });
         const binding = await this.binding(intent, tx);
         let dispatch = await tx.moneyDispatch.findUnique({ where: { refundId } });
-        if (!dispatch && queryOnly) throw conflict('MONEY_REFUND_NOT_DISPATCHED');
+        if (queryOnly && (!dispatch || dispatch.status === 'NOT_DISPATCHED'))
+          throw conflict('MONEY_REFUND_NOT_DISPATCHED');
         // Already verified terminal evidence can finish locally through an
         // adapter outage. Fresh reviewer authority and binding still apply.
         if (!this.terminalRefundObservation(dispatch?.observation)) {
@@ -1835,6 +1836,10 @@ export class MoneyCommandService {
       return { refund, binding, queryOnly: queryOnly || authorization.action === 'QUERY_REFUND' };
     }, TX_OPTIONS);
     if (['SUCCEEDED', 'FAILED', 'CANCELLED'].includes(context.refund.status)) return;
+    // Also fence replay of an older QUERY receipt before claiming an untouched
+    // transport row. An absence-only query must not consume the first submit.
+    if (context.queryOnly && row.status === 'NOT_DISPATCHED')
+      throw conflict('MONEY_REFUND_NOT_DISPATCHED');
     const claimed = await this.claimDispatch(row.id);
     if (!claimed) return;
     try {
