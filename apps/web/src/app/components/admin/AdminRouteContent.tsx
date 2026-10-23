@@ -23,11 +23,26 @@ import { directoryReturn, type AdminRoute } from './admin-routes';
 const DashboardOverview = lazy(() =>
   import('./DashboardOverview').then((module) => ({ default: module.DashboardOverview })),
 );
+const ManualReviewScreen = lazy(() =>
+  import('../../features/manual-payments/ManualReviewScreen').then((module) => ({
+    default: module.ManualReviewScreen,
+  })),
+);
 
 export function AdminRouteContent({ route }: { route: AdminRoute }) {
   const { lang } = useLang();
   const location = useLocation();
   const navigate = useNavigate();
+  if (route.kind === 'manualPayments' || route.kind === 'manualPayment') {
+    return (
+      <AsyncBoundary>
+        <ManualReviewScreen
+          key={route.kind === 'manualPayment' ? route.paymentIntentId : 'queue'}
+          paymentIntentId={route.kind === 'manualPayment' ? route.paymentIntentId : undefined}
+        />
+      </AsyncBoundary>
+    );
+  }
   if (route.kind === 'legacy') {
     return <Navigate to={`/admin/reviews${location.search}`} state={location.state} replace />;
   }
@@ -95,6 +110,9 @@ export function AdminRouteContent({ route }: { route: AdminRoute }) {
         <div className="ar-stack">
           <Link className="ar-button" to="/admin/financial-operations">
             {lang === 'ar' ? 'عمليات مدفوعات الاشتراكات' : 'Subscription payment operations'}
+          </Link>
+          <Link className="ar-button" to="/admin/manual-payments">
+            {lang === 'ar' ? 'مراجعة الدفعات اليدوية' : 'Review manual payments'}
           </Link>
           <FinancialsSection lang={lang} />
         </div>

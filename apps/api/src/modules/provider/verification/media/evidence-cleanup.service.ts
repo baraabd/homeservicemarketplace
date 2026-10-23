@@ -83,6 +83,7 @@ export class EvidenceCleanupService {
     const candidates = await this.prisma.client.mediaAsset.findMany({
       where: {
         visibility: 'RESTRICTED',
+        purpose: null,
         uploadCompletedAt: null,
         deletedAt: null,
         uploadExpiresAt: { not: null, lt: cutoff },
@@ -90,6 +91,7 @@ export class EvidenceCleanupService {
       select: {
         id: true,
         storageKey: true,
+        purpose: true,
         uploadCompletedAt: true,
         deletedAt: true,
         uploadExpiresAt: true,
@@ -104,7 +106,7 @@ export class EvidenceCleanupService {
       // Re-checked against the pure rule rather than trusting the query. The
       // two can only disagree if the WHERE clause drifts from the rule, and
       // this is a delete.
-      if (!isSweepable({ asset, now })) continue;
+      if (asset.purpose != null || !isSweepable({ asset, now })) continue;
       result.examined += 1;
 
       try {
@@ -122,7 +124,7 @@ export class EvidenceCleanupService {
       // (idempotent) and exactly one marks the row, so the count is honest
       // rather than double-reported.
       const { count } = await this.prisma.client.mediaAsset.updateMany({
-        where: { id: asset.id, deletedAt: null, uploadCompletedAt: null },
+        where: { id: asset.id, purpose: null, deletedAt: null, uploadCompletedAt: null },
         data: { deletedAt: now, deletionReason: cleanupDeletionReason() },
       });
 

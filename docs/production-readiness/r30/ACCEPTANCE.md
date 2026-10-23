@@ -1,221 +1,196 @@
-# R30 — prerequisite acceptance evidence
+# R30 — candidate acceptance evidence
 
-**R30 runtime: NOT_IMPLEMENTED / G2_BLOCKED.** This PR prepares conditional R30
-registration and an explicitly leased G2 query-performance prerequisite repair.
-It does not claim receipt, review, payment, activation, refund, hosted or live
-acceptance. Required checks still running or not yet run are identified below.
+## Current disposition
 
-## Source and scope
+**IMPLEMENTED / SOURCE_VERIFIED.** The final local R30 source passes its real
+sandbox service and browser checks. Final-head remote CI/CodeQL, hook identity,
+tracked-tree secret scan and publication are recorded in the English draft PR.
+This is source and sandbox evidence with explicit R31/R32 contract components;
+actual integrated R31/R32, hosted and live-policy acceptance remain pending.
+No unrun, skipped or earlier-source check is relabelled as a final-head pass.
 
-- Fresh branch base: `96e92825f9b65cf124317f43b55ce42fc97f5b49`.
-- Base tree: `68f4e926eabeb37bb70382c62b75272cf67bd02c`.
-- Branch: `feat/r30-manual-payment-review`; one English Draft PR.
-- Approved G2 execution base/tree: absent; no frozen source was fabricated.
-- Final source commit/tree and remote run/artifact IDs: to be recorded in the
-  published PR body after normal hooks and actual checks, avoiding a self-hash.
-- Exact write leases: `OWNERSHIP.md` and the G2 coordinator's ownership record.
+## Source authority
 
-The first October 22 source checkpoint below became published commit
-`1a319133d387dd6747bfd412503f4458573cf10e`, tree
-`af041d3817c8ae0aaeab2b6b8833380b44540cb3`. Its results are retained history
-for the measured follow-up. Successor source requires its own checks and
-artifacts; neither October 18 results nor this first head prove a later head.
+| Identity                                         | Value                                                                  |
+| ------------------------------------------------ | ---------------------------------------------------------------------- |
+| Frozen G2 runtime source                         | `72b4aaeb0a71d806b7fca7363dd9ca59bbcee644`                             |
+| Frozen G2 runtime tree                           | `43e9c6a4e58cfb934b12789feeb38b588e1cb7c6`                             |
+| Owner-merged publication / actual checkout start | `986b4707776711e80564f0642133ede90ba16f3c`                             |
+| Publication tree                                 | `7ab683ea8c5304929a2fa51f1dc824c7cb46f7d5`                             |
+| Branch / session                                 | `feat/r30-manual-payment-review` / `hsm-r30-590834e66da5`              |
+| Final commit / source tree                       | Recorded externally in the draft PR after normal hooks and publication |
 
-## First-candidate preparation checks
+G2 publication was independently verified before implementation. Its green
+checks establish that prerequisite source only. Current R30 checks below do
+not relabel historical preparation results; the earlier manifest is preserved
+under `historicalPreparation` in `SOURCE_MANIFEST.json`.
 
-| Command/evidence                                                              | Actual result                                                       | Scope                                                                                                              |
-| ----------------------------------------------------------------------------- | ------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
-| `pnpm install --frozen-lockfile`                                              | PASS, exit 0                                                        | Exact Node 24.21.0 / pnpm 10.32.1; normal prepare hooks/contracts build; lockfile unchanged.                       |
-| `pnpm --filter @homeservicemarketplace/database generate`                     | PASS, exit 0                                                        | Guarded Prisma 6.12.0 client generation; not database/application proof.                                           |
-| `pnpm security:audit`                                                         | PASS, exit 0; zero vulnerabilities in every severity                | Complete dependency graph at the pinned lockfile.                                                                  |
-| `pnpm security:audit:prod`                                                    | PASS, exit 0; zero vulnerabilities in every severity                | Production dependency graph at the pinned lockfile.                                                                |
-| `node --test .github/scripts/*.test.mjs`                                      | PASS, exit 0; 340 passed, 0 failed, 0 skipped                       | Includes the supplied R30 package and its held/inconsistent-base cases.                                            |
-| Registry, G2 consistency, repository governance and release-baseline commands | PASS, all exit 0                                                    | Exact future ownership and existing blocked-gate rules.                                                            |
-| `node .github/scripts/g2-record.mjs --ready R30`                              | Expected refusal, exit 1                                            | R30 remains unauthorized to start while G2 is blocked.                                                             |
-| `node scripts/production/platform/validate-plan.cjs --check`                  | PASS, exit 0                                                        | Existing checked R28 plan; hosted blockers remain.                                                                 |
-| Isolated PostgreSQL migrations and test seed                                  | PASS, both exit 0                                                   | Existing repository schema only; task-owned native PostgreSQL, no R30 migration.                                   |
-| `pnpm --filter @homeservicemarketplace/api lint`                              | PASS, exit 0                                                        | Complete API source lint; changed integration test also passed scoped ESLint.                                      |
-| `pnpm --filter @homeservicemarketplace/api typecheck`                         | PASS, exit 0                                                        | Complete API TypeScript check with existing dependency builds.                                                     |
-| Full default API suite with existing CI placeholder environment               | PASS, exit 0; 4,873 passed / 0 failed / 1,750 service-gated skipped | 265 passing suites / 92 skipped. Skipped real-service cases are not claimed as passes.                             |
-| `pnpm --filter @homeservicemarketplace/api build`                             | PASS, exit 0                                                        | Database/contracts dependency builds and Nest production build.                                                    |
-| Real PostgreSQL equivalence                                                   | PASS, exit 0; 34 passed, 0 failed, 0 skipped                        | Actual SELECT counts, prior Prisma cursor/DTO parity, nullable relations and configured schema; native G2 fixture. |
-| Unchanged R27 reports and budget evaluator                                    | FAIL, exit 1; 50 passed / 2 failed                                  | Counts 5/10/7/3 pass; two large ServiceRequest scans require the follow-up below.                                  |
-| Precommit changed-file Gitleaks snapshot                                      | PASS, exit 0; no leaks in the initial 32-file snapshot              | Preliminary only; the final committed tree is scanned separately after normal hooks.                               |
-| Tracked-source Gitleaks                                                       | PASS, exit 0; zero findings                                         | Exact first-candidate tree: 2,640 files, 23,079,110 scanned bytes.                                                 |
-| First PR CI and official CodeQL                                               | PASS; 11 workflows / 37 checks                                      | Exact first head; official result app 57789, zero annotations, PR182 association.                                  |
+## Completed checks and scope
 
-Toolchain archives were checksum verified. Node archive SHA-256:
-`fd8e59d5a511510f6a298afb548f18c7d2b1be404d8b4a27d94fbe49f56cb2d6`.
-pnpm tarball SHA-512 matches the exact `packageManager` pin. Existing ignored
-build warnings for `@parcel/watcher` and `unrs-resolver` were preserved; no
-dependency approval, version switch or hook bypass was used to hide them.
+| Check                                       | Executed result                                                     | Scope                                                                                                                              |
+| ------------------------------------------- | ------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| Frozen install and guarded generation       | PASS, exit 0                                                        | Exact Node 24.21.0 / pnpm 10.32.1 / Prisma 6.12.0; lockfile unchanged                                                              |
+| Full web hermetic suite                     | 2,579 passed, 0 failed, 0 skipped                                   | Initial implemented runtime; later corrections have scoped reruns                                                                  |
+| Full API default suite                      | 4,928 passed, 0 failed, 1,794 service-gated skips                   | 272 passing suites / 95 gated suites; skipped cases are not passes                                                                 |
+| Governance suite                            | 480 passed, 0 failed, 0 skipped; exit 0                             | Final current-record/negative-fixture suite; canonical G2/readiness/registry/baseline commands also pass                           |
+| R19 real-PostgreSQL catalog/financial suite | 19 passed, 0 failed, 0 skipped; exit 0                              | Fresh task database, all 73 migrations, standard seed; 8 money capabilities, 0 role grants; isolated database disposed afterwards  |
+| Staging/runtime and platform boundaries     | 448 passed, 0 failed, 0 skipped; exit 0                             | Existing checks after CR-006; actual Docker image execution remains successor CI evidence                                          |
+| Full dependency audit                       | PASS, exit 0; 0 vulnerabilities at all severities                   | Pinned full dependency graph                                                                                                       |
+| Production dependency audit                 | PASS, exit 0; 0 vulnerabilities at all severities                   | Pinned production graph                                                                                                            |
+| Final real-service suite                    | 16 passed, 0 failed, 0 skipped; exit 0                              | Real HTTP/auth, PostgreSQL, Redis, private storage and ClamAV; includes concurrent worker failure injection over actual PostgreSQL |
+| Final shared/API/private HTTP boundaries    | 15 suites, 219 passed, 0 failed, 0 skipped; exit 0                  | Includes 9 R30 unit suites / 57 tests; subset, not additive                                                                        |
+| Final frontend feature suite                | 6 files, 54 passed, 0 failed, 0 skipped                             | Includes actual settlement `201 {id}` contract followed by authoritative detail GET                                                |
+| Frontend lint / TypeScript / E2E TypeScript | PASS                                                                | Scoped feature/browser lint; web tsc-b and E2E typecheck                                                                           |
+| Complete R30 real browser                   | 2 scenarios passed; 0 unexpected/skipped/flaky; harness 1/1; exit 0 | Actual HTTP, bytes, scan, replacement, inspection, settlement, approval, session cleanup and durable database assertions           |
+| Final publication CI and official CodeQL    | PENDING CORRECTED FINAL HEAD                                        | Refund correction passed official CodeQL; subsequent image/catalog correction requires its own complete exact-head result in PR184 |
 
-The targeted API command covers the four changed adjacent specifications:
+Current root/agent JSON report digests and final scoped outcomes are maintained
+in the manifest. Full default API service gates remain enabled only in their
+own required jobs. The dedicated R30 job requires every R30 case to execute,
+with zero skips, retries or flaky results.
 
-```bash
-pnpm --filter @homeservicemarketplace/api exec jest --runInBand --runTestsByPath src/infrastructure/persistence/requests/service-request.repository.spec.ts src/modules/provider/available-requests/available-requests.service.spec.ts src/modules/provider/bookings/provider-bookings.service.spec.ts src/modules/admin/financials/admin-financials.service.spec.ts --json --outputFile=/tmp/hsm-r30-validation/g2-query-projections-unit.json
-```
+## Final browser and regression evidence
 
-Result: **74 passed / 0 failed / 0 skipped**, exit 0. After sourcing only the
-private G2 fixture environment, the real database command is:
+The final Playwright run started `2026-10-23T05:44:29.243Z` and completed both
+scenarios in 27.296 seconds with no retries. The parent Jest harness also
+passed, independently verifying exactly one R24 confirmation, one settlement
+claim, two immutable receipt versions and one approved decision in PostgreSQL.
 
-```bash
-pnpm --filter @homeservicemarketplace/api exec jest --runInBand --runTestsByPath test/integration/g2-query-projections.integration.spec.ts --json --outputFile=/tmp/hsm-r30-validation/g2-query-projections.json
-```
+Both provider and reviewer surfaces passed 12 responsive/Axe combinations:
+English and Arabic RTL at 320, 390, 430, 768, 1024 and 1440 pixels. All 24 scoped
+Axe checks reported zero violations. Both languages also passed explicit CSS
+200% content enlargement and stacked review-column assertions. These checks
+are not a general accessibility certification or browser-toolbar zoom claim.
 
-Result: **34 passed / 0 failed / 0 skipped**, exit 0. Assertions preserve the
-prior Prisma outputs and capture actual repository SELECT counts. A separate
-connection configured with `schema=pg_temp` proves the new reads honor the
-selected namespace and leave public fixtures unchanged. This is repository
-correctness evidence, not the guarded HTTP counts, normalized plan capture or
-real browser evidence supplied by the R27 workflow.
+The visual inspection used the same final UI source in the immediately prior
+05:37:16Z run; subsequent hook formatting affected only two backend files.
+Directly inspected captures: `review-en-200pct-content.png`,
+`review-ar-200pct-content.png`, `review-ar-320.png`, `review-ar-1440.png`,
+`provider-ar-320.png`, `provider-en-1440.png`, and `review-current-pdf.png`.
+Use the matrix captures for clean layout documentation: the long PDF capture
+contains fixed admin chrome at the scroll position. Actual PDF rendering,
+keyboard dialog focus/escape/confirmation, outsider denial and session byte
+revocation were exercised by the completed browser scenario.
 
-The full default suite used the existing `DATABASE_URL` and
-`JWT_ACCESS_SECRET` test placeholders from `reusable-verify.yml`, without
-enabling real-service gates:
+Before the first publication, normal commit hooks formatted method-chain layout in two backend files. The
+213 scoped API/shared cases, 16 real-service cases and both complete browser
+scenarios were repeated successfully after hooks. Source digests now describe
+those committed bytes. After the first remote CodeQL finding, the three-file
+refund authorization correction passed 219 scoped API/shared cases across
+15 suites and all 16 real-service cases, including fresh revoked-dispatcher
+checks. The six new refund cases are included in the 219 total. API build,
+TypeScript and corrected-file lint are verified again; final normal-hook
+source equality and official CodeQL belong to the successor publication.
+All 38 root-shared TypeScript/JavaScript paths pass scoped ESLint. Final
+frontend feature tests pass 54 cases; web and E2E TypeScript and scoped lint
+pass. The final production web build uses CI's non-live API URL. Dependency
+audits report zero vulnerabilities across all severities. The full default
+suite counts above predate the final scoped corrections; final-head CI supplies
+the complete regression result for publication.
 
-```bash
-pnpm --filter @homeservicemarketplace/api test --runInBand --json --outputFile=/tmp/hsm-r30-validation/api-unit-full.json
-```
+## Real services and explicit components
 
-Its first invocation without those required placeholders stopped at the existing
-configuration validator. The corrected environment produced the passing result
-above; no validator or test assertion changed. The 34 database cases were run
-separately against the explicitly identified real PostgreSQL fixture.
+The task-owned services are PostgreSQL 16.15, authenticated Redis 7.4.7, private
+restricted local disk and ClamAV 1.5.3 using official daily 28161/main 63/
+bytecode 339 signatures. Configuration fingerprint:
+`0ada271fa8805e7cd384d7f691a2935b7c0a83e54842811ea2e39e0999c7147c`.
+The database role remains non-superuser; its scoped CREATEDB permits only the
+repository's disposable database helper within this cluster. It is not a
+production-role recommendation. Each integration fixture deploys current
+migrations into its own fresh database.
 
-## Reproduced failures and isolated database
+Receipts, amounts, merchant instructions and settlements are synthetic SANDBOX
+fixtures. Real boundaries include OTP sessions/cookies, CSRF, fresh RBAC,
+HTTP/binary payloads, PostgreSQL constraints/rollback, Redis Lua, actual stored
+bytes/hashes and ClamAV clean/EICAR results. Only R31 activation and R32 refund
+eligibility are labelled transaction contract components. No production R32
+confirmation participant or real external money transfer is claimed.
 
-The first current-record test run after registering R30 reproduced 63 passing
-tests and one failure: `R30: inconsistent Wave 3 bases` in the synthetic
-accepted-wave fixture. The separately leased fixture correction freezes every
-provided package in that in-memory example, keeps R30 held and retains all
-existing assertions. The full governance rerun above passes all 340 tests.
-Ordinary sandbox execution initially denied required subprocess/socket access;
-authorized isolated checks used escalated execution without weakening tests.
+Pinned Playwright 1.62.1 uses Chromium 151.0.7922.34 revision 1234. After a failed
+fresh CDN download, matching local binary distributions were copied; all 591
+file hashes, engine version and launch were verified. This provenance is
+`LOCAL_MATCHING_DISTRIBUTION_COPY`, not fresh authenticated download evidence.
+CI installs its own pinned browser. Session manifests are private 0600 files,
+removed by the harness; no profiles/cookies/traces are public evidence.
 
-The first real PostgreSQL projection run passed 28 cases and failed three
-provider cursor equivalence cases. Deleted or status-excluded anchors in the
-nullable schedule ordering expose Prisma behavior that a plain inclusive SQL
-keyset plus offset does not reproduce. The implementation is corrected against
-the unchanged reference assertions; final results appear in the table above.
-An earlier unit run also exposed an over-specified nullable city-key test double;
-its original default and assertions were restored before the 74/74 targeted
-unit rerun. No production filter, budget or assertion was relaxed.
+## Observed failures and corrections
 
-Native PostgreSQL 16.15 was provisioned only for G2 equivalence testing at
-`127.0.0.1:54330`, database `hsm_r30_g2_test`, login `hsm_r30_g2_runner`
-(non-superuser), OS user `nobody`. SCRAM authentication, data checksums and UTC
-were verified; task-owned data/socket/logs are under `/tmp/hsm-r30-postgres`.
-The connection comes from a private temporary environment file; no application
-`.env` was copied or created. After verifying the exact destination, root ran:
+- Head `0da484547bf1f3f31698352ea7fd021a8b6cb459` passed the separate official
+  CodeQL check `120382007718` with zero annotations and a verified zero-result
+  SARIF artifact. Its full integration job nevertheless failed one exact R19
+  permission-catalog expectation: 6,652 passed, one failed, 98 skipped. The
+  correction adds only the two defined R30 receipt-view/settlement capability
+  names. Exact catalog equality, zero role grants, no backfill and no booking
+  revenue remain required. The complete local R19 rerun passed all 19 cases
+  on a fresh migrated/seeded database and its changed-file lint passed with
+  zero errors/warnings. Successor full CI is recorded separately; no earlier
+  failed job is relabelled successful.
+- That head's security job reported green but warned of missing details for
+  CVE-2026-107891. Independent SBOM inspection found `musl` and `musl-utils`
+  at `1.2.6-r2`; Alpine identifies `1.2.6-r3` as fixed. All three API image
+  stages now require both fixed revisions. The existing cold build/boot,
+  Compose migrator/idempotency/non-root checks and security scan remain
+  unchanged, with independent successor SBOM inspection required. No local
+  Docker runtime is available, so actual image execution is CI evidence.
+  An exploitable application path was not established. Primary sources,
+  exact image/artifact identities and the serialized lease are in CR-006.
+- The first published R30 head `38307f0e3262a04319b2c79f39dae031cdbe0bb8`
+  completed the CodeQL analysis workflow, but its separate official security
+  check `120376196775` correctly failed with one high-severity
+  `js/user-controlled-bypass` finding. Dispatcher reauthorization in refund
+  review depended on the request's event-type branch. The successor moves that
+  check onto the common transaction path using the persisted dispatcher, or
+  the authorized current actor for first dispatch. Regression checks cover
+  revoked dispatcher authority for all three event types, retained UNKNOWN
+  state, no new evidence on rejection, restored authority and idempotent replay.
+  No query, gate or severity threshold is suppressed. The successor's official
+  CodeQL result must independently pass before technical publication acceptance.
+- Initial service fixture lacked CREATEDB; only the disposable test-cluster
+  role was corrected. No application or shared database grant changed.
+- An EICAR string in a PDF comment did not trigger real ClamAV. The fixture was
+  corrected to an actual embedded EICAR file; the real quarantine assertion
+  stayed required. No mock scan was substituted.
+- A manual event incorrectly supplied an external operation ID. R24 correctly
+  rejected it; R30 now uses the frozen null-ID contract and immutable settlement
+  provenance without weakening R24 validation.
+- Repeated fixtures shared Redis throttle buckets and produced real429s.
+  Per-fixture namespacing now preserves the actual Lua/quota/TTL behavior.
+  A dedicated real 30/hour case still requires429 and Retry-After.
+- Browser startup inherited JEST_WORKER_ID, which the parent harness now removes
+  from the Playwright subprocess environment. An earlier later run was
+  interrupted during a host execution stall; partial screenshots were never
+  treated as completed acceptance.
+- The browser retained its private non-disclosure assertion and exposed403 for
+  a foreign existing receipt versus404 for an absent receipt. Private reads now
+  return uniform 404 for missing authority, including after fresh revocation;
+  decision permission assertions remain403. Real service/unit reruns passed.
+- Independent review found the settlement endpoint returns201{id}, while the
+  frontend expected a full detail. The helper now follows successful creation
+  with an authoritative detail GET, and its test uses the actual response.
+- Independent review identified concurrent worker failure updates based on a
+  stale retry count. The final correction fences the operational snapshot and
+  adds passing unit and real-PostgreSQL concurrency regressions.
+- A merge-integrity negative fixture stopped changing its target after module
+  import formatting changed. It now mutates the named provider/export section
+  and explicitly proves the mutation; all production validators and rejection
+  assertions remain intact.
+- A production web build without VITE_API_URL correctly failed its existing
+  guard. Verification uses CI's explicit `https://api.example.com` build value;
+  this is a non-live compile input, not a deployed endpoint.
 
-```bash
-pnpm --filter @homeservicemarketplace/database exec prisma migrate deploy
-pnpm --filter @homeservicemarketplace/database seed
-```
+- The confirmed-payment browser locator was ambiguous between the status h2
+  and history h3. It now requires the exact level-2 status heading; all monetary
+  and durable-state assertions remain unchanged.
+- Direct screenshot review found cramped review columns at CSS 200% enlargement.
+  Intrinsic columns now reflow into one readable column, with an explicit browser
+  assertion. Reduced-motion users also no longer receive button color
+  transitions that temporarily dropped contrast. All original Axe rules remain.
 
-No shared database or Redis reset was used. Extracted Ubuntu server/client/libpq
-and LLVM packages were verified against signed metadata. A preliminary
-metadata-only apt invocation was interrupted after a temporary-config setup
-failure; it left partial shared index cache, with no package install or system
-configuration change. Later downloads/extraction used only temporary paths.
-The cache was intentionally not deleted. This native database is not a claimed
-Docker service or a substitute for the existing remote R27 harness.
-After the first validation, root verified the process executable, data path and
-port, stopped only this task-owned server, and confirmed the PID file was absent
-and port 54330 was closed. Temporary data and logs were retained. For the measured
-follow-up, root verified the same data identity and unused port before restarting
-that server; its scoped tests and final shutdown are recorded separately.
+## Release boundary
 
-## Measured follow-up
-
-The first published candidate passed functional CI, but the unchanged R27
-artifact evaluator exposed two large `ServiceRequest` scans, each estimated at
-10,836 rows. `G2_REVIEW.md` records the exact first run, artifacts and digests.
-The corrective two-file lease adds a bounded correlated primary-key hydration
-lookup and two actual generic-plan regressions. Before changing the production
-query, both added tests failed on the prior joins with a 10,217-row request
-scan. That isolated red-proof command selected the two new cases; the 34
-existing cases were not selected, and none of their assertions was removed.
-The analyzed session-local fixture contains 10,217 requests, 6,416 bookings and
-42,021 bids, plus small category/profile/user tables. Temporary tables and the
-generic-EXPLAIN helper disappear when their single connection closes.
-
-The regression captures the full emitted repository SQL and compares bound
-plans with explicit test-side normalized generic plans at page limits 5, 20
-and 100. It verifies request access and scans of all large fixture relations.
-No planner settings or production schema are changed. This normalization is
-labelled as a local test approximation; final R27 native `pg_stat_statements`
-plans remain required evidence.
-
-First-head real-service CI passed 6,542 API cases with 81 explicitly gated in
-that main command; those gates executed in their dedicated retention, storage,
-worker and dispute lanes. Default API CI passed 4,873 with 1,750 service-gated
-skips. Web units passed 2,525; general browser coverage passed 836 with 349
-declared skips. These counts are evidence of the first source only. Source
-artifact, real R25 replica and official CodeQL provenance were independently
-verified, but must be recollected for the successor.
-
-The strengthened corrective run passed **36 PostgreSQL cases, zero failures
-and zero skips**. All 12 full plans use `ServiceRequest_pkey` with an actual
-`id = requestId` equality and estimated rows 1; no large-fixture sequential
-scan remains. Small category/user/provider scans are retained and disclosed.
-The four affected unit suites passed **74/74**, with no failures or skips.
-Scoped ESLint, Prettier, complete API typecheck and production build passed.
-The governance rerun passed **340/340**, with no failures or skips; G2 record
-consistency passed and `--ready R30` still correctly refused runtime start.
-
-The final database command included
-`G2_QUERY_PLAN_REPORT=/tmp/hsm-r30-validation/g2-generic-plans-final.json`
-and wrote the Jest report to
-`/tmp/hsm-r30-validation/g2-query-projections-final.json`. The latter's SHA-256
-is `fd3464828c88ee81b0172a12e4939fe5dcd293b36e262d4d0fc50dba2eed84bd`;
-the full 12-plan report is
-`1ebdde063d340a05582a045dc45ec447662cadddb9209bc5a42196024b4fb916`.
-The existing ts-jest isolatedModules deprecation warning remains; it is not
-reported as a warning-free run. After checks, root verified and stopped only
-the restarted task-owned server, confirming process/PID-file absence and the
-closed port. No test or server process from the source writer remains.
-
-Final-head remote evidence remains pending publication. The PR body records
-the actual immutable source/tree, normal-hook and committed-tree secret scan,
-actual R27 evaluator/comparator outcome, complete latest workflow/check
-inventory and separately identified skips. No first-head green result is
-transferred to the successor.
-
-## Comparable R27 evidence
-
-The original G1/candidate measurements remain intact. Their newer PR181 pair
-cannot be compared by the unchanged comparator because the owner's security
-upgrades changed dependency bytes. A separately leased third `repair-baseline`
-job measures the immutable PR base with the final candidate harness and equal
-lockfile bytes. `G2_REVIEW.md` records the concrete rationale and guards.
-Final evidence must include actual artifacts, evaluator results and comparator
-`OBSERVED_COMPLETE_MATRIX` with zero missing groups. A successful workflow or
-comparator exit code alone is insufficient. Those final-head observations are
-recorded in the PR body after publication, rather than self-identifying here.
-
-Local workflow verification passed all 14 temporary Git-fixture cases using
-the workflow's actual inline guards, YAML parsing and a semantic comparison
-of the original jobs. The unchanged harness command
-`node --test scripts/perf/post-r18/lib/*.test.mjs` passed 106 tests, with no
-failures or skips. Scoped Prettier and `git diff --check` also passed.
-`actionlint` was unavailable and is not claimed as executed. The only changed
-R27 orchestration path is the separately leased workflow; all 30 inventoried
-harness, browser and dedicated-test files retain their base bytes.
-
-## Unexecuted R30 product evidence
-
-The 70-path conditional reservation is a future implementation list. No R30
-runtime file, schema migration, shared money port, receipt storage permission,
-account grant, route, browser fixture or live rail is created by registration.
-CR-002 through CR-005 remain unapplied. `VERIFICATION_PLAN.md` records the
-required negative, concurrency, rollback, real storage/ClamAV and route checks.
-Those tests are **NOT_RUN**, not skipped passes or sandbox acceptance.
-
-R27 original limits are still `PROPOSED_AWAITING_OWNER_APPROVAL`. Passing their
-technical evaluator, if demonstrated, does not approve policy or publish G2.
-The coordinator/owner must review the concrete exact-source evidence, approve
-the relevant budgets and verify accepted publication before the Wave 3 runtime
-barrier can be released. Merchant setup, review/retention policy and real
-settlement remain separate owner/external requirements.
+Only the coordinator can accept integrated Wave3/G3 evidence. This task does
+not merge, deploy, grant finance access, configure a real merchant or activate
+live money. Actual R31/R32 participation, late/reassigned review recovery,
+financial erasure/holds, hosted IAM/KMS/backup deletion and owner live-policy
+approval remain in `RISKS.md`. Follow `ROLLBACK.md` for containment without
+rewriting immutable history or manufacturing payment/refund success.

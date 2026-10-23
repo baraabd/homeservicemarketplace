@@ -93,6 +93,9 @@ export default defineConfig({
   // preview built with VITE_PROVIDER_ONBOARDING_V2=true. Both run locally with
   // E2E_REAL_API set — see docs/sprint-09b26/PROVIDER_ONBOARDING_V2_RELEASE.md.
   testIgnore: [
+    // R30 requires its real AppModule, independent roles, private receipt store
+    // and ClamAV. Its required CI harness owns playwright.r30.config.ts.
+    '**/r30-manual-payments/**',
     // Disposable R26 services and built CSP acceptance have their own config/job.
     '**/r26-security.real-api.spec.ts',
     // Requires native Vite dev transforms; owned by playwright.dev.config.ts.

@@ -152,3 +152,37 @@ Source and artifact fingerprints exclude JWT/cipher secrets, credentials, raw DS
 Accept the actual combined Wave 3 tree separately. Bind R30 receipt review and R31 My Plan routes only after their accepted integration; bind R32 refund commands with exact-amount/target confirmation, current command grants and unknown-outcome recovery. R34 must supply genuine run provenance and exercise not-run/failed/completed states and exception actions. Settlement persistence and currency scale/payout policy remain explicit separate decisions.
 
 The read-only rollback in [ROLLBACK.md](ROLLBACK.md) removes navigation/module mounts before feature code and preserves all money history. This evidence alone cannot mark G3/G4, hosted, policy or release acceptance.
+
+## PR #185 integration repair — 2026-10-23
+
+The owner requested repairs to open PRs after owner-merged R30 #184
+(`aaa22a9a04025fc312cbcc2121687aca2e467cac`). Integrate that develop commit
+into the R33 branch, retaining both financial-operations and manual-payment
+contracts, Admin links, routes and CI jobs. Resolve the coordinator-document
+conflicts by preserving canonical G2 publication evidence from develop and the
+R33 independent historical verification in `G2_PUBLICATION_VERIFICATION.json`.
+Retain both source assignments; move expired R30 shared leases into complete
+historical records. Gates, frozen source identity and operational restrictions
+are unchanged.
+
+The earlier R27 run 39941883418 passed all measurements but counted 11 SQL
+statements against the unchanged portfolio ceiling of 9. Its process-wide query
+collector also observed background mail retry work. The fixed measurement
+environment now disables the existing MAIL_DISPATCHER_ENABLED worker in both
+profiles, alongside its other disabled background workers. Regression coverage
+checks ambient and override settings cannot re-enable it. This changes neither
+production defaults nor request authentication, query budgets, OTP semantics or
+real mail-worker acceptance tests. The complete GitHub performance run must
+confirm the corrected measurement on this new source.
+
+Executed on Node 24.21.0 / pnpm 10.32.1: offline frozen install, Prisma
+generation, API lint/typecheck/build, web typecheck/production build, 23
+money/AppModule suites (396 tests passed), nine financial-operations and Admin
+route suites (72 tests passed), plus governance/performance harness tests
+(588 passed). No failed or skipped tests in those selected suites. Vite retains
+its existing chunk-size warning.
+
+Local PostgreSQL/browser reruns are blocked by the host's single-UID runtime.
+Mandatory GitHub real-service, browser, security and performance checks remain
+required on the newly published merge head. Historical source verification
+does not accept assembled Wave 3, business policy or live operations.

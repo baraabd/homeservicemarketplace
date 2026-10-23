@@ -2140,6 +2140,118 @@ jobs:
   # real-route job: the cross-role journey must have run on THIS source SHA
   # with exactly its expected count. A job that was skipped, cancelled or
   # failed, or a summary from another SHA, fails it.
+  r30-manual-payments:
+    name: R30 manual payments / real services and browser
+    runs-on: ubuntu-latest
+    needs: verify
+    timeout-minutes: 25
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: r30_bootstrap
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+      redis:
+        image: redis:7-alpine
+        ports: ['6379:6379']
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+    env:
+      # Disposable CI credentials. This role can create only isolated test DBs;
+      # it is explicitly not a PostgreSQL superuser.
+      DATABASE_URL: postgresql://hsm_r30_ci:r30_test_only@127.0.0.1:5432/r30_ci
+      REDIS_URL: redis://127.0.0.1:6379/12
+      RUN_DB_INTEGRATION: '1'
+      RUN_R30_INTEGRATION: '1'
+      EVIDENCE_SCANNER_DRIVER: clamav
+      CLAMAV_HOST: 127.0.0.1
+      CLAMAV_PORT: '3310'
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v5
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Create the isolated non-superuser database owner
+        run: |
+          psql postgresql://postgres:postgres@127.0.0.1:5432/r30_bootstrap -v ON_ERROR_STOP=1 \
+            -c "CREATE ROLE hsm_r30_ci LOGIN NOSUPERUSER CREATEDB PASSWORD 'r30_test_only'"
+          psql postgresql://postgres:postgres@127.0.0.1:5432/r30_bootstrap -v ON_ERROR_STOP=1 \
+            -c "CREATE DATABASE r30_ci OWNER hsm_r30_ci"
+      - run: pnpm --filter @homeservicemarketplace/database generate
+      - run: pnpm --filter @homeservicemarketplace/database migrate:deploy
+      - run: pnpm --filter @homeservicemarketplace/database build
+      - run: pnpm --filter @homeservicemarketplace/contracts build
+      - name: Install pinned Chromium
+        run: pnpm --filter @homeservicemarketplace/web exec playwright install --with-deps chromium
+      - name: Start real ClamAV with official signatures
+        run: |
+          docker run -d --name r30-clamd -p 127.0.0.1:3310:3310 clamav/clamav:stable
+          python3 - <<'PYTHON'
+          import socket,time
+          for attempt in range(150):
+              try:
+                  with socket.create_connection(('127.0.0.1',3310),timeout=2) as sock:
+                      sock.sendall(b'zPING\0')
+                      if b'PONG' in sock.recv(128): break
+              except OSError: pass
+              if attempt == 149: raise RuntimeError('r30-scanner-not-ready')
+              time.sleep(2)
+          PYTHON
+      - name: Verify R30 real HTTP, atomic confirmation, negative cases and races
+        run: |
+          pnpm --filter @homeservicemarketplace/api exec jest --runInBand --runTestsByPath \
+            test/integration/r30-manual-payments.integration.spec.ts \
+            --json --outputFile=r30-manual-service-ci.json
+      - name: Verify R30 bilingual browser against the same real services
+        env:
+          RUN_R30_BROWSER: '1'
+        run: |
+          pnpm --filter @homeservicemarketplace/api exec jest --runInBand --runTestsByPath \
+            test/e2e/r30-browser-runtime.e2e.spec.ts \
+            --json --outputFile=r30-manual-browser-ci.json
+      - name: Require executed service and browser evidence with zero skipped cases
+        run: |
+          node - <<'NODE'
+          const fs = require('node:fs');
+          for (const [file, expected] of [
+            ['apps/api/r30-manual-service-ci.json', 16],
+            ['apps/api/r30-manual-browser-ci.json', 1],
+          ]) {
+            const r = JSON.parse(fs.readFileSync(file, 'utf8'));
+            if (!r.success || r.numFailedTests || r.numPendingTests || r.numTodoTests || r.numPassedTests !== expected) {
+              throw new Error('R30 required cases did not all execute: ' + file);
+            }
+            console.log(file, 'passed', r.numPassedTests, 'failed', r.numFailedTests, 'skipped', r.numPendingTests);
+          }
+          const browser = JSON.parse(fs.readFileSync('apps/web/test-results/r30-manual-results.json','utf8'));
+          if (browser.stats.expected !== 2 || browser.stats.unexpected || browser.stats.skipped || browser.stats.flaky) {
+            throw new Error('R30 requires both browser scenarios without retries or skips');
+          }
+          NODE
+      - name: Upload authored synthetic evidence only
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: r30-manual-real-evidence
+          path: |
+            apps/api/r30-manual-service-ci.json
+            apps/api/r30-manual-browser-ci.json
+            apps/web/test-results/r30-manual-results.json
+            apps/web/test-results/r30-manual-browser/**/*.png
+          retention-days: 14
+          if-no-files-found: error
+
   r18-acceptance:
     name: R18 functional completion acceptance
     runs-on: ubuntu-latest
@@ -2150,6 +2262,7 @@ jobs:
       - integration-e2e
       - evidence-retention
       - dispute-workspace
+      - r30-manual-payments
       - browser-e2e
       - r25-realtime
       - phase5-visual
@@ -2199,6 +2312,7 @@ jobs:
       - integration-e2e
       - evidence-retention
       - dispute-workspace
+      - r30-manual-payments
       - browser-e2e
       - r25-realtime
       # The approved design is an acceptance criterion, so the check that
