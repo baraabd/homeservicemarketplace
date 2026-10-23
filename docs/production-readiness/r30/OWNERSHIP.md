@@ -68,7 +68,7 @@ serialized lease. No application permission is granted by an engineering lease.
 The governance/evidence writer returned its files to root. API and web writers
 return their exact paths after checks; any corrective handoff uses the same
 finite map. Root alone owns Git, migration/schema, contracts and shared glue.
-The authoritative map has 42 shared integration paths and 58 canonical lane /
+The authoritative map has 44 shared integration paths and 59 canonical lane /
 evidence paths; future proposed lists below are historical.
 
 ### Serialized PR184 security correction
@@ -94,6 +94,28 @@ returned all three paths after formatting, unit/integration checks, lint and
 API typecheck; the independent reviewer found the intended common authorization
 path and unchanged financial/independence guards. Further work is read-only
 unless root grants another exact corrective lease.
+
+### Serialized PR184 container and full-integration correction
+
+Under the standing coordination authority, root records the finite
+`R30-SHARED-20261023-FINAL-CI` extension before implementation. Root is the
+only writer of these two shared files; other agents review read-only:
+
+```text
+apps/api/Dockerfile
+apps/api/test/integration/r19-subscription-money.integration.spec.ts
+```
+
+The concrete change request is `shared-change-requests/CR-006-final-ci-remediation.md`.
+The API image receives Alpine's fixed musl package floor in all three stages.
+The R19 integration test receives the two defined R30 capability names in its
+exact catalog expectation, retaining the zero-grant, no-backfill and no-booking-
+revenue assertions. Node/pnpm pins, scanners, severity policy, permissions,
+production validators and financial behavior remain unchanged. Root also owns
+the new change-request record and mirrors the extension in both canonical
+registries. All peer lanes and frozen G2 evidence are preserved. This lease
+expires on R30 PR closure or coordinator revocation; it authorizes no merge,
+deployment, live method, production grant or unrelated image change.
 
 | Resource                  | Actual task-owned allocation                                                                                                 |
 | ------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |

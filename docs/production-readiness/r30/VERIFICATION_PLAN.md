@@ -75,6 +75,21 @@ browser suites exclude this separately required fixture directory.
 
 ## Provenance and remaining limits
 
+For the CR-006 catalog correction, execute the entire existing R19 suite with
+the isolated runtime environment, without a test-name filter:
+
+```bash
+RUN_DB_INTEGRATION=1 pnpm --filter @homeservicemarketplace/api exec jest --runInBand --runTestsByPath test/integration/r19-subscription-money.integration.spec.ts --json --outputFile=/tmp/hsm-r30-590834-final-r19-integration.json
+```
+
+The local environment has no Docker runtime. On the exact successor source,
+require the unchanged cold API build/production boot, Compose app-profile
+build (including the migrator), migration idempotency/non-root checks and
+dependency/secret/container job. Inspect the actual final image SBOM for both
+`musl` and `musl-utils` at `1.2.6-r3` or newer. A green filtered scan alone is
+insufficient when advisory details are missing. Retain the final image digest,
+SBOM artifact digest and package versions in PR184's source-bound evidence.
+
 The local fixture uses PostgreSQL 16.15, Redis 7.4.7, ClamAV 1.5.3 with official
 signatures, private restricted disk storage and pinned Playwright 1.62.1
 Chromium revision 1234. Its database login is a non-superuser; CREATEDB exists

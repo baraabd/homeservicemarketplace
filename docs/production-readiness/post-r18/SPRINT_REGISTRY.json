@@ -1284,7 +1284,7 @@
       "lane": 2,
       "branch": "feat/r30-manual-payment-review",
       "owner": {
-        "lane": "root \u2014 R30 session hsm-r30-590834e66da5",
+        "lane": "root — R30 session hsm-r30-590834e66da5",
         "coordinator": "Owner-delegated engineering coordinator for baraabd"
       },
       "status": "READY_TO_START",
@@ -1350,7 +1350,8 @@
           "docs/production-readiness/r30/shared-change-requests/CR-003-private-evidence.md",
           "docs/production-readiness/r30/shared-change-requests/CR-004-atomic-confirmation.md",
           "docs/production-readiness/r30/shared-change-requests/CR-005-web-contracts.md",
-          "apps/api/test/support/r30-manual-http.fixture.ts"
+          "apps/api/test/support/r30-manual-http.fixture.ts",
+          "docs/production-readiness/r30/shared-change-requests/CR-006-final-ci-remediation.md"
         ],
         "prefixes": [],
         "leases": [
@@ -1358,7 +1359,7 @@
             "id": "R30-SHARED-20261023",
             "grantedBy": "Owner-delegated G2 coordinator / root",
             "writer": "root",
-            "scope": "Serialized R30 schema/migration, receipt-purpose storage and retention isolation, published DTOs, atomic confirmation, module/routes/CI integration and required regression updates only. No peer implementation or live operational authority.",
+            "scope": "Serialized R30 schema/migration, receipt-purpose storage and retention isolation, published DTOs, atomic confirmation, module/routes/CI integration and required regression updates only. No peer implementation or live operational authority. Serialized final-CI extension: fixed Alpine musl package floors in every API image stage and exact R19 capability-catalog regression update, as CR-006; no scanner or permission-grant relaxation.",
             "paths": [
               "packages/database/prisma/schema.prisma",
               "packages/database/prisma/migrations/20261023080000_r30_manual_receipts/migration.sql",
@@ -1401,7 +1402,9 @@
               "apps/api/src/main.ts",
               "apps/api/test/e2e/r30-browser-runtime.e2e.spec.ts",
               "apps/web/playwright.config.ts",
-              ".github/scripts/merge-integrity.test.mjs"
+              ".github/scripts/merge-integrity.test.mjs",
+              "apps/api/Dockerfile",
+              "apps/api/test/integration/r19-subscription-money.integration.spec.ts"
             ],
             "expires": "R30 PR closure or coordinator revocation",
             "handoff": "Root is the sole schema and shared-runtime writer; source writers return their exclusive leases before root integration or amendments. Exact writer mapping: docs/production-readiness/r30/RUNTIME_OWNERSHIP.json.",
@@ -1436,7 +1439,7 @@
       "sourcePrompt": "docs/production-readiness/post-r18/gates/g2/prompts/R30.md",
       "sessionAssignment": {
         "sessionId": "hsm-r30-590834e66da5",
-        "assignedBy": "root \u2014 owner-delegated G2 coordinator for baraabd",
+        "assignedBy": "root — owner-delegated G2 coordinator for baraabd",
         "assignedAt": "2026-10-23T04:46:36Z",
         "writer": "root; exact delegated writers recorded in docs/production-readiness/r30/OWNERSHIP.md",
         "branch": "feat/r30-manual-payment-review",

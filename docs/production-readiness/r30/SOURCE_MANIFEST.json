@@ -47,8 +47,8 @@
   },
   "ownership": {
     "record": "docs/production-readiness/r30/RUNTIME_OWNERSHIP.json",
-    "canonicalLaneFiles": 58,
-    "sharedIntegrationFiles": 42,
+    "canonicalLaneFiles": 59,
+    "sharedIntegrationFiles": 44,
     "schemaWriter": "root",
     "unmergedPeerSourceImported": false,
     "peerRecordsPreserved": true
@@ -375,8 +375,8 @@
       "passed": 480,
       "failed": 0,
       "skipped": 0,
-      "logSha256": "d77b351a5c350703cd4b9547073e74c3121204fd8999f1b18aa366cc404e2a64",
-      "scope": "480 unchanged assertions after correction, run in normal runtime with Node/Git subprocess capability; restricted sandbox attempt did not count as acceptance."
+      "logSha256": "dba87262204dfdde2278b8002dbc6fb66fc385bf5927ac800b9706196ebb23fa",
+      "scope": "480 unchanged assertions after the final container/catalog ownership extension; normal runtime with Node/Git subprocess support."
     },
     "canonicalRecords": {
       "status": "PASS",
@@ -435,7 +435,80 @@
         "logSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
       },
       "successorOfficialResult": "Required externally in the exact final-head PR evidence.",
-      "securitySeverity": 7.8
+      "securitySeverity": 7.8,
+      "verifiedSuccessor": {
+        "sourceSha": "0da484547bf1f3f31698352ea7fd021a8b6cb459",
+        "officialCheckId": 120382007718,
+        "appId": 57789,
+        "conclusion": "success",
+        "annotations": 0,
+        "analysisRunId": 39943342515,
+        "sarifArtifactId": 12496833487,
+        "sarifZipSha256": "0fecccbbc9a38bbe0ed758624ce34770b66f06a6f169e2e45dc1e99d07785244",
+        "sarifResults": 0,
+        "scope": "Historical corrected refund source; the later container/catalog successor still requires its own official result."
+      }
+    },
+    "finalCiRemediation": {
+      "changeRequest": "docs/production-readiness/r30/shared-change-requests/CR-006-final-ci-remediation.md",
+      "observedSourceSha": "0da484547bf1f3f31698352ea7fd021a8b6cb459",
+      "ciRunId": 39943342577,
+      "integration": {
+        "jobId": 120383964786,
+        "passed": 6652,
+        "failed": 1,
+        "skipped": 98,
+        "failure": "Exact R19 catalog omitted two defined, ungranted R30 capabilities.",
+        "correction": "Add money:receipt:settlement and money:receipt:view; preserve exact equality, zero role grants, no backfill and no booking revenue."
+      },
+      "container": {
+        "jobId": 120383964892,
+        "jobConclusion": "success",
+        "advisory": "CVE-2026-107891",
+        "affectedPackages": {
+          "musl": "1.2.6-r2",
+          "musl-utils": "1.2.6-r2"
+        },
+        "fixedAlpineFloor": "1.2.6-r3",
+        "sbomArtifactId": 12496784608,
+        "sbomZipSha256": "f8268e46ffe373a1cbf58c3eec957c9b5d105eeceb63da092a7b346520f15d6b",
+        "imageManifestSha256": "aaf1961b341a4d1845ba45066b7da5d4465b5c2518657acb9585c2f00e6b80dd",
+        "correction": "Require both fixed packages in every independent Docker stage; preserve Node 24.21.0, non-root users and unchanged scanner/gates.",
+        "scannerLimitation": "Missing vulnerability details caused a generic warning; green configured output did not disprove the affected SBOM/vendor mapping.",
+        "applicationExploitability": "NOT_ESTABLISHED",
+        "localImageBuild": "NOT_RUN_NO_LOCAL_DOCKER",
+        "successorValidation": "Required existing cold image boot, Compose app-profile migrator build/idempotency/non-root checks, container scan and independent final runner SBOM inspection."
+      },
+      "localR19": {
+        "exitCode": 0,
+        "passed": 19,
+        "failed": 0,
+        "skipped": 0,
+        "suites": 1,
+        "reportBasename": "hsm-r30-590834-final-r19-integration.json",
+        "reportSha256": "257f39accd0c4c77d4c33aa5b0ff5ce7280702317fc431037ef316570d09dbe6",
+        "provenanceReportBasename": "hsm-r30-590834-final-r19-runner.json",
+        "provenanceSha256": "93591301d9afa376ff97a83be71efe5fa1c1b5aa4f64134fe5a493d117694c35",
+        "specSha256": "2970ce7cfcc6209c7a859d7917ef9487bea959b5e2d92bf1eb3246909a552c42",
+        "freshDatabase": true,
+        "migrationsApplied": 73,
+        "catalogDefinitions": 8,
+        "roleGrants": 0,
+        "taskDatabaseDisposed": true,
+        "scopedLintExitCode": 0,
+        "lintErrors": 0,
+        "lintWarnings": 0
+      },
+      "successorCi": "PENDING_FINAL_HEAD",
+      "localBoundaries": {
+        "exitCode": 0,
+        "passed": 448,
+        "failed": 0,
+        "skipped": 0,
+        "logBasename": "hsm-r30-590834-platform-boundaries.log",
+        "logSha256": "d4ebc77053b310db15df765df373f79a782eb161db11aa7633e023c8cb1ff605",
+        "scope": "Existing staging/runtime and platform checks; not a local Docker execution claim."
+      }
     }
   },
   "verifiedSourceDigests": [
@@ -446,6 +519,10 @@
     {
       "path": ".github/workflows/ci.yml",
       "sha256": "cd88606fccf5c3ad0d2c847221f920983bccb66c4bfd01d6369dabbf2bc0eb67"
+    },
+    {
+      "path": "apps/api/Dockerfile",
+      "sha256": "98efa77bb856ae4a3e5d75eaf41fadcf2b1960a236fa453ea390f3470dbbd7de"
     },
     {
       "path": "apps/api/src/main.ts",
@@ -586,6 +663,10 @@
     {
       "path": "apps/api/test/e2e/restricted-media-boundary.e2e.spec.ts",
       "sha256": "139a93a243559ef6e0c41b7e90c907203e1262af7fab59d723f0ac6a535a15ac"
+    },
+    {
+      "path": "apps/api/test/integration/r19-subscription-money.integration.spec.ts",
+      "sha256": "2970ce7cfcc6209c7a859d7917ef9487bea959b5e2d92bf1eb3246909a552c42"
     },
     {
       "path": "apps/api/test/integration/r30-manual-payments.integration.spec.ts",

@@ -77,7 +77,7 @@ tests shown there, in addition to tests beside owned source. This does not
 authorize shared Jest/Playwright discovery, global configuration or unlisted
 peer-fixture edits; those are coordinator integration requests.
 
-The active R30 handoff additionally contains one 42-path root integration
+The active R30 handoff additionally contains one 44-path root integration
 lease copied from `r30/RUNTIME_OWNERSHIP.json`; root is the only Wave 3 schema
 writer. The nine exact infrastructure files below remain future conditional
 leases.

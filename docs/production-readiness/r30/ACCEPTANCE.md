@@ -33,6 +33,8 @@ under `historicalPreparation` in `SOURCE_MANIFEST.json`.
 | Full web hermetic suite                     | 2,579 passed, 0 failed, 0 skipped                                   | Initial implemented runtime; later corrections have scoped reruns                                                                  |
 | Full API default suite                      | 4,928 passed, 0 failed, 1,794 service-gated skips                   | 272 passing suites / 95 gated suites; skipped cases are not passes                                                                 |
 | Governance suite                            | 480 passed, 0 failed, 0 skipped; exit 0                             | Final current-record/negative-fixture suite; canonical G2/readiness/registry/baseline commands also pass                           |
+| R19 real-PostgreSQL catalog/financial suite | 19 passed, 0 failed, 0 skipped; exit 0                              | Fresh task database, all 73 migrations, standard seed; 8 money capabilities, 0 role grants; isolated database disposed afterwards  |
+| Staging/runtime and platform boundaries     | 448 passed, 0 failed, 0 skipped; exit 0                             | Existing checks after CR-006; actual Docker image execution remains successor CI evidence                                          |
 | Full dependency audit                       | PASS, exit 0; 0 vulnerabilities at all severities                   | Pinned full dependency graph                                                                                                       |
 | Production dependency audit                 | PASS, exit 0; 0 vulnerabilities at all severities                   | Pinned production graph                                                                                                            |
 | Final real-service suite                    | 16 passed, 0 failed, 0 skipped; exit 0                              | Real HTTP/auth, PostgreSQL, Redis, private storage and ClamAV; includes concurrent worker failure injection over actual PostgreSQL |
@@ -40,7 +42,7 @@ under `historicalPreparation` in `SOURCE_MANIFEST.json`.
 | Final frontend feature suite                | 6 files, 54 passed, 0 failed, 0 skipped                             | Includes actual settlement `201 {id}` contract followed by authoritative detail GET                                                |
 | Frontend lint / TypeScript / E2E TypeScript | PASS                                                                | Scoped feature/browser lint; web tsc-b and E2E typecheck                                                                           |
 | Complete R30 real browser                   | 2 scenarios passed; 0 unexpected/skipped/flaky; harness 1/1; exit 0 | Actual HTTP, bytes, scan, replacement, inspection, settlement, approval, session cleanup and durable database assertions           |
-| Final publication CI and official CodeQL    | PENDING CORRECTED FINAL HEAD                                        | The first published head had one official security finding; final results belong to the exact successor head in PR184              |
+| Final publication CI and official CodeQL    | PENDING CORRECTED FINAL HEAD                                        | Refund correction passed official CodeQL; subsequent image/catalog correction requires its own complete exact-head result in PR184 |
 
 Current root/agent JSON report digests and final scoped outcomes are maintained
 in the manifest. Full default API service gates remain enabled only in their
@@ -113,6 +115,25 @@ removed by the harness; no profiles/cookies/traces are public evidence.
 
 ## Observed failures and corrections
 
+- Head `0da484547bf1f3f31698352ea7fd021a8b6cb459` passed the separate official
+  CodeQL check `120382007718` with zero annotations and a verified zero-result
+  SARIF artifact. Its full integration job nevertheless failed one exact R19
+  permission-catalog expectation: 6,652 passed, one failed, 98 skipped. The
+  correction adds only the two defined R30 receipt-view/settlement capability
+  names. Exact catalog equality, zero role grants, no backfill and no booking
+  revenue remain required. The complete local R19 rerun passed all 19 cases
+  on a fresh migrated/seeded database and its changed-file lint passed with
+  zero errors/warnings. Successor full CI is recorded separately; no earlier
+  failed job is relabelled successful.
+- That head's security job reported green but warned of missing details for
+  CVE-2026-107891. Independent SBOM inspection found `musl` and `musl-utils`
+  at `1.2.6-r2`; Alpine identifies `1.2.6-r3` as fixed. All three API image
+  stages now require both fixed revisions. The existing cold build/boot,
+  Compose migrator/idempotency/non-root checks and security scan remain
+  unchanged, with independent successor SBOM inspection required. No local
+  Docker runtime is available, so actual image execution is CI evidence.
+  An exploitable application path was not established. Primary sources,
+  exact image/artifact identities and the serialized lease are in CR-006.
 - The first published R30 head `38307f0e3262a04319b2c79f39dae031cdbe0bb8`
   completed the CodeQL analysis workflow, but its separate official security
   check `120376196775` correctly failed with one high-severity

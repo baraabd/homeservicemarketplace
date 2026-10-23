@@ -29,7 +29,9 @@ FROM node:${NODE_VERSION} AS builder
 WORKDIR /workspace
 # python3/make/g++ back argon2's node-gyp-build fallback compile; openssl is
 # what Prisma probes to select its query-engine binary target on Alpine.
-RUN apk add --no-cache python3 make g++ openssl
+# Alpine 3.24 fixes CVE-2026-107891 in musl 1.2.6-r3. Require the fixed
+# revision in every independent stage, including when the Node base lags.
+RUN apk add --no-cache 'musl>=1.2.6-r3' 'musl-utils>=1.2.6-r3' python3 make g++ openssl
 RUN corepack enable && corepack prepare pnpm@10.32.1 --activate
 
 # Sources first. .dockerignore keeps node_modules / dist / .env out, so this
@@ -135,7 +137,7 @@ FROM node:${NODE_VERSION} AS migrator
 ARG SOURCE_SHA=unknown
 LABEL org.opencontainers.image.revision=${SOURCE_SHA}
 # openssl is what the Prisma engines link against on Alpine.
-RUN apk add --no-cache openssl \
+RUN apk add --no-cache 'musl>=1.2.6-r3' 'musl-utils>=1.2.6-r3' openssl \
   && addgroup -S migrate \
   && adduser -S -G migrate migrate
 WORKDIR /migrate
@@ -161,7 +163,7 @@ ENV HSM_SOURCE_SHA=${SOURCE_SHA}     NODE_ENV=production \
     NODE_OPTIONS="--enable-source-maps"
 WORKDIR /app
 # openssl is a RUNTIME requirement of the Prisma query engine on Alpine.
-RUN apk add --no-cache tini openssl \
+RUN apk add --no-cache 'musl>=1.2.6-r3' 'musl-utils>=1.2.6-r3' tini openssl \
   && addgroup -S app \
   && adduser -S -G app app
 

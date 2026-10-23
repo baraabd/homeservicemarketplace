@@ -170,6 +170,15 @@ The general browser configuration excludes this separately required fixture.
 A merge-integrity test now mutates named module sections and verifies the
 negative fixture changed; production validators were not relaxed.
 
+The serialized CR-006 correction also makes every independent API image stage
+require Alpine's fixed `musl` and `musl-utils` revision `1.2.6-r3` or newer.
+This responds to verified affected package inventory despite an incomplete
+green scanner report; Node/pnpm and the existing scanner policy are unchanged.
+The full R19 integration catalog now names R30's two additional capabilities
+while continuing to require zero role grants, no backfill and no booking
+revenue. Existing real image, migration and security gates validate the
+successor; this changes no financial contract or live authorization.
+
 `ACCEPTANCE.md` records executed results; `VERIFICATION_PLAN.md` gives commands;
 `RISKS.md` names unresolved owners; `ROLLBACK.md` describes evidence-preserving
 containment. Sandbox success does not claim G3, deployment or live acceptance.

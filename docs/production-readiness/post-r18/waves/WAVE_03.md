@@ -24,12 +24,12 @@ prompts and [`PROMPT_PROVENANCE.md`](../gates/g2/PROMPT_PROVENANCE.md).
 | Lane | Sprint and complete prompt                                                                                      | Assigned branch                      | Earlier-wave dependencies | Conditional exact files |
 | ---- | --------------------------------------------------------------------------------------------------------------- | ------------------------------------ | ------------------------- | ----------------------- |
 | 1    | [R29 — Stripe sandbox subscription collections, signed webhooks and refund adapter](../gates/g2/prompts/R29.md) | `feat/r29-stripe-sandbox-webhooks`   | R24, R20, R22, R23        | 24                      |
-| 2    | [R30 — Manual subscription payment rails and protected receipt review](../gates/g2/prompts/R30.md)              | `feat/r30-manual-payment-review`     | R24, R20, R21, R22, R23   | 58                      |
+| 2    | [R30 — Manual subscription payment rails and protected receipt review](../gates/g2/prompts/R30.md)              | `feat/r30-manual-payment-review`     | R24, R20, R21, R22, R23   | 59                      |
 | 3    | [R31 — Subscription plans, My Plan and atomic entitlements](../gates/g2/prompts/R31.md)                         | `feat/r31-subscription-entitlements` | R24, R21, R22, R23        | 31                      |
 | 4    | [R32 — Refund eligibility, reservations and ambiguous-outcome recovery](../gates/g2/prompts/R32.md)             | `feat/r32-refund-recovery`           | R24, R22, R23             | 21                      |
 | 5    | [R33 — Financial read models and Admin/Provider operations UI](../gates/g2/prompts/R33.md)                      | `feat/r33-financial-operations-ui`   | R24, R20, R23             | 29                      |
 
-R30 currently reserves 58 exact lane/evidence paths plus one 42-path
+R30 currently reserves 59 exact lane/evidence paths plus one 44-path
 serialized root integration lease, including the single schema/migration
 writer. Its complete per-writer mapping is `r30/RUNTIME_OWNERSHIP.json`.
 Unused reserved paths need not be created.
