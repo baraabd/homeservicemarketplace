@@ -106,6 +106,7 @@ dbDescribe('R31 subscription/entitlement atomicity and concurrency (real Postgre
   let ledger: LedgerService;
   let owner: R24HttpSession;
   let other: R24HttpSession;
+  let noPermission: R24HttpSession;
   let basePlan: string;
   let debitAccountId: string;
   let creditAccountId: string;
@@ -141,6 +142,9 @@ dbDescribe('R31 subscription/entitlement atomicity and concurrency (real Postgre
     basePlan = await makePlan();
     owner = await h.login('owner');
     other = await h.login('otherProvider');
+    // Real password/OTP setup can wait for the unchanged login rate limit.
+    // Keep that fixture work outside the five-second authorization assertion.
+    noPermission = await h.login('noPermission');
   }, 120_000);
   beforeEach(() => {
     collection.outcome = 'PENDING';
@@ -370,7 +374,6 @@ dbDescribe('R31 subscription/entitlement atomicity and concurrency (real Postgre
     expect(h.app.get(MONEY_ACTIVATION_PARTICIPANT)).toBe(participant);
     expect(h.initialMoneyGrants).toBe(0);
     expect((await h.session().request('/v1/money/my-plan')).status).toBe(401);
-    const noPermission = await h.login('noPermission');
     expect((await noPermission.request('/v1/money/my-plan')).status).toBe(403);
     expect((await owner.request('/v1/money/my-plan', { method: 'POST', body: {} })).status).toBe(
       404,
