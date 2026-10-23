@@ -4,11 +4,11 @@
   "startGate": "G2",
   "baseSha": "72b4aaeb0a71d806b7fca7363dd9ca59bbcee644",
   "status": "READY_TO_START",
-  "startableLanes": ["R30"],
-  "blockedLanes": ["R29", "R31", "R32", "R33"],
+  "startableLanes": ["R30", "R32"],
+  "blockedLanes": ["R29", "R31", "R33"],
   "coordinator": "Owner-delegated engineering coordinator for baraabd",
   "decisionRecord": "docs/production-readiness/post-r18/gates/g2/SOURCE_MANIFEST.json",
-  "publicationRequirement": "G2 acceptance publication 986b4707776711e80564f0642133ede90ba16f3c is owner-merged and independently verified. R30 alone has an assigned source session; every other lane retains its session hold. No source implementation is accepted by a readiness status.",
+  "publicationRequirement": "Preserve verified G2 publication and the historical R30/R32 source assignments. R30 PR #184 is merged as aaa22a9a04025fc312cbcc2121687aca2e467cac and its shared leases are closed. R32 correction work follows the owner request to repair PR #187. Source readiness does not accept assembled Wave 3 or live policy.",
   "promptProvenance": "docs/production-readiness/post-r18/gates/g2/PROMPT_PROVENANCE.md",
   "ownershipRecord": "docs/production-readiness/post-r18/waves/OWNERSHIP_R29_R38.md",
   "lanes": [
@@ -155,7 +155,53 @@
         "apps/api/test/support/r30-manual-http.fixture.ts",
         "docs/production-readiness/r30/shared-change-requests/CR-006-final-ci-remediation.md"
       ],
-      "leases": [
+      "leases": [],
+      "requiredEvidence": [
+        "docs/production-readiness/r30/IMPLEMENTATION.md",
+        "docs/production-readiness/r30/ACCEPTANCE.md",
+        "docs/production-readiness/r30/RISKS.md",
+        "docs/production-readiness/r30/ROLLBACK.md",
+        "All behavioral, negative and integration tests in gates/g2/prompts/R30.md",
+        "Exact source/base/tree and contract/schema versions; checked command exit codes and test counts; source-bound artifacts; final-PR CI and official CodeQL; explicit skipped, blocked, sandbox and hosted states"
+      ],
+      "ownershipApproval": "APPROVED_AFTER_VERIFIED_G2_PUBLICATION",
+      "blockedBy": [],
+      "isolatedRuntime": {
+        "allocationStatus": "PROVISIONED_ISOLATED_REAL_SERVICES",
+        "composeProject": "hsm-r30-590834e66da5",
+        "database": "hsm_r30_590834",
+        "databaseUser": "hsm_r30_590834",
+        "redis": "Dedicated authenticated Redis instance on6430; real Lua limiter uses per-fixture bucket namespace; no flush.",
+        "storage": "Task-owned private temporary directories under /tmp/hsm-r30-590834-runtime; disposable fixture subdirectories are not shared.",
+        "queues": "r30:590834e66da5:<queue>",
+        "apiPort": 4330,
+        "webPort": 5324,
+        "postgresPort": 5530,
+        "redisPort": 6430,
+        "browserOrigin": "http://127.0.0.1:5324",
+        "browserContexts": "Independent provider, reviewer, recorder and outsider contexts; host-only real cookies from OTP login; no shared user profile.",
+        "effectiveConfiguration": "Native task-owned services, no Compose containers/volumes. Config fingerprint0ada271fa8805e7cd384d7f691a2935b7c0a83e54842811ea2e39e0999c7147c; resolved allocation in R30 OWNERSHIP.md.",
+        "secrets": "Task-issued disposable values only; never copy an unreviewed .env or use the user working database",
+        "sessionId": "hsm-r30-590834e66da5",
+        "allocationRecord": "docs/production-readiness/r30/OWNERSHIP.md",
+        "apiPortPurpose": "Reserved4330 unused; HTTP test fixtures bind ephemeral loopback ports.",
+        "resolvedScannerPort": 3430
+      },
+      "sourcePrompt": "docs/production-readiness/post-r18/gates/g2/prompts/R30.md",
+      "sessionAssignment": {
+        "sessionId": "hsm-r30-590834e66da5",
+        "assignedBy": "root — owner-delegated G2 coordinator for baraabd",
+        "assignedAt": "2026-10-23T04:46:36Z",
+        "writer": "root; exact delegated writers recorded in docs/production-readiness/r30/OWNERSHIP.md",
+        "branch": "feat/r30-manual-payment-review",
+        "worktree": "/workspace/scratch/590834e66da5/homeservicemarketplace",
+        "checkoutStartSha": "986b4707776711e80564f0642133ede90ba16f3c",
+        "runtimeBaseSha": "72b4aaeb0a71d806b7fca7363dd9ca59bbcee644",
+        "publicationVerification": "docs/production-readiness/post-r18/gates/g2/PUBLICATION_VERIFICATION.json",
+        "scope": "Requested R30 implementation and isolated verification only; no live method or policy activation.",
+        "ownershipRecord": "docs/production-readiness/r30/RUNTIME_OWNERSHIP.json"
+      },
+      "completedLeases": [
         {
           "id": "R30-SHARED-20261023",
           "grantedBy": "Owner-delegated G2 coordinator / root",
@@ -215,54 +261,11 @@
             "requiredDecision": "ACCEPTED",
             "requiredPublication": "MERGED_AND_VERIFIED",
             "requiresSessionAssignment": true
-          }
+          },
+          "closedBy": "Owner-merged PR #184",
+          "mergedCommitSha": "aaa22a9a04025fc312cbcc2121687aca2e467cac"
         }
-      ],
-      "requiredEvidence": [
-        "docs/production-readiness/r30/IMPLEMENTATION.md",
-        "docs/production-readiness/r30/ACCEPTANCE.md",
-        "docs/production-readiness/r30/RISKS.md",
-        "docs/production-readiness/r30/ROLLBACK.md",
-        "All behavioral, negative and integration tests in gates/g2/prompts/R30.md",
-        "Exact source/base/tree and contract/schema versions; checked command exit codes and test counts; source-bound artifacts; final-PR CI and official CodeQL; explicit skipped, blocked, sandbox and hosted states"
-      ],
-      "ownershipApproval": "APPROVED_AFTER_VERIFIED_G2_PUBLICATION",
-      "blockedBy": [],
-      "isolatedRuntime": {
-        "allocationStatus": "PROVISIONED_ISOLATED_REAL_SERVICES",
-        "composeProject": "hsm-r30-590834e66da5",
-        "database": "hsm_r30_590834",
-        "databaseUser": "hsm_r30_590834",
-        "redis": "Dedicated authenticated Redis instance on6430; real Lua limiter uses per-fixture bucket namespace; no flush.",
-        "storage": "Task-owned private temporary directories under /tmp/hsm-r30-590834-runtime; disposable fixture subdirectories are not shared.",
-        "queues": "r30:590834e66da5:<queue>",
-        "apiPort": 4330,
-        "webPort": 5324,
-        "postgresPort": 5530,
-        "redisPort": 6430,
-        "browserOrigin": "http://127.0.0.1:5324",
-        "browserContexts": "Independent provider, reviewer, recorder and outsider contexts; host-only real cookies from OTP login; no shared user profile.",
-        "effectiveConfiguration": "Native task-owned services, no Compose containers/volumes. Config fingerprint0ada271fa8805e7cd384d7f691a2935b7c0a83e54842811ea2e39e0999c7147c; resolved allocation in R30 OWNERSHIP.md.",
-        "secrets": "Task-issued disposable values only; never copy an unreviewed .env or use the user working database",
-        "sessionId": "hsm-r30-590834e66da5",
-        "allocationRecord": "docs/production-readiness/r30/OWNERSHIP.md",
-        "apiPortPurpose": "Reserved4330 unused; HTTP test fixtures bind ephemeral loopback ports.",
-        "resolvedScannerPort": 3430
-      },
-      "sourcePrompt": "docs/production-readiness/post-r18/gates/g2/prompts/R30.md",
-      "sessionAssignment": {
-        "sessionId": "hsm-r30-590834e66da5",
-        "assignedBy": "root — owner-delegated G2 coordinator for baraabd",
-        "assignedAt": "2026-10-23T04:46:36Z",
-        "writer": "root; exact delegated writers recorded in docs/production-readiness/r30/OWNERSHIP.md",
-        "branch": "feat/r30-manual-payment-review",
-        "worktree": "/workspace/scratch/590834e66da5/homeservicemarketplace",
-        "checkoutStartSha": "986b4707776711e80564f0642133ede90ba16f3c",
-        "runtimeBaseSha": "72b4aaeb0a71d806b7fca7363dd9ca59bbcee644",
-        "publicationVerification": "docs/production-readiness/post-r18/gates/g2/PUBLICATION_VERIFICATION.json",
-        "scope": "Requested R30 implementation and isolated verification only; no live method or policy activation.",
-        "ownershipRecord": "docs/production-readiness/r30/RUNTIME_OWNERSHIP.json"
-      }
+      ]
     },
     {
       "id": "R31",

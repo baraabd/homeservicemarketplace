@@ -49,9 +49,10 @@ recorded SHA-256. Every title, branch, dependency and legacy alias now comes fro
 `gates/g2/PROMPT_PROVENANCE.md`. These are planned packages, not implemented work.
 The original 21-file R32 conditional package remains intact. R32 implementation and local evidence are recorded in `../r32/ACCEPTANCE.md`; its nested execution record preserves the distinction between source verification and assembled sandbox acceptance.
 
-`waves/wave-03.plan.json` releases only the assigned R30 source session after
-accepted source-bound G2 evidence and verified owner-merged publication. The
-other four lanes retain their unassigned-session holds. The frozen source is
+`waves/wave-03.plan.json` preserves the assigned R30 and R32 source sessions after
+accepted source-bound G2 evidence and verified owner-merged publication. R30 PR #184
+is merged; its shared leases are closed. The other three lanes retain their
+unassigned-session holds in this branch. The frozen source is
 preserved; recording a factual owner merge does not accept any R30 runtime. `waves/wave-04.plan.json` has no source assigned and
 requires a separate accepted and published G3 after actual Wave 3 integration.
 R38 Phase B additionally requires the serialized R34–R37 final evidence join

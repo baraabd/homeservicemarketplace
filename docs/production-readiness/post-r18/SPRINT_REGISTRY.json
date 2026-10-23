@@ -1354,7 +1354,8 @@
           "docs/production-readiness/r30/shared-change-requests/CR-006-final-ci-remediation.md"
         ],
         "prefixes": [],
-        "leases": [
+        "leases": [],
+        "completedLeases": [
           {
             "id": "R30-SHARED-20261023",
             "grantedBy": "Owner-delegated G2 coordinator / root",
@@ -1414,7 +1415,9 @@
               "requiredDecision": "ACCEPTED",
               "requiredPublication": "MERGED_AND_VERIFIED",
               "requiresSessionAssignment": true
-            }
+            },
+            "closedBy": "Owner-merged PR #184",
+            "mergedCommitSha": "aaa22a9a04025fc312cbcc2121687aca2e467cac"
           }
         ]
       },

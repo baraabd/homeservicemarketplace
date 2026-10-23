@@ -232,3 +232,26 @@ entitlement consequence against these frozen ports, supply retained approved
 refund policy versions, and run integrated sandbox refund/recovery/accounting
 tests at G3/R34. R33 owns the Admin UI. Hosted evidence and explicit owner
 merge/deployment/live approvals remain separate. See RISKS.md and ROLLBACK.md.
+
+## PR #187 integration repair — 2026-10-23
+
+The owner requested repairs to the open PRs after merging R30 #184. Merge
+`df19f39ae82e2e19c5e0debb59abd5c3899efe75` retained the R32 policy import and
+export but replaced its providers with the now-unimported legacy fallback. This
+broke both lint and real application boot. Restore the actual R32 evaluator and
+its unavailable-by-default policy source alongside the R30 manual participants.
+The existing composition tests assert both bindings and the absent policy.
+
+R30 shared leases expired on its merged PR #184 (`aaa22a9a04025fc312cbcc2121687aca2e467cac`).
+Preserve their full contents as completed leases and restore the retained R32
+source assignment in the wave manifest and status narrative. No ownership
+validator, acceptance gate, budget or runtime policy was relaxed.
+
+Executed with Node 24.21.0 and pnpm 10.32.1: offline frozen install, Prisma
+generation, API lint/typecheck/build, the two affected composition/command suites
+(72 passed, zero failed/skipped), and all 480 governance tests (zero failed/skipped).
+Local real-service reruns are blocked: this execution host exposes only UID 0
+and cannot assign the unprivileged PostgreSQL runtime user. The corrected
+branch is published for the mandatory GitHub real-service/browser checks;
+those results must be read on its new head, not inferred from these local checks.
+Prior policy, assembled-wave and release holds remain unchanged.
