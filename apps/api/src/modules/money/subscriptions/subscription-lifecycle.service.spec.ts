@@ -176,7 +176,7 @@ describe('R31 authoritative My Plan projection', () => {
       expiresAt: now,
       attempts: [{ status: 'FAILED' }],
     });
-    const view = await h.service.myPlan('user', 'subscription');
+    const view = await h.service.myPlan('user');
     expect(view).toMatchObject({
       status: 'ACTIVE',
       subscription: {
@@ -187,6 +187,22 @@ describe('R31 authoritative My Plan projection', () => {
       payment: { id: 'later_intent', status: 'PROCESSING', latestAttemptStatus: 'FAILED' },
     });
     expect(h.tx.providerSubscription.update).not.toHaveBeenCalled();
+  });
+
+  it('scopes a selected purchase to its confirmed periods rather than a shared plan version', async () => {
+    const h = fixture();
+    h.tx.providerSubscription.findFirst.mockResolvedValue(h.subscription);
+    await h.service.myPlan('user', 'subscription');
+    expect(h.tx.moneyPaymentIntent.findFirst).toHaveBeenCalledWith({
+      where: {
+        providerProfileId: 'provider',
+        confirmation: { period: { subscriptionId: 'subscription' } },
+      },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      include: {
+        attempts: { orderBy: { attemptNo: 'desc' }, take: 1, select: { status: true } },
+      },
+    });
   });
 
   it('rejects a selected foreign subscription without returning another purchase', async () => {

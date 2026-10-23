@@ -130,7 +130,11 @@ export class SubscriptionLifecycleService {
           where: {
             providerProfileId,
             ...(subscriptionId && subscription
-              ? { planVersionId: subscription.planVersionId }
+              ? // A plan version can have many independent purchases. Only a
+                // confirmed period durably associates an intent with this
+                // selected subscription; the unfiltered overview still shows
+                // the provider's latest (possibly unconfirmed) purchase.
+                { confirmation: { period: { subscriptionId: subscription.id } } }
               : {}),
           },
           orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],

@@ -7,6 +7,17 @@ import { MoneyController, MoneyReviewController } from './api/money.controller';
 import { MoneyCommandService } from './application/money-command.service';
 import { MoneyQueryService } from './application/money-query.service';
 import { LedgerModule } from './ledger/ledger.module';
+import { ManualRailConfiguration } from './adapters/manual/manual-rail.config';
+import { ManualCollectionAdapter } from './adapters/manual/manual-collection.adapter';
+import { ManualRefundAdapter } from './adapters/manual/manual-refund.adapter';
+import { ManualReviewModule } from './manual-review/manual-review.module';
+import {
+  ManualPaymentController,
+  ManualReceiptReadController,
+  ManualFinanceReviewController,
+} from './manual-review/manual-review.controller';
+import { ReceiptAcceptanceParticipant } from './manual-review/receipt-acceptance.participant';
+import { ManualEventProcessingJob } from './manual-review/manual-event-processing.job';
 import { MONEY_ACTIVATION_PARTICIPANT } from './ports/activation.port';
 import { SubscriptionActivationParticipant } from './subscriptions/subscription-activation.participant';
 import { SubscriptionsModule } from './subscriptions/subscriptions.module';
@@ -26,18 +37,26 @@ import {
   UnavailableMoneyRefundPolicy,
 } from './ports/refund.port';
 
-// One composition boundary. R31 supplies the transaction-bound participant.
-// Collection, configuration and refund ports remain unavailable; booting the
-// module grants no money permission and enables no payment rail.
+// One composition boundary. R30 provides sandbox-only manual transports through
+// the existing R24 ports; R31 supplies the transaction-bound activation participant.
+// No instruction, permission grant, activation policy or
+// refund policy is created by module boot; every live rail remains unavailable.
 @Module({
   imports: [
     AuthenticationModule,
     AuthorizationModule,
-    SubscriptionsModule,
     AuditModule,
     LedgerModule,
+    ManualReviewModule,
+    SubscriptionsModule,
   ],
-  controllers: [MoneyController, MoneyReviewController],
+  controllers: [
+    MoneyController,
+    MoneyReviewController,
+    ManualPaymentController,
+    ManualReceiptReadController,
+    ManualFinanceReviewController,
+  ],
   providers: [
     MoneyCommandService,
     MoneyQueryService,
@@ -46,7 +65,7 @@ import {
     { provide: MONEY_CATALOG, useClass: PrismaMoneyCatalogFactory },
     { provide: MONEY_COLLECTION_ADAPTER, useExisting: ManualCollectionAdapter },
     { provide: MONEY_RECEIPT_ACCEPTANCE, useExisting: ReceiptAcceptanceParticipant },
-    { provide: MONEY_ACTIVATION_PARTICIPANT, useClass: UnavailableMoneyActivationParticipant },
+    { provide: MONEY_ACTIVATION_PARTICIPANT, useExisting: SubscriptionActivationParticipant },
     { provide: MONEY_REFUND_POLICY, useClass: UnavailableMoneyRefundPolicy },
     { provide: MONEY_REFUND_ADAPTER, useExisting: ManualRefundAdapter },
     {

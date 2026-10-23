@@ -520,9 +520,7 @@ dbDescribe('R31 subscription/entitlement atomicity and concurrency (real Postgre
     collection.outcome = 'FAILED';
     const later = await begin();
     expect(later.intent.id).not.toBe(purchase.intent.id);
-    const response = await owner.request<MoneyMyPlanWireV1>(
-      `/v1/money/my-plan?subscriptionId=${purchase.result.subscriptionId}`,
-    );
+    const response = await owner.request<MoneyMyPlanWireV1>('/v1/money/my-plan');
     expect(response.status).toBe(200);
     expect(response.body).toMatchObject({
       status: 'ACTIVE',
@@ -535,6 +533,14 @@ dbDescribe('R31 subscription/entitlement atomicity and concurrency (real Postgre
         },
       },
       payment: { id: later.intent.id, status: 'PROCESSING', latestAttemptStatus: 'FAILED' },
+    });
+    const selected = await owner.request<MoneyMyPlanWireV1>(
+      `/v1/money/my-plan?subscriptionId=${purchase.result.subscriptionId}`,
+    );
+    expect(selected.status).toBe(200);
+    expect(selected.body.payment).toMatchObject({
+      id: purchase.intent.id,
+      status: 'SUCCEEDED',
     });
     expect(response.body.entitlements.find((item) => item.key === 'listing.publish')?.allowed).toBe(
       true,
@@ -549,6 +555,23 @@ dbDescribe('R31 subscription/entitlement atomicity and concurrency (real Postgre
         where: { subscriptionId: purchase.result.subscriptionId },
       }),
     ).toBe(1);
+  });
+
+  it('keeps two confirmed purchases of the same plan associated with their own payments', async () => {
+    const first = await confirm();
+    const second = await confirm();
+    expect(first.intent.planVersionId).toBe(second.intent.planVersionId);
+    expect(first.result.subscriptionId).not.toBe(second.result.subscriptionId);
+    for (const purchase of [first, second]) {
+      const selected = await owner.request<MoneyMyPlanWireV1>(
+        `/v1/money/my-plan?subscriptionId=${purchase.result.subscriptionId}`,
+      );
+      expect(selected.status).toBe(200);
+      expect(selected.body).toMatchObject({
+        subscription: { id: purchase.result.subscriptionId },
+        payment: { id: purchase.intent.id, status: 'SUCCEEDED' },
+      });
+    }
   });
 
   it('rolls back confirmation, ledger, period, coupon, audit and receipts on a real R31 snapshot failure', async () => {

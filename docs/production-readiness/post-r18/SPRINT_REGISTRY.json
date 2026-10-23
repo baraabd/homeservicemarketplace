@@ -1354,7 +1354,8 @@
           "docs/production-readiness/r30/shared-change-requests/CR-006-final-ci-remediation.md"
         ],
         "prefixes": [],
-        "leases": [
+        "leases": [],
+        "completedLeases": [
           {
             "id": "R30-SHARED-20261023",
             "grantedBy": "Owner-delegated G2 coordinator / root",
@@ -1414,7 +1415,9 @@
               "requiredDecision": "ACCEPTED",
               "requiredPublication": "MERGED_AND_VERIFIED",
               "requiresSessionAssignment": true
-            }
+            },
+            "closedBy": "Owner-merged PR #184",
+            "mergedCommitSha": "aaa22a9a04025fc312cbcc2121687aca2e467cac"
           }
         ]
       },
@@ -1467,8 +1470,8 @@
       "lane": 3,
       "branch": "feat/r31-subscription-entitlements",
       "owner": {
-        "lane": "/root \u2014 accountable R31 writer coordinator for session r31-20261023-d799cbee; finite backend/frontend delegation in docs/production-readiness/r31/OWNERSHIP.md",
-        "coordinator": "/root \u2014 owner-delegated engineering coordinator for baraabd"
+        "lane": "/root — accountable R31 writer coordinator for session r31-20261023-d799cbee; finite backend/frontend delegation in docs/production-readiness/r31/OWNERSHIP.md",
+        "coordinator": "/root — owner-delegated engineering coordinator for baraabd"
       },
       "status": "READY_TO_START",
       "frozenBase": "72b4aaeb0a71d806b7fca7363dd9ca59bbcee644",
@@ -1528,7 +1531,7 @@
               ".github/workflows/ci.yml"
             ],
             "kind": "SERIALIZED_R31_COORDINATOR_INTEGRATION",
-            "grantedBy": "/root \u2014 owner-delegated engineering coordinator for baraabd; recorded before shared edits for session r31-20261023-d799cbee",
+            "grantedBy": "/root — owner-delegated engineering coordinator for baraabd; recorded before shared edits for session r31-20261023-d799cbee",
             "scope": "Publish additive hsm.money.v1 subscription read DTOs; bind the existing R24 activation token to R31 and register lifecycle events/handler; mount the authenticated provider My Plan route and profile entry; add explicit real-API browser discovery and CI invocation. Preserve existing ledger and collection/refund defaults, permission grants, commercial policy, all tests and acceptance budgets. No schema, migration, dependency or live money change. Exact patch in r31/shared-change-requests/CR-001-integration.md.",
             "expires": "R31 PR closure or coordinator revocation, whichever occurs first",
             "handoff": "Root is sole shared writer. Apply serially in the isolated R31 branch. No unmerged peer dependency. Keep source72, accepted G2 records and separate release boundaries."
@@ -1539,7 +1542,7 @@
               "apps/api/src/modules/money/application/money-command.service.spec.ts"
             ],
             "kind": "SERIALIZED_R31_SYSTEM_KEY_RESERVATION",
-            "grantedBy": "/root \u2014 owner-delegated coordinator; before edits for R31",
+            "grantedBy": "/root — owner-delegated coordinator; before edits for R31",
             "scope": "Extend the existing user-command reserved-prefix check with r31_ and preserve prior prefixes; test rejection before any financial write. Allows R31 internal lifecycle receipts in the existing immutable MoneyCommand table under actorSystem money.subscription-lifecycle, explicit named policy and canonical request digest. No schema, financial state model, R24 port or existing confirmation behavior changes.",
             "expires": "R31 PR closure or coordinator revocation",
             "handoff": "Root is the only writer of the two R24 files; r31_backend may use the existing frozen persistence inside its owned lifecycle service, not edit R24 files."
@@ -1547,7 +1550,7 @@
           {
             "paths": [".github/scripts/merge-integrity.test.mjs"],
             "kind": "SERIALIZED_R31_COMPOSITION_FIXTURE",
-            "grantedBy": "/root \u2014 owner-delegated coordinator; recorded before edits for R31",
+            "grantedBy": "/root — owner-delegated coordinator; recorded before edits for R31",
             "scope": "Make the existing missing/duplicate LedgerModule and lost-export negative fixtures identify the imports/exports arrays regardless of formatter whitespace. Keep every rejection assertion and the production composition fence unchanged; explicitly assert that each fixture mutation changed its target. Needed after additive SubscriptionsModule made Prettier wrap the existing import array.",
             "expires": "R31 PR closure or coordinator revocation",
             "handoff": "Root is sole writer. No test skip, budget change, validator relaxation or permission change."
@@ -1574,7 +1577,7 @@
       "sourcePrompt": "docs/production-readiness/post-r18/gates/g2/prompts/R31.md",
       "sessionAssignment": {
         "sessionId": "r31-20261023-d799cbee",
-        "assignedBy": "/root \u2014 owner-delegated engineering coordinator for baraabd",
+        "assignedBy": "/root — owner-delegated engineering coordinator for baraabd",
         "assignedAt": "2026-10-23T04:47:33Z",
         "authorizationRecords": [
           "docs/production-readiness/r31/OWNERSHIP.md",

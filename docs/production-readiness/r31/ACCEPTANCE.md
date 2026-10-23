@@ -253,3 +253,38 @@ commerce/lifecycle policy remains `POLICY_BLOCKED`; credentials, hosted runtime
 and release evidence remain externally owned. This PR stays Draft while those
 required integration results are absent. No `HOSTED_ACCEPTED`,
 `RELEASE_ACCEPTED`, merge, deployment or live-money claim is made.
+
+## PR #186 integration and review repair — 2026-10-23
+
+After owner-merged R30 #184, merge f26c1fb5be29be7ac528363b0ef536b77844609f
+removed the subscription contract export and left MoneyModule referencing
+manual participants without their imports/module/controllers. It also replaced
+R31 activation with an undefined legacy fallback. Restore both implementations
+in one composition boundary and export both additive contract families.
+Update the existing module tests to check the mounted manual adapters reject
+live/non-manual bindings while retaining R31 activation and unavailable refund
+policy/consequence checks.
+
+Close R30's shared leases expired on merged PR #184, preserving the complete
+lease history. Restore R31's source assignment consistently in the wave manifest
+and status index; no validator or gate is relaxed.
+
+Address review thread PRRT_kwDORnm1Ac6vm_PW: a selected subscription now finds
+its payment through the immutable confirmation-to-period association. Matching
+a plan version was insufficient because separate purchases share that version.
+The unfiltered overview still shows the latest pending/failed purchase. A unit
+regression checks selected scope; the real-service test now checks the default
+overview separately from the selected confirmed purchase, plus two independent
+confirmed purchases of the same plan.
+
+Executed with Node 24.21.0 / pnpm 10.32.1: API lint/typecheck/build; web
+typecheck/production build; all 27 money/AppModule unit suites (369 passed,
+zero failed/skipped); four subscriptions/router web suites (34 passed); all
+480 governance tests (zero failed/skipped). Production governance and release
+baseline validators passed. Vite retains its existing chunk-size warning.
+
+Local real PostgreSQL reruns are blocked by this host's single-UID runtime;
+the added real-service regression must pass the mandatory GitHub integration
+job on the new head. Browser/CodeQL/remote acceptance remains pending until
+that head finishes. Historical acceptance below/above is not proof of this
+new integrated source; commercial, lifecycle and release restrictions persist.

@@ -19,6 +19,7 @@ import {
   ManualFinanceReviewController,
 } from './manual-review/manual-review.controller';
 import type { PrismaTx } from '@homeservicemarketplace/database';
+import type { MoneyTransportBinding } from './ports/collection.port';
 import { MONEY_ACTIVATION_PARTICIPANT } from './ports/activation.port';
 import { SubscriptionActivationParticipant } from './subscriptions/subscription-activation.participant';
 import { SubscriptionsModule } from './subscriptions/subscriptions.module';
@@ -153,19 +154,28 @@ describe('R24/R31 MoneyModule composition and unavailable external defaults', ()
   });
 
   it.each([
-    [MONEY_COLLECTION_ADAPTER, 'createOrResume', 'MONEY_COLLECTION_UNAVAILABLE'],
-    [MONEY_RECEIPT_ACCEPTANCE, 'accept', 'MONEY_RECEIPT_UNAVAILABLE'],
-    [MONEY_REFUND_ADAPTER, 'submit', 'MONEY_REFUND_ADAPTER_UNAVAILABLE'],
+    [MONEY_COLLECTION_ADAPTER, ManualCollectionAdapter],
+    [MONEY_RECEIPT_ACCEPTANCE, ReceiptAcceptanceParticipant],
+    [MONEY_REFUND_ADAPTER, ManualRefundAdapter],
   ] as const)(
-    'never reports a configured or successful default for %s',
-    async (token, method, reason) => {
-      const port = configuredProvider(token);
-      expect(port.isConfigured()).toBe(false);
-      await expect(port[method]()).rejects.toMatchObject({
-        code: 'DEPENDENCY_UNAVAILABLE',
-        status: 503,
-        details: { reason },
-      });
+    'keeps the mounted manual participant %s unavailable to live or non-manual bindings',
+    (token, implementation) => {
+      expect(providers).toContainEqual({ provide: token, useExisting: implementation });
+      const binding: MoneyTransportBinding = {
+        planVersionId: 'plan',
+        method: 'SHAM_CASH',
+        currency: 'XTS',
+        mode: 'LIVE',
+        adapterId: 'hsm.manual.v1',
+        accountReference: 'synthetic-account',
+        configVersion: 'synthetic-v1',
+        debitAccountId: 'clearing',
+        creditAccountId: 'revenue',
+      };
+      expect(implementation.prototype.isConfigured(binding)).toBe(false);
+      expect(
+        implementation.prototype.isConfigured({ ...binding, mode: 'SANDBOX', method: 'STRIPE' }),
+      ).toBe(false);
     },
   );
 
