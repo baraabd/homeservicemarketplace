@@ -44,7 +44,11 @@ export async function createIsolatedDatabase(suite: string): Promise<IsolatedDat
     } finally {
       try {
         if (created) {
-          await admin.$executeRawUnsafe(`DROP DATABASE "${name}" WITH (FORCE)`);
+          // Owned clients are closed above. FORCE would try to signal every
+          // remaining backend and can require privileges the fixture owner
+          // intentionally lacks. Ordinary DROP handles database background
+          // workers and fails closed if a client connection was leaked.
+          await admin.$executeRawUnsafe(`DROP DATABASE "${name}"`);
           created = false;
         }
       } finally {

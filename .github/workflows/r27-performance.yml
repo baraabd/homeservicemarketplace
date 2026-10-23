@@ -17,11 +17,11 @@ concurrency:
   group: r27-performance-${{ github.ref }}
   cancel-in-progress: true
 
-# Successor repair experiment on the owner-merged, dependency-patched source.
+# Successor experiment with independently verified dependency-only controls.
 # G1 remains 40cdac5... in its immutable gate; its historical R27 comparison
 # has a different lock digest and must not be relabelled comparable.
 env:
-  R27_BASELINE_SHA: 96e92825f9b65cf124317f43b55ce42fc97f5b49
+  R27_BASELINE_SHA: 462418888be76ec642664ea77971da9239ffb02a
   R27_CANDIDATE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
 
 jobs:
@@ -51,7 +51,22 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           path: harness
           persist-credentials: false
-          fetch-depth: ${{ matrix.source == 'repair-baseline' && '0' || '1' }}
+          fetch-depth: 0
+      - name: Prepare the pinned control validator runtime
+        uses: actions/setup-node@v5
+        with:
+          node-version: '24.21.0'
+          package-manager-cache: false
+      - name: Verify dependency-only controls and select the comparable repair baseline
+        working-directory: harness
+        run: |
+          set -euo pipefail
+          node .github/scripts/r27-dependency-controls.mjs \
+            --candidate "$R27_HARNESS_SHA" \
+            --repair-base "$R27_REPAIR_BASELINE_SHA" \
+            --baseline "$R27_BASELINE_SHA" \
+            --github-env "$GITHUB_ENV" \
+            --report "$RUNNER_TEMP/r27-dependency-controls.json"
       - name: Validate immutable repair baseline
         if: matrix.source == 'repair-baseline'
         working-directory: harness
@@ -91,6 +106,7 @@ jobs:
           mkdir -p apps/web/r27-tests
           cp -R ../harness/apps/web/r27-tests/. apps/web/r27-tests/
           mkdir r27-evidence
+          cp "$RUNNER_TEMP/r27-dependency-controls.json" r27-evidence/dependency-controls.json
       - run: pnpm install --frozen-lockfile
       - name: Harness regressions and source identity
         run: |

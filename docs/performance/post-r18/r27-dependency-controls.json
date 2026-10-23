@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "experiment": "r27-zod-4.6.6-security-repair",
+  "advisory": "GHSA-mrhx-c7xc-m3w5",
+  "priorBaseline": "96e92825f9b65cf124317f43b55ce42fc97f5b49",
+  "originalPrBase": "5ff2b7e6a46b4e42114184fac89928372f4c8d4c",
+  "dependencySha256": {
+    "apps/api/package.json": "34634153e4cb4ef8227b4b4dc25c75243b6bccc872dc1147e35c340f69b20270",
+    "package.json": "27c73b7200f780c9ded385e4f0072ed93caed112957cb2993a03c5af5f3a7a28",
+    "pnpm-lock.yaml": "0616afc56373d7dc72913189c34711e86b7c0730372728f06b5fa33109338676"
+  },
+  "baseline": {
+    "commit": "462418888be76ec642664ea77971da9239ffb02a",
+    "tree": "8acca7fa2fd483416930d0cf4fdfb0f2a2ff0696",
+    "parent": "96e92825f9b65cf124317f43b55ce42fc97f5b49"
+  },
+  "repair": {
+    "commit": "7bf00ac524ee63613f5443c55a1f0267559b1990",
+    "tree": "eb1824fc6185dcdddef4010af131218a4f103753",
+    "parent": "4a471c20f3681e5fa7f37bc0701d01b56336e558"
+  }
+}
