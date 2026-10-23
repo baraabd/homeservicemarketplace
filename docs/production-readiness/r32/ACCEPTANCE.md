@@ -305,3 +305,28 @@ The requested integration order is #187, then #185. R33 will contain the exact
 corrected R32 head as a merge parent, so a normal merge of #187 cannot reintroduce
 the same content conflicts in #185. No merge to develop, force push, schema
 change, policy approval, G3 acceptance or deployment is part of this repair.
+
+### Follow-up: R31 real-authentication fixture setup
+
+The first post-R31 repair CI run on `03e99da086cca4f4d7652062c331aee2f000775d`
+passed 6,915 real-profile API tests but one inherited R31 authorization case
+exceeded its unchanged five-second test limit. That case performed a complete
+password/OTP login inside the assertion; the shared real-authentication fixture
+honors the login rate limit and can wait for Retry-After. The R24 and R32 suites
+already prepare these authenticated sessions in beforeAll.
+
+Prepare the R31 unprivileged session alongside its owner and other-provider
+sessions in the existing setup hook. Keep genuine HTTP login, OTP, cookies,
+rate limiting, all 401/403/404 and policy assertions, and every existing timeout
+unchanged. This is fixture setup separation, not a production-authentication
+change or an automatic retry of a failing assertion. The user-requested
+cross-PR integration repair covers this inherited R31 test. Fresh final-head
+CI must verify it in both the R32 and combined R33 source.
+
+The R31 harness also opts into the existing per-fixture rate-limit namespace
+already used by R30. R24, R31 and R32 run concurrently against Redis database
+12; without a namespace their independent loopback login attempts share an IP
+bucket. The existing adapter prefixes only the bucket name and delegates to
+the real RateLimitStore and Redis script with every limit/window unchanged.
+This removes cross-suite interference without mocking authentication, changing
+worker parallelism, flushing another suite's keys or widening a timeout.

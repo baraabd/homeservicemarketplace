@@ -232,3 +232,16 @@ CodeQL evidence must finish on the published merge head; results are recorded
 in the current PR body. This single-UID local host cannot run unprivileged
 PostgreSQL. Historical local evidence and previous-head green checks do not
 certify this combined source. No merge to develop or deployment is performed.
+
+### Follow-up: retain R31 authentication isolation in the combined tree
+
+The ordered stack also includes R32 follow-up head
+`f8c8cb59c6615bc68121f891cc30e1ef7e4447b7`. Its inherited R31 real-authentication
+test now prepares the unprivileged cookie/OTP session in the existing setup
+hook and uses the established per-fixture Redis rate-limit namespace. The
+preceding R32 CI run exposed shared loopback-login interference during a
+five-second permission assertion. All HTTP authentication, rate limits,
+timeouts and permission assertions remain unchanged. The original R32 shared
+file handoff above remains historical evidence; this additional normal merge
+retains the later test correction without reopening competing shared edits.
+Latest-head CI, including the complete real-service suite, must pass again.
