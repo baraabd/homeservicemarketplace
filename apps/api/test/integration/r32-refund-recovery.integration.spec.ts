@@ -491,10 +491,73 @@ dbDescribe(
       expect(rail.calls.map((call) => call.kind)).toEqual(['submit']);
     });
 
+    it('rejects untouched queries at every recovery boundary and preserves the first submit', async () => {
+      const { refund, confirmationId } = await reserved();
+      const route = `/v1/money/review/refunds/${refund.id}/recovery`;
+      const inspection = await reviewer.request<RefundRecoveryInspection>(
+        `${route}?paymentConfirmationId=${confirmationId}`,
+      );
+      expect(inspection.status).toBe(200);
+      expect(inspection.body.allowedOperations).toEqual(['DISPATCH']);
+      const initial = await dispatchRow(refund.id);
+      const before = await snapshot();
+      const input = {
+        ...BODY,
+        paymentConfirmationId: confirmationId,
+        expectedStateRevision: inspection.body.stateRevision,
+        operation: 'QUERY',
+        approvalReference: 'r32-untouched-query-regression',
+      };
+      for (const dryRun of [true, false]) {
+        const response = await reviewer.request(route, {
+          method: 'POST',
+          idempotencyKey: h.key('r32-untouched-recovery'),
+          body: { ...input, dryRun },
+        });
+        expect(response.status).toBe(409);
+        expect(response.body).toMatchObject({
+          error: { details: { reason: 'MONEY_REFUND_NOT_DISPATCHED' } },
+        });
+      }
+      const direct = await reviewer.request(`/v1/money/review/refunds/${refund.id}/query`, {
+        method: 'POST',
+        idempotencyKey: h.key('r32-untouched-direct'),
+        body: BODY,
+      });
+      expect(direct.status).toBe(409);
+      expect(direct.body).toMatchObject({
+        error: { details: { reason: 'MONEY_REFUND_NOT_DISPATCHED' } },
+      });
+      await expect(commands.deliverRefund(refund.id, undefined, true)).rejects.toMatchObject({
+        details: { reason: 'MONEY_REFUND_NOT_DISPATCHED' },
+      });
+      expect(await dispatchRow(refund.id)).toEqual(initial);
+      expect(await row(refund.id)).toMatchObject({ status: 'RESERVED' });
+      const after = await snapshot();
+      expect(after.commandRows).toBe(before.commandRows);
+      expect(after.events).toBe(before.events);
+      expect(after.postings).toBe(before.postings);
+      expect(rail.calls).toEqual([]);
+      rail.submitStatus = 'SUCCEEDED';
+      await dispatch(refund.id);
+      expect(rail.calls.map((call) => call.kind)).toEqual(['submit']);
+      expect(rail.calls[0]!.command.providerIdempotencyKey).toBe(initial.providerIdempotencyKey);
+      expect(await row(refund.id)).toMatchObject({ status: 'SUCCEEDED' });
+      expect(await marker(refund.id)).not.toBeNull();
+    });
+
     it.each(['QUERY', 'DISPATCH'] as const)(
       'recovers a later reviewer B %s command after reviewer A is revoked and both delivery callbacks are lost',
       async (operation) => {
         const { refund } = await reserved();
+        if (operation === 'QUERY') {
+          // A later QUERY is valid only after a real, possibly delivered attempt.
+          rail.submitStatus = 'TIMEOUT';
+          await commands.deliverRefund(refund.id);
+          expect((await dispatchRow(refund.id)).status).toBe('UNKNOWN');
+          expect(rail.calls.map((call) => call.kind)).toEqual(['submit']);
+          rail.calls.length = 0; // Count the subsequent reviewer recovery separately.
+        }
         const initial = await dispatchRow(refund.id);
         const orchestrator = h.app.get(RefundOrchestratorService);
         await h.revoke('reviewer', R24_PERMISSIONS.refundReview);
@@ -540,7 +603,7 @@ dbDescribe(
           expect(await dispatchRow(refund.id)).toMatchObject({
             commandId: initial.commandId,
             providerIdempotencyKey: initial.providerIdempotencyKey,
-            status: 'NOT_DISPATCHED',
+            status: operation === 'QUERY' ? 'UNKNOWN' : 'NOT_DISPATCHED',
           });
           rail.queryStatus = 'SUCCEEDED';
           rail.submitStatus = 'SUCCEEDED';

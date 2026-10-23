@@ -787,6 +787,23 @@ realDescribe('R30 manual payments with real private storage and ClamAV', () => {
     );
     expect(reservation.status).toBe(201);
     const refundId = reservation.body.id;
+    const untouched = await f.h.prisma.moneyDispatch.findUniqueOrThrow({ where: { refundId } });
+    expect(untouched.status).toBe('NOT_DISPATCHED');
+    failure(
+      await reviewer.request('/v1/money/review/refunds/' + refundId + '/query', {
+        method: 'POST',
+        idempotencyKey: f.h.key('refund-query-before-dispatch'),
+        body: VERSION,
+      }),
+      409,
+      'MONEY_REFUND_NOT_DISPATCHED',
+    );
+    expect(await f.h.prisma.moneyDispatch.findUniqueOrThrow({ where: { refundId } })).toEqual(
+      untouched,
+    );
+    expect(
+      await f.h.prisma.moneyManualRefundOperation.findUnique({ where: { refundId } }),
+    ).toBeNull();
     const dispatch = await reviewer.request('/v1/money/review/refunds/' + refundId + '/dispatch', {
       method: 'POST',
       idempotencyKey: f.h.key('refund-dispatch'),

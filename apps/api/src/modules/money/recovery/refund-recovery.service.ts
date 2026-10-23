@@ -399,7 +399,10 @@ function project(row: RecoveryRecord): RefundRecoveryInspection {
     refundStatus: row.status,
     dispatchStatus: dispatch?.status ?? null,
     allowedOperations: open
-      ? [...(untouched ? ['DISPATCH' as const] : []), ...(dispatch ? ['QUERY' as const] : [])]
+      ? [
+          ...(untouched ? ['DISPATCH' as const] : []),
+          ...(dispatch && dispatch.status !== 'NOT_DISPATCHED' ? ['QUERY' as const] : []),
+        ]
       : [],
     diagnosticCode,
     reservationHeld: open,

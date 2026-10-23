@@ -330,3 +330,36 @@ bucket. The existing adapter prefixes only the bucket name and delegates to
 the real RateLimitStore and Redis script with every limit/window unchanged.
 This removes cross-suite interference without mocking authentication, changing
 worker parallelism, flushing another suite's keys or widening a timeout.
+
+### Review follow-up: preserve the first refund submission
+
+The latest-head review identified that recovery advertised QUERY for a
+NOT_DISPATCHED refund. A manual adapter query before submission can observe no
+operation, persist UNKNOWN and strand the first submission behind the
+query-only uncertainty fence. Two new recovery unit cases reproduce the bug
+on `f8c8cb59c6615bc68121f891cc30e1ef7e4447b7` (dry-run and approved replay both
+incorrectly accepted QUERY).
+
+Recovery now advertises only DISPATCH for an untouched row. The command
+boundary rejects direct QUERY before writing a command or outbox event, and
+the delivery boundary also rejects an older query authorization before
+claiming an untouched row. Rejection preserves the reservation, revision and
+provider idempotency key. A later explicit DISPATCH remains available.
+Existing PENDING/UNKNOWN rows remain query-only; no uncertain financial state
+is reset and no reservation is automatically released.
+
+The regressions cover rejected dry-run/live recovery, direct HTTP query,
+internal query-only delivery, unchanged durable state and successful first
+submission. The real R30 manual-adapter scenario verifies that a rejected
+pre-submit query creates no manual operation, then continues through the
+existing independent confirmation and exactly-once finalization assertions.
+The later-reviewer QUERY recovery scenario now starts with a genuine timed-out
+submission, preserving its callback-loss and fresh-authority coverage.
+
+Local money/AppModule regression: 33 suites / 522 tests passed, zero failures
+or skips, after both new unit cases failed on the preceding implementation.
+API lint/typecheck/build and changed integration-fixture lint passed
+before publication. Fresh R30 real-service and full PostgreSQL/Redis checks
+must validate the changed integration cases on the new published head before
+resolving the review thread. No timeout, authorization check, financial
+assertion, provider identity or policy restriction is weakened.
