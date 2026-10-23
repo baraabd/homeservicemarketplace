@@ -295,3 +295,28 @@ MAIL_DISPATCHER_ENABLED flag is disabled only in the fixed measurement profiles,
 with regression coverage for ambient and override settings. Original ceilings
 and production defaults are unchanged. The combined governance and performance
 harness suite passes 588 tests with zero failures/skips.
+
+## PR #186 browser discovery repair — 2026-10-23
+
+CI run `39960659842` on `c3aaa6d2f4e2cebac64165bb013fce71c62f444a`
+passed the real PostgreSQL/Redis suite (365 suites, 6,740 tests passed;
+15 suites / 98 tests gated by the existing profile), including the new
+same-plan purchase association regression. The dedicated R31 browser job
+passed all four journeys and retained all 20 screenshots. The general browser
+job nevertheless failed three copies of the first R31 scenario because it
+does not provide the required `R31_BROWSER_BASE_URL` or disposable fixture.
+
+Under the existing serialized R31 integration lease for
+`apps/web/playwright.config.ts`, restore explicit dedicated-suite discovery:
+the general config excludes `r31-subscriptions/**`, just as it excludes the
+dedicated R30 harness. The unchanged required `r31-subscriptions` CI job runs
+all four real-API scenarios through `playwright.r31.config.ts`; both final CI
+aggregators still depend on it. No assertion, timeout, retry, or required job
+was removed or relaxed.
+
+With Node 24.21.0 and pnpm 10.32.1, default Playwright discovery changes from
+1,197 tests / 33 files to 1,185 tests / 32 files: a set comparison confirms the
+only removed entries are the 12 duplicate R31 entries in the three-project
+general matrix. Dedicated-config discovery retains exactly four tests.
+Changed-config ESLint and the browser TypeScript compile passed. These are
+discovery/static checks; the new commit still requires fresh final-head CI.
