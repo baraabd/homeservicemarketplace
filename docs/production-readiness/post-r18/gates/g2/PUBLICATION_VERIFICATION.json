@@ -1,37 +1,37 @@
 {
   "schemaVersion": 1,
   "gateId": "G2",
-  "scope": "Verified owner-merged publication and R31-only writer assignment; no new runtime acceptance",
-  "inspectedAtUtc": "2026-10-23T04:47:33Z",
-  "authority": "/root — owner-delegated engineering coordinator for baraabd; continuing G2 coordination authority and the owner's 2026-10-23 supplied R31 execution request. Exact delegated writer: /root/pr_ci_audit.",
-  "authorizationRecords": [
-    "docs/production-readiness/r31/OWNERSHIP.md",
-    "docs/production-readiness/r31/shared-change-requests/CR-001-integration.md"
-  ],
-  "frozenSourceSha": "72b4aaeb0a71d806b7fca7363dd9ca59bbcee644",
-  "frozenTreeSha": "43e9c6a4e58cfb934b12789feeb38b588e1cb7c6",
+  "verifiedAtUtc": "2026-10-23T04:46:36Z",
+  "verifiedBy": "Owner-delegated coordinator / root; independent GitHub audit by pr_audit",
+  "purpose": "Verify the already owner-merged G2 acceptance publication and permit the expressly requested R30 source session; this is not new technical acceptance or operational authorization.",
+  "frozenSource": {
+    "sha": "72b4aaeb0a71d806b7fca7363dd9ca59bbcee644",
+    "treeSha": "43e9c6a4e58cfb934b12789feeb38b588e1cb7c6",
+    "record": "docs/production-readiness/post-r18/gates/g2/SOURCE_MANIFEST.json",
+    "preserved": true
+  },
   "publication": {
     "pr": 183,
     "url": "https://github.com/baraabd/homeservicemarketplace/pull/183",
-    "state": "MERGED",
-    "merged": true,
-    "mergedAtUtc": "2026-10-23T04:11:34Z",
-    "reviewedHeadSha": "d2c0a9ab8862ffff886346a21377839f996152ca",
+    "headBranch": "coord/g2-wave3-start-gate",
+    "baseBranch": "develop",
+    "headSha": "d2c0a9ab8862ffff886346a21377839f996152ca",
     "mergeCommitSha": "986b4707776711e80564f0642133ede90ba16f3c",
-    "reviewedTreeSha": "7ab683ea8c5304929a2fa51f1dc824c7cb46f7d5",
-    "mergedTreeSha": "7ab683ea8c5304929a2fa51f1dc824c7cb46f7d5",
-    "frozenSourceIsAncestor": true,
-    "reviewedAndMergedTreesIdentical": true,
-    "observedDevelopSha": "986b4707776711e80564f0642133ede90ba16f3c"
+    "merged": true,
+    "mergedBy": "baraabd",
+    "mergedAtUtc": "2026-10-23T04:11:34Z",
+    "state": "closed",
+    "headTreeSha": "7ab683ea8c5304929a2fa51f1dc824c7cb46f7d5",
+    "mergeTreeSha": "7ab683ea8c5304929a2fa51f1dc824c7cb46f7d5",
+    "reviewedHeadTreeEqualsMergedTree": true
   },
-  "frozenToPublicationDelta": {
-    "classification": "RECORD_ONLY",
-    "changedFileCount": 13,
-    "productCodeChanged": false,
-    "schemaChanged": false,
-    "contractsChanged": false,
-    "workflowsChanged": false,
-    "dependenciesChanged": false,
+  "ancestry": {
+    "compareUrl": "https://github.com/baraabd/homeservicemarketplace/compare/72b4aaeb0a71d806b7fca7363dd9ca59bbcee644...986b4707776711e80564f0642133ede90ba16f3c",
+    "status": "ahead",
+    "aheadBy": 2,
+    "behindBy": 0,
+    "totalCommits": 2,
+    "acceptedSourceIsAncestor": true,
     "changedFiles": [
       "docs/production-readiness/post-r18/ACTIVE_STATUS.md",
       "docs/production-readiness/post-r18/SPRINT_REGISTRY.json",
@@ -47,30 +47,42 @@
       "docs/production-readiness/post-r18/waves/wave-02.closeout.json",
       "docs/production-readiness/post-r18/waves/wave-03.plan.json"
     ],
-    "verificationCommands": [
-      {
-        "command": "git merge-base --is-ancestor 72b4aaeb0a71d806b7fca7363dd9ca59bbcee644 986b4707776711e80564f0642133ede90ba16f3c",
-        "exitCode": 0
-      },
-      {
-        "command": "git diff --name-only 72b4aaeb0a71d806b7fca7363dd9ca59bbcee644 986b4707776711e80564f0642133ede90ba16f3c",
-        "exitCode": 0
-      },
-      {
-        "command": "git rev-parse 'd2c0a9ab8862ffff886346a21377839f996152ca^{tree}' '986b4707776711e80564f0642133ede90ba16f3c^{tree}'",
-        "exitCode": 0
-      }
-    ]
+    "metadataOnly": true
   },
-  "reviewedHeadChecks": {
+  "finalPrHeadChecks": {
     "apiReportedTotal": 40,
     "fetchedCount": 40,
-    "latestDistinctCount": 38,
-    "completeInventoryVerified": true,
+    "latestDistinctNames": 38,
     "successful": 38,
     "failed": 0,
     "pending": 0,
-    "checks": [
+    "supersededRuns": [
+      {
+        "id": 120161469867,
+        "name": "Production governance",
+        "headSha": "d2c0a9ab8862ffff886346a21377839f996152ca",
+        "status": "completed",
+        "conclusion": "cancelled",
+        "appSlug": "github-actions",
+        "startedAtUtc": "2026-10-23T00:05:23Z",
+        "completedAtUtc": "2026-10-23T00:05:24Z",
+        "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39875950631/job/120161469867",
+        "annotationsCount": 2
+      },
+      {
+        "id": 120153009936,
+        "name": "Production governance",
+        "headSha": "d2c0a9ab8862ffff886346a21377839f996152ca",
+        "status": "completed",
+        "conclusion": "success",
+        "appSlug": "github-actions",
+        "startedAtUtc": "2026-10-22T23:41:05Z",
+        "completedAtUtc": "2026-10-22T23:41:18Z",
+        "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39873378064/job/120153009936",
+        "annotationsCount": 2
+      }
+    ],
+    "observed": [
       {
         "id": 120161478137,
         "name": "Production governance",
@@ -78,8 +90,10 @@
         "status": "completed",
         "conclusion": "success",
         "appSlug": "github-actions",
-        "annotationsCount": 2,
-        "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39875952176/job/120161478137"
+        "startedAtUtc": "2026-10-23T00:05:27Z",
+        "completedAtUtc": "2026-10-23T00:05:43Z",
+        "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39875952176/job/120161478137",
+        "annotationsCount": 2
       },
       {
         "id": 120161129468,
@@ -88,8 +102,10 @@
         "status": "completed",
         "conclusion": "success",
         "appSlug": "github-actions",
-        "annotationsCount": 1,
-        "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39873378102/job/120161129468"
+        "startedAtUtc": "2026-10-23T00:04:28Z",
+        "completedAtUtc": "2026-10-23T00:04:31Z",
+        "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39873378102/job/120161129468",
+        "annotationsCount": 1
       },
       {
         "id": 120161079986,
@@ -98,8 +114,10 @@
         "status": "completed",
         "conclusion": "success",
         "appSlug": "github-actions",
-        "annotationsCount": 2,
-        "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39873378102/job/120161079986"
+        "startedAtUtc": "2026-10-23T00:04:20Z",
+        "completedAtUtc": "2026-10-23T00:04:26Z",
+        "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39873378102/job/120161079986",
+        "annotationsCount": 2
       },
       {
         "id": 120155576541,
@@ -108,8 +126,10 @@
         "status": "completed",
         "conclusion": "success",
         "appSlug": "github-actions",
-        "annotationsCount": 18,
-        "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39873378102/job/120155576541"
+        "startedAtUtc": "2026-10-22T23:48:24Z",
+        "completedAtUtc": "2026-10-23T00:04:17Z",
+        "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39873378102/job/120155576541",
+        "annotationsCount": 18
       },
       {
         "id": 120155513046,
@@ -118,8 +138,10 @@
         "status": "completed",
         "conclusion": "success",
         "appSlug": "github-actions",
-        "annotationsCount": 2,
-        "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39873378024/job/120155513046"
+        "startedAtUtc": "2026-10-22T23:48:13Z",
+        "completedAtUtc": "2026-10-22T23:48:23Z",
+        "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39873378024/job/120155513046",
+        "annotationsCount": 2
       },
       {
         "id": 120154421280,
@@ -128,8 +150,10 @@
         "status": "completed",
         "conclusion": "success",
         "appSlug": "github-actions",
-        "annotationsCount": 2,
-        "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39873378102/job/120154421280"
+        "startedAtUtc": "2026-10-22T23:45:06Z",
+        "completedAtUtc": "2026-10-22T23:47:18Z",
+        "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39873378102/job/120154421280",
+        "annotationsCount": 2
       },
       {
         "id": 120154421263,
@@ -138,8 +162,10 @@
         "status": "completed",
         "conclusion": "success",
         "appSlug": "github-actions",
-        "annotationsCount": 1,
-        "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39873378102/job/120154421263"
+        "startedAtUtc": "2026-10-22T23:45:06Z",
+        "completedAtUtc": "2026-10-22T23:53:59Z",
+        "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39873378102/job/120154421263",
+        "annotationsCount": 1
       },
       {
         "id": 120154421243,
@@ -148,8 +174,10 @@
         "status": "completed",
         "conclusion": "success",
         "appSlug": "github-actions",
-        "annotationsCount": 1,
-        "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39873378102/job/120154421243"
+        "startedAtUtc": "2026-10-22T23:45:06Z",
+        "completedAtUtc": "2026-10-22T23:47:12Z",
+        "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39873378102/job/120154421243",
+        "annotationsCount": 1
       },
       {
         "id": 120154421233,
@@ -158,8 +186,10 @@
         "status": "completed",
         "conclusion": "success",
         "appSlug": "github-actions",
-        "annotationsCount": 1,
-        "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39873378102/job/120154421233"
+        "startedAtUtc": "2026-10-22T23:45:06Z",
+        "completedAtUtc": "2026-10-22T23:47:31Z",
+        "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39873378102/job/120154421233",
+        "annotationsCount": 1
       },
       {
         "id": 120154421199,
@@ -168,8 +198,10 @@
         "status": "completed",
         "conclusion": "success",
         "appSlug": "github-actions",
-        "annotationsCount": 2,
-        "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39873378102/job/120154421199"
+        "startedAtUtc": "2026-10-22T23:45:06Z",
+        "completedAtUtc": "2026-10-22T23:57:33Z",
+        "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39873378102/job/120154421199",
+        "annotationsCount": 2
       },
       {
         "id": 120154421191,
@@ -178,8 +210,10 @@
         "status": "completed",
         "conclusion": "success",
         "appSlug": "github-actions",
-        "annotationsCount": 2,
-        "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39873378102/job/120154421191"
+        "startedAtUtc": "2026-10-22T23:45:06Z",
+        "completedAtUtc": "2026-10-22T23:52:39Z",
+        "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39873378102/job/120154421191",
+        "annotationsCount": 2
       },
       {
         "id": 120154421110,
@@ -188,8 +222,10 @@
         "status": "completed",
         "conclusion": "success",
         "appSlug": "github-actions",
-        "annotationsCount": 1,
-        "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39873378102/job/120154421110"
+        "startedAtUtc": "2026-10-22T23:45:06Z",
+        "completedAtUtc": "2026-10-22T23:47:23Z",
+        "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39873378102/job/120154421110",
+        "annotationsCount": 1
       },
       {
         "id": 120154421100,
@@ -198,8 +234,10 @@
         "status": "completed",
         "conclusion": "success",
         "appSlug": "github-actions",
-        "annotationsCount": 2,
-        "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39873378102/job/120154421100"
+        "startedAtUtc": "2026-10-22T23:45:06Z",
+        "completedAtUtc": "2026-10-22T23:48:22Z",
+        "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39873378102/job/120154421100",
+        "annotationsCount": 2
       },
       {
         "id": 120154421092,
@@ -208,8 +246,10 @@
         "status": "completed",
         "conclusion": "success",
         "appSlug": "github-actions",
-        "annotationsCount": 1,
-        "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39873378102/job/120154421092"
+        "startedAtUtc": "2026-10-22T23:45:06Z",
+        "completedAtUtc": "2026-10-22T23:48:14Z",
+        "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39873378102/job/120154421092",
+        "annotationsCount": 1
       },
       {
         "id": 120154421083,
@@ -218,8 +258,10 @@
         "status": "completed",
         "conclusion": "success",
         "appSlug": "github-actions",
-        "annotationsCount": 2,
-        "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39873378102/job/120154421083"
+        "startedAtUtc": "2026-10-22T23:45:06Z",
+        "completedAtUtc": "2026-10-22T23:46:57Z",
+        "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39873378102/job/120154421083",
+        "annotationsCount": 2
       },
       {
         "id": 120154421064,
@@ -228,8 +270,10 @@
         "status": "completed",
         "conclusion": "success",
         "appSlug": "github-actions",
-        "annotationsCount": 1,
-        "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39873378102/job/120154421064"
+        "startedAtUtc": "2026-10-22T23:45:06Z",
+        "completedAtUtc": "2026-10-22T23:52:18Z",
+        "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39873378102/job/120154421064",
+        "annotationsCount": 1
       },
       {
         "id": 120154144018,
@@ -238,8 +282,10 @@
         "status": "completed",
         "conclusion": "success",
         "appSlug": "github-actions",
-        "annotationsCount": 1,
-        "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39873377937/job/120154144018"
+        "startedAtUtc": "2026-10-22T23:44:18Z",
+        "completedAtUtc": "2026-10-22T23:44:20Z",
+        "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39873377937/job/120154144018",
+        "annotationsCount": 1
       },
       {
         "id": 120153979376,
@@ -248,8 +294,10 @@
         "status": "completed",
         "conclusion": "success",
         "appSlug": "github-advanced-security",
-        "annotationsCount": 0,
-        "url": "https://github.com/baraabd/homeservicemarketplace/runs/120153979376"
+        "startedAtUtc": "2026-10-22T23:43:47Z",
+        "completedAtUtc": "2026-10-22T23:43:52Z",
+        "url": "https://github.com/baraabd/homeservicemarketplace/runs/120153979376",
+        "annotationsCount": 0
       },
       {
         "id": 120153500434,
@@ -258,8 +306,10 @@
         "status": "completed",
         "conclusion": "success",
         "appSlug": "github-actions",
-        "annotationsCount": 1,
-        "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39873378102/job/120153500434"
+        "startedAtUtc": "2026-10-22T23:42:28Z",
+        "completedAtUtc": "2026-10-22T23:44:31Z",
+        "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39873378102/job/120153500434",
+        "annotationsCount": 1
       },
       {
         "id": 120153283662,
@@ -268,8 +318,10 @@
         "status": "completed",
         "conclusion": "success",
         "appSlug": "github-actions",
-        "annotationsCount": 1,
-        "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39873378102/job/120153283662"
+        "startedAtUtc": "2026-10-22T23:41:52Z",
+        "completedAtUtc": "2026-10-22T23:42:26Z",
+        "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39873378102/job/120153283662",
+        "annotationsCount": 1
       },
       {
         "id": 120153283644,
@@ -278,8 +330,10 @@
         "status": "completed",
         "conclusion": "success",
         "appSlug": "github-actions",
-        "annotationsCount": 11,
-        "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39873378102/job/120153283644"
+        "startedAtUtc": "2026-10-22T23:41:53Z",
+        "completedAtUtc": "2026-10-22T23:45:04Z",
+        "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39873378102/job/120153283644",
+        "annotationsCount": 11
       },
       {
         "id": 120153115582,
@@ -288,8 +342,10 @@
         "status": "completed",
         "conclusion": "success",
         "appSlug": "github-actions",
-        "annotationsCount": 1,
-        "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39873378102/job/120153115582"
+        "startedAtUtc": "2026-10-22T23:41:23Z",
+        "completedAtUtc": "2026-10-22T23:41:50Z",
+        "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39873378102/job/120153115582",
+        "annotationsCount": 1
       },
       {
         "id": 120152950824,
@@ -298,8 +354,10 @@
         "status": "completed",
         "conclusion": "success",
         "appSlug": "github-actions",
-        "annotationsCount": 1,
-        "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39873378130/job/120152950824"
+        "startedAtUtc": "2026-10-22T23:40:55Z",
+        "completedAtUtc": "2026-10-22T23:44:38Z",
+        "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39873378130/job/120152950824",
+        "annotationsCount": 1
       },
       {
         "id": 120152950725,
@@ -308,8 +366,10 @@
         "status": "completed",
         "conclusion": "success",
         "appSlug": "github-actions",
-        "annotationsCount": 0,
-        "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39873378140/job/120152950725"
+        "startedAtUtc": "2026-10-22T23:40:55Z",
+        "completedAtUtc": "2026-10-22T23:43:22Z",
+        "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39873378140/job/120152950725",
+        "annotationsCount": 0
       },
       {
         "id": 120152950565,
@@ -318,8 +378,10 @@
         "status": "completed",
         "conclusion": "success",
         "appSlug": "github-actions",
-        "annotationsCount": 1,
-        "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39873378140/job/120152950565"
+        "startedAtUtc": "2026-10-22T23:40:56Z",
+        "completedAtUtc": "2026-10-22T23:42:08Z",
+        "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39873378140/job/120152950565",
+        "annotationsCount": 1
       },
       {
         "id": 120152950399,
@@ -328,8 +390,10 @@
         "status": "completed",
         "conclusion": "success",
         "appSlug": "github-actions",
-        "annotationsCount": 1,
-        "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39873378024/job/120152950399"
+        "startedAtUtc": "2026-10-22T23:40:55Z",
+        "completedAtUtc": "2026-10-22T23:47:17Z",
+        "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39873378024/job/120152950399",
+        "annotationsCount": 1
       },
       {
         "id": 120152950348,
@@ -338,8 +402,10 @@
         "status": "completed",
         "conclusion": "success",
         "appSlug": "github-actions",
-        "annotationsCount": 1,
-        "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39873378024/job/120152950348"
+        "startedAtUtc": "2026-10-22T23:40:56Z",
+        "completedAtUtc": "2026-10-22T23:48:11Z",
+        "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39873378024/job/120152950348",
+        "annotationsCount": 1
       },
       {
         "id": 120152950284,
@@ -348,8 +414,10 @@
         "status": "completed",
         "conclusion": "success",
         "appSlug": "github-actions",
-        "annotationsCount": 0,
-        "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39873378130/job/120152950284"
+        "startedAtUtc": "2026-10-22T23:40:56Z",
+        "completedAtUtc": "2026-10-22T23:49:47Z",
+        "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39873378130/job/120152950284",
+        "annotationsCount": 0
       },
       {
         "id": 120152950267,
@@ -358,8 +426,10 @@
         "status": "completed",
         "conclusion": "success",
         "appSlug": "github-actions",
-        "annotationsCount": 1,
-        "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39873378102/job/120152950267"
+        "startedAtUtc": "2026-10-22T23:40:55Z",
+        "completedAtUtc": "2026-10-22T23:41:21Z",
+        "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39873378102/job/120152950267",
+        "annotationsCount": 1
       },
       {
         "id": 120152950111,
@@ -368,8 +438,10 @@
         "status": "completed",
         "conclusion": "success",
         "appSlug": "github-actions",
-        "annotationsCount": 1,
-        "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39873378024/job/120152950111"
+        "startedAtUtc": "2026-10-22T23:40:55Z",
+        "completedAtUtc": "2026-10-22T23:47:23Z",
+        "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39873378024/job/120152950111",
+        "annotationsCount": 1
       },
       {
         "id": 120152950057,
@@ -378,8 +450,10 @@
         "status": "completed",
         "conclusion": "success",
         "appSlug": "github-actions",
-        "annotationsCount": 2,
-        "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39873378051/job/120152950057"
+        "startedAtUtc": "2026-10-22T23:40:56Z",
+        "completedAtUtc": "2026-10-22T23:43:23Z",
+        "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39873378051/job/120152950057",
+        "annotationsCount": 2
       },
       {
         "id": 120152949733,
@@ -388,8 +462,10 @@
         "status": "completed",
         "conclusion": "success",
         "appSlug": "github-actions",
-        "annotationsCount": 2,
-        "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39873377937/job/120152949733"
+        "startedAtUtc": "2026-10-22T23:40:55Z",
+        "completedAtUtc": "2026-10-22T23:41:07Z",
+        "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39873377937/job/120152949733",
+        "annotationsCount": 2
       },
       {
         "id": 120152949719,
@@ -398,8 +474,10 @@
         "status": "completed",
         "conclusion": "success",
         "appSlug": "github-actions",
-        "annotationsCount": 1,
-        "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39873377938/job/120152949719"
+        "startedAtUtc": "2026-10-22T23:40:55Z",
+        "completedAtUtc": "2026-10-22T23:48:30Z",
+        "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39873377938/job/120152949719",
+        "annotationsCount": 1
       },
       {
         "id": 120152949708,
@@ -408,8 +486,10 @@
         "status": "completed",
         "conclusion": "success",
         "appSlug": "github-actions",
-        "annotationsCount": 1,
-        "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39873378127/job/120152949708"
+        "startedAtUtc": "2026-10-22T23:40:55Z",
+        "completedAtUtc": "2026-10-22T23:43:57Z",
+        "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39873378127/job/120152949708",
+        "annotationsCount": 1
       },
       {
         "id": 120152949703,
@@ -418,8 +498,10 @@
         "status": "completed",
         "conclusion": "success",
         "appSlug": "github-actions",
-        "annotationsCount": 2,
-        "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39873377937/job/120152949703"
+        "startedAtUtc": "2026-10-22T23:40:55Z",
+        "completedAtUtc": "2026-10-22T23:44:16Z",
+        "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39873377937/job/120152949703",
+        "annotationsCount": 2
       },
       {
         "id": 120152949701,
@@ -428,8 +510,10 @@
         "status": "completed",
         "conclusion": "success",
         "appSlug": "github-actions",
-        "annotationsCount": 1,
-        "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39873377937/job/120152949701"
+        "startedAtUtc": "2026-10-22T23:40:55Z",
+        "completedAtUtc": "2026-10-22T23:41:21Z",
+        "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39873377937/job/120152949701",
+        "annotationsCount": 1
       },
       {
         "id": 120152949600,
@@ -438,8 +522,10 @@
         "status": "completed",
         "conclusion": "success",
         "appSlug": "github-actions",
-        "annotationsCount": 1,
-        "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39873378009/job/120152949600"
+        "startedAtUtc": "2026-10-22T23:40:55Z",
+        "completedAtUtc": "2026-10-22T23:43:24Z",
+        "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39873378009/job/120152949600",
+        "annotationsCount": 1
       },
       {
         "id": 120152949483,
@@ -448,20 +534,22 @@
         "status": "completed",
         "conclusion": "success",
         "appSlug": "github-actions",
-        "annotationsCount": 2,
-        "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39873378019/job/120152949483"
+        "startedAtUtc": "2026-10-22T23:40:55Z",
+        "completedAtUtc": "2026-10-22T23:51:47Z",
+        "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39873378019/job/120152949483",
+        "annotationsCount": 2
       }
     ]
   },
-  "mergedSourceChecks": {
+  "postmergeChecks": {
+    "headSha": "986b4707776711e80564f0642133ede90ba16f3c",
     "apiReportedTotal": 30,
     "fetchedCount": 30,
-    "latestDistinctCount": 30,
     "completeInventoryVerified": true,
     "successful": 30,
     "failed": 0,
     "pending": 0,
-    "checks": [
+    "observed": [
       {
         "id": 120241271449,
         "name": "CI gate",
@@ -469,8 +557,10 @@
         "status": "completed",
         "conclusion": "success",
         "appSlug": "github-actions",
-        "annotationsCount": 1,
-        "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39899003702/job/120241271449"
+        "startedAtUtc": "2026-10-23T04:30:22Z",
+        "completedAtUtc": "2026-10-23T04:30:26Z",
+        "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39899003702/job/120241271449",
+        "annotationsCount": 1
       },
       {
         "id": 120241233606,
@@ -479,8 +569,10 @@
         "status": "completed",
         "conclusion": "success",
         "appSlug": "github-actions",
-        "annotationsCount": 2,
-        "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39899003702/job/120241233606"
+        "startedAtUtc": "2026-10-23T04:30:14Z",
+        "completedAtUtc": "2026-10-23T04:30:19Z",
+        "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39899003702/job/120241233606",
+        "annotationsCount": 2
       },
       {
         "id": 120237833504,
@@ -489,8 +581,10 @@
         "status": "completed",
         "conclusion": "success",
         "appSlug": "github-actions",
-        "annotationsCount": 18,
-        "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39899003702/job/120237833504"
+        "startedAtUtc": "2026-10-23T04:18:09Z",
+        "completedAtUtc": "2026-10-23T04:30:11Z",
+        "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39899003702/job/120237833504",
+        "annotationsCount": 18
       },
       {
         "id": 120237042798,
@@ -499,8 +593,10 @@
         "status": "completed",
         "conclusion": "success",
         "appSlug": "github-actions",
-        "annotationsCount": 2,
-        "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39899003702/job/120237042798"
+        "startedAtUtc": "2026-10-23T04:15:23Z",
+        "completedAtUtc": "2026-10-23T04:18:07Z",
+        "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39899003702/job/120237042798",
+        "annotationsCount": 2
       },
       {
         "id": 120237042732,
@@ -509,8 +605,10 @@
         "status": "completed",
         "conclusion": "success",
         "appSlug": "github-actions",
-        "annotationsCount": 2,
-        "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39899003702/job/120237042732"
+        "startedAtUtc": "2026-10-23T04:15:24Z",
+        "completedAtUtc": "2026-10-23T04:22:41Z",
+        "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39899003702/job/120237042732",
+        "annotationsCount": 2
       },
       {
         "id": 120237042679,
@@ -519,8 +617,10 @@
         "status": "completed",
         "conclusion": "success",
         "appSlug": "github-actions",
-        "annotationsCount": 1,
-        "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39899003702/job/120237042679"
+        "startedAtUtc": "2026-10-23T04:15:24Z",
+        "completedAtUtc": "2026-10-23T04:22:50Z",
+        "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39899003702/job/120237042679",
+        "annotationsCount": 1
       },
       {
         "id": 120237042678,
@@ -529,8 +629,10 @@
         "status": "completed",
         "conclusion": "success",
         "appSlug": "github-actions",
-        "annotationsCount": 2,
-        "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39899003702/job/120237042678"
+        "startedAtUtc": "2026-10-23T04:15:23Z",
+        "completedAtUtc": "2026-10-23T04:27:06Z",
+        "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39899003702/job/120237042678",
+        "annotationsCount": 2
       },
       {
         "id": 120237042669,
@@ -539,8 +641,10 @@
         "status": "completed",
         "conclusion": "success",
         "appSlug": "github-actions",
-        "annotationsCount": 1,
-        "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39899003702/job/120237042669"
+        "startedAtUtc": "2026-10-23T04:15:23Z",
+        "completedAtUtc": "2026-10-23T04:18:21Z",
+        "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39899003702/job/120237042669",
+        "annotationsCount": 1
       },
       {
         "id": 120237042665,
@@ -549,8 +653,10 @@
         "status": "completed",
         "conclusion": "success",
         "appSlug": "github-actions",
-        "annotationsCount": 1,
-        "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39899003702/job/120237042665"
+        "startedAtUtc": "2026-10-23T04:15:24Z",
+        "completedAtUtc": "2026-10-23T04:17:38Z",
+        "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39899003702/job/120237042665",
+        "annotationsCount": 1
       },
       {
         "id": 120237042640,
@@ -559,8 +665,10 @@
         "status": "completed",
         "conclusion": "success",
         "appSlug": "github-actions",
-        "annotationsCount": 1,
-        "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39899003702/job/120237042640"
+        "startedAtUtc": "2026-10-23T04:15:23Z",
+        "completedAtUtc": "2026-10-23T04:24:09Z",
+        "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39899003702/job/120237042640",
+        "annotationsCount": 1
       },
       {
         "id": 120237042627,
@@ -569,8 +677,10 @@
         "status": "completed",
         "conclusion": "success",
         "appSlug": "github-actions",
-        "annotationsCount": 2,
-        "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39899003702/job/120237042627"
+        "startedAtUtc": "2026-10-23T04:15:24Z",
+        "completedAtUtc": "2026-10-23T04:17:28Z",
+        "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39899003702/job/120237042627",
+        "annotationsCount": 2
       },
       {
         "id": 120237042614,
@@ -579,8 +689,10 @@
         "status": "completed",
         "conclusion": "success",
         "appSlug": "github-actions",
-        "annotationsCount": 2,
-        "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39899003702/job/120237042614"
+        "startedAtUtc": "2026-10-23T04:15:24Z",
+        "completedAtUtc": "2026-10-23T04:18:34Z",
+        "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39899003702/job/120237042614",
+        "annotationsCount": 2
       },
       {
         "id": 120237042612,
@@ -589,8 +701,10 @@
         "status": "completed",
         "conclusion": "success",
         "appSlug": "github-actions",
-        "annotationsCount": 1,
-        "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39899003702/job/120237042612"
+        "startedAtUtc": "2026-10-23T04:15:23Z",
+        "completedAtUtc": "2026-10-23T04:17:46Z",
+        "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39899003702/job/120237042612",
+        "annotationsCount": 1
       },
       {
         "id": 120237042581,
@@ -599,8 +713,10 @@
         "status": "completed",
         "conclusion": "success",
         "appSlug": "github-actions",
-        "annotationsCount": 1,
-        "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39899003702/job/120237042581"
+        "startedAtUtc": "2026-10-23T04:15:23Z",
+        "completedAtUtc": "2026-10-23T04:17:39Z",
+        "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39899003702/job/120237042581",
+        "annotationsCount": 1
       },
       {
         "id": 120236959336,
@@ -609,8 +725,10 @@
         "status": "completed",
         "conclusion": "success",
         "appSlug": "github-actions",
-        "annotationsCount": 1,
-        "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39899003830/job/120236959336"
+        "startedAtUtc": "2026-10-23T04:15:07Z",
+        "completedAtUtc": "2026-10-23T04:15:10Z",
+        "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39899003830/job/120236959336",
+        "annotationsCount": 1
       },
       {
         "id": 120236392872,
@@ -619,8 +737,10 @@
         "status": "completed",
         "conclusion": "success",
         "appSlug": "github-actions",
-        "annotationsCount": 1,
-        "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39899003702/job/120236392872"
+        "startedAtUtc": "2026-10-23T04:13:08Z",
+        "completedAtUtc": "2026-10-23T04:15:21Z",
+        "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39899003702/job/120236392872",
+        "annotationsCount": 1
       },
       {
         "id": 120236212488,
@@ -629,8 +749,10 @@
         "status": "completed",
         "conclusion": "success",
         "appSlug": "github-actions",
-        "annotationsCount": 11,
-        "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39899003702/job/120236212488"
+        "startedAtUtc": "2026-10-23T04:12:31Z",
+        "completedAtUtc": "2026-10-23T04:14:58Z",
+        "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39899003702/job/120236212488",
+        "annotationsCount": 11
       },
       {
         "id": 120236212394,
@@ -639,8 +761,10 @@
         "status": "completed",
         "conclusion": "success",
         "appSlug": "github-actions",
-        "annotationsCount": 1,
-        "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39899003702/job/120236212394"
+        "startedAtUtc": "2026-10-23T04:12:31Z",
+        "completedAtUtc": "2026-10-23T04:13:05Z",
+        "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39899003702/job/120236212394",
+        "annotationsCount": 1
       },
       {
         "id": 120236094068,
@@ -649,8 +773,10 @@
         "status": "completed",
         "conclusion": "success",
         "appSlug": "github-actions",
-        "annotationsCount": 1,
-        "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39899003702/job/120236094068"
+        "startedAtUtc": "2026-10-23T04:12:06Z",
+        "completedAtUtc": "2026-10-23T04:12:29Z",
+        "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39899003702/job/120236094068",
+        "annotationsCount": 1
       },
       {
         "id": 120235969050,
@@ -659,8 +785,10 @@
         "status": "completed",
         "conclusion": "success",
         "appSlug": "github-actions",
-        "annotationsCount": 2,
-        "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39899003864/job/120235969050"
+        "startedAtUtc": "2026-10-23T04:11:40Z",
+        "completedAtUtc": "2026-10-23T04:11:55Z",
+        "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39899003864/job/120235969050",
+        "annotationsCount": 2
       },
       {
         "id": 120235968833,
@@ -669,8 +797,10 @@
         "status": "completed",
         "conclusion": "success",
         "appSlug": "github-actions",
-        "annotationsCount": 2,
-        "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39899003830/job/120235968833"
+        "startedAtUtc": "2026-10-23T04:11:40Z",
+        "completedAtUtc": "2026-10-23T04:11:50Z",
+        "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39899003830/job/120235968833",
+        "annotationsCount": 2
       },
       {
         "id": 120235968801,
@@ -679,8 +809,10 @@
         "status": "completed",
         "conclusion": "success",
         "appSlug": "github-actions",
-        "annotationsCount": 2,
-        "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39899003830/job/120235968801"
+        "startedAtUtc": "2026-10-23T04:11:40Z",
+        "completedAtUtc": "2026-10-23T04:15:05Z",
+        "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39899003830/job/120235968801",
+        "annotationsCount": 2
       },
       {
         "id": 120235968638,
@@ -689,8 +821,10 @@
         "status": "completed",
         "conclusion": "success",
         "appSlug": "github-actions",
-        "annotationsCount": 1,
-        "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39899003830/job/120235968638"
+        "startedAtUtc": "2026-10-23T04:11:39Z",
+        "completedAtUtc": "2026-10-23T04:12:08Z",
+        "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39899003830/job/120235968638",
+        "annotationsCount": 1
       },
       {
         "id": 120235968262,
@@ -699,8 +833,10 @@
         "status": "completed",
         "conclusion": "success",
         "appSlug": "github-actions",
-        "annotationsCount": 1,
-        "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39899003783/job/120235968262"
+        "startedAtUtc": "2026-10-23T04:11:39Z",
+        "completedAtUtc": "2026-10-23T04:19:19Z",
+        "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39899003783/job/120235968262",
+        "annotationsCount": 1
       },
       {
         "id": 120235968236,
@@ -709,8 +845,10 @@
         "status": "completed",
         "conclusion": "success",
         "appSlug": "github-actions",
-        "annotationsCount": 1,
-        "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39899003772/job/120235968236"
+        "startedAtUtc": "2026-10-23T04:11:39Z",
+        "completedAtUtc": "2026-10-23T04:14:13Z",
+        "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39899003772/job/120235968236",
+        "annotationsCount": 1
       },
       {
         "id": 120235968170,
@@ -719,8 +857,10 @@
         "status": "completed",
         "conclusion": "success",
         "appSlug": "github-actions",
-        "annotationsCount": 1,
-        "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39899003702/job/120235968170"
+        "startedAtUtc": "2026-10-23T04:11:40Z",
+        "completedAtUtc": "2026-10-23T04:12:03Z",
+        "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39899003702/job/120235968170",
+        "annotationsCount": 1
       },
       {
         "id": 120235968125,
@@ -729,8 +869,10 @@
         "status": "completed",
         "conclusion": "success",
         "appSlug": "github-actions",
-        "annotationsCount": 1,
-        "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39899003681/job/120235968125"
+        "startedAtUtc": "2026-10-23T04:11:40Z",
+        "completedAtUtc": "2026-10-23T04:14:08Z",
+        "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39899003681/job/120235968125",
+        "annotationsCount": 1
       },
       {
         "id": 120235968028,
@@ -739,8 +881,10 @@
         "status": "completed",
         "conclusion": "success",
         "appSlug": "github-actions",
-        "annotationsCount": 1,
-        "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39899003733/job/120235968028"
+        "startedAtUtc": "2026-10-23T04:11:40Z",
+        "completedAtUtc": "2026-10-23T04:15:07Z",
+        "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39899003733/job/120235968028",
+        "annotationsCount": 1
       },
       {
         "id": 120235967866,
@@ -749,8 +893,10 @@
         "status": "completed",
         "conclusion": "success",
         "appSlug": "github-actions",
-        "annotationsCount": 0,
-        "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39899003681/job/120235967866"
+        "startedAtUtc": "2026-10-23T04:11:40Z",
+        "completedAtUtc": "2026-10-23T04:20:10Z",
+        "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39899003681/job/120235967866",
+        "annotationsCount": 0
       },
       {
         "id": 120235967815,
@@ -759,83 +905,196 @@
         "status": "completed",
         "conclusion": "success",
         "appSlug": "github-actions",
-        "annotationsCount": 2,
-        "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39899003683/job/120235967815"
+        "startedAtUtc": "2026-10-23T04:11:39Z",
+        "completedAtUtc": "2026-10-23T04:13:59Z",
+        "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39899003683/job/120235967815",
+        "annotationsCount": 2
       }
     ]
   },
-  "officialCodeQL": {
-    "scope": "Reviewed PR head; the postmerge API reports the CodeQL analysis job but no separate Advanced Security check.",
-    "id": 120153979376,
-    "name": "CodeQL",
-    "headSha": "d2c0a9ab8862ffff886346a21377839f996152ca",
-    "status": "completed",
-    "conclusion": "success",
-    "appSlug": "github-advanced-security",
-    "annotationsCount": 0,
-    "url": "https://github.com/baraabd/homeservicemarketplace/runs/120153979376"
+  "postmergeWorkflows": {
+    "headSha": "986b4707776711e80564f0642133ede90ba16f3c",
+    "apiReportedTotal": 8,
+    "fetchedCount": 8,
+    "observed": [
+      {
+        "id": 39899003864,
+        "name": "Production governance",
+        "event": "push",
+        "headSha": "986b4707776711e80564f0642133ede90ba16f3c",
+        "status": "completed",
+        "conclusion": "success",
+        "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39899003864",
+        "createdAtUtc": "2026-10-23T04:11:37Z",
+        "updatedAtUtc": "2026-10-23T04:11:55Z"
+      },
+      {
+        "id": 39899003683,
+        "name": "Authentication lifecycle acceptance",
+        "event": "push",
+        "headSha": "986b4707776711e80564f0642133ede90ba16f3c",
+        "status": "completed",
+        "conclusion": "success",
+        "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39899003683",
+        "createdAtUtc": "2026-10-23T04:11:37Z",
+        "updatedAtUtc": "2026-10-23T04:14:00Z"
+      },
+      {
+        "id": 39899003772,
+        "name": "R26 application security acceptance",
+        "event": "push",
+        "headSha": "986b4707776711e80564f0642133ede90ba16f3c",
+        "status": "completed",
+        "conclusion": "success",
+        "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39899003772",
+        "createdAtUtc": "2026-10-23T04:11:37Z",
+        "updatedAtUtc": "2026-10-23T04:14:14Z"
+      },
+      {
+        "id": 39899003733,
+        "name": "CodeQL",
+        "event": "push",
+        "headSha": "986b4707776711e80564f0642133ede90ba16f3c",
+        "status": "completed",
+        "conclusion": "success",
+        "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39899003733",
+        "createdAtUtc": "2026-10-23T04:11:37Z",
+        "updatedAtUtc": "2026-10-23T04:15:08Z"
+      },
+      {
+        "id": 39899003830,
+        "name": "Staging release boundary",
+        "event": "push",
+        "headSha": "986b4707776711e80564f0642133ede90ba16f3c",
+        "status": "completed",
+        "conclusion": "success",
+        "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39899003830",
+        "createdAtUtc": "2026-10-23T04:11:37Z",
+        "updatedAtUtc": "2026-10-23T04:15:10Z"
+      },
+      {
+        "id": 39899003783,
+        "name": "Real application startup performance",
+        "event": "push",
+        "headSha": "986b4707776711e80564f0642133ede90ba16f3c",
+        "status": "completed",
+        "conclusion": "success",
+        "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39899003783",
+        "createdAtUtc": "2026-10-23T04:11:37Z",
+        "updatedAtUtc": "2026-10-23T04:19:19Z"
+      },
+      {
+        "id": 39899003681,
+        "name": "Web development startup",
+        "event": "push",
+        "headSha": "986b4707776711e80564f0642133ede90ba16f3c",
+        "status": "completed",
+        "conclusion": "success",
+        "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39899003681",
+        "createdAtUtc": "2026-10-23T04:11:37Z",
+        "updatedAtUtc": "2026-10-23T04:20:11Z"
+      },
+      {
+        "id": 39899003702,
+        "name": "CI",
+        "event": "push",
+        "headSha": "986b4707776711e80564f0642133ede90ba16f3c",
+        "status": "completed",
+        "conclusion": "success",
+        "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39899003702",
+        "createdAtUtc": "2026-10-23T04:11:37Z",
+        "updatedAtUtc": "2026-10-23T04:30:27Z"
+      }
+    ]
   },
-  "inspectedPostmergeLogs": [
+  "interpretation": {
+    "legacyCombinedStatus": "No legacy statuses are registered. The endpoint reports pending with total_count=0; actual check runs and workflow results are used.",
+    "postmergeScope": "Eight push-triggered workflows and 30 checks ran. PR-only workflows retain separately verified final-head evidence; a push did not rerun them.",
+    "officialCodeQL": "The separate github-advanced-security CodeQL check is successful on the final PR head with zero annotations. Postmerge inventory includes the successful CodeQL analysis workflow; no separate postmerge official check is invented.",
+    "runtimeImplementation": "R30 runtime is authorized for the assigned source session but is not implemented or accepted by this publication verification."
+  },
+  "localVerification": [
     {
-      "jobId": 120237042679,
-      "runId": 39899003702,
-      "kind": "Real PostgreSQL/Redis API",
-      "passedSuites": 347,
-      "skippedSuites": 13,
-      "passedTests": 6586,
-      "skippedTests": 81,
-      "failedTests": 0,
-      "compiledWorkerTestsPassed": 3,
-      "scope": "Skipped service-gated assertions remain excluded; this is observed G2 publication source, not R31 implementation evidence."
+      "command": "git merge-base --is-ancestor 72b4aaeb0a71d806b7fca7363dd9ca59bbcee644 986b4707776711e80564f0642133ede90ba16f3c",
+      "exitCode": 0
     },
     {
-      "jobId": 120236212488,
-      "runId": 39899003702,
-      "kind": "Web unit",
-      "passedFiles": 205,
-      "passedTests": 2525,
-      "failedTests": 0
+      "command": "git diff --exit-code d2c0a9ab8862ffff886346a21377839f996152ca 986b4707776711e80564f0642133ede90ba16f3c",
+      "exitCode": 0
     },
     {
-      "jobId": 120237042678,
-      "runId": 39899003702,
-      "kind": "Browser",
-      "passedTests": 836,
-      "skippedTests": 349,
-      "failedTests": 0,
-      "setupTestsPassed": 6
-    },
-    {
-      "jobId": 120235969050,
-      "runId": 39899003864,
-      "kind": "Governance",
-      "governancePassed": 480,
-      "stagingControlsPassed": 95,
-      "platformValidationPassed": 353,
-      "failed": 0,
-      "skipped": 0
+      "command": "git diff --name-only 72b4aaeb0a71d806b7fca7363dd9ca59bbcee644 986b4707776711e80564f0642133ede90ba16f3c",
+      "exitCode": 0,
+      "changedFiles": 13
     }
   ],
-  "assignment": {
-    "lane": "R31",
-    "branch": "feat/r31-subscription-entitlements",
-    "sessionId": "r31-20261023-d799cbee",
-    "assignedBy": "/root — owner-delegated engineering coordinator for baraabd",
-    "assignedAt": "2026-10-23T04:47:33Z",
-    "initialExactFileCount": 31,
-    "exactOwnershipRecord": "docs/production-readiness/post-r18/waves/wave-03.plan.json",
-    "peerLanesHeld": ["R29", "R30", "R32", "R33"],
-    "runtimeAllocation": "SESSION_ASSIGNED_NOT_PROVISIONED",
-    "implementationAcceptance": "NOT_IMPLEMENTED_AT_ASSIGNMENT"
-  },
   "restrictions": {
-    "merge": false,
-    "deploy": false,
     "liveMoney": false,
-    "spend": false,
+    "deploy": false,
+    "merge": false,
     "accountGrants": false,
+    "spend": false,
     "preserveG1": true,
-    "preserveR16R18Holds": true,
-    "keepR28HostedHold": true
+    "preserveR16R18Holds": true
+  },
+  "recordValidation": {
+    "runtime": "Node 24.21.0",
+    "commands": [
+      {
+        "command": "node --test .github/scripts/*.test.mjs",
+        "exitCode": 0,
+        "passed": 480,
+        "failed": 0,
+        "skipped": 0
+      },
+      {
+        "command": "node .github/scripts/g2-record.mjs --check",
+        "exitCode": 0
+      },
+      {
+        "command": "node .github/scripts/g2-record.mjs --ready R30",
+        "exitCode": 0
+      },
+      {
+        "command": "node .github/scripts/production-governance.mjs",
+        "exitCode": 0
+      },
+      {
+        "command": "node .github/scripts/release-baseline.mjs",
+        "exitCode": 0
+      },
+      {
+        "command": "git diff --check",
+        "exitCode": 0
+      }
+    ],
+    "heldLaneChecks": [
+      {
+        "lane": "R29",
+        "command": "node .github/scripts/g2-record.mjs --ready R29",
+        "exitCode": 1,
+        "expectedRefusal": true
+      },
+      {
+        "lane": "R31",
+        "command": "node .github/scripts/g2-record.mjs --ready R31",
+        "exitCode": 1,
+        "expectedRefusal": true
+      },
+      {
+        "lane": "R32",
+        "command": "node .github/scripts/g2-record.mjs --ready R32",
+        "exitCode": 1,
+        "expectedRefusal": true
+      },
+      {
+        "lane": "R33",
+        "command": "node .github/scripts/g2-record.mjs --ready R33",
+        "exitCode": 1,
+        "expectedRefusal": true
+      }
+    ],
+    "peerRegistryAndManifestRecordsUnchanged": true,
+    "sandboxLimitation": "Initial child-process test invocation failed because Node spawnSync returned EPERM with empty output. The unchanged suite passed 480/480 under approved execution permitting its isolated subprocess fixtures. No tests, assertions or validator code were changed."
   }
 }

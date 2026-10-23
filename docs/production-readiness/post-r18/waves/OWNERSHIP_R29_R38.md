@@ -1,4 +1,21 @@
-# R29–R38 conditional exact ownership
+# R29–R38 exact ownership and session handoff
+
+## Active R30 handoff — 2026-10-23
+
+Only R30 is assigned to root session `hsm-r30-590834e66da5` after independently
+verified owner publication of G2 through PR #183. The frozen runtime source is
+`72b4aaeb0a71d806b7fca7363dd9ca59bbcee644`; the metadata-only publication
+checkout begins at `986b4707776711e80564f0642133ede90ba16f3c`. Exact lane files
+and serialized shared leases are mirrored in `wave-03.plan.json` and
+`SPRINT_REGISTRY.json`; individual writers are assigned by root in
+`docs/production-readiness/r30/OWNERSHIP.md` before source edits. Root alone
+owns schema/migrations and global runtime composition. Runtime allocation is
+recorded separately before any real-service execution.
+
+Other R29/R31–R38 records remain unchanged and conditional. R30 source readiness
+is not implementation acceptance, live-method approval, hosting authorization,
+resource spend, an account grant, permission to merge or permission to deploy.
+The earlier package-inspection details below remain historical provenance.
 
 ## Authority, source and effect
 
@@ -24,29 +41,11 @@ shorthand never substitutes for source authority.
 For R29–R33, ownership becomes executable only after accepted exact-source G2
 evidence, separate owner-reviewed verified merged G2 publication, and an actual
 coordinator session assignment. For R34–R38 the equivalent condition is G3.
-On 2026-10-23 those G2 conditions were verified for R31 only. R31 and its plan
-lane are `READY_TO_START`; every other future lane remains `PLANNED` with a
-`BLOCKED` plan lane. Any assigned session must inspect the actual frozen tree
-before its first edit and record an exact extension if implementation needs
-other files. Unused planned files need not be created.
-
-### R31 session assignment
-
-- Session: `r31-20261023-d799cbee`; branch `feat/r31-subscription-entitlements`.
-- Assigning coordinator: `/root — owner-delegated engineering coordinator for baraabd`.
-- Assigned at: 2026-10-23T04:47:33Z.
-- Frozen source/tree: `72b4aaeb0a71d806b7fca7363dd9ca59bbcee644` /
-  `43e9c6a4e58cfb934b12789feeb38b588e1cb7c6`.
-- Verified owner publication: merge `986b4707776711e80564f0642133ede90ba16f3c`,
-  reviewed/merged tree `7ab683ea8c5304929a2fa51f1dc824c7cb46f7d5`.
-- Exact 31 initial files are unchanged and mirrored in the wave plan and registry.
-- Root retains all shared composition; finite product writer delegations and
-  approved CR-001 are recorded in `docs/production-readiness/r31/OWNERSHIP.md`
-  and `docs/production-readiness/r31/shared-change-requests/CR-001-integration.md`.
-
-This is start authorization only. Named R31 disposable resources still require
-provisioning and effective-isolation checks before runtime use. Other Wave 3
-sessions are not assigned by this record, and G3 remains blocked.
+Every unassigned lane remains `PLANNED` and its plan lane remains `BLOCKED`
+until these conditions are met. R30 has met the publication/session conditions
+under the active handoff above. A future session must inspect the actual frozen tree before
+its first edit and record an exact extension if implementation needs other
+files. Unused planned files need not be created.
 
 ## Authority reuse and minimal module rationale
 
@@ -78,7 +77,10 @@ tests shown there, in addition to tests beside owned source. This does not
 authorize shared Jest/Playwright discovery, global configuration or unlisted
 peer-fixture edits; those are coordinator integration requests.
 
-Only the nine exact infrastructure files below are included as future leases.
+The active R30 handoff additionally contains one 44-path root integration
+lease copied from `r30/RUNTIME_OWNERSHIP.json`; root is the only Wave 3 schema
+writer. The nine exact infrastructure files below remain future conditional
+leases.
 Each JSON lease names the complete source prompt, G3 acceptance and verified
 publication prerequisite, conditional session assignment, scope, expiry and
 handoff. The leases cover file authoring only and expire at the earliest of lane
@@ -97,8 +99,9 @@ real operator/resource authority where required by their prompts.
 
 ## Isolation and single-writer handoff
 
-The plan's `isolatedRuntime` values identify R31 session resources without
-claiming provisioning. Other lanes retain unallocated templates, including
+R30's `isolatedRuntime` now records its task-owned real services and ephemeral
+HTTP/browser fixture; see `r30/OWNERSHIP.md`. Other lanes remain unallocated
+templates, including unique
 lane/session database and user, queue names, storage prefixes, Compose project,
 ports and hostnames. Assign them only after the gate releases the lane; inspect
 effective container names and explicit volume names before running. Neither a

@@ -1,5 +1,13 @@
 # CR-002 — immutable financial receipt and review persistence
 
+## Current disposition — 2026-10-23
+
+The coordinator applied the nine-model receipt/review/refund schema and guarded migration under the exclusive root lease. See `../RUNTIME_OWNERSHIP.json`, `../IMPLEMENTATION.md` and `../ACCEPTANCE.md`.
+
+## Historical request (preserved)
+
+The following source observation/request predates authorized runtime work. Its blocked/unapplied status is historical, not the current disposition above.
+
 Status: **REQUESTED / UNAPPLIED / G2_BLOCKED**. Runtime: **NOT_IMPLEMENTED**.
 This is a coordinator integration request, not a schema lease or migration.
 Source inspected: `96e92825f9b65cf124317f43b55ce42fc97f5b49`; source tree:

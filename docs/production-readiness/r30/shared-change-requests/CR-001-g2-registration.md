@@ -1,5 +1,13 @@
 # CR-001 — conditional R30 package registration
 
+## Current disposition — 2026-10-23
+
+Conditional registration was superseded by accepted G2 publication and the current exact runtime ownership/session assignment. See `../RUNTIME_OWNERSHIP.json`, `../IMPLEMENTATION.md` and `../ACCEPTANCE.md`.
+
+## Historical request (preserved)
+
+The following source observation/request predates authorized runtime work. Its blocked/unapplied status is historical, not the current disposition above.
+
 Status: **PREPARED_FOR_REVIEW**. The coordinator-authorized patch in this review
 branch transcribes the supplied R30 package and reserves a finite proposed file
 list. It is not a merged registration, G2 acceptance or authorization to start

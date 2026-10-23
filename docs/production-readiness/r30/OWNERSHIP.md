@@ -1,4 +1,143 @@
-# R30 — ownership and blocked implementation handoff
+# R30 — ownership and implementation handoff
+
+## Active session — 2026-10-23
+
+The owner renewed the complete R30 implementation request. The standing G2
+coordination delegation authorizes verification of the owner's existing merge,
+not a new merge or deployment. GitHub PR #183 was merged by `baraabd` at
+2026-10-23T04:11:34Z as `986b4707776711e80564f0642133ede90ba16f3c`.
+The accepted G2 runtime base remains
+`72b4aaeb0a71d806b7fca7363dd9ca59bbcee644`, tree
+`43e9c6a4e58cfb934b12789feeb38b588e1cb7c6`. The publication is its
+metadata-only descendant; its tree matches the reviewed PR head. Current
+postmerge checks were independently observed successful. No acceptance is
+inferred from an unmerged proposal.
+
+Root is the owner-delegated coordinator and R30 session owner. Mode C covers
+the requested feature; Mode A covers the publication reconciliation. The
+isolated worktree is `/workspace/scratch/590834e66da5/homeservicemarketplace`,
+branch `feat/r30-manual-payment-review`. The old branch was clean and an ancestor
+of the accepted source and was fast-forwarded to the already merged publication
+without rebasing, rewriting, importing unmerged code or changing another
+session. Its actual checkout start is the publication commit above; the runtime
+base and documentation-only ancestry remain separately identified.
+
+Before any source implementation, the coordinator revalidates and records the
+exact runtime allowlist and assigns each writer below. The earlier sections
+are historical preparation records, not current gate status.
+
+### Returned serialized governance lease — `pr_audit`
+
+Root grants this writer the following exact paths to record the independently
+verified existing publication and assign this R30 session. Preserve the frozen
+G2 source, its measured evidence, G1 identity, other lanes and all live-policy
+holds. No validator relaxation or new acceptance is authorized.
+
+```text
+docs/production-readiness/post-r18/gates/g2/SOURCE_MANIFEST.json
+docs/production-readiness/post-r18/gates/g2/DECISION.md
+docs/production-readiness/post-r18/gates/g2/BLOCKERS.md
+docs/production-readiness/post-r18/gates/g2/OWNERSHIP.md
+docs/production-readiness/post-r18/gates/g2/PUBLICATION_VERIFICATION.json
+docs/production-readiness/post-r18/gates/g2/PUBLICATION_VERIFICATION.md
+docs/production-readiness/post-r18/waves/wave-03.plan.json
+docs/production-readiness/post-r18/waves/WAVE_03.md
+docs/production-readiness/post-r18/waves/OWNERSHIP_R29_R38.md
+docs/production-readiness/post-r18/SPRINT_REGISTRY.json
+docs/production-readiness/post-r18/ACTIVE_STATUS.md
+```
+
+This lease expires when returned to root or this review PR closes. Root owns
+Git operations, dependencies, schema, runtime allocation and publication. This
+session grants no live funds, actual merchant setup, commercial policy,
+production permission/account grants, merge or deployment.
+
+### Current runtime source and shared integration leases
+
+`RUNTIME_OWNERSHIP.json` is the finite approved path-to-writer mapping for
+this session, recorded before implementation. Root is the only schema,
+migration, published-contract and global-composition writer. The API and web
+writers own their named source and test files exclusively; all other source
+is read-only until a recorded extension. The governance writer mirrors these
+exact allocations in the canonical Wave 3 and sprint records. Shared changes
+implement the existing CR-002 through CR-005 requests under this explicit
+serialized lease. No application permission is granted by an engineering lease.
+
+## Resolved isolated runtime and returned leases
+
+The governance/evidence writer returned its files to root. API and web writers
+return their exact paths after checks; any corrective handoff uses the same
+finite map. Root alone owns Git, migration/schema, contracts and shared glue.
+The authoritative map has 44 shared integration paths and 59 canonical lane /
+evidence paths; future proposed lists below are historical.
+
+### Serialized PR184 security correction
+
+The first published R30 head `38307f0e3262a04319b2c79f39dae031cdbe0bb8`
+received one official CodeQL `js/user-controlled-bypass` finding in manual
+refund evidence review. Root reacquired and delegated exactly these three
+already reserved paths to `manual_api`, with `pr_audit` reviewing read-only:
+
+```text
+apps/api/src/modules/money/manual-review/manual-refund-review.service.ts
+apps/api/src/modules/money/manual-review/manual-refund-review.service.spec.ts
+apps/api/test/integration/r30-manual-payments.integration.spec.ts
+```
+
+The correction makes persisted dispatcher authorization independent of the
+request's event type and adds revoked-authority regression evidence. The lease
+does not change CodeQL configuration, security rules, financial contracts or
+acceptance criteria. Root retains documentation, normal hooks and publication;
+the follow-up commit must fast-forward the existing branch, with its final
+identity and new official check recorded externally in the PR. The writer
+returned all three paths after formatting, unit/integration checks, lint and
+API typecheck; the independent reviewer found the intended common authorization
+path and unchanged financial/independence guards. Further work is read-only
+unless root grants another exact corrective lease.
+
+### Serialized PR184 container and full-integration correction
+
+Under the standing coordination authority, root records the finite
+`R30-SHARED-20261023-FINAL-CI` extension before implementation. Root is the
+only writer of these two shared files; other agents review read-only:
+
+```text
+apps/api/Dockerfile
+apps/api/test/integration/r19-subscription-money.integration.spec.ts
+```
+
+The concrete change request is `shared-change-requests/CR-006-final-ci-remediation.md`.
+The API image receives Alpine's fixed musl package floor in all three stages.
+The R19 integration test receives the two defined R30 capability names in its
+exact catalog expectation, retaining the zero-grant, no-backfill and no-booking-
+revenue assertions. Node/pnpm pins, scanners, severity policy, permissions,
+production validators and financial behavior remain unchanged. Root also owns
+the new change-request record and mirrors the extension in both canonical
+registries. All peer lanes and frozen G2 evidence are preserved. This lease
+expires on R30 PR closure or coordinator revocation; it authorizes no merge,
+deployment, live method, production grant or unrelated image change.
+
+| Resource                  | Actual task-owned allocation                                                                                                 |
+| ------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| PostgreSQL                | 16.15, loopback 5530, database/user `hsm_r30_590834`; disposable child databases created by the repository helper            |
+| Database role             | LOGIN, NOSUPERUSER, NOCREATEROLE, NOREPLICATION, NOBYPASSRLS; CREATEDB only inside this isolated test cluster                |
+| Redis                     | 7.4.7, authenticated loopback 6430; per-fixture real limiter namespace, no shared flush                                      |
+| ClamAV                    | 1.5.3, loopback 3430; official daily 28161/main 63/bytecode 339 signatures                                                   |
+| Storage                   | Private task-owned temporary roots under `/tmp/hsm-r30-590834-runtime`; individual fixtures own their restricted directories |
+| HTTP                      | Each real application fixture binds its own ephemeral loopback port; reserved 4330 is unused                                 |
+| Browser                   | Vite `http://127.0.0.1:5324`; independent authenticated provider/reviewer/recorder/outsider contexts                         |
+| Browser binaries          | Playwright 1.62.1, Chromium 151.0.7922.34 revision 1234;591 matching local distribution files verified                       |
+| Configuration fingerprint | `0ada271fa8805e7cd384d7f691a2935b7c0a83e54842811ea2e39e0999c7147c`                                                           |
+
+The initial fingerprint before the scoped CREATEDB correction is superseded;
+no production database grant is implied. A private environment file supplies
+only disposable task values and never enters Git. The browser distribution
+came from matching local binaries after a failed fresh download; it is not
+claimed as an independently authenticated fresh download. No other session's
+services, profiles, dependencies or storage were changed. Cleanup checks the
+exact executable/PID/data identity and stops only this task's services.
+
+## Historical preparation record
 
 Status: **PREPARATION_ONLY / G2_BLOCKED**. Mode A covers source inspection,
 conditional package registration and integration requests. The requested R30

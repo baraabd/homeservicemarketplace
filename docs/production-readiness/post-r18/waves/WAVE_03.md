@@ -1,18 +1,20 @@
 # Wave 3: R29–R33
 
-The complete original lane prompts are recovered. G2 technical acceptance and
-owner-merged PR #183 publication are verified. The executable wave is
-**READY_TO_START for R31 only**, session `r31-20261023-d799cbee`. R29/R30/R32/R33
-remain **PLANNED** and their plan lanes remain **BLOCKED** until the coordinator
-assigns their exact writers. The active `gates/g2/SOURCE_MANIFEST.json` and
-`gates/g2/PUBLICATION_VERIFICATION.json` retain the accepted source and separate
-merged publication identities.
+G2 technical acceptance and the owner-merged PR #183 publication are verified.
+The frozen runtime source is `72b4aaeb0a71d806b7fca7363dd9ca59bbcee644`, tree
+`43e9c6a4e58cfb934b12789feeb38b588e1cb7c6`. The separate publication commit is
+`986b4707776711e80564f0642133ede90ba16f3c`; its metadata-only ancestry and
+postmerge checks are recorded in `gates/g2/PUBLICATION_VERIFICATION.json`.
 
-`wave-03.plan.json` is the exact file and session plan. R31 ownership is approved
-for its original 31 paths plus three exactly recorded test-harness files, matching `SPRINT_REGISTRY.json` and
-`docs/production-readiness/r31/OWNERSHIP.md`. This authorizes bounded source
-work; it does not prove implementation or permit a start from historical G1
-or an unreviewed develop head.
+**R30 alone is READY_TO_START** under root session `hsm-r30-590834e66da5` on
+`feat/r30-manual-payment-review`. The renewed owner request supplies its source
+implementation authority. R29, R31, R32 and R33 remain PLANNED with unassigned
+sessions; their records and conditional ownership are preserved.
+
+`wave-03.plan.json` is the exact source-start contract. A readiness status does
+not accept R30 implementation or activate a payment method. The existing
+metadata-only publication is the checkout start; the frozen runtime identity
+above remains authoritative. No historical G1 or moving-branch base is used.
 
 ## Recovered assignments
 
@@ -22,10 +24,15 @@ prompts and [`PROMPT_PROVENANCE.md`](../gates/g2/PROMPT_PROVENANCE.md).
 | Lane | Sprint and complete prompt                                                                                      | Assigned branch                      | Earlier-wave dependencies | Conditional exact files |
 | ---- | --------------------------------------------------------------------------------------------------------------- | ------------------------------------ | ------------------------- | ----------------------- |
 | 1    | [R29 — Stripe sandbox subscription collections, signed webhooks and refund adapter](../gates/g2/prompts/R29.md) | `feat/r29-stripe-sandbox-webhooks`   | R24, R20, R22, R23        | 24                      |
-| 2    | [R30 — Manual subscription payment rails and protected receipt review](../gates/g2/prompts/R30.md)              | `feat/r30-manual-payment-review`     | R24, R20, R21, R22, R23   | 33                      |
+| 2    | [R30 — Manual subscription payment rails and protected receipt review](../gates/g2/prompts/R30.md)              | `feat/r30-manual-payment-review`     | R24, R20, R21, R22, R23   | 59                      |
 | 3    | [R31 — Subscription plans, My Plan and atomic entitlements](../gates/g2/prompts/R31.md)                         | `feat/r31-subscription-entitlements` | R24, R21, R22, R23        | 31                      |
 | 4    | [R32 — Refund eligibility, reservations and ambiguous-outcome recovery](../gates/g2/prompts/R32.md)             | `feat/r32-refund-recovery`           | R24, R22, R23             | 21                      |
 | 5    | [R33 — Financial read models and Admin/Provider operations UI](../gates/g2/prompts/R33.md)                      | `feat/r33-financial-operations-ui`   | R24, R20, R23             | 29                      |
+
+R30 currently reserves 59 exact lane/evidence paths plus one 44-path
+serialized root integration lease, including the single schema/migration
+writer. Its complete per-writer mapping is `r30/RUNTIME_OWNERSHIP.json`.
+Unused reserved paths need not be created.
 
 The exact lists include dedicated real-service test paths and each lane's
 implementation, acceptance, risk, rollback, ownership and shared-change-request
@@ -35,13 +42,11 @@ any necessary exact extension before writing outside the list.
 
 ## Existing authorities and integration boundary
 
-The inspection base is `96e92825f9b65cf124317f43b55ce42fc97f5b49`, tree
-`68f4e926eabeb37bb70382c62b75272cf67bd02c`. This identifies package inspection
-only. The actual approved Wave 3 frozen source is
-`72b4aaeb0a71d806b7fca7363dd9ca59bbcee644`, tree
-`43e9c6a4e58cfb934b12789feeb38b588e1cb7c6`. The separate owner-merged acceptance
-publication is `986b4707776711e80564f0642133ede90ba16f3c`; its difference from
-the frozen source contains thirteen record files and no runtime change.
+The historical package inspection base is
+`96e92825f9b65cf124317f43b55ce42fc97f5b49`, tree
+`68f4e926eabeb37bb70382c62b75272cf67bd02c`. R30 was re-inspected against the
+accepted G2 runtime source and its verified publication before this handoff.
+The machine manifests retain the accepted full runtime source above.
 
 R24 already owns durable payment attempts, verified external-event inbox,
 confirmation, reservation/dispatch/result orchestration and the caller's

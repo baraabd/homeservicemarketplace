@@ -1,5 +1,32 @@
 # G2 coordinator ownership
 
+## Verified owner publication and R30 session — 2026-10-23
+
+The owner merged PR #183 as `986b4707776711e80564f0642133ede90ba16f3c`
+on 2026-10-23 at 04:11:34 UTC. Independent read-only GitHub and local Git
+verification establishes the accepted-source ancestry, identical reviewed/merged
+record trees, 38 latest successful PR checks and 30 successful postmerge checks.
+The frozen source/tree remain `72b4aaeb0a71d806b7fca7363dd9ca59bbcee644` /
+`43e9c6a4e58cfb934b12789feeb38b588e1cb7c6`.
+
+Root delegates only the eleven exact governance paths listed in
+`docs/production-readiness/r30/OWNERSHIP.md` to `pr_audit`. The lease permits
+recording the existing owner merge and assigning root session
+`hsm-r30-590834e66da5` to R30, preserving all peer records and policy holds.
+`PUBLICATION_VERIFICATION.json` and its companion narrative retain the observed
+proof. No validator, measured evidence, G1 identity or runtime source is changed
+under this lease. It returns to root after validation; commits and publication
+remain root-owned.
+
+Only R30 has an active implementation session. Source-writing ownership and any
+shared-runtime lease must be explicitly recorded before those edits. Root owns
+the single schema/migration writer and global composition; delegated runtime
+authors cannot extend their own scope. No merge, deployment, live funds,
+merchant setup, policy decision, account grant or resource spend is granted.
+
+All earlier entries below are historical leases for their named tasks and do
+not override this current handoff.
+
 ## PR183 cold enum-decoding measurement correction — 2026-10-23
 
 Before edits, root retains the sole-writer lease for

@@ -61,11 +61,11 @@
     "pr": 183,
     "acceptanceRecordCommitSha": "986b4707776711e80564f0642133ede90ba16f3c",
     "verifiedMerge": true,
-    "requirement": "Satisfied by owner-merged PR #183 and verified ancestry, identical reviewed/merged trees and successful postmerge checks. Every lane still requires an explicit coordinator writer assignment; only R31 is assigned by this record.",
+    "requirement": "The owner merged PR #183. Ancestry, identical reviewed/merged trees and postmerge checks were independently verified. Only explicitly assigned Wave 3 sessions may start; R34\u2013R38 additionally require G3. No new merge or operational authority is granted.",
     "prUrl": "https://github.com/baraabd/homeservicemarketplace/pull/183",
+    "mergedBy": "baraabd",
     "mergedAtUtc": "2026-10-23T04:11:34Z",
-    "reviewedHeadSha": "d2c0a9ab8862ffff886346a21377839f996152ca",
-    "treeSha": "7ab683ea8c5304929a2fa51f1dc824c7cb46f7d5",
+    "verifiedAtUtc": "2026-10-23T04:46:36Z",
     "verificationRecord": "docs/production-readiness/post-r18/gates/g2/PUBLICATION_VERIFICATION.json"
   },
   "externalBlockers": [
@@ -86,7 +86,7 @@
   ],
   "evidenceRecord": "docs/production-readiness/post-r18/gates/g2/ACCEPTANCE_EVIDENCE.json",
   "preservedG1SourceSha": "40cdac5c9ce6acaa8dedc0385984a807ae9a84d0",
-  "identityResolution": "Technical acceptance retains the exact tested frozen source and independently reconstructed tree. PR #183 is separately owner-merged at 986b4707776711e80564f0642133ede90ba16f3c. PUBLICATION_VERIFICATION.json records source ancestry, the identical reviewed/merged tree, the 13-file record-only descendant delta and successful postmerge checks. Only the explicit R31 session is released; peer sessions and G3 remain held.",
+  "identityResolution": "Technical acceptance remains bound to the exact tested source and independently reconstructed tree. The separate owner-merged publication 986b4707776711e80564f0642133ede90ba16f3c is verified by ancestry, identical reviewed/merged record trees and postmerge checks. Source execution is released only for the assigned R30 session; other sessions remain unassigned and all operational restrictions persist.",
   "restrictions": {
     "liveMoney": false,
     "deploy": false,

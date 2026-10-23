@@ -103,4 +103,4 @@ export interface LedgerEntryContract {
 export * from './wire';
 export * from './financial-contracts';
 export * from './api-contracts';
-export * from './subscription-contracts';
+export * from './manual-payment-contracts';

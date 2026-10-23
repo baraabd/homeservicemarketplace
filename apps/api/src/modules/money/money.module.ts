@@ -16,16 +16,12 @@ import {
   MONEY_CONFIGURATION,
   MONEY_RECEIPT_ACCEPTANCE,
   PrismaMoneyCatalogFactory,
-  UnavailableMoneyCollectionAdapter,
-  UnavailableMoneyConfiguration,
-  UnavailableMoneyReceiptAcceptance,
 } from './ports/collection.port';
 import { MONEY_FINANCE_READ } from './ports/finance-read.port';
 import {
   MONEY_REFUND_ADAPTER,
   MONEY_REFUND_CONFIRMATION_PARTICIPANT,
   MONEY_REFUND_POLICY,
-  UnavailableMoneyRefundAdapter,
   UnavailableMoneyRefundConfirmationParticipant,
   UnavailableMoneyRefundPolicy,
 } from './ports/refund.port';
@@ -45,13 +41,14 @@ import {
   providers: [
     MoneyCommandService,
     MoneyQueryService,
-    { provide: MONEY_CONFIGURATION, useClass: UnavailableMoneyConfiguration },
+    ManualEventProcessingJob,
+    { provide: MONEY_CONFIGURATION, useExisting: ManualRailConfiguration },
     { provide: MONEY_CATALOG, useClass: PrismaMoneyCatalogFactory },
-    { provide: MONEY_COLLECTION_ADAPTER, useClass: UnavailableMoneyCollectionAdapter },
-    { provide: MONEY_RECEIPT_ACCEPTANCE, useClass: UnavailableMoneyReceiptAcceptance },
-    { provide: MONEY_ACTIVATION_PARTICIPANT, useExisting: SubscriptionActivationParticipant },
+    { provide: MONEY_COLLECTION_ADAPTER, useExisting: ManualCollectionAdapter },
+    { provide: MONEY_RECEIPT_ACCEPTANCE, useExisting: ReceiptAcceptanceParticipant },
+    { provide: MONEY_ACTIVATION_PARTICIPANT, useClass: UnavailableMoneyActivationParticipant },
     { provide: MONEY_REFUND_POLICY, useClass: UnavailableMoneyRefundPolicy },
-    { provide: MONEY_REFUND_ADAPTER, useClass: UnavailableMoneyRefundAdapter },
+    { provide: MONEY_REFUND_ADAPTER, useExisting: ManualRefundAdapter },
     {
       provide: MONEY_REFUND_CONFIRMATION_PARTICIPANT,
       useClass: UnavailableMoneyRefundConfirmationParticipant,
