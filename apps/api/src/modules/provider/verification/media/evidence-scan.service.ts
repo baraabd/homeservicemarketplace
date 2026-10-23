@@ -60,6 +60,7 @@ export interface ScanSweepResult {
 }
 
 interface ScannableAsset {
+  purpose: string | null;
   id: string;
   storageKey: string;
   scanState: string;
@@ -109,6 +110,7 @@ export class EvidenceScanService {
     const candidates = (await this.prisma.client.mediaAsset.findMany({
       where: {
         visibility: 'RESTRICTED',
+        purpose: null,
         deletedAt: null,
         erasureStartedAt: null,
         uploadCompletedAt: { not: null },
@@ -123,6 +125,7 @@ export class EvidenceScanService {
       select: {
         id: true,
         storageKey: true,
+        purpose: true,
         scanState: true,
         declaredMimeType: true,
         detectedMimeType: true,
@@ -149,6 +152,10 @@ export class EvidenceScanService {
     const { maxBytes } = await this.settings.evidenceLimits();
 
     for (const asset of candidates) {
+      if (asset.purpose != null) {
+        result.skipped += 1;
+        continue;
+      }
       result.examined += 1;
       try {
         await this.processOne(asset, maxBytes, now, result);
@@ -287,6 +294,7 @@ export class EvidenceScanService {
         // different reading of the file.
         where: {
           id: asset.id,
+          purpose: null,
           scanState: asset.scanState as MediaScanState,
           deletedAt: null,
           erasureStartedAt: null,

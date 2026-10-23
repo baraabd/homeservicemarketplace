@@ -1,106 +1,93 @@
-# R30 — verification map and evidence boundaries
+# R30 — verification plan and evidence boundaries
 
-This file describes the required product verification after an accepted G2
-handoff. **No R30 application, migration, browser journey, storage scan, payment
-or refund is implemented or tested by writing this plan.** Actual prerequisite
-results belong in `ACCEPTANCE.md`; source identity belongs in
-`SOURCE_MANIFEST.json` and the published PR body.
+This plan applies to the implemented candidate after verified G2 publication.
+Results belong in `ACCEPTANCE.md`; a test listed here is not an executed pass.
+The final draft PR identifies the published commit/tree and remote checks.
 
-## Current prerequisite verification
+## Required boundaries
 
-The conditional registration must preserve the canonical blocked gate, null
-freeze, all peer ownership and accepted G1 history. Validate the exact 70-file
-union, every proposed shared existing path, absent future modules and unchanged
-schema/contracts/budgets. Run governance records and their positive/negative
-tests. A `--ready R30` refusal is the expected blocked state, not a failing
-product test to bypass.
+| Boundary             | Required evidence                                                                                                             |
+| -------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| Source/ownership     | Exact branch/base/tree, finite writer map, unchanged peer records, no unmerged peer imports.                                  |
+| Toolchain            | Node 24.21.0, pnpm 10.32.1, Prisma 6.12.0; frozen lockfile, guarded generation and builds.                                    |
+| Database             | Fresh isolated migrations, immutable triggers/checks and actual transaction rollback.                                         |
+| Configuration        | Missing/disabled/expired/threshold/scale handling, pinned version, unconditional LIVE rejection.                              |
+| Upload/scan          | Actual owner-bound bytes, size/type/hash, immutable retries/replacement, real clean scan and EICAR quarantine.                |
+| Private read         | Uniform foreign/missing response, fresh revoked authority, digest/state rechecks, private cache headers and attributed audit. |
+| Isolation            | Public denial before storage; identity scan/cleanup/retention exclusion; database attachment guards.                          |
+| Review               | Actual current inspection, optimistic version, no self-review, independent permitted settlement recorder.                     |
+| Concurrency          | Duplicate deposit, parallel approval, approved-byte reuse and two-obligation fingerprint races.                               |
+| Atomicity            | One R24 confirmation/claim/ledger effect; activation failure rollback and durable duplicate-free recovery.                    |
+| Recovery             | Permanent authority failure halts; original reviewer retry; bounded failures; stale-scan fairness.                            |
+| Refund               | Stable key/full binding, UNKNOWN after dispatch and independent exact terminal observation.                                   |
+| Rate limit           | Real Redis Lua and 30/hour upload limit returning 429/Retry-After; namespace isolation without flush.                         |
+| Browser              | Real OTP/HTTP, PNG then PDF replacement, independent settlement/review, keyboard decision, history and outsider denial.       |
+| Layout/accessibility | EN/AR RTL at 320/390/430/768/1024/1440, focus/keyboard, scoped Axe and 200% content enlargement.                              |
+| Regression           | Lint, TypeScript, builds, full hermetic suites, affected boundaries, governance and migration index.                          |
+| Publication          | Dependency audit, final tree secret scan, normal hooks, exact uploaded tree, final-head workflows and official CodeQL.        |
 
-The separate G2 query repair must pass the affected API lint/type/unit/build
-checks and real PostgreSQL equivalence tests against the prior Prisma selectors.
-Check authorized filtering, nullable scheduling and category/provider relations,
-stable ties, empty/final pages, transaction usage and owned/deleted/missing cursor
-anchors. Preserve service authorization and exact DTO/financial values. Run the
-unchanged remote R27 populated query/plan/browser harness and evaluate its
-downloaded candidate reports against the unchanged proposed limits 5/10/7/3.
-Record exact head/tree, run/artifact identity, evaluator count and scope. A green
-measurement workflow alone does not imply a passing budget evaluator or owner
-policy approval.
+Layout and scoped accessibility assertions are not a certification. Default API
+suites intentionally gate actual service tests; always report those skips
+separately. A skipped service boundary never counts as a pass.
 
-Use the repository's exact Node/pnpm pins, frozen lockfile and normal hooks.
-Retain security-audit and secret-scan results and complete final PR CI/official
-CodeQL. No test suppression, threshold increase, timeout relaxation or fabricated
-service identity is allowed. Local native PostgreSQL correctness is distinct
-from the real-container R27 harness and hosted acceptance.
+## Reproduction
 
-## Future product matrix
-
-| Required behavior               | Executable evidence                                                                           | Negative/rollback boundary                                                                                                                                                                                          |
-| ------------------------------- | --------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Server-owned manual obligation  | Existing R24 real API plus owned adapter/policy tests                                         | Altered amount/currency/owner/recipient/version, disabled method, unapproved market and expired instruction refused.                                                                                                |
-| Actual-byte restricted upload   | Dedicated `r30-receipt-storage.integration.spec.ts`, real private local/S3 storage and ClamAV | MIME/signature mismatch, oversize/truncated/absent/quarantined bytes, scanner outage, same-size substitution, failed finalize and public resolver bypass.                                                           |
-| Immutable replacement           | Dedicated receipt-storage and review-lifecycle tests plus direct SQL                          | New asset/revision preserves old bytes/history; purpose/intent mutation, cross-intent asset reuse, invalid predecessors and stale scan/finalize writes refused.                                                     |
-| Identity/finance isolation      | Shared identity scan, cleanup, key and restricted-boundary regressions from CR-003            | Legacy NULL-purpose identity rows remain eligible; financial rows never receive identity scan decisions or storage deletion, including stale candidates.                                                            |
-| Private receipt read            | Real HTTP storage tests, audit assertions and real browser routes                             | Cross-provider, admin without capability, revoked finance/account, erased, erasure-started, policy-read-blocked or missing evidence, hash mismatch and stale preview cannot disclose bytes.                         |
-| Independent finance review      | `r30-review-lifecycle.integration.spec.ts`                                                    | Image/hash/QR alone cannot confirm funds; deny self-review, insufficient policy/authority, wrong amount/currency/account or late/invalid settlement.                                                                |
-| Atomic confirmation             | `r30-review-concurrency.integration.spec.ts` plus coordinated R24 tests                       | Race two reviewers/obligations, replacement after inspection, permission revocation and unique deposit claims; inject failure at every participant and assert all financial/final-review writes roll back together. |
-| Durable inbox recovery          | Owned processing-job tests and process restart in the dedicated runtime fixture               | Crash after receipt acceptance leaves recoverable RECEIVED work; bounded claim/lease retry preserves command/event keys and final idempotency.                                                                      |
-| Correction and decision notices | Real R22 outbox integration and browser reload/relogin                                        | Post-commit delivery, duplicate suppression, provider-visible reason persists; internal notes/deposit evidence never appear in public payloads.                                                                     |
-| Manual refund transport         | `r30-manual-refund.integration.spec.ts`, existing R32 port and atomic confirmation tests      | Dispatch/ledger reversal do not mean transfer; uncertain submit retains the same operation key, queries first and never invents a negative confirmation.                                                            |
-| Actual routes and accessibility | Dedicated `manual-payments.real-api.spec.ts`, route regressions and inspected screenshots     | AR/EN copy parity, RTL/LTR, mobile/desktop, keyboard/focus, safe errors, session isolation, unauthorized deep links and no false ACTIVE UI.                                                                         |
-
-The dedicated API files and fixture are enumerated in
-`PROPOSED_OWNERSHIP.json`; CR-002 through CR-005 name every proposed shared test
-change. No file count is an executed test count.
-
-## Future service identity and commands
-
-Before starting product tests, record coordinator-assigned disposable database
-and role, isolated Redis/queue identities, storage paths/buckets, scanner,
-Compose project/container/volume names, ports and distinct browser contexts.
-Inspect effective configuration without secrets. Do not copy a working `.env`,
-reset another database, flush shared Redis or erase unrelated objects.
-
-Discover current scripts again at the accepted freeze. The current source
-provides these applicable commands; run only after their required files/services
-exist, capturing exit codes and precise test/pass/fail/skip counts:
+Use the declared exact Node/pnpm versions and normal hooks from repository root.
+Load only the task-private service environment; never print/commit credentials
+or reuse another session's database or browser profile.
 
 ```bash
 pnpm install --frozen-lockfile
 pnpm --filter @homeservicemarketplace/database generate
+pnpm --filter @homeservicemarketplace/database build
+pnpm --filter @homeservicemarketplace/contracts build
 pnpm --filter @homeservicemarketplace/api lint
 pnpm --filter @homeservicemarketplace/api typecheck
-pnpm --filter @homeservicemarketplace/api test --runInBand
 pnpm --filter @homeservicemarketplace/api build
 pnpm --filter @homeservicemarketplace/web lint
-pnpm --filter @homeservicemarketplace/web typecheck
-pnpm --filter @homeservicemarketplace/web test
+pnpm --filter @homeservicemarketplace/web exec tsc --noEmit
 pnpm --filter @homeservicemarketplace/web build
-pnpm --filter @homeservicemarketplace/web exec tsc --noEmit -p manual-payment-tests/tsconfig.json
-pnpm --filter @homeservicemarketplace/web exec playwright test --config playwright.r30.config.ts
+node --test .github/scripts/*.test.mjs
+node .github/scripts/g2-record.mjs --check
+node .github/scripts/g2-record.mjs --ready R30
 pnpm security:audit
 pnpm security:audit:prod
 ```
 
-Apply reviewed forward migrations only to the assigned fixture, seed only
-approved definitions, and verify drift and constraint preservation. Enable the
-real-service suite gates deliberately; a skipped gated test is not a passing
-runtime test. Real ClamAV and storage must be exercised, while external funds
-remain an explicitly labeled operator simulation until separately authorized.
+The required real service command must execute all sixteen cases with no
+failures, skips or todo tests:
 
-## Acceptance states
+```bash
+RUN_DB_INTEGRATION=1 RUN_R30_INTEGRATION=1 pnpm --filter @homeservicemarketplace/api exec jest --runInBand --runTestsByPath test/integration/r30-manual-payments.integration.spec.ts --json --outputFile=r30-manual-service-ci.json
+```
 
-| State                             | Evidence required                                                                                                                 |
-| --------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
-| IMPLEMENTED                       | Reviewed source and tests exist in exact leased paths.                                                                            |
-| SOURCE_VERIFIED                   | Exact committed source passed applicable static/unit checks; no inference of external behavior.                                   |
-| INTEGRATION_PENDING               | Required shared wiring/participant or service evidence remains missing.                                                           |
-| SANDBOX_ACCEPTED                  | Real isolated API/database/private storage/scanner/browser lifecycle passes, with simulated funds labeled.                        |
-| HOSTED_ACCEPTED                   | Authorized deployed configuration and real hosted-service evidence pass separately.                                               |
-| POLICY_BLOCKED / EXTERNAL_BLOCKED | Name the exact missing decision/resource and owner; do not simulate acceptance.                                                   |
-| RELEASE_ACCEPTED                  | Coordinator acceptance plus explicit owner publication/release authority and all retained holds resolved for the requested scope. |
+The browser harness owns fixture startup, private session handoff, dedicated
+Vite, independent Chromium contexts and cleanup:
 
-Retain aggregate reports, exact run/artifact IDs and inspected sanitized images.
-Never commit receipt bytes, merchant credentials, private reference values,
-session traces, raw environment files or signed/private URLs. Approval of a
-subscription never grants identity verification, legal/age eligibility or work
-access. R16/R18 and live-money restrictions remain independently applicable.
+```bash
+RUN_DB_INTEGRATION=1 RUN_R30_INTEGRATION=1 RUN_R30_BROWSER=1 pnpm --filter @homeservicemarketplace/api exec jest --runInBand --runTestsByPath test/e2e/r30-browser-runtime.e2e.spec.ts --json --outputFile=r30-manual-browser-ci.json
+```
+
+Require exactly one passed Jest harness test and exactly two expected
+Playwright cases, with zero unexpected/skipped/flaky cases and no retries.
+The required CI job enforces these counts and sixteen service cases. General
+browser suites exclude this separately required fixture directory.
+
+## Provenance and remaining limits
+
+The local fixture uses PostgreSQL 16.15, Redis 7.4.7, ClamAV 1.5.3 with official
+signatures, private restricted disk storage and pinned Playwright 1.62.1
+Chromium revision 1234. Its database login is a non-superuser; CREATEDB exists
+only for disposable databases in this task's isolated cluster. The resolved
+allocation and fingerprint are recorded in `OWNERSHIP.md` and the manifest.
+
+Browser distributions were copied from matching local binaries after a failed
+CDN download; all 591 files and engine version were checked. This is not fresh
+download authentication. CI installs its own pinned browser. Never publish
+storage state, cookies, receipt bytes, environment files, traces or video.
+
+R31 activation and R32 eligibility are explicitly labelled fixture contract
+components. They prove the frozen transaction seam and rollback, not production
+entitlement/refund policy. Local bytes/storage/scanner results do not establish
+hosted finance IAM/KMS, legal holds, erasure, backup/replica deletion, actual
+merchant settlement or live approval. Closure owners remain in `RISKS.md`.

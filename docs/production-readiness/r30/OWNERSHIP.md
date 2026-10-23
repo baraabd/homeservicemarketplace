@@ -1,4 +1,97 @@
-# R30 — ownership and blocked implementation handoff
+# R30 — ownership and implementation handoff
+
+## Active session — 2026-10-23
+
+The owner renewed the complete R30 implementation request. The standing G2
+coordination delegation authorizes verification of the owner's existing merge,
+not a new merge or deployment. GitHub PR #183 was merged by `baraabd` at
+2026-10-23T04:11:34Z as `986b4707776711e80564f0642133ede90ba16f3c`.
+The accepted G2 runtime base remains
+`72b4aaeb0a71d806b7fca7363dd9ca59bbcee644`, tree
+`43e9c6a4e58cfb934b12789feeb38b588e1cb7c6`. The publication is its
+metadata-only descendant; its tree matches the reviewed PR head. Current
+postmerge checks were independently observed successful. No acceptance is
+inferred from an unmerged proposal.
+
+Root is the owner-delegated coordinator and R30 session owner. Mode C covers
+the requested feature; Mode A covers the publication reconciliation. The
+isolated worktree is `/workspace/scratch/590834e66da5/homeservicemarketplace`,
+branch `feat/r30-manual-payment-review`. The old branch was clean and an ancestor
+of the accepted source and was fast-forwarded to the already merged publication
+without rebasing, rewriting, importing unmerged code or changing another
+session. Its actual checkout start is the publication commit above; the runtime
+base and documentation-only ancestry remain separately identified.
+
+Before any source implementation, the coordinator revalidates and records the
+exact runtime allowlist and assigns each writer below. The earlier sections
+are historical preparation records, not current gate status.
+
+### Returned serialized governance lease — `pr_audit`
+
+Root grants this writer the following exact paths to record the independently
+verified existing publication and assign this R30 session. Preserve the frozen
+G2 source, its measured evidence, G1 identity, other lanes and all live-policy
+holds. No validator relaxation or new acceptance is authorized.
+
+```text
+docs/production-readiness/post-r18/gates/g2/SOURCE_MANIFEST.json
+docs/production-readiness/post-r18/gates/g2/DECISION.md
+docs/production-readiness/post-r18/gates/g2/BLOCKERS.md
+docs/production-readiness/post-r18/gates/g2/OWNERSHIP.md
+docs/production-readiness/post-r18/gates/g2/PUBLICATION_VERIFICATION.json
+docs/production-readiness/post-r18/gates/g2/PUBLICATION_VERIFICATION.md
+docs/production-readiness/post-r18/waves/wave-03.plan.json
+docs/production-readiness/post-r18/waves/WAVE_03.md
+docs/production-readiness/post-r18/waves/OWNERSHIP_R29_R38.md
+docs/production-readiness/post-r18/SPRINT_REGISTRY.json
+docs/production-readiness/post-r18/ACTIVE_STATUS.md
+```
+
+This lease expires when returned to root or this review PR closes. Root owns
+Git operations, dependencies, schema, runtime allocation and publication. This
+session grants no live funds, actual merchant setup, commercial policy,
+production permission/account grants, merge or deployment.
+
+### Current runtime source and shared integration leases
+
+`RUNTIME_OWNERSHIP.json` is the finite approved path-to-writer mapping for
+this session, recorded before implementation. Root is the only schema,
+migration, published-contract and global-composition writer. The API and web
+writers own their named source and test files exclusively; all other source
+is read-only until a recorded extension. The governance writer mirrors these
+exact allocations in the canonical Wave 3 and sprint records. Shared changes
+implement the existing CR-002 through CR-005 requests under this explicit
+serialized lease. No application permission is granted by an engineering lease.
+
+## Resolved isolated runtime and returned leases
+
+The governance/evidence writer returned its files to root. API and web writers
+return their exact paths after checks; any corrective handoff uses the same
+finite map. Root alone owns Git, migration/schema, contracts and shared glue.
+The authoritative map has 42 shared integration paths and 58 canonical lane /
+evidence paths; future proposed lists below are historical.
+
+| Resource                  | Actual task-owned allocation                                                                                                 |
+| ------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| PostgreSQL                | 16.15, loopback 5530, database/user `hsm_r30_590834`; disposable child databases created by the repository helper            |
+| Database role             | LOGIN, NOSUPERUSER, NOCREATEROLE, NOREPLICATION, NOBYPASSRLS; CREATEDB only inside this isolated test cluster                |
+| Redis                     | 7.4.7, authenticated loopback 6430; per-fixture real limiter namespace, no shared flush                                      |
+| ClamAV                    | 1.5.3, loopback 3430; official daily 28161/main 63/bytecode 339 signatures                                                   |
+| Storage                   | Private task-owned temporary roots under `/tmp/hsm-r30-590834-runtime`; individual fixtures own their restricted directories |
+| HTTP                      | Each real application fixture binds its own ephemeral loopback port; reserved 4330 is unused                                 |
+| Browser                   | Vite `http://127.0.0.1:5324`; independent authenticated provider/reviewer/recorder/outsider contexts                         |
+| Browser binaries          | Playwright 1.62.1, Chromium 151.0.7922.34 revision 1234;591 matching local distribution files verified                       |
+| Configuration fingerprint | `0ada271fa8805e7cd384d7f691a2935b7c0a83e54842811ea2e39e0999c7147c`                                                           |
+
+The initial fingerprint before the scoped CREATEDB correction is superseded;
+no production database grant is implied. A private environment file supplies
+only disposable task values and never enters Git. The browser distribution
+came from matching local binaries after a failed fresh download; it is not
+claimed as an independently authenticated fresh download. No other session's
+services, profiles, dependencies or storage were changed. Cleanup checks the
+exact executable/PID/data identity and stops only this task's services.
+
+## Historical preparation record
 
 Status: **PREPARATION_ONLY / G2_BLOCKED**. Mode A covers source inspection,
 conditional package registration and integration requests. The requested R30

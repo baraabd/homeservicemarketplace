@@ -60,6 +60,11 @@ const ProviderVerificationPage = lazyPage(() =>
     default: module.ProviderVerificationPage,
   })),
 );
+const ManualPaymentPage = lazyPage(() =>
+  import('./features/manual-payments/ManualPaymentScreen').then((module) => ({
+    default: module.ManualPaymentPage,
+  })),
+);
 
 // ─── Router ───────────────────────────────────────────────────────────────────
 //
@@ -115,6 +120,9 @@ export const router = createBrowserRouter([
           // Applicants must be able to provide identity evidence before the
           // workspace becomes active. The API owns eligibility and actions.
           { path: 'provider/verification', Component: ProviderVerificationPage },
+          // Payment ownership, receipt access and available actions are checked
+          // by the API independently of current provider workspace access.
+          { path: 'provider/manual-payments/:paymentIntentId', Component: ManualPaymentPage },
           // Sprint 9B.16 — the V2 onboarding surface. Full-screen, so it is a
           // ROUTE rather than a tab inside ProviderApp: the task the provider
           // is on has to survive a reload and a login round-trip, and tab

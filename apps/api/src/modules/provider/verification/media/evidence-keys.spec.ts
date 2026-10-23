@@ -47,19 +47,23 @@ describe('isRestrictedKey — the backstop the PUBLIC route uses', () => {
     'verification/anything',
     '/verification/case-1/a.png',
     'VERIFICATION/case-1/a.png',
+    'financial-receipts/intent-1/receipt.png',
+    '/FINANCIAL-RECEIPTS/intent-1/receipt.pdf',
   ])('refuses %s', (key) => {
     expect(isRestrictedKey(key)).toBe(true);
   });
 
-  it.each(['requests/user-1/photo.jpg', 'avatars/user-1.png', 'verificationsomething/other.jpg'])(
-    'allows the genuinely public key %s',
-    (key) => {
-      // The third case matters: a prefix test that used bare startsWith would
-      // wrongly capture `verificationsomething/`, and over-blocking the public
-      // route is a real outage even if it fails safe.
-      expect(isRestrictedKey(key)).toBe(false);
-    },
-  );
+  it.each([
+    'requests/user-1/photo.jpg',
+    'avatars/user-1.png',
+    'verificationsomething/other.jpg',
+    'financial-receiptssomething/photo.jpg',
+  ])('allows the genuinely public key %s', (key) => {
+    // The third case matters: a prefix test that used bare startsWith would
+    // wrongly capture `verificationsomething/`, and over-blocking the public
+    // route is a real outage even if it fails safe.
+    expect(isRestrictedKey(key)).toBe(false);
+  });
 
   it('is a misconfiguration backstop, not an authorization mechanism', () => {
     // Documented so nobody later "simplifies" the restricted read path down to

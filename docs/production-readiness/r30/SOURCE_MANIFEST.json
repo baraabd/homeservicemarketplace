@@ -1,21 +1,31 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "sprint": "R30",
   "title": "Manual subscription payment rails and protected receipt review",
   "branch": "feat/r30-manual-payment-review",
-  "status": "LOCAL_POST_MEASUREMENT_CORRECTION_PASSED_REMOTE_PENDING",
-  "runtimeStatus": "NOT_IMPLEMENTED",
+  "status": "IMPLEMENTED_SOURCE_VERIFIED_REMOTE_PENDING",
+  "runtimeStatus": "IMPLEMENTED_LOCAL_SANDBOX_EVIDENCE_PASSED",
   "gate": "G2",
-  "gateDecision": "BLOCKED",
-  "preparationDate": "2026-10-22",
-  "preparationBaseSha": "96e92825f9b65cf124317f43b55ce42fc97f5b49",
-  "preparationBaseTreeSha": "68f4e926eabeb37bb70382c62b75272cf67bd02c",
-  "approvedExecutionBaseSha": null,
-  "approvedExecutionTreeSha": null,
+  "gateDecision": "ACCEPTED",
+  "publicationStatus": "OWNER_MERGED_AND_VERIFIED",
+  "executionDate": "2026-10-23",
+  "sessionId": "hsm-r30-590834e66da5",
+  "approvedExecutionBaseSha": "72b4aaeb0a71d806b7fca7363dd9ca59bbcee644",
+  "approvedExecutionTreeSha": "43e9c6a4e58cfb934b12789feeb38b588e1cb7c6",
+  "actualCheckoutStartSha": "986b4707776711e80564f0642133ede90ba16f3c",
+  "actualCheckoutStartTreeSha": "7ab683ea8c5304929a2fa51f1dc824c7cb46f7d5",
+  "publicationOverlay": {
+    "pr": 183,
+    "mergedBy": "baraabd",
+    "mergedAt": "2026-10-23T04:11:34Z",
+    "metadataFiles": 13,
+    "runtimeIdenticalToFrozenBase": true,
+    "verification": "docs/production-readiness/post-r18/gates/g2/PUBLICATION_VERIFICATION.json"
+  },
   "finalPublishedIdentity": {
-    "location": "English Draft PR body and production-governance-source artifact",
-    "status": "SUCCESSOR_EVIDENCE_PENDING",
-    "note": "The final commit/tree is recorded outside this hashed source after normal hooks and publication."
+    "location": "English draft PR body and production-governance-source artifact",
+    "status": "PENDING_FINAL_HOOKS_AND_PUBLICATION",
+    "note": "Final commit/tree identity is recorded outside this self-hashed source. Earlier G2 checks do not prove this candidate."
   },
   "prompt": {
     "path": "docs/production-readiness/r30/PROMPT.md",
@@ -35,396 +45,1060 @@
     "machineWideVersionChanged": false,
     "lockfileChanged": false
   },
-  "conditionalRegistration": {
-    "status": "PREPARED_FOR_REVIEW",
-    "sprintStatus": "PLANNED",
-    "waveLaneStatus": "BLOCKED",
-    "canonicalOwnedFiles": 70,
-    "runtimeLeases": [],
+  "ownership": {
+    "record": "docs/production-readiness/r30/RUNTIME_OWNERSHIP.json",
+    "canonicalLaneFiles": 58,
+    "sharedIntegrationFiles": 42,
+    "schemaWriter": "root",
+    "unmergedPeerSourceImported": false,
     "peerRecordsPreserved": true
   },
-  "g2PrerequisiteRepair": {
-    "status": "POST_MEASUREMENT_CORRECTION_IMPLEMENTED_LOCAL_PASSED_REMOTE_PENDING",
-    "originalProposedQueryLimits": [5, 10, 7, 3],
-    "budgetFileModified": false,
-    "policyApproval": null,
-    "leaseRecord": "docs/production-readiness/r30/OWNERSHIP.md",
-    "r30RuntimeAuthorized": false,
-    "priorSourceMeasurement": {
-      "sourceSha": "70b7225727d89df0fd040b00ebd37c09383e7d30",
-      "treeSha": "68f4e926eabeb37bb70382c62b75272cf67bd02c",
-      "runId": 39801354824,
-      "jobId": 119902596450,
-      "artifactId": 12435857950,
-      "zipSha256": "b98ae9b6cab5f69939570dfa3a99532acf4aec925f054e713b3a818ce400befa",
-      "budgetEvaluator": {
-        "exitCode": 1,
-        "passed": 48,
-        "failed": 4,
-        "scenarioCounts": [6, 13, 12, 9]
-      },
-      "scope": "Historical PR181 head with exact preparation base tree; not changed-source evidence."
-    },
-    "comparisonRepair": {
-      "path": ".github/workflows/r27-performance.yml",
-      "scope": "Add immutable PR-base repair-baseline with the final candidate harness; retain original G1/candidate jobs and strict comparator.",
-      "baselineSha": "96e92825f9b65cf124317f43b55ce42fc97f5b49",
-      "lockfileSha256": "38c763b2348edacd22c88f61d7efbae67455ca92e5fb23320e3a5543e0a9d7c4",
-      "comparatorModified": false,
-      "harnessSourceModified": false,
-      "requiredFinalStatus": "OBSERVED_COMPLETE_MATRIX",
-      "requiredMissingGroups": 0,
-      "priorG1Comparison": {
-        "runId": 39801354824,
-        "artifactId": 12436780241,
-        "zipSha256": "cc0c226d2dacc32bd468e56ffd2ce854b086ee0a2138b97af49c8b24aabcb105",
-        "exitCode": 1,
-        "reason": "incomparable lockfileSha256 after owner-merged security upgrades"
-      },
-      "finalMeasurements": "PENDING_PUBLICATION"
-    },
-    "firstPublishedCandidate": {
-      "prNumber": 182,
-      "sourceSha": "1a319133d387dd6747bfd412503f4458573cf10e",
-      "treeSha": "af041d3817c8ae0aaeab2b6b8833380b44540cb3",
-      "r27RunId": 39834776701,
-      "candidateArtifactId": 12451177878,
-      "candidateZipSha256": "6e6009bda9b8b22e9e2a23147c9b0c07d1518e6a8f0840c87b92420e3506f5d0",
-      "budgetEvaluator": {
-        "exitCode": 1,
-        "passed": 50,
-        "failed": 2,
-        "amplifiedScenarioCounts": [5, 10, 7, 3],
-        "failures": [
-          "provider bookings: large ServiceRequest sequential scan",
-          "admin financial bookings: large ServiceRequest sequential scan"
-        ],
-        "estimatedRequestRows": 10836
-      },
-      "ci": {
-        "successfulWorkflows": 11,
-        "successfulChecks": 37,
-        "officialCodeQLCheckId": 120021624217,
-        "officialCodeQLAppId": 57789,
-        "officialCodeQLAnnotations": 0
-      },
-      "sourceArtifact": {
-        "runId": 39834776565,
-        "artifactId": 12448889945,
-        "zipSha256": "80ffe345052de05a24853b59ec2ba13f1c8d621695614485ab1bcf29c66757bf",
-        "files": 2640,
-        "reconstructedTree": "af041d3817c8ae0aaeab2b6b8833380b44540cb3"
-      },
-      "repairComparison": {
-        "exitCode": 0,
-        "browserStatus": "OBSERVED_COMPLETE_MATRIX",
-        "pairedGroups": 48,
-        "missingGroups": 0,
-        "timingLimitation": "Intel/AMD host mismatch; hardware-confounded timing deltas"
-      },
-      "scope": "Historical first published source only; its green CI does not waive two failed artifact-level budgets or prove the corrective successor."
-    }
+  "implementation": {
+    "schemaMigration": "packages/database/prisma/migrations/20261023080000_r30_manual_receipts/migration.sql",
+    "newModels": 9,
+    "contract": "Manual payment API V1 / existing R24 ports",
+    "liveMethodsEnabled": false,
+    "productionPermissionGrants": false,
+    "realMerchantConfigured": false,
+    "r31ProductionParticipant": "INTEGRATION_PENDING",
+    "r32ProductionPolicyAndConsequences": "INTEGRATION_PENDING",
+    "hostedStorage": "EXTERNAL_BLOCKED",
+    "financialRetentionErasure": "POLICY_BLOCKED_AND_IMPLEMENTATION_PENDING",
+    "mergeOrDeploymentPerformed": false
   },
-  "governanceFixture": {
-    "path": ".github/scripts/g2-current-record.test.mjs",
-    "reproducedBefore": {
-      "passed": 63,
-      "failed": 1,
-      "reason": "R30: inconsistent Wave 3 bases in synthetic acceptedDouble"
+  "runtimeEvidence": {
+    "configurationFingerprint": "0ada271fa8805e7cd384d7f691a2935b7c0a83e54842811ea2e39e0999c7147c",
+    "postgres": "16.15 / task-owned native cluster / non-superuser CREATEDB test role",
+    "redis": "7.4.7 / task-owned authenticated instance / isolated real limiter buckets",
+    "clamav": "1.5.3 / official daily28161 main63 bytecode339",
+    "storage": "Task-private real local restricted disk",
+    "browser": {
+      "playwright": "1.62.1",
+      "chromium": "151.0.7922.34",
+      "revision": 1234,
+      "provenance": "LOCAL_MATCHING_DISTRIBUTION_COPY",
+      "matchingFiles": 591,
+      "freshDownloadAuthenticated": false,
+      "chromiumSha256": "0b20b130e7edd9dd51873be867761295fe0cfad490c2b9a64f95bd3cfc08fa71",
+      "headlessSha256": "e11fc9ce65c96313476f7ee9844b6fb6a9220fb048693cfe9eee00acf4170a9f"
     },
-    "afterFullSuite": {
-      "passed": 340,
+    "contractComponents": ["R31 transaction activation marker", "R32 refund eligibility policy"],
+    "realBoundaries": [
+      "HTTP and OTP sessions",
+      "CSRF and fresh RBAC",
+      "PostgreSQL constraints and atomic rollback",
+      "Redis Lua limiting",
+      "Private stored bytes and full hash",
+      "Real ClamAV scanning",
+      "Actual Chromium routes without API interception"
+    ]
+  },
+  "checks": {
+    "fullWebHermeticBeforeFinalScopedCorrections": {
+      "exitCode": 0,
+      "passed": 2579,
       "failed": 0,
       "skipped": 0,
-      "exitCode": 0
+      "todo": 0,
+      "reportSha256": "ced611486a75aa65676fde54391fefd520a2e43ed0608a47c3e4dce0db710034",
+      "scope": "Initial implemented runtime; subsequent corrections require scoped results and final-head CI."
     },
-    "productionValidatorModified": false
-  },
-  "verifiedSourceDigests": [
-    {
-      "path": "apps/api/src/modules/money/ports/activation.port.ts",
-      "sha256": "5f9737d2204f0fffd5345a59b180b15043a28200d34536ba72c9cf7accbb921e"
-    },
-    {
-      "path": "apps/api/src/modules/money/ports/collection.port.ts",
-      "sha256": "e96d707809410056356b50ff5086be7d8bc71693445fb752fcf090ac7b6e23d3"
-    },
-    {
-      "path": "apps/api/src/modules/money/ports/finance-read.port.ts",
-      "sha256": "daa60c7398fa4b164375c0b7e294efa593d3f4217d4279220dcd3fb252c4bf80"
-    },
-    {
-      "path": "apps/api/src/modules/money/ports/refund.port.ts",
-      "sha256": "36b8db533189f787fdb8cef89c69f43eac39dc020d582d69904438c1bdc39dfb"
-    },
-    {
-      "path": "apps/api/src/modules/money/application/money-command.service.ts",
-      "sha256": "c49c31e7b5ded89b1b18d09bd4f3a6c29116f0610093faecb31822afca88846e"
-    },
-    {
-      "path": "apps/api/src/modules/money/money.module.ts",
-      "sha256": "5defc241c2a93218dc4943f26f23eef55b1824bd72e7d4080f31d359bdd3e7c5"
-    },
-    {
-      "path": "apps/api/src/infrastructure/storage/restricted-object-storage.port.ts",
-      "sha256": "44a60daf2337a135161c117b1ecc76893a651433c637bc79f6bc3bc493d212eb"
-    },
-    {
-      "path": "apps/api/src/infrastructure/storage/local-disk-restricted-storage.adapter.ts",
-      "sha256": "43dffc8fbd7f45a8fb5a7e28bb6c4cd91dd075b9b62c194a0d6865b82ff02c0f"
-    },
-    {
-      "path": "apps/api/src/infrastructure/storage/s3-restricted-storage.adapter.ts",
-      "sha256": "a41bc062fa0f901a6eac11834f5feb16dbb94ceeff408db78097d62d6b7ed60c"
-    },
-    {
-      "path": "apps/api/src/modules/provider/verification/media/evidence-keys.ts",
-      "sha256": "c1e1022e2e03cce1c0bbe71a4cbe38f899952a890582fff95db0a1d0ec4c420e"
-    },
-    {
-      "path": "apps/api/src/modules/provider/verification/media/evidence-scan.service.ts",
-      "sha256": "12c888fa959535b36c04648e585765433e2c9943651a382bdee820d1b8a18e96"
-    },
-    {
-      "path": "apps/api/src/modules/provider/verification/media/evidence-cleanup.service.ts",
-      "sha256": "8e133a638522df8976eb730baded482404803ca6e406661e389e82395ff304ce"
-    },
-    {
-      "path": "apps/api/src/modules/provider/verification/media/clamav-scanner.adapter.ts",
-      "sha256": "d90f3ea6877a2d9ee329faf3e5e2e5e20bf94174cac59dc98f8cd90387f037e8"
-    },
-    {
-      "path": "packages/database/prisma/schema.prisma",
-      "sha256": "09a67fe6add9c8acc69ad1b74490b6997de40fbb8d3d20cefa30dc6023f318d6"
-    },
-    {
-      "path": "packages/database/src/seed.ts",
-      "sha256": "591d3bdb22431a035aede8012723254f66ba3718c920656015c8c9fa5268beb9"
-    },
-    {
-      "path": "packages/contracts/src/money/wire.ts",
-      "sha256": "9d3de6c1fcfced28d3c539fc366a80476ef20fffb38a05a37dc7a652b74776f5"
-    },
-    {
-      "path": "packages/contracts/src/money/api-contracts.ts",
-      "sha256": "e22fc5ec3b361fca2edb99977f8c5f29ab037e2684d118309b1007c0eb2a2ec0"
-    },
-    {
-      "path": "scripts/perf/post-r18/budgets.proposed.json",
-      "sha256": "f88e7225cba5daece30877a4d98580b004e9684a2fdf8c11108819013e13afb8"
-    },
-    {
-      "path": "scripts/perf/post-r18/query-profile.mjs",
-      "sha256": "4e1049c81a65662e45f63942e2048355fb3fefed503d0c82f5c4f6fac7eec66c"
-    },
-    {
-      "path": "docs/production-readiness/post-r18/gates/g1/SOURCE_MANIFEST.json",
-      "sha256": "af3426ab11066bdc88818fbdcbef2ea853c83fb462fcdc5975d16880ef1d3eb1"
-    },
-    {
-      "path": "docs/production-readiness/post-r18/gates/g2/SOURCE_MANIFEST.json",
-      "sha256": "730fffe9c67f9d50a4196051f75ae2a979f529b30d7d76495d817e875d382a27"
-    },
-    {
-      "path": "docs/production-readiness/post-r18/gates/g2/ACCEPTANCE_EVIDENCE.json",
-      "sha256": "4bca096d21e15de66630553ba9fc5de85ac5a5de86e6f916b79c798f036f639f"
-    },
-    {
-      "path": "docs/production-readiness/post-r18/waves/wave-02.closeout.json",
-      "sha256": "3b76f9fe25f4dee56aa2f29414e560abd417e5121b5cbb39c4e8b7cda443a9d7"
-    }
-  ],
-  "checks": {
-    "dependencyAudit": {
+    "fullApiHermeticBeforeFinalScopedCorrections": {
       "exitCode": 0,
-      "vulnerabilities": 0
+      "passed": 4928,
+      "failed": 0,
+      "skipped": 1794,
+      "todo": 0,
+      "reportSha256": "5c40172dede642e3b62d727676c70dc1c1d229c9fdefd44606fdf5ce7c3e0321",
+      "scope": "Initial implemented runtime; subsequent corrections require scoped results and final-head CI."
+    },
+    "fullDependencyAudit": {
+      "exitCode": 0,
+      "vulnerabilities": 0,
+      "logSha256": "ee8d3e62cc3d9f3446700242bee80cd75925702dc638abca02f55f80802e44b3"
     },
     "productionDependencyAudit": {
       "exitCode": 0,
-      "vulnerabilities": 0
+      "vulnerabilities": 0,
+      "logSha256": "f5c4aaa7be50fba9f6c988d5d4af74a0ea2ffad608c524d33eb45cfc41916ecc"
     },
-    "apiChecks": {
-      "lintExitCode": 0,
-      "typecheckExitCode": 0,
-      "buildExitCode": 0,
-      "defaultSuite": {
-        "exitCode": 0,
-        "passed": 4873,
-        "failed": 0,
-        "skipped": 1750,
-        "passedSuites": 265,
-        "skippedSuites": 92,
-        "environment": "Existing reusable-verify.yml test placeholders; real-service gates remain off for this default suite.",
-        "firstInvocation": "Aborted on missing required DATABASE_URL/JWT_ACCESS_SECRET; corrected command environment, no validator/test change."
+    "finalApiAndSharedBoundaries": {
+      "status": "PASS",
+      "exitCode": 0,
+      "passed": 213,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0,
+      "reportedSuites": 14,
+      "reportBasename": "hsm-r30-590834-final-api-units.json",
+      "reportSha256": "c232c7e9551cb66f84f85ee50d30d511e7243454239545df9c7a38f3660debae",
+      "r30UnitSubset": {
+        "suites": 8,
+        "passed": 51,
+        "scope": "Included in213; not an additive count."
+      },
+      "postNormalHooks": true
+    },
+    "realManualServices": {
+      "status": "PASS",
+      "exitCode": 0,
+      "passed": 16,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0,
+      "reportedSuites": 1,
+      "reportBasename": "hsm-r30-590834-final-manual-integration.json",
+      "reportSha256": "961e9eab355a9a65a586a92e023d4ee8434c16d148d46249e0e0ee6ac156229c",
+      "faultInjection": "Concurrent error ordering uses held processExternalEvent calls over real PostgreSQL; subsequent failure uses the actual unavailable activation participant. This is explicit fault injection, not a real external transfer.",
+      "postNormalHooks": true
+    },
+    "finalWebFeature": {
+      "status": "PASS",
+      "exitCode": 0,
+      "passed": 54,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0,
+      "reportedSuites": 12,
+      "reportBasename": "hsm-r30-590834-final-web-feature.json",
+      "reportSha256": "a6c7345dd32d14ee99cda29f527193b5992ae78aed683ad2546911be442d3a3d"
+    },
+    "realBrowserHarness": {
+      "status": "PASS",
+      "exitCode": 0,
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0,
+      "reportedSuites": 1,
+      "reportBasename": "hsm-r30-590834-browser-jest.json",
+      "reportSha256": "35b61b18035dfe2919d35d4073fd6ccd82e75111a3b0d7b3e824966e61674b09",
+      "postNormalHooks": true
+    },
+    "realBrowserScenarios": {
+      "status": "PASS",
+      "expected": 2,
+      "unexpected": 0,
+      "skipped": 0,
+      "flaky": 0,
+      "retries": 0,
+      "startTime": "2026-10-23T05:44:29.243Z",
+      "durationMs": 27296.029,
+      "reportSha256": "1e5fb30333243f7bdb0254a79988fd0ac266d33efb4f429d1d02433eaf1670cf",
+      "responsiveAxeChecks": [
+        {
+          "area": "provider",
+          "language": "en",
+          "width": 320,
+          "violations": 0
+        },
+        {
+          "area": "provider",
+          "language": "en",
+          "width": 390,
+          "violations": 0
+        },
+        {
+          "area": "provider",
+          "language": "en",
+          "width": 430,
+          "violations": 0
+        },
+        {
+          "area": "provider",
+          "language": "en",
+          "width": 768,
+          "violations": 0
+        },
+        {
+          "area": "provider",
+          "language": "en",
+          "width": 1024,
+          "violations": 0
+        },
+        {
+          "area": "provider",
+          "language": "en",
+          "width": 1440,
+          "violations": 0
+        },
+        {
+          "area": "provider",
+          "language": "ar",
+          "width": 320,
+          "violations": 0
+        },
+        {
+          "area": "provider",
+          "language": "ar",
+          "width": 390,
+          "violations": 0
+        },
+        {
+          "area": "provider",
+          "language": "ar",
+          "width": 430,
+          "violations": 0
+        },
+        {
+          "area": "provider",
+          "language": "ar",
+          "width": 768,
+          "violations": 0
+        },
+        {
+          "area": "provider",
+          "language": "ar",
+          "width": 1024,
+          "violations": 0
+        },
+        {
+          "area": "provider",
+          "language": "ar",
+          "width": 1440,
+          "violations": 0
+        },
+        {
+          "area": "review",
+          "language": "en",
+          "width": 320,
+          "violations": 0
+        },
+        {
+          "area": "review",
+          "language": "en",
+          "width": 390,
+          "violations": 0
+        },
+        {
+          "area": "review",
+          "language": "en",
+          "width": 430,
+          "violations": 0
+        },
+        {
+          "area": "review",
+          "language": "en",
+          "width": 768,
+          "violations": 0
+        },
+        {
+          "area": "review",
+          "language": "en",
+          "width": 1024,
+          "violations": 0
+        },
+        {
+          "area": "review",
+          "language": "en",
+          "width": 1440,
+          "violations": 0
+        },
+        {
+          "area": "review",
+          "language": "ar",
+          "width": 320,
+          "violations": 0
+        },
+        {
+          "area": "review",
+          "language": "ar",
+          "width": 390,
+          "violations": 0
+        },
+        {
+          "area": "review",
+          "language": "ar",
+          "width": 430,
+          "violations": 0
+        },
+        {
+          "area": "review",
+          "language": "ar",
+          "width": 768,
+          "violations": 0
+        },
+        {
+          "area": "review",
+          "language": "ar",
+          "width": 1024,
+          "violations": 0
+        },
+        {
+          "area": "review",
+          "language": "ar",
+          "width": 1440,
+          "violations": 0
+        }
+      ],
+      "enlargement": "Explicit CSS content zoom200%; not browser-toolbar or OS zoom. Review columns asserted stacked in both languages.",
+      "inspectedScreenshots": [
+        "review-en-200pct-content.png",
+        "review-ar-200pct-content.png",
+        "review-ar-320.png",
+        "review-ar-1440.png",
+        "provider-ar-320.png",
+        "provider-en-1440.png",
+        "review-current-pdf.png"
+      ],
+      "visualInspectionRunStartTime": "2026-10-23T05:37:16.013Z",
+      "postNormalHooks": true
+    },
+    "apiBuild": {
+      "status": "PASS",
+      "exitCode": 0,
+      "logSha256": "bba97a05200257c1e8828eb6a85d7743d1696ee027b2f62d83617aa3da428a43"
+    },
+    "apiLint": {
+      "status": "PASS",
+      "exitCode": 0,
+      "logSha256": "a400344c2d233e85775fe83f96d9ea032e3a4bd788268308a3373b0b74b4105a"
+    },
+    "apiTypecheck": {
+      "status": "PASS",
+      "exitCode": 0,
+      "logSha256": "a8958d9ddfdd92f3840580672bee474712fe7ee88efb55388ca65d9ec30ab9c9"
+    },
+    "rootSharedLint": {
+      "status": "PASS",
+      "exitCode": 0,
+      "logSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "governance": {
+      "status": "PASS",
+      "exitCode": 0,
+      "passed": 480,
+      "failed": 0,
+      "skipped": 0,
+      "logSha256": "a97f9905c23101d4d7032d13aa9bd3a287178592fed8d1a38a78038ce79a9fce"
+    },
+    "canonicalRecords": {
+      "status": "PASS",
+      "exitCode": 0,
+      "commands": [
+        "node .github/scripts/g2-record.mjs --check",
+        "node .github/scripts/g2-record.mjs --ready R30",
+        "node .github/scripts/sprint-registry.mjs",
+        "node .github/scripts/production-governance.mjs",
+        "node .github/scripts/release-baseline.mjs"
+      ],
+      "scope": "Source record consistency, not remote authentication or branch protection."
+    },
+    "remoteFinalHead": {
+      "status": "PENDING_PUBLICATION",
+      "location": "English draft PR body; required exact-head CI and official CodeQL."
+    },
+    "webProductionBuild": {
+      "status": "PASS",
+      "exitCode": 0,
+      "apiUrl": "https://api.example.com",
+      "scope": "CI non-live build input only",
+      "logSha256": "9ecd47b2b43450d248d32be79afc7fa0bf1b5fa8f93d373416795ff07d06488e"
+    },
+    "normalHookFormatting": {
+      "status": "PASS",
+      "scope": "Normal lint-staged hooks normalized method-chain wrapping in two source files. All213 scoped API/shared tests,16 real-service cases and both real browser scenarios were repeated and passed after hooks. No assertion or behavior was changed by the inspected formatting diff.",
+      "paths": [
+        "apps/api/src/modules/money/manual-review/receipt-acceptance.participant.spec.ts",
+        "apps/api/src/modules/money/manual-review/receipt-upload.service.ts"
+      ]
+    }
+  },
+  "verifiedSourceDigests": [
+    {
+      "path": ".github/scripts/merge-integrity.test.mjs",
+      "sha256": "34a63fe5a8b0923be66892cbcf409cd0f64482cb32026d2029148be8e4c0c6d0"
+    },
+    {
+      "path": ".github/workflows/ci.yml",
+      "sha256": "cd88606fccf5c3ad0d2c847221f920983bccb66c4bfd01d6369dabbf2bc0eb67"
+    },
+    {
+      "path": "apps/api/src/main.ts",
+      "sha256": "bcc829370199a7043a8de8f81d848055147e22e928343f9574f4b4f15067013e"
+    },
+    {
+      "path": "apps/api/src/modules/iam/audit/audit.service.spec.ts",
+      "sha256": "8b5472c0e0e6142937a9a73e03b9ddaaee0c0d3898311d25de21b84a93cba15f"
+    },
+    {
+      "path": "apps/api/src/modules/iam/audit/audit.service.ts",
+      "sha256": "b6817bfbc386819ee874b08f79891c140cd365bae65f77975c9b7040501fa993"
+    },
+    {
+      "path": "apps/api/src/modules/money/adapters/manual/manual-collection.adapter.spec.ts",
+      "sha256": "4d1aa231ba3a3ab5cdef58bfac386e53fa0e4b95a7dd527354d5574f566d3cae"
+    },
+    {
+      "path": "apps/api/src/modules/money/adapters/manual/manual-collection.adapter.ts",
+      "sha256": "015c7073a646dd0c6427a663918d33d52abbd67fc12f0b2e213b6f189d424b83"
+    },
+    {
+      "path": "apps/api/src/modules/money/adapters/manual/manual-rail.config.spec.ts",
+      "sha256": "15d1e35c20951d8e530660d8f584bde1add497f3bdd64848d5671d421126625d"
+    },
+    {
+      "path": "apps/api/src/modules/money/adapters/manual/manual-rail.config.ts",
+      "sha256": "4896e5e8c196ef992aaa33a8967c9bb6d76b88e554078e1a003d84c04319825d"
+    },
+    {
+      "path": "apps/api/src/modules/money/adapters/manual/manual-refund.adapter.spec.ts",
+      "sha256": "09c932e4ad07e507440c86c49fc15ae0020087bb8b178c5a9e22b1473eca85e2"
+    },
+    {
+      "path": "apps/api/src/modules/money/adapters/manual/manual-refund.adapter.ts",
+      "sha256": "94d37a8bfaebe8d67d6785a1be057e09e814a09ffc236e0bd68f5f066211f8f3"
+    },
+    {
+      "path": "apps/api/src/modules/money/application/money-command.service.ts",
+      "sha256": "d5ad0c06f7cd4e9e579570b5abb0442bef77645991bdf63ee199ffda6803d4d0"
+    },
+    {
+      "path": "apps/api/src/modules/money/manual-review/manual-event-processing.job.spec.ts",
+      "sha256": "8a05e96320d6d73205972a6d0e5fbb3cfd674edc6360fb16392078c36767f2b2"
+    },
+    {
+      "path": "apps/api/src/modules/money/manual-review/manual-event-processing.job.ts",
+      "sha256": "8ddea538efdad199a470df0df9efee6b0ce531119bef444c1306507ecf061ca2"
+    },
+    {
+      "path": "apps/api/src/modules/money/manual-review/manual-refund-review.service.ts",
+      "sha256": "64fd34f3437cce2451750be40d9647ac31ada3edf1ebcb8f748f552f1255cad4"
+    },
+    {
+      "path": "apps/api/src/modules/money/manual-review/manual-review.controller.ts",
+      "sha256": "db5df702f4c02cc25717d57f6d62d71c25e19ff6b828fa833e715b0de084ad17"
+    },
+    {
+      "path": "apps/api/src/modules/money/manual-review/manual-review.module.ts",
+      "sha256": "2eeea25d36a5b8d44f9448d8b088648e080b5ca2a1ce06645d7278b4b6f355ba"
+    },
+    {
+      "path": "apps/api/src/modules/money/manual-review/manual-review.service.spec.ts",
+      "sha256": "8f599b069d34195e21e26aacb955966fcd115d39b0c4297c1733097c042b26fb"
+    },
+    {
+      "path": "apps/api/src/modules/money/manual-review/manual-review.service.ts",
+      "sha256": "0623f0c4ed94f79a93bd17e4f02c92a9c0ea8c59f2a807fdaee9e567f949bca4"
+    },
+    {
+      "path": "apps/api/src/modules/money/manual-review/receipt-acceptance.participant.spec.ts",
+      "sha256": "2b57afa7fe8c53fd162b79c28d6a804d7639e6484157c6026ffc3e3dcbd7765e"
+    },
+    {
+      "path": "apps/api/src/modules/money/manual-review/receipt-acceptance.participant.ts",
+      "sha256": "0187460f3055d6c39d10a9b62965003cf5629aae9218ae1364ba124a3983f995"
+    },
+    {
+      "path": "apps/api/src/modules/money/manual-review/receipt-read.service.spec.ts",
+      "sha256": "e2b2a5bae041fde8749f780169779026f8290e4b20f887487f24c1c5276a3a9e"
+    },
+    {
+      "path": "apps/api/src/modules/money/manual-review/receipt-read.service.ts",
+      "sha256": "f7a0b5acf5dc247b254e642a2fa57bb1d4b65e13fea035241119bef161aee8b0"
+    },
+    {
+      "path": "apps/api/src/modules/money/manual-review/receipt-upload.service.spec.ts",
+      "sha256": "089792634e3f8f7b55f330b184e1f129da5c76e0ef8eaf92f9acdfb96bac9c9f"
+    },
+    {
+      "path": "apps/api/src/modules/money/manual-review/receipt-upload.service.ts",
+      "sha256": "9a939d3dfb5e89f8e645f905858dc422859cc9dea97072fcb80ffc9d2ddcb520"
+    },
+    {
+      "path": "apps/api/src/modules/money/money.module.spec.ts",
+      "sha256": "917898a45d471ceea46cd36d1bb2be02978e8a3524521242d06015f3d0a52aee"
+    },
+    {
+      "path": "apps/api/src/modules/money/money.module.ts",
+      "sha256": "478b70626a742ba58c86c5782de76b6f15795851b25e1a245f88090b04b774a4"
+    },
+    {
+      "path": "apps/api/src/modules/money/ports/collection.port.ts",
+      "sha256": "b6cc60e09e6e06d46bb44b9331a0f82150e69e4910c50be52e604d37eca41dac"
+    },
+    {
+      "path": "apps/api/src/modules/provider/verification/media/evidence-cleanup.service.ts",
+      "sha256": "a917fd388d92f685314365dc91ecbc8948aa3101da15cb4f8b8d3a6c55279f21"
+    },
+    {
+      "path": "apps/api/src/modules/provider/verification/media/evidence-keys.spec.ts",
+      "sha256": "020aa6081299f5db7ba9cdb1d372dbae28d9b97f8bba2a20583bc7ada1b922fd"
+    },
+    {
+      "path": "apps/api/src/modules/provider/verification/media/evidence-keys.ts",
+      "sha256": "6f9a176b7600a73f107ef5a88636f7dcf348dd5beaf5b9cbd1df59dde0b557b0"
+    },
+    {
+      "path": "apps/api/src/modules/provider/verification/media/evidence-scan.service.spec.ts",
+      "sha256": "5fd154ed730706fde08ed95b9ae7e9af3228ad075f233f3d6e40dc1a9ebe688e"
+    },
+    {
+      "path": "apps/api/src/modules/provider/verification/media/evidence-scan.service.ts",
+      "sha256": "5178913ff23bd9075f38288c08f7c96cd6aa54c77d80029b1347705d438204b9"
+    },
+    {
+      "path": "apps/api/src/modules/provider/verification/retention/retention.repository.ts",
+      "sha256": "1292f461aa0aa9db28a30268922cdaf459482a7060e59ad7256f5bb2d8c091e1"
+    },
+    {
+      "path": "apps/api/test/e2e/r30-browser-runtime.e2e.spec.ts",
+      "sha256": "d425696633d5e638660f70f4dccc28722e3e96313dcbe27cef0f5a4877470809"
+    },
+    {
+      "path": "apps/api/test/e2e/restricted-media-boundary.e2e.spec.ts",
+      "sha256": "139a93a243559ef6e0c41b7e90c907203e1262af7fab59d723f0ac6a535a15ac"
+    },
+    {
+      "path": "apps/api/test/integration/r30-manual-payments.integration.spec.ts",
+      "sha256": "8d0d5f4df8f677c6ca5284fad90e5ef60cd5f945a786ee83257f14737b8edb92"
+    },
+    {
+      "path": "apps/api/test/support/r24-money-http.fixture.ts",
+      "sha256": "96001da6f407acdc7878485d8968cd5b034850c1e7f58f6308badf17ccf84efb"
+    },
+    {
+      "path": "apps/api/test/support/r30-manual-http.fixture.ts",
+      "sha256": "3b2f697902b59a983c52659b3f92b3b612d98712585530f7d62b6ebde54a6698"
+    },
+    {
+      "path": "apps/web/e2e/r30-manual-payments/manual-payments.real-api.spec.ts",
+      "sha256": "055af51c3f94ab86fa3d60aea74edcbbe02776aae0690baa86b3484ac220583e"
+    },
+    {
+      "path": "apps/web/playwright.config.ts",
+      "sha256": "c8f9cdde06f640cc09330b28af464e0bf5d517722bd2c727eb058bcc4762ef3b"
+    },
+    {
+      "path": "apps/web/playwright.r30.config.ts",
+      "sha256": "466fc40c5231e4d4fc4d05e16d0fa08578a199937ee4e5ec74911100096558c0"
+    },
+    {
+      "path": "apps/web/src/app/components/admin/AdminRouteContent.tsx",
+      "sha256": "061ba8cf2efc70a0297f7216e3c3c4186352c8af4ee155aa15a407f6b6f9da13"
+    },
+    {
+      "path": "apps/web/src/app/components/admin/AdminRoutes.test.tsx",
+      "sha256": "2c481623a31f4f47c23a54596b9f0cc214d137625c12833cb5ee55059b877f7e"
+    },
+    {
+      "path": "apps/web/src/app/components/admin/admin-routes.ts",
+      "sha256": "ea91261c8c271023ab0d1b0447bcb91b4e2fc31323afe311d631ed629907ab72"
+    },
+    {
+      "path": "apps/web/src/app/features/manual-payments/ManualPaymentScreen.test.tsx",
+      "sha256": "c98485cf98fcc7c8a254e38709d5811545605dfcc4873f2192b5b989abfe02f9"
+    },
+    {
+      "path": "apps/web/src/app/features/manual-payments/ManualPaymentScreen.tsx",
+      "sha256": "c6d09a1859f1a6c8ee771b893814945bbf994c3d1ee1d8fb38f4a576b912aef3"
+    },
+    {
+      "path": "apps/web/src/app/features/manual-payments/ManualReviewScreen.test.tsx",
+      "sha256": "750bfeea4e37c173656c3acdd76cf2ae02b6a0ccf044584f544034dc502336b1"
+    },
+    {
+      "path": "apps/web/src/app/features/manual-payments/ManualReviewScreen.tsx",
+      "sha256": "2c683cd613e40eb16b40f1970849d033e65a2a08dd493d7bb5dbf54dd76014c7"
+    },
+    {
+      "path": "apps/web/src/app/features/manual-payments/ReceiptPreview.test.tsx",
+      "sha256": "66e1341e363e14c3038c9ce3090ac1faaf9d5e804a62f331adaaad36f4895f35"
+    },
+    {
+      "path": "apps/web/src/app/features/manual-payments/ReceiptPreview.tsx",
+      "sha256": "00ccdd8eba7c08acb01edb2f8ac3d28d345311048866011e7521f3fc8226ca20"
+    },
+    {
+      "path": "apps/web/src/app/features/manual-payments/index.ts",
+      "sha256": "71bc94393037692c7582066c64a41bc812275a11a50495f709c1a558185d81e2"
+    },
+    {
+      "path": "apps/web/src/app/features/manual-payments/manual-payments.api.test.ts",
+      "sha256": "c10f4cfcb5e2c8351f972ee523aa95536cf616c8df2ae7b93182e453ad3915d8"
+    },
+    {
+      "path": "apps/web/src/app/features/manual-payments/manual-payments.api.ts",
+      "sha256": "d767783cfc84dc6e957370cb0f09b28350047bac0557a5260a8dc3dcd96ec15b"
+    },
+    {
+      "path": "apps/web/src/app/features/manual-payments/manual-payments.copy.test.ts",
+      "sha256": "099f5b78a86b576d7747fd28dfe8a3af488f75211b4af87e0751b2c8e10b0b6c"
+    },
+    {
+      "path": "apps/web/src/app/features/manual-payments/manual-payments.copy.ts",
+      "sha256": "b765bb2c1b40fa82eff96d1088d57a7d65958491b614eba4dd5b990ca14e8e82"
+    },
+    {
+      "path": "apps/web/src/app/features/manual-payments/manual-payments.css",
+      "sha256": "a4936056895743d08e0de275cdd2f237bb1260d531862db8407c4342ebe8645c"
+    },
+    {
+      "path": "apps/web/src/app/features/manual-payments/useManualPaymentResource.test.tsx",
+      "sha256": "c98e56b6424630aefb95d6edc160c6ebb87a82033241e89530af28704341a132"
+    },
+    {
+      "path": "apps/web/src/app/features/manual-payments/useManualPaymentResource.ts",
+      "sha256": "af5788b89759262abacabf58ce1c7d67c4f7b5870c59a1746884a4e0dcd6c066"
+    },
+    {
+      "path": "apps/web/src/app/routes.ts",
+      "sha256": "52bb97df4f455803f71d1709fcdc105d9e4a97ad336e08767fafd0139d9f4700"
+    },
+    {
+      "path": "packages/contracts/src/money/api-contracts.ts",
+      "sha256": "a27d68afa0f9e2fb5af4a6283751b3053e00e5ac6c2c0af5fab02f0e3889e3cc"
+    },
+    {
+      "path": "packages/contracts/src/money/index.ts",
+      "sha256": "a8afb2608a352ebe97e33b442f9f15d051260c959d44f3c1c967c68bc9e8c5a6"
+    },
+    {
+      "path": "packages/contracts/src/money/manual-payment-contracts.ts",
+      "sha256": "0896c50ba23ea11141824ab51333f3f89a3bfbb4c794dca0eba0cb7991c6f403"
+    },
+    {
+      "path": "packages/database/prisma/migrations/20261023080000_r30_manual_receipts/migration.sql",
+      "sha256": "c4a0609eff8e3e3abad33b6dc50f42d0f9be5dffa74db1cc69287aa97ca78cd3"
+    },
+    {
+      "path": "packages/database/prisma/schema.prisma",
+      "sha256": "8d408b8219f8aa8c1ededc1d50cd8261adddc07f716261c2ce8432b52e946515"
+    },
+    {
+      "path": "packages/database/src/seed.ts",
+      "sha256": "496bbcfe12f3bdee38d16e6f2c5d66b5decb2f3b97f75ffbcbb5f26b8f608f1a"
+    }
+  ],
+  "historyScope": "Historical preparation values below are preserved provenance and do not describe current R30 implementation or G2 status.",
+  "historicalPreparation": {
+    "schemaVersion": 1,
+    "sprint": "R30",
+    "title": "Manual subscription payment rails and protected receipt review",
+    "branch": "feat/r30-manual-payment-review",
+    "status": "LOCAL_POST_MEASUREMENT_CORRECTION_PASSED_REMOTE_PENDING",
+    "runtimeStatus": "NOT_IMPLEMENTED",
+    "gate": "G2",
+    "gateDecision": "BLOCKED",
+    "preparationDate": "2026-10-22",
+    "preparationBaseSha": "96e92825f9b65cf124317f43b55ce42fc97f5b49",
+    "preparationBaseTreeSha": "68f4e926eabeb37bb70382c62b75272cf67bd02c",
+    "approvedExecutionBaseSha": null,
+    "approvedExecutionTreeSha": null,
+    "finalPublishedIdentity": {
+      "location": "English Draft PR body and production-governance-source artifact",
+      "status": "SUCCESSOR_EVIDENCE_PENDING",
+      "note": "The final commit/tree is recorded outside this hashed source after normal hooks and publication."
+    },
+    "prompt": {
+      "path": "docs/production-readiness/r30/PROMPT.md",
+      "suppliedDate": "2026-10-18",
+      "originalBytes": 12334,
+      "originalSha256": "b5812e133c542f7b1f1f02854d4a4a4678874ef473c4e8d7090a9499ba283e85",
+      "retainedSha256": "844e92e01fa40161750ac608678ed7d9758ed72a253cf06618194701ed25ef3e",
+      "formatting": "Original content retained; repository formatter may normalize Markdown whitespace.",
+      "retainedBytes": 12335
+    },
+    "toolchain": {
+      "node": "24.21.0",
+      "pnpm": "10.32.1",
+      "prisma": "6.12.0",
+      "frozenInstallExitCode": 0,
+      "guardedGenerateExitCode": 0,
+      "machineWideVersionChanged": false,
+      "lockfileChanged": false
+    },
+    "conditionalRegistration": {
+      "status": "PREPARED_FOR_REVIEW",
+      "sprintStatus": "PLANNED",
+      "waveLaneStatus": "BLOCKED",
+      "canonicalOwnedFiles": 70,
+      "runtimeLeases": [],
+      "peerRecordsPreserved": true
+    },
+    "g2PrerequisiteRepair": {
+      "status": "POST_MEASUREMENT_CORRECTION_IMPLEMENTED_LOCAL_PASSED_REMOTE_PENDING",
+      "originalProposedQueryLimits": [5, 10, 7, 3],
+      "budgetFileModified": false,
+      "policyApproval": null,
+      "leaseRecord": "docs/production-readiness/r30/OWNERSHIP.md",
+      "r30RuntimeAuthorized": false,
+      "priorSourceMeasurement": {
+        "sourceSha": "70b7225727d89df0fd040b00ebd37c09383e7d30",
+        "treeSha": "68f4e926eabeb37bb70382c62b75272cf67bd02c",
+        "runId": 39801354824,
+        "jobId": 119902596450,
+        "artifactId": 12435857950,
+        "zipSha256": "b98ae9b6cab5f69939570dfa3a99532acf4aec925f054e713b3a818ce400befa",
+        "budgetEvaluator": {
+          "exitCode": 1,
+          "passed": 48,
+          "failed": 4,
+          "scenarioCounts": [6, 13, 12, 9]
+        },
+        "scope": "Historical PR181 head with exact preparation base tree; not changed-source evidence."
+      },
+      "comparisonRepair": {
+        "path": ".github/workflows/r27-performance.yml",
+        "scope": "Add immutable PR-base repair-baseline with the final candidate harness; retain original G1/candidate jobs and strict comparator.",
+        "baselineSha": "96e92825f9b65cf124317f43b55ce42fc97f5b49",
+        "lockfileSha256": "38c763b2348edacd22c88f61d7efbae67455ca92e5fb23320e3a5543e0a9d7c4",
+        "comparatorModified": false,
+        "harnessSourceModified": false,
+        "requiredFinalStatus": "OBSERVED_COMPLETE_MATRIX",
+        "requiredMissingGroups": 0,
+        "priorG1Comparison": {
+          "runId": 39801354824,
+          "artifactId": 12436780241,
+          "zipSha256": "cc0c226d2dacc32bd468e56ffd2ce854b086ee0a2138b97af49c8b24aabcb105",
+          "exitCode": 1,
+          "reason": "incomparable lockfileSha256 after owner-merged security upgrades"
+        },
+        "finalMeasurements": "PENDING_PUBLICATION"
+      },
+      "firstPublishedCandidate": {
+        "prNumber": 182,
+        "sourceSha": "1a319133d387dd6747bfd412503f4458573cf10e",
+        "treeSha": "af041d3817c8ae0aaeab2b6b8833380b44540cb3",
+        "r27RunId": 39834776701,
+        "candidateArtifactId": 12451177878,
+        "candidateZipSha256": "6e6009bda9b8b22e9e2a23147c9b0c07d1518e6a8f0840c87b92420e3506f5d0",
+        "budgetEvaluator": {
+          "exitCode": 1,
+          "passed": 50,
+          "failed": 2,
+          "amplifiedScenarioCounts": [5, 10, 7, 3],
+          "failures": [
+            "provider bookings: large ServiceRequest sequential scan",
+            "admin financial bookings: large ServiceRequest sequential scan"
+          ],
+          "estimatedRequestRows": 10836
+        },
+        "ci": {
+          "successfulWorkflows": 11,
+          "successfulChecks": 37,
+          "officialCodeQLCheckId": 120021624217,
+          "officialCodeQLAppId": 57789,
+          "officialCodeQLAnnotations": 0
+        },
+        "sourceArtifact": {
+          "runId": 39834776565,
+          "artifactId": 12448889945,
+          "zipSha256": "80ffe345052de05a24853b59ec2ba13f1c8d621695614485ab1bcf29c66757bf",
+          "files": 2640,
+          "reconstructedTree": "af041d3817c8ae0aaeab2b6b8833380b44540cb3"
+        },
+        "repairComparison": {
+          "exitCode": 0,
+          "browserStatus": "OBSERVED_COMPLETE_MATRIX",
+          "pairedGroups": 48,
+          "missingGroups": 0,
+          "timingLimitation": "Intel/AMD host mismatch; hardware-confounded timing deltas"
+        },
+        "scope": "Historical first published source only; its green CI does not waive two failed artifact-level budgets or prove the corrective successor."
       }
     },
-    "postgresEquivalence": {
-      "exitCode": 0,
-      "passed": 34,
-      "failed": 0,
-      "skipped": 0,
-      "scope": "First-candidate native PostgreSQL repository projection/cursor/count/namespace equivalence; successor checks pending; not R27 HTTP/browser evidence."
-    },
-    "r27ActualMeasurements": "PENDING",
-    "secretScan": "PENDING_COMMITTED_TREE_CHECKPOINT",
-    "finalHeadCi": "PENDING",
-    "officialCodeQL": "PENDING",
-    "targetedApiUnits": {
-      "exitCode": 0,
-      "passed": 74,
-      "failed": 0,
-      "skipped": 0
-    },
-    "precommitSecretScan": {
-      "exitCode": 0,
-      "findings": 0,
-      "files": 32,
-      "bytesScanned": 497029,
-      "scope": "Initial changed-file snapshot; excludes later comparison-workflow changes and is not the committed-tree scan."
-    },
-    "r27HarnessRegressions": {
-      "exitCode": 0,
-      "passed": 106,
-      "failed": 0,
-      "skipped": 0,
-      "sourceChanged": false
-    },
-    "r27WorkflowGuards": {
-      "exitCode": 0,
-      "passed": 14,
-      "failed": 0,
-      "yamlParsed": true,
-      "originalJobsSemanticsPreserved": true,
-      "actionlint": "UNAVAILABLE_NOT_RUN",
-      "permanentTestFileAdded": false
-    },
-    "postMeasurementCorrection": {
-      "status": "LOCAL_PASS_FINAL_HEAD_REMOTE_PENDING",
-      "paths": [
-        "apps/api/src/infrastructure/persistence/bookings/booking.repository.ts",
-        "apps/api/test/integration/g2-query-projections.integration.spec.ts"
-      ],
-      "requiredRegression": "Actual normalized generic plans reproduce prior-source large scans and use bounded primary-key request lookups after correction; preserve all equivalence cases.",
-      "priorSourceRedProof": {
-        "passed": 0,
-        "failed": 2,
-        "notSelectedExistingCases": 34,
-        "requestRows": 10217,
-        "bookingRows": 6416,
-        "bidRows": 42021,
-        "scope": "Added regression runs against unchanged production repository bytes from the first candidate; other working-tree evidence is not claimed as that complete historical commit. Test-side normalization is not native pg_stat_statements evidence.",
-        "productionSourceSha": "1a319133d387dd6747bfd412503f4458573cf10e"
+    "governanceFixture": {
+      "path": ".github/scripts/g2-current-record.test.mjs",
+      "reproducedBefore": {
+        "passed": 63,
+        "failed": 1,
+        "reason": "R30: inconsistent Wave 3 bases in synthetic acceptedDouble"
       },
-      "postgres": {
-        "exitCode": 0,
-        "passed": 36,
-        "failed": 0,
-        "skipped": 0,
-        "existingEquivalenceCases": 34,
-        "newPlanCases": 2
-      },
-      "targetedUnits": {
-        "exitCode": 0,
-        "passed": 74,
-        "failed": 0,
-        "skipped": 0
-      },
-      "fullPlans": {
-        "count": 12,
-        "pageLimits": [5, 20, 100],
-        "projections": ["provider", "financial"],
-        "modes": ["bound", "test-side-normalized-generic"],
-        "requestIndex": "ServiceRequest_pkey",
-        "requestEquality": "id = requestId",
-        "maximumEstimatedRequestRows": 1,
-        "largeSequentialScans": 0,
-        "smallRelationSequentialScansRetained": true
-      },
-      "scopedLintExitCode": 0,
-      "typecheckExitCode": 0,
-      "buildExitCode": 0,
-      "formatExitCode": 0,
-      "governance": {
+      "afterFullSuite": {
         "passed": 340,
         "failed": 0,
         "skipped": 0,
         "exitCode": 0
       },
-      "g2ConsistencyExitCode": 0,
-      "r30ReadinessExitCode": 1,
-      "r30ReadinessReason": "R30 is not authorized to start",
-      "taskDatabaseStopped": true,
-      "warnings": ["Existing ts-jest isolatedModules deprecation"],
-      "reports": [
-        {
-          "name": "g2-query-projections-final.json",
-          "sha256": "fd3464828c88ee81b0172a12e4939fe5dcd293b36e262d4d0fc50dba2eed84bd"
-        },
-        {
-          "name": "g2-generic-plans-final.json",
-          "sha256": "1ebdde063d340a05582a045dc45ec447662cadddb9209bc5a42196024b4fb916"
+      "productionValidatorModified": false
+    },
+    "verifiedSourceDigests": [
+      {
+        "path": "apps/api/src/modules/money/ports/activation.port.ts",
+        "sha256": "5f9737d2204f0fffd5345a59b180b15043a28200d34536ba72c9cf7accbb921e"
+      },
+      {
+        "path": "apps/api/src/modules/money/ports/collection.port.ts",
+        "sha256": "e96d707809410056356b50ff5086be7d8bc71693445fb752fcf090ac7b6e23d3"
+      },
+      {
+        "path": "apps/api/src/modules/money/ports/finance-read.port.ts",
+        "sha256": "daa60c7398fa4b164375c0b7e294efa593d3f4217d4279220dcd3fb252c4bf80"
+      },
+      {
+        "path": "apps/api/src/modules/money/ports/refund.port.ts",
+        "sha256": "36b8db533189f787fdb8cef89c69f43eac39dc020d582d69904438c1bdc39dfb"
+      },
+      {
+        "path": "apps/api/src/modules/money/application/money-command.service.ts",
+        "sha256": "c49c31e7b5ded89b1b18d09bd4f3a6c29116f0610093faecb31822afca88846e"
+      },
+      {
+        "path": "apps/api/src/modules/money/money.module.ts",
+        "sha256": "5defc241c2a93218dc4943f26f23eef55b1824bd72e7d4080f31d359bdd3e7c5"
+      },
+      {
+        "path": "apps/api/src/infrastructure/storage/restricted-object-storage.port.ts",
+        "sha256": "44a60daf2337a135161c117b1ecc76893a651433c637bc79f6bc3bc493d212eb"
+      },
+      {
+        "path": "apps/api/src/infrastructure/storage/local-disk-restricted-storage.adapter.ts",
+        "sha256": "43dffc8fbd7f45a8fb5a7e28bb6c4cd91dd075b9b62c194a0d6865b82ff02c0f"
+      },
+      {
+        "path": "apps/api/src/infrastructure/storage/s3-restricted-storage.adapter.ts",
+        "sha256": "a41bc062fa0f901a6eac11834f5feb16dbb94ceeff408db78097d62d6b7ed60c"
+      },
+      {
+        "path": "apps/api/src/modules/provider/verification/media/evidence-keys.ts",
+        "sha256": "c1e1022e2e03cce1c0bbe71a4cbe38f899952a890582fff95db0a1d0ec4c420e"
+      },
+      {
+        "path": "apps/api/src/modules/provider/verification/media/evidence-scan.service.ts",
+        "sha256": "12c888fa959535b36c04648e585765433e2c9943651a382bdee820d1b8a18e96"
+      },
+      {
+        "path": "apps/api/src/modules/provider/verification/media/evidence-cleanup.service.ts",
+        "sha256": "8e133a638522df8976eb730baded482404803ca6e406661e389e82395ff304ce"
+      },
+      {
+        "path": "apps/api/src/modules/provider/verification/media/clamav-scanner.adapter.ts",
+        "sha256": "d90f3ea6877a2d9ee329faf3e5e2e5e20bf94174cac59dc98f8cd90387f037e8"
+      },
+      {
+        "path": "packages/database/prisma/schema.prisma",
+        "sha256": "09a67fe6add9c8acc69ad1b74490b6997de40fbb8d3d20cefa30dc6023f318d6"
+      },
+      {
+        "path": "packages/database/src/seed.ts",
+        "sha256": "591d3bdb22431a035aede8012723254f66ba3718c920656015c8c9fa5268beb9"
+      },
+      {
+        "path": "packages/contracts/src/money/wire.ts",
+        "sha256": "9d3de6c1fcfced28d3c539fc366a80476ef20fffb38a05a37dc7a652b74776f5"
+      },
+      {
+        "path": "packages/contracts/src/money/api-contracts.ts",
+        "sha256": "e22fc5ec3b361fca2edb99977f8c5f29ab037e2684d118309b1007c0eb2a2ec0"
+      },
+      {
+        "path": "scripts/perf/post-r18/budgets.proposed.json",
+        "sha256": "f88e7225cba5daece30877a4d98580b004e9684a2fdf8c11108819013e13afb8"
+      },
+      {
+        "path": "scripts/perf/post-r18/query-profile.mjs",
+        "sha256": "4e1049c81a65662e45f63942e2048355fb3fefed503d0c82f5c4f6fac7eec66c"
+      },
+      {
+        "path": "docs/production-readiness/post-r18/gates/g1/SOURCE_MANIFEST.json",
+        "sha256": "af3426ab11066bdc88818fbdcbef2ea853c83fb462fcdc5975d16880ef1d3eb1"
+      },
+      {
+        "path": "docs/production-readiness/post-r18/gates/g2/SOURCE_MANIFEST.json",
+        "sha256": "730fffe9c67f9d50a4196051f75ae2a979f529b30d7d76495d817e875d382a27"
+      },
+      {
+        "path": "docs/production-readiness/post-r18/gates/g2/ACCEPTANCE_EVIDENCE.json",
+        "sha256": "4bca096d21e15de66630553ba9fc5de85ac5a5de86e6f916b79c798f036f639f"
+      },
+      {
+        "path": "docs/production-readiness/post-r18/waves/wave-02.closeout.json",
+        "sha256": "3b76f9fe25f4dee56aa2f29414e560abd417e5121b5cbb39c4e8b7cda443a9d7"
+      }
+    ],
+    "checks": {
+      "dependencyAudit": {
+        "exitCode": 0,
+        "vulnerabilities": 0
+      },
+      "productionDependencyAudit": {
+        "exitCode": 0,
+        "vulnerabilities": 0
+      },
+      "apiChecks": {
+        "lintExitCode": 0,
+        "typecheckExitCode": 0,
+        "buildExitCode": 0,
+        "defaultSuite": {
+          "exitCode": 0,
+          "passed": 4873,
+          "failed": 0,
+          "skipped": 1750,
+          "passedSuites": 265,
+          "skippedSuites": 92,
+          "environment": "Existing reusable-verify.yml test placeholders; real-service gates remain off for this default suite.",
+          "firstInvocation": "Aborted on missing required DATABASE_URL/JWT_ACCESS_SECRET; corrected command environment, no validator/test change."
         }
-      ]
+      },
+      "postgresEquivalence": {
+        "exitCode": 0,
+        "passed": 34,
+        "failed": 0,
+        "skipped": 0,
+        "scope": "First-candidate native PostgreSQL repository projection/cursor/count/namespace equivalence; successor checks pending; not R27 HTTP/browser evidence."
+      },
+      "r27ActualMeasurements": "PENDING",
+      "secretScan": "PENDING_COMMITTED_TREE_CHECKPOINT",
+      "finalHeadCi": "PENDING",
+      "officialCodeQL": "PENDING",
+      "targetedApiUnits": {
+        "exitCode": 0,
+        "passed": 74,
+        "failed": 0,
+        "skipped": 0
+      },
+      "precommitSecretScan": {
+        "exitCode": 0,
+        "findings": 0,
+        "files": 32,
+        "bytesScanned": 497029,
+        "scope": "Initial changed-file snapshot; excludes later comparison-workflow changes and is not the committed-tree scan."
+      },
+      "r27HarnessRegressions": {
+        "exitCode": 0,
+        "passed": 106,
+        "failed": 0,
+        "skipped": 0,
+        "sourceChanged": false
+      },
+      "r27WorkflowGuards": {
+        "exitCode": 0,
+        "passed": 14,
+        "failed": 0,
+        "yamlParsed": true,
+        "originalJobsSemanticsPreserved": true,
+        "actionlint": "UNAVAILABLE_NOT_RUN",
+        "permanentTestFileAdded": false
+      },
+      "postMeasurementCorrection": {
+        "status": "LOCAL_PASS_FINAL_HEAD_REMOTE_PENDING",
+        "paths": [
+          "apps/api/src/infrastructure/persistence/bookings/booking.repository.ts",
+          "apps/api/test/integration/g2-query-projections.integration.spec.ts"
+        ],
+        "requiredRegression": "Actual normalized generic plans reproduce prior-source large scans and use bounded primary-key request lookups after correction; preserve all equivalence cases.",
+        "priorSourceRedProof": {
+          "passed": 0,
+          "failed": 2,
+          "notSelectedExistingCases": 34,
+          "requestRows": 10217,
+          "bookingRows": 6416,
+          "bidRows": 42021,
+          "scope": "Added regression runs against unchanged production repository bytes from the first candidate; other working-tree evidence is not claimed as that complete historical commit. Test-side normalization is not native pg_stat_statements evidence.",
+          "productionSourceSha": "1a319133d387dd6747bfd412503f4458573cf10e"
+        },
+        "postgres": {
+          "exitCode": 0,
+          "passed": 36,
+          "failed": 0,
+          "skipped": 0,
+          "existingEquivalenceCases": 34,
+          "newPlanCases": 2
+        },
+        "targetedUnits": {
+          "exitCode": 0,
+          "passed": 74,
+          "failed": 0,
+          "skipped": 0
+        },
+        "fullPlans": {
+          "count": 12,
+          "pageLimits": [5, 20, 100],
+          "projections": ["provider", "financial"],
+          "modes": ["bound", "test-side-normalized-generic"],
+          "requestIndex": "ServiceRequest_pkey",
+          "requestEquality": "id = requestId",
+          "maximumEstimatedRequestRows": 1,
+          "largeSequentialScans": 0,
+          "smallRelationSequentialScansRetained": true
+        },
+        "scopedLintExitCode": 0,
+        "typecheckExitCode": 0,
+        "buildExitCode": 0,
+        "formatExitCode": 0,
+        "governance": {
+          "passed": 340,
+          "failed": 0,
+          "skipped": 0,
+          "exitCode": 0
+        },
+        "g2ConsistencyExitCode": 0,
+        "r30ReadinessExitCode": 1,
+        "r30ReadinessReason": "R30 is not authorized to start",
+        "taskDatabaseStopped": true,
+        "warnings": ["Existing ts-jest isolatedModules deprecation"],
+        "reports": [
+          {
+            "name": "g2-query-projections-final.json",
+            "sha256": "fd3464828c88ee81b0172a12e4939fe5dcd293b36e262d4d0fc50dba2eed84bd"
+          },
+          {
+            "name": "g2-generic-plans-final.json",
+            "sha256": "1ebdde063d340a05582a045dc45ec447662cadddb9209bc5a42196024b4fb916"
+          }
+        ]
+      },
+      "evidenceScope": "apiChecks, postgresEquivalence, dependency audits and initial harness/workflow checks are retained first-candidate results. postMeasurementCorrection records successor local checks; final-head CI, native R27 and artifact proof are recorded in the final PR body after publication."
     },
-    "evidenceScope": "apiChecks, postgresEquivalence, dependency audits and initial harness/workflow checks are retained first-candidate results. postMeasurementCorrection records successor local checks; final-head CI, native R27 and artifact proof are recorded in the final PR body after publication."
-  },
-  "runtimeEvidence": {
-    "r30PostgresStorageClamav": "NOT_RUN",
-    "r30RealRoutes": "NOT_RUN",
-    "r30ArEnRtlMobileKeyboard": "NOT_RUN",
-    "r30Sandbox": "NOT_ACCEPTED",
-    "r30Hosted": "NOT_ACCEPTED",
-    "r30RealSettlement": "NOT_RUN"
-  },
-  "restrictions": {
-    "merge": false,
-    "deploy": false,
-    "liveMoney": false,
-    "accountGrants": false,
-    "externalSpend": false,
-    "preserveG1": true,
-    "preserveR16R18Holds": true
-  },
-  "evidenceFiles": [
-    "docs/production-readiness/r30/ACCEPTANCE.md",
-    "docs/production-readiness/r30/G2_REVIEW.md",
-    "docs/production-readiness/r30/IMPLEMENTATION.md",
-    "docs/production-readiness/r30/OWNERSHIP.md",
-    "docs/production-readiness/r30/PROMPT.md",
-    "docs/production-readiness/r30/PROPOSED_OWNERSHIP.json",
-    "docs/production-readiness/r30/RISKS.md",
-    "docs/production-readiness/r30/ROLLBACK.md",
-    "docs/production-readiness/r30/SOURCE_MANIFEST.json",
-    "docs/production-readiness/r30/VERIFICATION_PLAN.md",
-    "docs/production-readiness/r30/shared-change-requests/CR-001-g2-registration.md",
-    "docs/production-readiness/r30/shared-change-requests/CR-002-receipt-persistence.md",
-    "docs/production-readiness/r30/shared-change-requests/CR-003-private-evidence.md",
-    "docs/production-readiness/r30/shared-change-requests/CR-004-atomic-confirmation.md",
-    "docs/production-readiness/r30/shared-change-requests/CR-005-web-contracts.md"
-  ],
-  "g2ValidationEnvironment": {
-    "configuration": {
-      "purpose": "G2_QUERY_PROJECTION_REGRESSION_ONLY",
-      "postgresVersion": "16.15",
-      "host": "127.0.0.1",
-      "port": 54330,
-      "database": "hsm_r30_g2_test",
-      "role": "hsm_r30_g2_runner",
-      "superuser": false,
-      "osUser": "nobody",
-      "timezone": "UTC",
-      "authentication": "SCRAM-SHA-256",
-      "dataChecksums": true,
-      "transport": "loopback native PostgreSQL; not R27 Docker",
-      "node": "24.21.0",
-      "pnpm": "10.32.1",
-      "RUN_DB_INTEGRATION": "1"
+    "runtimeEvidence": {
+      "r30PostgresStorageClamav": "NOT_RUN",
+      "r30RealRoutes": "NOT_RUN",
+      "r30ArEnRtlMobileKeyboard": "NOT_RUN",
+      "r30Sandbox": "NOT_ACCEPTED",
+      "r30Hosted": "NOT_ACCEPTED",
+      "r30RealSettlement": "NOT_RUN"
     },
-    "configurationSha256": "4a519daa54f88a34f314ab4b1888805f34226027838219f4771b1d55fba15bf5",
-    "migrationsApplied": true,
-    "seedApplied": true,
-    "r30ProductResourcesAssigned": false,
-    "privateEnvironmentCommitted": false,
-    "shutdown": "VERIFIED_STOPPED_AFTER_VALIDATION"
+    "restrictions": {
+      "merge": false,
+      "deploy": false,
+      "liveMoney": false,
+      "accountGrants": false,
+      "externalSpend": false,
+      "preserveG1": true,
+      "preserveR16R18Holds": true
+    },
+    "evidenceFiles": [
+      "docs/production-readiness/r30/ACCEPTANCE.md",
+      "docs/production-readiness/r30/G2_REVIEW.md",
+      "docs/production-readiness/r30/IMPLEMENTATION.md",
+      "docs/production-readiness/r30/OWNERSHIP.md",
+      "docs/production-readiness/r30/PROMPT.md",
+      "docs/production-readiness/r30/PROPOSED_OWNERSHIP.json",
+      "docs/production-readiness/r30/RISKS.md",
+      "docs/production-readiness/r30/ROLLBACK.md",
+      "docs/production-readiness/r30/SOURCE_MANIFEST.json",
+      "docs/production-readiness/r30/VERIFICATION_PLAN.md",
+      "docs/production-readiness/r30/shared-change-requests/CR-001-g2-registration.md",
+      "docs/production-readiness/r30/shared-change-requests/CR-002-receipt-persistence.md",
+      "docs/production-readiness/r30/shared-change-requests/CR-003-private-evidence.md",
+      "docs/production-readiness/r30/shared-change-requests/CR-004-atomic-confirmation.md",
+      "docs/production-readiness/r30/shared-change-requests/CR-005-web-contracts.md"
+    ],
+    "g2ValidationEnvironment": {
+      "configuration": {
+        "purpose": "G2_QUERY_PROJECTION_REGRESSION_ONLY",
+        "postgresVersion": "16.15",
+        "host": "127.0.0.1",
+        "port": 54330,
+        "database": "hsm_r30_g2_test",
+        "role": "hsm_r30_g2_runner",
+        "superuser": false,
+        "osUser": "nobody",
+        "timezone": "UTC",
+        "authentication": "SCRAM-SHA-256",
+        "dataChecksums": true,
+        "transport": "loopback native PostgreSQL; not R27 Docker",
+        "node": "24.21.0",
+        "pnpm": "10.32.1",
+        "RUN_DB_INTEGRATION": "1"
+      },
+      "configurationSha256": "4a519daa54f88a34f314ab4b1888805f34226027838219f4771b1d55fba15bf5",
+      "migrationsApplied": true,
+      "seedApplied": true,
+      "r30ProductResourcesAssigned": false,
+      "privateEnvironmentCommitted": false,
+      "shutdown": "VERIFIED_STOPPED_AFTER_VALIDATION"
+    }
   }
 }

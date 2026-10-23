@@ -1,5 +1,13 @@
 # G2 prerequisites for R30 — current-source review
 
+## Current disposition — 2026-10-23
+
+G2 acceptance/publication is resolved: frozen source `72b4aaeb0a71d806b7fca7363dd9ca59bbcee644`, owner-merged publication `986b4707776711e80564f0642133ede90ba16f3c` through PR #183. See the canonical G2 publication verification and current R30 implementation/acceptance records.
+
+The remaining text preserves historical preparation and measurement findings; its former blocked/unapplied statements are not current runtime status.
+
+## Historical review
+
 This record supports a review decision. It does not replace the canonical G2
 manifest or grant an executable frozen source.
 
