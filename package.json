@@ -92,7 +92,8 @@
       "source-map-js@>=1.0.0 <1.2.2": "1.2.2",
       "@istanbuljs/load-nyc-config@1.1.0>js-yaml": "4.3.2",
       "handlebars@>=4.0.0 <4.7.10": "4.7.10",
-      "zod@<4.6.6": "4.6.6"
+      "zod@<4.6.6": "4.6.6",
+      "body-parser@>=2.0.0 <2.4.0": "2.4.0"
     }
   },
   "volta": {

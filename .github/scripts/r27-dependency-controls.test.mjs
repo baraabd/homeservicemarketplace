@@ -56,6 +56,17 @@ write('unrelated.txt', 'different branch\n');
 commit('unrelated parent');
 newDependencies();
 const unrelatedRepair = control(commit('unrelated dependency control'));
+git('switch', '-c', 'partial-baseline', repair.commit);
+write('apps/api/package.json', 'next API dependency\n');
+const partialBaseline = control(commit('one dependency file changes'));
+git('switch', '-c', 'partial-repair', candidate);
+write('apps/api/package.json', 'next API dependency\n');
+const partialRepair = control(commit('same one-file dependency repair'));
+write('next-harness.txt', 'successor experiment\n');
+const partialCandidate = commit('successor candidate');
+git('switch', '-c', 'empty-control', repair.commit);
+git('commit', '--allow-empty', '-m', 'empty is not a dependency control');
+const emptyControl = control(git('rev-parse', 'HEAD'));
 git('switch', 'repair');
 
 const record = {
@@ -100,7 +111,41 @@ test('a matching actual base does not depend on ancestry of an unused historical
   assert.equal(result.repairBaseline, repair.commit);
 });
 
+test('accepts a dependency-only subset while verifying all unchanged dependency blobs', () => {
+  git('switch', 'partial-repair');
+  try {
+    const next = structuredClone(record);
+    next.priorBaseline = repair.commit;
+    next.originalPrBase = candidate;
+    next.baseline = partialBaseline;
+    next.repair = partialRepair;
+    next.dependencySha256['apps/api/package.json'] = createHash('sha256')
+      .update('next API dependency\n')
+      .digest('hex');
+    const value = {
+      root,
+      record: next,
+      candidate: partialCandidate,
+      proposedRepair: candidate,
+      baseline: partialBaseline.commit,
+    };
+    assert.equal(selectDependencyControls(value).repairBaseline, partialRepair.commit);
+    next.dependencySha256['package.json'] = 'e'.repeat(64);
+    assert.throws(() => selectDependencyControls(value), /unregistered candidate dependency/u);
+  } finally {
+    git('switch', 'repair');
+  }
+});
+
 for (const [name, mutate, expected] of [
+  [
+    'empty dependency control',
+    (v) => {
+      v.record.baseline = emptyControl;
+      v.baseline = emptyControl.commit;
+    },
+    /only the three dependency files/u,
+  ],
   [
     'unknown old-dependency base',
     (v) => {
