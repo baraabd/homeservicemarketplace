@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "experiment": "r27-body-parser-2.4.0",
+  "advisory": "GHSA-27r3-jxmh-p828",
+  "priorBaseline": "462418888be76ec642664ea77971da9239ffb02a",
+  "originalPrBase": "fa556f50216d188303de26dce9805717b17107e7",
+  "dependencySha256": {
+    "apps/api/package.json": "34634153e4cb4ef8227b4b4dc25c75243b6bccc872dc1147e35c340f69b20270",
+    "package.json": "93bde3b306781e63235e7539c90d61d620933f6fd7b20c89e0ed45744a3deb4d",
+    "pnpm-lock.yaml": "cba948baa53f66f42e2d650f1a58308e4c9039a9b5aa398dd8349dcedf63693b"
+  },
+  "baseline": {
+    "commit": "608b4532c6bb354331af1ce4a8cef1cbd5cf912e",
+    "tree": "7812d2ec3990a7e730230167e152c0e08fad48bb",
+    "parent": "462418888be76ec642664ea77971da9239ffb02a"
+  },
+  "repair": {
+    "commit": "85466e9f1d067901183bcda0394f6a68a4da1abc",
+    "tree": "6b5f0e3a6fd7b179612d619a2c537d355097ad7e",
+    "parent": "fa556f50216d188303de26dce9805717b17107e7"
+  }
+}
