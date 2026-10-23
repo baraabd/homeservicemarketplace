@@ -5,15 +5,17 @@ Owner-merged PR #183 publication is independently verified at
 `986b4707776711e80564f0642133ede90ba16f3c`. R30, R31, R32 and R33 source
 assignments are retained. R30 #184, R31 #186, R32 #187 and R33 #185 are owner-merged. Their source
 ancestry is verified at `5ff2b7e6a46b4e42114184fac89928372f4c8d4c`; see
-`gates/g3/ACCEPTANCE.md`. Existing lane lease history is preserved. R29 and
-all Wave 4 starts remain held; merged source is not G3 financial acceptance.
+the owner-merged source history. Existing lane lease history is preserved.
+R29 integration and all Wave 4 starts remain held; merged source is not G3 financial acceptance.
 
 Authority: `SPRINT_REGISTRY.json`. Package recovery on 2026-10-22.
 G1 remains accepted and owner-published at its immutable frozen source. The active
 G2 source manifest controls the current integration decision and publication hold.
 R30/R31/R32/R33 retain their historical READY_TO_START source assignments; their
 nested execution records describe progress without claiming assembled acceptance.
-R29 remains PLANNED in this branch, and R34–R38 remain PLANNED behind G3.
+R29 partial implementation is under review in Draft PR #193; the registry in
+each branch remains authoritative for its start status. R34–R38 remain PLANNED
+behind G3. No open PR is treated as accepted or owner-merged source.
 
 | ID  | Title                                                                              | Wave | Status           | Branch                             | PR         |
 | --- | ---------------------------------------------------------------------------------- | ---- | ---------------- | ---------------------------------- | ---------- |
@@ -49,7 +51,9 @@ The original full prompt pack for R29–R38 was recovered with its previously
 recorded SHA-256. Every title, branch, dependency and legacy alias now comes from
 `gates/g2/prompts/R29.md` through `R38.md`; provenance is recorded in
 `gates/g2/PROMPT_PROVENANCE.md`. The recovered prompts are requirements, not implementation evidence. R30–R33
-now have merged source; R29 and R34–R38 remain unimplemented in this inspection.
+now have merged source. R29 has a partial component implementation under review
+in #193; its global bindings and independent provider sandbox acceptance remain
+outstanding. R34–R38 have no accepted implementation under this gate.
 The original 21-file R32 conditional package remains intact.
 
 `waves/wave-03.plan.json` preserves the assigned R30, R31, R32 and R33 source
@@ -58,7 +62,7 @@ proves R30, R31 and R32 merge commits and the reviewed R33 head are included in
 `5ff2b7e6a46b4e42114184fac89928372f4c8d4c`; its tree exactly matches the R33
 head `25fec75db092cd68ea1f08297601d8baecde6b1a`. This corrects the earlier
 pending-merge prose without changing historical writer/lease records or
-refreezing G2. G3 is still blocked by absent R29, unavailable refund policy and
+refreezing G2. G3 is still blocked by unintegrated R29, unavailable refund policy and
 consequence bindings, missing integrated real-rail acceptance and publication.
 `waves/wave-04.plan.json` still has no assigned source.
 R38 Phase B additionally requires the serialized R34–R37 final evidence join
