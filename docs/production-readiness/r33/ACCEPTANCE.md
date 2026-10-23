@@ -186,3 +186,49 @@ Local PostgreSQL/browser reruns are blocked by the host's single-UID runtime.
 Mandatory GitHub real-service, browser, security and performance checks remain
 required on the newly published merge head. Historical source verification
 does not accept assembled Wave 3, business policy or live operations.
+
+## Ordered PR #187 / #185 conflict repair — 2026-10-23
+
+The owner merged R31 #186 into develop at
+`c3c080cf28f142ed46495ec7e5d549937da90096` and requested correction of the
+remaining PRs and their mutual conflicts. This repair combines R33 head
+`57a988177f1d3a17e12f4bc1851713d3585487eb` with corrected R32 #187 head
+`03e99da086cca4f4d7652062c331aee2f000775d` using a normal merge commit.
+Merge #187 into develop first, then #185, using normal merge commits; the
+second PR retains the first PR's exact source as a parent.
+
+AppModule retains FinancialReportingModule, RefundsModule and the subscription
+and refund outbox consumers. The registration regression checks that financial
+reporting is mounted exactly once alongside money and subscriptions. The R32
+correction preserves exactly one R31 activation participant and one R32 refund
+policy evaluator. No unavailable commercial policy or refund consequence is
+silently enabled.
+
+Coordinator records retain the immutable G2 evidence and both R32/R33
+publication verifications. R31 leases are completed against its actual owner
+merge. R32 shared leases become historical handoff records naming the exact
+R32 head, not a claim that #187 has already merged; R33 owns the subsequent
+serialized integration. Duplicate JSON keys and status rows from the earlier
+merge resolution are removed. G3, policy and hosted/live-release holds remain
+separate from this source conflict repair.
+
+Executed locally on Node 24.21.0 / pnpm 10.32.1: frozen offline installation,
+Prisma generation, API lint/typecheck/build, web typecheck/production build,
+37 money/AppModule suites (616 tests), nine financial/subscription suites
+(90 tests), three route/guard suites (14 tests), and governance regressions
+(480 tests). Final selected suites passed with zero failures or skips. The
+canonical registry and G2 consistency validators, unique JSON-key audit and
+whitespace checks passed.
+
+The first local API invocation lacked the new worktree's generated Prisma
+client and failed before application checks. Generation and dependency builds
+restored the normal environment; the full selected API checks then passed.
+The first local web build omitted VITE_API_URL and correctly failed its
+unchanged production guard. Rebuilding with an explicit test API origin passed
+with the existing chunk-size warning. Neither failure was suppressed.
+
+Latest-head GitHub real-service, dedicated browser, security, performance and
+CodeQL evidence must finish on the published merge head; results are recorded
+in the current PR body. This single-UID local host cannot run unprivileged
+PostgreSQL. Historical local evidence and previous-head green checks do not
+certify this combined source. No merge to develop or deployment is performed.

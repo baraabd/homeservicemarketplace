@@ -7,7 +7,7 @@
   "executionBaseTreeSha": "68f4e926eabeb37bb70382c62b75272cf67bd02c",
   "candidateSourceSha": "72b4aaeb0a71d806b7fca7363dd9ca59bbcee644",
   "candidateTreeSha": "43e9c6a4e58cfb934b12789feeb38b588e1cb7c6",
-  "sourceIdentityNote": "The exact tested source remains immutable. The separate owner-merged record-only publication and its postmerge checks have been independently verified. Only R33 is session-assigned; no lane implementation or hosted acceptance is inferred.",
+  "sourceIdentityNote": "The exact G2 accepted source is immutable. Prior R32 and R33 publication observations are both retained. Current source assignments are reconciled in the Wave 3 plan: R30/R31 are owner-merged, and the requested R32/R33 stacked source repair is pending its own final-head checks. No G3, policy, hosted or release acceptance is inferred.",
   "supersededRecord": "https://github.com/baraabd/homeservicemarketplace/blob/96e92825f9b65cf124317f43b55ce42fc97f5b49/docs/production-readiness/post-r18/gates/g2/ACCEPTANCE_EVIDENCE.json",
   "baselineEvidence": {
     "schemaVersion": 1,
@@ -2294,6 +2294,374 @@
     }
   },
   "publicationVerification": {
+    "verifiedAtUtc": "2026-10-23T04:49:01.699Z",
+    "verifiedBy": "/root/pr_audit under /root's R32-G2-01 coordinator lease",
+    "acceptedSourceSha": "72b4aaeb0a71d806b7fca7363dd9ca59bbcee644",
+    "publicationSha": "986b4707776711e80564f0642133ede90ba16f3c",
+    "publicationTreeSha": "7ab683ea8c5304929a2fa51f1dc824c7cb46f7d5",
+    "pr": 183,
+    "prUrl": "https://github.com/baraabd/homeservicemarketplace/pull/183",
+    "reviewedHeadSha": "d2c0a9ab8862ffff886346a21377839f996152ca",
+    "mergedBy": "baraabd",
+    "mergedAtUtc": "2026-10-23T04:11:34Z",
+    "approvalEvidence": "Owner-performed merge; no separate human APPROVED review submission is claimed.",
+    "comparison": {
+      "status": "ahead",
+      "aheadBy": 2,
+      "behindBy": 0,
+      "mergeBaseSha": "72b4aaeb0a71d806b7fca7363dd9ca59bbcee644",
+      "changedFiles": [
+        "docs/production-readiness/post-r18/ACTIVE_STATUS.md",
+        "docs/production-readiness/post-r18/SPRINT_REGISTRY.json",
+        "docs/production-readiness/post-r18/gates/g2/ACCEPTANCE.md",
+        "docs/production-readiness/post-r18/gates/g2/ACCEPTANCE_EVIDENCE.json",
+        "docs/production-readiness/post-r18/gates/g2/BLOCKERS.md",
+        "docs/production-readiness/post-r18/gates/g2/IMPLEMENTATION.md",
+        "docs/production-readiness/post-r18/gates/g2/SOURCE_MANIFEST.json",
+        "docs/production-readiness/post-r18/gates/g2/evidence/r25-summary.json",
+        "docs/production-readiness/post-r18/gates/g2/evidence/r26-summary.json",
+        "docs/production-readiness/post-r18/gates/g2/evidence/r27-summary.json",
+        "docs/production-readiness/post-r18/gates/g2/evidence/source-provenance.json",
+        "docs/production-readiness/post-r18/waves/wave-02.closeout.json",
+        "docs/production-readiness/post-r18/waves/wave-03.plan.json"
+      ],
+      "scope": "13 record-only files; no runtime source imported."
+    },
+    "postmergeChecks": {
+      "completeInventoryVerified": true,
+      "count": 30,
+      "observed": [
+        {
+          "id": 120241271449,
+          "name": "CI gate",
+          "headSha": "986b4707776711e80564f0642133ede90ba16f3c",
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39899003702/job/120241271449"
+        },
+        {
+          "id": 120241233606,
+          "name": "R18 functional completion acceptance",
+          "headSha": "986b4707776711e80564f0642133ede90ba16f3c",
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39899003702/job/120241233606"
+        },
+        {
+          "id": 120237833504,
+          "name": "Phase 5 real-route and persistence evidence",
+          "headSha": "986b4707776711e80564f0642133ede90ba16f3c",
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39899003702/job/120237833504"
+        },
+        {
+          "id": 120237042798,
+          "name": "Phase 5 visual, responsive and accessibility gate",
+          "headSha": "986b4707776711e80564f0642133ede90ba16f3c",
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39899003702/job/120237042798"
+        },
+        {
+          "id": 120237042732,
+          "name": "Admin review real-route and persistence evidence",
+          "headSha": "986b4707776711e80564f0642133ede90ba16f3c",
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39899003702/job/120237042732"
+        },
+        {
+          "id": 120237042679,
+          "name": "Integration & E2E (real Postgres / Redis)",
+          "headSha": "986b4707776711e80564f0642133ede90ba16f3c",
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39899003702/job/120237042679"
+        },
+        {
+          "id": 120237042678,
+          "name": "Browser E2E (Playwright / Chromium)",
+          "headSha": "986b4707776711e80564f0642133ede90ba16f3c",
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39899003702/job/120237042678"
+        },
+        {
+          "id": 120237042669,
+          "name": "Docker cold build + production boot",
+          "headSha": "986b4707776711e80564f0642133ede90ba16f3c",
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39899003702/job/120237042669"
+        },
+        {
+          "id": 120237042665,
+          "name": "Evidence retention / real Postgres, S3 versions and ClamAV",
+          "headSha": "986b4707776711e80564f0642133ede90ba16f3c",
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39899003702/job/120237042665"
+        },
+        {
+          "id": 120237042640,
+          "name": "Dispute journey / real HTTP, browser, Postgres and ClamAV",
+          "headSha": "986b4707776711e80564f0642133ede90ba16f3c",
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39899003702/job/120237042640"
+        },
+        {
+          "id": 120237042627,
+          "name": "Auth cookie contract (real browser + real API)",
+          "headSha": "986b4707776711e80564f0642133ede90ba16f3c",
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39899003702/job/120237042627"
+        },
+        {
+          "id": 120237042614,
+          "name": "Dependency, secret, and container scans",
+          "headSha": "986b4707776711e80564f0642133ede90ba16f3c",
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39899003702/job/120237042614"
+        },
+        {
+          "id": 120237042612,
+          "name": "R25 real replicas and recovery",
+          "headSha": "986b4707776711e80564f0642133ede90ba16f3c",
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39899003702/job/120237042612"
+        },
+        {
+          "id": 120237042581,
+          "name": "Compose stack smoke (migrate / boot / readiness / media / OTP)",
+          "headSha": "986b4707776711e80564f0642133ede90ba16f3c",
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39899003702/job/120237042581"
+        },
+        {
+          "id": 120236959336,
+          "name": "Staging boundary gate",
+          "headSha": "986b4707776711e80564f0642133ede90ba16f3c",
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39899003830/job/120236959336"
+        },
+        {
+          "id": 120236392872,
+          "name": "Verify / Verify API (lint / typecheck / unit / build)",
+          "headSha": "986b4707776711e80564f0642133ede90ba16f3c",
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39899003702/job/120236392872"
+        },
+        {
+          "id": 120236212488,
+          "name": "Verify / Verify Web (lint / typecheck / unit / build)",
+          "headSha": "986b4707776711e80564f0642133ede90ba16f3c",
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39899003702/job/120236212488"
+        },
+        {
+          "id": 120236212394,
+          "name": "Verify / Verify Database",
+          "headSha": "986b4707776711e80564f0642133ede90ba16f3c",
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39899003702/job/120236212394"
+        },
+        {
+          "id": 120236094068,
+          "name": "Verify / Verify Contracts",
+          "headSha": "986b4707776711e80564f0642133ede90ba16f3c",
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39899003702/job/120236094068"
+        },
+        {
+          "id": 120235969050,
+          "name": "Production governance",
+          "headSha": "986b4707776711e80564f0642133ede90ba16f3c",
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39899003864/job/120235969050"
+        },
+        {
+          "id": 120235968833,
+          "name": "Staging release controls (ubuntu-latest)",
+          "headSha": "986b4707776711e80564f0642133ede90ba16f3c",
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39899003830/job/120235968833"
+        },
+        {
+          "id": 120235968801,
+          "name": "Staging image boundaries",
+          "headSha": "986b4707776711e80564f0642133ede90ba16f3c",
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39899003830/job/120235968801"
+        },
+        {
+          "id": 120235968638,
+          "name": "Staging release controls (windows-latest)",
+          "headSha": "986b4707776711e80564f0642133ede90ba16f3c",
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39899003830/job/120235968638"
+        },
+        {
+          "id": 120235968262,
+          "name": "Real Seeker Provider Admin startup",
+          "headSha": "986b4707776711e80564f0642133ede90ba16f3c",
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39899003783/job/120235968262"
+        },
+        {
+          "id": 120235968236,
+          "name": "R26 cookies, authorization and enforced CSP",
+          "headSha": "986b4707776711e80564f0642133ede90ba16f3c",
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39899003772/job/120235968236"
+        },
+        {
+          "id": 120235968170,
+          "name": "Verify / Install & lockfile integrity",
+          "headSha": "986b4707776711e80564f0642133ede90ba16f3c",
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39899003702/job/120235968170"
+        },
+        {
+          "id": 120235968125,
+          "name": "Dev browser startup (ubuntu-latest)",
+          "headSha": "986b4707776711e80564f0642133ede90ba16f3c",
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39899003681/job/120235968125"
+        },
+        {
+          "id": 120235968028,
+          "name": "Analyze JavaScript/TypeScript",
+          "headSha": "986b4707776711e80564f0642133ede90ba16f3c",
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39899003733/job/120235968028"
+        },
+        {
+          "id": 120235967866,
+          "name": "Dev browser startup (windows-latest)",
+          "headSha": "986b4707776711e80564f0642133ede90ba16f3c",
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39899003681/job/120235967866"
+        },
+        {
+          "id": 120235967815,
+          "name": "R04 real browser, SMTP and Postgres",
+          "headSha": "986b4707776711e80564f0642133ede90ba16f3c",
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39899003683/job/120235967815"
+        }
+      ]
+    },
+    "postmergeWorkflows": {
+      "completeInventoryVerified": true,
+      "count": 8,
+      "observed": [
+        {
+          "id": 39899003864,
+          "name": "Production governance",
+          "headSha": "986b4707776711e80564f0642133ede90ba16f3c",
+          "event": "push",
+          "attempt": 1,
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39899003864"
+        },
+        {
+          "id": 39899003683,
+          "name": "Authentication lifecycle acceptance",
+          "headSha": "986b4707776711e80564f0642133ede90ba16f3c",
+          "event": "push",
+          "attempt": 1,
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39899003683"
+        },
+        {
+          "id": 39899003772,
+          "name": "R26 application security acceptance",
+          "headSha": "986b4707776711e80564f0642133ede90ba16f3c",
+          "event": "push",
+          "attempt": 1,
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39899003772"
+        },
+        {
+          "id": 39899003733,
+          "name": "CodeQL",
+          "headSha": "986b4707776711e80564f0642133ede90ba16f3c",
+          "event": "push",
+          "attempt": 1,
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39899003733"
+        },
+        {
+          "id": 39899003830,
+          "name": "Staging release boundary",
+          "headSha": "986b4707776711e80564f0642133ede90ba16f3c",
+          "event": "push",
+          "attempt": 1,
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39899003830"
+        },
+        {
+          "id": 39899003783,
+          "name": "Real application startup performance",
+          "headSha": "986b4707776711e80564f0642133ede90ba16f3c",
+          "event": "push",
+          "attempt": 1,
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39899003783"
+        },
+        {
+          "id": 39899003681,
+          "name": "Web development startup",
+          "headSha": "986b4707776711e80564f0642133ede90ba16f3c",
+          "event": "push",
+          "attempt": 1,
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39899003681"
+        },
+        {
+          "id": 39899003702,
+          "name": "CI",
+          "headSha": "986b4707776711e80564f0642133ede90ba16f3c",
+          "event": "push",
+          "attempt": 1,
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/39899003702"
+        }
+      ]
+    },
+    "qualification": "Postmerge checks confirm the publication descendant. They do not replace accepted-source evidence, grant hosted/live policy acceptance, or claim an independent Advanced Security check on this push SHA."
+  },
+  "retainedR33PublicationVerification": {
     "record": "docs/production-readiness/post-r18/gates/g2/PUBLICATION_VERIFICATION.json",
     "verifiedAtUtc": "2026-10-23T04:48:12Z",
     "acceptanceRecordCommitSha": "986b4707776711e80564f0642133ede90ba16f3c",

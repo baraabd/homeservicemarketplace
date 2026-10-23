@@ -4,16 +4,11 @@
   "startGate": "G2",
   "baseSha": "72b4aaeb0a71d806b7fca7363dd9ca59bbcee644",
   "status": "READY_TO_START",
-  "startableLanes": ["R30", "R33"],
-  "blockedLanes": ["R29", "R31", "R32"],
+  "startableLanes": ["R30", "R31", "R32", "R33"],
+  "blockedLanes": ["R29"],
   "coordinator": "Owner-delegated engineering coordinator for baraabd",
   "decisionRecord": "docs/production-readiness/post-r18/gates/g2/SOURCE_MANIFEST.json",
-  "publicationRequirement": "Preserve verified G2 publication and historical R30/R33 source assignments. R30 PR #184 is merged as aaa22a9a04025fc312cbcc2121687aca2e467cac and its shared leases are closed. R33 correction work follows the owner request to repair PR #185. Source readiness does not accept assembled Wave 3 or live policy.",
-  "startableLanes": ["R30", "R31"],
-  "blockedLanes": ["R29", "R32", "R33"],
-  "coordinator": "Owner-delegated engineering coordinator for baraabd",
-  "decisionRecord": "docs/production-readiness/post-r18/gates/g2/SOURCE_MANIFEST.json",
-  "publicationRequirement": "Preserve verified G2 publication and the historical R30/R31 source assignments. R30 PR #184 is merged as aaa22a9a04025fc312cbcc2121687aca2e467cac and its shared leases are closed. R31 correction work follows the owner request to repair PR #186. Source readiness does not accept assembled Wave 3 or live policy.",
+  "publicationRequirement": "Preserve verified G2 publication and retained R30/R31/R32/R33 source assignments. R30 #184 and R31 #186 are owner-merged. This R33 branch integrates corrected R32 head 03e99da086cca4f4d7652062c331aee2f000775d under the explicit conflict-repair request. R32 shared leases are handed off to the sole R33 integration writer; they are not represented as merged. Merge #187 then #185 with normal merge commits. Full G3, commercial policy and hosted/live acceptance remain separate.",
   "promptProvenance": "docs/production-readiness/post-r18/gates/g2/PROMPT_PROVENANCE.md",
   "ownershipRecord": "docs/production-readiness/post-r18/waves/OWNERSHIP_R29_R38.md",
   "lanes": [
@@ -123,7 +118,6 @@
         "apps/web/src/app/features/manual-payments/manual-payments.copy.ts",
         "apps/web/src/app/features/manual-payments/manual-payments.copy.test.ts",
         "apps/web/src/app/features/manual-payments/index.ts",
-        "apps/api/test/integration/r30-manual-payments.integration.spec.ts",
         "apps/web/e2e/r30-manual-payments/manual-payments.real-api.spec.ts",
         "scripts/production/manual-payments/verify-receipt-flow.cjs",
         "scripts/production/manual-payments/verify-receipt-flow.test.cjs",
@@ -157,7 +151,6 @@
         "docs/production-readiness/r30/shared-change-requests/CR-003-private-evidence.md",
         "docs/production-readiness/r30/shared-change-requests/CR-004-atomic-confirmation.md",
         "docs/production-readiness/r30/shared-change-requests/CR-005-web-contracts.md",
-        "apps/api/test/support/r30-manual-http.fixture.ts",
         "docs/production-readiness/r30/shared-change-requests/CR-006-final-ci-remediation.md"
       ],
       "leases": [],
@@ -270,6 +263,18 @@
           "closedBy": "Owner-merged PR #184",
           "mergedCommitSha": "aaa22a9a04025fc312cbcc2121687aca2e467cac"
         }
+      ],
+      "transferredPaths": [
+        {
+          "path": "apps/api/test/support/r30-manual-http.fixture.ts",
+          "to": "R32",
+          "reason": "Serialized owner-requested PR #187 integration repair after R30 #184 merge"
+        },
+        {
+          "path": "apps/api/test/integration/r30-manual-payments.integration.spec.ts",
+          "to": "R32",
+          "reason": "Serialized owner-requested PR #187 integration repair after R30 #184 merge"
+        }
       ]
     },
     {
@@ -321,59 +326,6 @@
         "scripts/production/subscriptions/verify-my-plan.cjs",
         "apps/web/playwright.r31.config.ts"
       ],
-      "leases": [
-        {
-          "paths": [
-            "packages/contracts/src/money/subscription-contracts.ts",
-            "packages/contracts/src/money/index.ts",
-            "apps/api/src/modules/money/money.module.ts",
-            "apps/api/src/modules/money/money.module.spec.ts",
-            "apps/api/src/app.module.ts",
-            "apps/api/src/app.module.spec.ts",
-            "apps/api/src/infrastructure/outbox/outbox.tokens.ts",
-            "apps/web/src/app/routes.ts",
-            "apps/web/src/app/components/provider/screens/ProviderProfileScreen.tsx",
-            "apps/web/playwright.config.ts",
-            ".github/workflows/ci.yml"
-          ],
-          "kind": "SERIALIZED_R31_COORDINATOR_INTEGRATION",
-          "grantedBy": "/root — owner-delegated engineering coordinator for baraabd; recorded before shared edits for session r31-20261023-d799cbee",
-          "scope": "Publish additive hsm.money.v1 subscription read DTOs; bind the existing R24 activation token to R31 and register lifecycle events/handler; mount the authenticated provider My Plan route and profile entry; add explicit real-API browser discovery and CI invocation. Preserve existing ledger and collection/refund defaults, permission grants, commercial policy, all tests and acceptance budgets. No schema, migration, dependency or live money change. Exact patch in r31/shared-change-requests/CR-001-integration.md.",
-          "expires": "R31 PR closure or coordinator revocation, whichever occurs first",
-          "handoff": "Root is sole shared writer. Apply serially in the isolated R31 branch. No unmerged peer dependency. Keep source72, accepted G2 records and separate release boundaries."
-        },
-        {
-          "paths": [
-            "apps/api/src/modules/money/application/money-command.service.ts",
-            "apps/api/src/modules/money/application/money-command.service.spec.ts"
-          ],
-          "kind": "SERIALIZED_R31_SYSTEM_KEY_RESERVATION",
-          "grantedBy": "/root — owner-delegated coordinator; before edits for R31",
-          "scope": "Extend the existing user-command reserved-prefix check with r31_ and preserve prior prefixes; test rejection before any financial write. Allows R31 internal lifecycle receipts in the existing immutable MoneyCommand table under actorSystem money.subscription-lifecycle, explicit named policy and canonical request digest. No schema, financial state model, R24 port or existing confirmation behavior changes.",
-          "expires": "R31 PR closure or coordinator revocation",
-          "handoff": "Root is the only writer of the two R24 files; r31_backend may use the existing frozen persistence inside its owned lifecycle service, not edit R24 files."
-        },
-        {
-          "paths": [".github/scripts/merge-integrity.test.mjs"],
-          "kind": "SERIALIZED_R31_COMPOSITION_FIXTURE",
-          "grantedBy": "/root — owner-delegated coordinator; recorded before edits for R31",
-          "scope": "Make the existing missing/duplicate LedgerModule and lost-export negative fixtures identify the imports/exports arrays regardless of formatter whitespace. Keep every rejection assertion and the production composition fence unchanged; explicitly assert that each fixture mutation changed its target. Needed after additive SubscriptionsModule made Prettier wrap the existing import array.",
-          "expires": "R31 PR closure or coordinator revocation",
-          "handoff": "Root is sole writer. No test skip, budget change, validator relaxation or permission change."
-        },
-        {
-          "id": "R31-CI-20261023",
-          "grantedBy": "Owner request to repair PRs #185/#186/#187; root serializes shared changes",
-          "writer": "root PR repair session aa623b77a7b8",
-          "scope": "Exclude unrelated asynchronous mail dispatch from request SQL measurements, with regression coverage. Original budgets and production defaults unchanged.",
-          "paths": [
-            "scripts/perf/post-r18/lib/lane-env.mjs",
-            "scripts/perf/post-r18/lib/runtime.test.mjs"
-          ],
-          "expires": "PR #186 closure or coordinator revocation",
-          "handoff": "docs/production-readiness/r31/ACCEPTANCE.md"
-        }
-      ],
       "requiredEvidence": [
         "docs/production-readiness/r31/IMPLEMENTATION.md",
         "docs/production-readiness/r31/ACCEPTANCE.md",
@@ -422,7 +374,81 @@
         "hosted": "NOT_RUN",
         "release": "NOT_ACCEPTED",
         "finalHeadEvidence": "Current PR metadata and source-bound CI artifacts; exact final commit required, no inherited baseline PASS"
-      }
+      },
+      "leases": [],
+      "completedLeases": [
+        {
+          "paths": [
+            "packages/contracts/src/money/subscription-contracts.ts",
+            "packages/contracts/src/money/index.ts",
+            "apps/api/src/modules/money/money.module.ts",
+            "apps/api/src/modules/money/money.module.spec.ts",
+            "apps/api/src/app.module.ts",
+            "apps/api/src/app.module.spec.ts",
+            "apps/api/src/infrastructure/outbox/outbox.tokens.ts",
+            "apps/web/src/app/routes.ts",
+            "apps/web/src/app/components/provider/screens/ProviderProfileScreen.tsx",
+            "apps/web/playwright.config.ts",
+            ".github/workflows/ci.yml"
+          ],
+          "kind": "SERIALIZED_R31_COORDINATOR_INTEGRATION",
+          "grantedBy": "/root — owner-delegated engineering coordinator for baraabd; recorded before shared edits for session r31-20261023-d799cbee",
+          "scope": "Publish additive hsm.money.v1 subscription read DTOs; bind the existing R24 activation token to R31 and register lifecycle events/handler; mount the authenticated provider My Plan route and profile entry; add explicit real-API browser discovery and CI invocation. Preserve existing ledger and collection/refund defaults, permission grants, commercial policy, all tests and acceptance budgets. No schema, migration, dependency or live money change. Exact patch in r31/shared-change-requests/CR-001-integration.md.",
+          "expires": "R31 PR closure or coordinator revocation, whichever occurs first",
+          "handoff": "Root is sole shared writer. Apply serially in the isolated R31 branch. No unmerged peer dependency. Keep source72, accepted G2 records and separate release boundaries.",
+          "closure": {
+            "pr": 186,
+            "mergeSha": "c3c080cf28f142ed46495ec7e5d549937da90096",
+            "reason": "Owner merged R31; serialized source leases are complete, not active competing writers."
+          }
+        },
+        {
+          "paths": [
+            "apps/api/src/modules/money/application/money-command.service.ts",
+            "apps/api/src/modules/money/application/money-command.service.spec.ts"
+          ],
+          "kind": "SERIALIZED_R31_SYSTEM_KEY_RESERVATION",
+          "grantedBy": "/root — owner-delegated coordinator; before edits for R31",
+          "scope": "Extend the existing user-command reserved-prefix check with r31_ and preserve prior prefixes; test rejection before any financial write. Allows R31 internal lifecycle receipts in the existing immutable MoneyCommand table under actorSystem money.subscription-lifecycle, explicit named policy and canonical request digest. No schema, financial state model, R24 port or existing confirmation behavior changes.",
+          "expires": "R31 PR closure or coordinator revocation",
+          "handoff": "Root is the only writer of the two R24 files; r31_backend may use the existing frozen persistence inside its owned lifecycle service, not edit R24 files.",
+          "closure": {
+            "pr": 186,
+            "mergeSha": "c3c080cf28f142ed46495ec7e5d549937da90096",
+            "reason": "Owner merged R31; serialized source leases are complete, not active competing writers."
+          }
+        },
+        {
+          "paths": [".github/scripts/merge-integrity.test.mjs"],
+          "kind": "SERIALIZED_R31_COMPOSITION_FIXTURE",
+          "grantedBy": "/root — owner-delegated coordinator; recorded before edits for R31",
+          "scope": "Make the existing missing/duplicate LedgerModule and lost-export negative fixtures identify the imports/exports arrays regardless of formatter whitespace. Keep every rejection assertion and the production composition fence unchanged; explicitly assert that each fixture mutation changed its target. Needed after additive SubscriptionsModule made Prettier wrap the existing import array.",
+          "expires": "R31 PR closure or coordinator revocation",
+          "handoff": "Root is sole writer. No test skip, budget change, validator relaxation or permission change.",
+          "closure": {
+            "pr": 186,
+            "mergeSha": "c3c080cf28f142ed46495ec7e5d549937da90096",
+            "reason": "Owner merged R31; serialized source leases are complete, not active competing writers."
+          }
+        },
+        {
+          "id": "R31-CI-20261023",
+          "grantedBy": "Owner request to repair PRs #185/#186/#187; root serializes shared changes",
+          "writer": "root PR repair session aa623b77a7b8",
+          "scope": "Exclude unrelated asynchronous mail dispatch from request SQL measurements, with regression coverage. Original budgets and production defaults unchanged.",
+          "paths": [
+            "scripts/perf/post-r18/lib/lane-env.mjs",
+            "scripts/perf/post-r18/lib/runtime.test.mjs"
+          ],
+          "expires": "PR #186 closure or coordinator revocation",
+          "handoff": "docs/production-readiness/r31/ACCEPTANCE.md",
+          "closure": {
+            "pr": 186,
+            "mergeSha": "c3c080cf28f142ed46495ec7e5d549937da90096",
+            "reason": "Owner merged R31; serialized source leases are complete, not active competing writers."
+          }
+        }
+      ]
     },
     {
       "id": "R32",
@@ -431,10 +457,10 @@
       "lane": 4,
       "branch": "feat/r32-refund-recovery",
       "owner": {
-        "lane": "R32 future lane session; coordinator assigns the writer only after verified G2 publication",
-        "coordinator": "Owner-delegated engineering coordinator for baraabd"
+        "lane": "/root; session r32-20261023-1db81624b1de",
+        "coordinator": "/root owner-delegated coordinator for baraabd"
       },
-      "status": "BLOCKED",
+      "status": "READY_TO_START",
       "frozenBaseSha": "72b4aaeb0a71d806b7fca7363dd9ca59bbcee644",
       "dependencies": ["R24", "R22", "R23"],
       "exactFiles": [
@@ -469,10 +495,10 @@
         "All behavioral, negative and integration tests in gates/g2/prompts/R32.md",
         "Exact source/base/tree and contract/schema versions; checked command exit codes and test counts; source-bound artifacts; final-PR CI and official CodeQL; explicit skipped, blocked, sandbox and hosted states"
       ],
-      "ownershipApproval": "CONDITIONAL_AFTER_VERIFIED_G2_PUBLICATION_AND_SESSION_ASSIGNMENT",
-      "blockedBy": ["G2_VERIFIED_OWNER_MERGED_PUBLICATION", "EXACT_SESSION_ASSIGNMENT"],
+      "ownershipApproval": "APPROVED_AFTER_VERIFIED_G2_PUBLICATION",
+      "blockedBy": [],
       "isolatedRuntime": {
-        "allocationStatus": "PLANNED_NOT_PROVISIONED",
+        "allocationStatus": "PROVISIONED_ISOLATED_TEST_RUNTIME",
         "composeProject": "hsm-r32-<session>",
         "database": "hsm_r32_<session>",
         "databaseUser": "hsm_r32_<session>",
@@ -486,9 +512,122 @@
         "browserOrigin": "http://r32.<session>.localhost:4432",
         "browserContexts": "Independent Seeker, Provider and Admin contexts with host-only cookies; different ports alone do not isolate cookies",
         "effectiveConfiguration": "Inspect resolved container names, explicit volume names, bucket/directory prefixes and ports before allocating; a Compose project name alone is insufficient",
-        "secrets": "Task-issued disposable values only; never copy an unreviewed .env or use the user working database"
+        "secrets": "Task-issued disposable values only; never copy an unreviewed .env or use the user working database",
+        "observed": {
+          "postgresVersion": "16.14",
+          "postgresPort": 5532,
+          "database": "hsm_r32_1db816",
+          "databaseRole": "hsm_r32_tests",
+          "redisVersion": "7.4.7",
+          "redisPort": 6432,
+          "storage": "Per-fixture temporary private/public/staging roots",
+          "apiPort": "Ephemeral loopback per real HTTP fixture",
+          "evidence": "docs/production-readiness/r32/ACCEPTANCE.md"
+        }
       },
-      "sourcePrompt": "docs/production-readiness/post-r18/gates/g2/prompts/R32.md"
+      "sourcePrompt": "docs/production-readiness/post-r18/gates/g2/prompts/R32.md",
+      "sessionAssignment": {
+        "sessionId": "r32-20261023-1db81624b1de",
+        "assignedBy": "/root owner-delegated coordinator for baraabd",
+        "assignedAt": "2026-10-23T04:49:01.699Z",
+        "ownershipRecord": "docs/production-readiness/r32/OWNERSHIP.md"
+      },
+      "execution": {
+        "status": "SOURCE_VERIFIED",
+        "integrationStatus": "INTEGRATION_PENDING",
+        "policyStatus": "POLICY_BLOCKED",
+        "externalStatus": "EXTERNAL_BLOCKED",
+        "publicationBaselineSha": "986b4707776711e80564f0642133ede90ba16f3c",
+        "evidence": "docs/production-readiness/r32/ACCEPTANCE.md",
+        "note": "Historical READY_TO_START preserves the verified G2 start contract. R32 is implemented and locally verified; final exact-head CI and assembled Wave 3 sandbox/policy acceptance are independent. No merge or deployment."
+      },
+      "completedLeases": [
+        {
+          "id": "R32-CORE-01",
+          "grantedBy": "/root owner-delegated coordinator for baraabd",
+          "writer": "/root",
+          "scope": "Existing R24 reservation/dispatch, R22 outbox, fresh durable reviewer authorization, query-first recovery, original-posting reversal fence, safe command errors and frozen confirmation participant wiring; bounded regression fixtures.",
+          "expires": "R32 PR closure, G3 integration or coordinator revocation, whichever occurs first.",
+          "handoff": "docs/production-readiness/r32/shared-change-requests/CR-001-integration.md",
+          "paths": [
+            "apps/api/src/modules/money/application/money-command.service.ts",
+            "apps/api/src/modules/money/application/money-command.service.spec.ts",
+            "apps/api/src/modules/money/money.module.ts",
+            "apps/api/src/modules/money/money.module.spec.ts",
+            "apps/api/src/app.module.ts",
+            "apps/api/src/app.module.spec.ts",
+            "apps/api/test/support/r24-money-http.fixture.ts",
+            "apps/api/test/integration/r24-money-api.integration.spec.ts"
+          ],
+          "closure": {
+            "sourcePr": 187,
+            "sourceSha": "03e99da086cca4f4d7652062c331aee2f000775d",
+            "reason": "Root completed the R32 repair and hands shared files to the R33 integration writer in this stacked branch. This is a serialized source handoff, not a claim that PR #187 is merged."
+          }
+        },
+        {
+          "id": "R32-G2-01",
+          "grantedBy": "/root owner-delegated coordinator for baraabd",
+          "writer": "/root (returned by /root/pr_audit after canonical verification)",
+          "scope": "Overlay the 13 already owner-merged G2 acceptance records; verify publication and assign only the R32 isolated session without changing frozen identities or historical results.",
+          "expires": "R32 PR closure, G3 integration or coordinator revocation; subtask author returned the lease to /root.",
+          "handoff": "docs/production-readiness/r32/OWNERSHIP.md",
+          "paths": [
+            "docs/production-readiness/post-r18/ACTIVE_STATUS.md",
+            "docs/production-readiness/post-r18/SPRINT_REGISTRY.json",
+            "docs/production-readiness/post-r18/gates/g2/ACCEPTANCE.md",
+            "docs/production-readiness/post-r18/gates/g2/ACCEPTANCE_EVIDENCE.json",
+            "docs/production-readiness/post-r18/gates/g2/BLOCKERS.md",
+            "docs/production-readiness/post-r18/gates/g2/IMPLEMENTATION.md",
+            "docs/production-readiness/post-r18/gates/g2/SOURCE_MANIFEST.json",
+            "docs/production-readiness/post-r18/gates/g2/evidence/r25-summary.json",
+            "docs/production-readiness/post-r18/gates/g2/evidence/r26-summary.json",
+            "docs/production-readiness/post-r18/gates/g2/evidence/r27-summary.json",
+            "docs/production-readiness/post-r18/gates/g2/evidence/source-provenance.json",
+            "docs/production-readiness/post-r18/waves/wave-02.closeout.json",
+            "docs/production-readiness/post-r18/waves/wave-03.plan.json"
+          ],
+          "closure": {
+            "sourcePr": 187,
+            "sourceSha": "03e99da086cca4f4d7652062c331aee2f000775d",
+            "reason": "Root completed the R32 repair and hands shared files to the R33 integration writer in this stacked branch. This is a serialized source handoff, not a claim that PR #187 is merged."
+          }
+        },
+        {
+          "id": "R32-CI-01",
+          "grantedBy": "/root owner-delegated coordinator for baraabd",
+          "writer": "/root",
+          "scope": "Correct proven R21 mail-worker contamination of R27 per-request SQL captures by setting its existing worker flag false in the fixed measurement environment; regression covers both profiles and forbidden overrides. Original budgets and production defaults unchanged.",
+          "expires": "R32 PR closure, G3 integration or coordinator revocation, whichever occurs first.",
+          "handoff": "docs/production-readiness/r32/shared-change-requests/CR-001-integration.md",
+          "paths": [
+            "scripts/perf/post-r18/lib/lane-env.mjs",
+            "scripts/perf/post-r18/lib/runtime.test.mjs"
+          ],
+          "closure": {
+            "sourcePr": 187,
+            "sourceSha": "03e99da086cca4f4d7652062c331aee2f000775d",
+            "reason": "Root completed the R32 repair and hands shared files to the R33 integration writer in this stacked branch. This is a serialized source handoff, not a claim that PR #187 is merged."
+          }
+        },
+        {
+          "id": "R32-R30-TEST-20261023",
+          "grantedBy": "Owner request to repair PRs #185/#186/#187; root serializes shared changes",
+          "writer": "root PR repair session aa623b77a7b8",
+          "scope": "Provide the labeled confirmed-refund transaction component required by R32 in the R30 real-transport fixture; verify independent proof, actual R32 finalization and exact-once ledger/consequence effects. Production gates unchanged.",
+          "paths": [
+            "apps/api/test/support/r30-manual-http.fixture.ts",
+            "apps/api/test/integration/r30-manual-payments.integration.spec.ts"
+          ],
+          "expires": "PR #187 closure or coordinator revocation",
+          "handoff": "docs/production-readiness/r32/ACCEPTANCE.md",
+          "closure": {
+            "sourcePr": 187,
+            "sourceSha": "03e99da086cca4f4d7652062c331aee2f000775d",
+            "reason": "Root completed the R32 repair and hands shared files to the R33 integration writer in this stacked branch. This is a serialized source handoff, not a claim that PR #187 is merged."
+          }
+        }
+      ]
     },
     {
       "id": "R33",
@@ -609,6 +748,14 @@
             "scripts/perf/post-r18/lib/lane-env.mjs",
             "scripts/perf/post-r18/lib/runtime.test.mjs"
           ],
+          "expires": "PR #185 closure or coordinator revocation",
+          "handoff": "docs/production-readiness/r33/ACCEPTANCE.md"
+        },
+        {
+          "id": "R33-STACK-20261023",
+          "paths": ["apps/api/src/app.module.spec.ts"],
+          "grantedBy": "Owner request to repair conflicts between #187 and #185; root serializes the R32 to R33 handoff",
+          "scope": "Assert that R33 reporting remains mounted alongside R31 subscriptions and R32 refund recovery after the ordered merge. Existing security and runtime gates remain required.",
           "expires": "PR #185 closure or coordinator revocation",
           "handoff": "docs/production-readiness/r33/ACCEPTANCE.md"
         }

@@ -31,6 +31,8 @@ import { BookingsModule } from './modules/bookings/bookings.module';
 import { ReviewsModule } from './modules/reviews/reviews.module';
 import { MoneyModule } from './modules/money/money.module';
 import { FinancialReportingModule } from './modules/money/reporting/financial-reporting.module';
+import { RefundsModule } from './modules/money/refunds/refunds.module';
+import { RefundOutboxConsumer } from './modules/money/recovery/refund-outbox.consumer';
 import { SubscriptionsModule } from './modules/money/subscriptions/subscriptions.module';
 import { SubscriptionOutboxHandler } from './modules/money/subscriptions/subscription-outbox.handler';
 import { ConversationsModule } from './modules/conversations/conversations.module';
@@ -91,6 +93,7 @@ import { SupportModule } from './modules/support/support.module';
         RealtimeModule,
         DisputesModule,
         NotificationsModule,
+        RefundsModule,
         SubscriptionsModule,
       ],
       handlers: [
@@ -106,6 +109,7 @@ import { SupportModule } from './modules/support/support.module';
         SubscriptionActivatedHandler,
         SubscriptionOutboxHandler,
         ProviderStatusEmailHandler,
+        RefundOutboxConsumer,
       ],
     }),
     // Global, transport-agnostic post-commit security notifications
@@ -152,6 +156,7 @@ import { SupportModule } from './modules/support/support.module';
     MoneyModule,
     // R33 — authorized read-only subscription financial operations.
     FinancialReportingModule,
+    RefundsModule,
     // R13 — durable, authenticated help/support tickets.
     SupportModule,
     DisputesModule,

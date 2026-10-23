@@ -44,8 +44,11 @@ import {
 } from '../../src/modules/money/ports/collection.port';
 import {
   MONEY_REFUND_ADAPTER,
+  MONEY_REFUND_CONFIRMATION_PARTICIPANT,
   MONEY_REFUND_POLICY,
   type MoneyRefundAdapterPort,
+  type MoneyConfirmedRefund,
+  type MoneyRefundConfirmationParticipantPort,
   type MoneyRefundObservation,
   type MoneyRefundPolicyPort,
   type MoneyRefundTransportCommand,
@@ -167,6 +170,18 @@ class RefundPolicyComponent implements MoneyRefundPolicyPort {
   }
 }
 
+/** Synthetic transaction participant; this marker is not a paid entitlement. */
+class RefundConfirmationComponent implements MoneyRefundConfirmationParticipantPort {
+  isConfigured(): boolean {
+    return true;
+  }
+  async applyConfirmedRefund(input: MoneyConfirmedRefund, tx: PrismaTx): Promise<void> {
+    await tx.platformSetting.create({
+      data: { key: `it-r24-refund-participant:${input.refundId}`, value: { ...input } },
+    });
+  }
+}
+
 class RefundComponent implements MoneyRefundAdapterPort {
   configured = true;
   outcome: MoneyRefundObservation['status'] | 'TIMEOUT' = 'PENDING';
@@ -257,6 +272,10 @@ dbDescribe(
           { token: MONEY_ACTIVATION_PARTICIPANT, value: participant },
           { token: MONEY_REFUND_POLICY, value: refundPolicy },
           { token: MONEY_REFUND_ADAPTER, value: refunds },
+          {
+            token: MONEY_REFUND_CONFIRMATION_PARTICIPANT,
+            value: new RefundConfirmationComponent(),
+          },
           { token: MONEY_RECEIPT_ACCEPTANCE, value: receipts },
         ],
       });
@@ -1108,9 +1127,13 @@ dbDescribe(
       );
       const before = await financialCounts();
       participant.fail = true;
-      await expect(commands.processExternalEvent(eventId)).rejects.toThrow(
-        'R24 contract-component activation rollback',
-      );
+      const attemptResult = commands.processExternalEvent(eventId);
+      await expect(attemptResult).rejects.toMatchObject({
+        code: 'INTERNAL_ERROR',
+        message: 'The money command could not be completed.',
+        details: { reason: 'MONEY_COMMAND_FAILED' },
+      });
+      await expect(attemptResult).rejects.not.toThrow('R24 contract-component activation rollback');
       expect(await financialCounts()).toEqual(before);
       expect(
         await h.prisma.moneyPaymentIntent.findUniqueOrThrow({ where: { id: intent.id } }),

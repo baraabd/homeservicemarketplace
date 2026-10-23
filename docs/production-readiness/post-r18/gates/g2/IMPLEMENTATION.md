@@ -1,5 +1,15 @@
 # G2 — Wave 2 acceptance repair and future-wave preparation
 
+## Current source reconciliation — 2026-10-23
+
+The earlier single-lane handoffs below are historical. The owner merged R30
+#184 and R31 #186 and requested repair of conflicts between #187 and #185.
+The current Wave 3 plan retains all four R30/R31/R32/R33 source assignments;
+R33 includes corrected R32 head `03e99da086cca4f4d7652062c331aee2f000775d`.
+R32 shared leases are handed off serially, not marked as owner-merged.
+Merge #187 before #185. G2's frozen acceptance evidence is unchanged, and G3,
+commercial/refund policy, hosted and release acceptance remain separate.
+
 ## Verified owner publication and R31 start — 2026-10-23
 
 Owner-merged PR #183 is published at
@@ -238,3 +248,30 @@ A successful technical G2 candidate can be recorded while publication remains `D
 The first locally hooked commit `0c587b71ef466412b86581fee18ff2eb46a37f9f` was published through the connected GitHub API as `6c7aac2ea68ee4943d60b0db3be33012d572ac8d`, tree `cc91989350df563dfda19b211904437c33fb1fb1`, on Draft PR #183. A normal read-back fetch proved the trees identical. The API path was necessary because the local Git shell has no configured remote credential; no hooks or branch protections were bypassed.
 
 Independent review then identified that the G2 validator checked source-archive proof shape without requiring its source/tree to equal the candidate. The same review branch strengthens this binding and its negative fixtures. First-head results remain explicitly superseded and cannot establish acceptance of the corrective head. This correction changes no application projection, budget or contract.
+
+## Verified owner publication and R32 handoff — 2026-10-23
+
+Owner `baraabd` merged PR #183 at `2026-10-23T04:11:34Z` as
+`986b4707776711e80564f0642133ede90ba16f3c`, tree
+`7ab683ea8c5304929a2fa51f1dc824c7cb46f7d5`. The accepted source remains
+`72b4aaeb0a71d806b7fca7363dd9ca59bbcee644`, tree
+`43e9c6a4e58cfb934b12789feeb38b588e1cb7c6`. Comparison confirms that exact
+accepted-source ancestor, ahead 2 / behind 0, and 13 record-only changed files.
+
+The complete postmerge inventory passed: 30 checks across eight workflow runs,
+including CI `39899003702`, governance `39899003864` and CodeQL Actions
+`39899003733`. The inventory and merge evidence are retained separately in
+`ACCEPTANCE_EVIDENCE.json#publicationVerification`; they do not relabel the
+accepted-source evidence. Owner merge is the observed approval action. No
+separate human APPROVED review or independent Advanced Security result on the
+push SHA is claimed.
+
+Under the existing coordinator delegation, only R32 is assigned to session
+`r32-20261023-1db81624b1de`, with the 21 exact lane files and serialized
+`R32-CORE-01` / `R32-G2-01` leases recorded in
+`docs/production-readiness/r32/OWNERSHIP.md`. The R32 checkout remains rooted
+at the frozen runtime source; this handoff copies only the already merged
+acceptance records and performs no new merge. R29/R30/R31/R33 require their own
+session assignment; R34–R38 remain behind G3. R32 implementation, real rail
+refund acceptance, commercial policy and paid-entitlement consequences are not
+certified by this handoff. All hosted, R16/R18 and live-money holds remain.

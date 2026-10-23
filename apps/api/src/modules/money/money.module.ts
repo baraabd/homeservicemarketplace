@@ -34,8 +34,12 @@ import {
   MONEY_REFUND_CONFIRMATION_PARTICIPANT,
   MONEY_REFUND_POLICY,
   UnavailableMoneyRefundConfirmationParticipant,
-  UnavailableMoneyRefundPolicy,
 } from './ports/refund.port';
+import {
+  REFUND_POLICY_SOURCE,
+  RefundEligibilityPolicy,
+  UnavailableRefundPolicySource,
+} from './refunds/refund-eligibility.policy';
 
 // One composition boundary. R30 provides sandbox-only manual transports through
 // the existing R24 ports; R31 supplies the transaction-bound activation participant.
@@ -65,8 +69,10 @@ import {
     { provide: MONEY_CATALOG, useClass: PrismaMoneyCatalogFactory },
     { provide: MONEY_COLLECTION_ADAPTER, useExisting: ManualCollectionAdapter },
     { provide: MONEY_RECEIPT_ACCEPTANCE, useExisting: ReceiptAcceptanceParticipant },
+    { provide: REFUND_POLICY_SOURCE, useClass: UnavailableRefundPolicySource },
+    RefundEligibilityPolicy,
+    { provide: MONEY_REFUND_POLICY, useExisting: RefundEligibilityPolicy },
     { provide: MONEY_ACTIVATION_PARTICIPANT, useExisting: SubscriptionActivationParticipant },
-    { provide: MONEY_REFUND_POLICY, useClass: UnavailableMoneyRefundPolicy },
     { provide: MONEY_REFUND_ADAPTER, useExisting: ManualRefundAdapter },
     {
       provide: MONEY_REFUND_CONFIRMATION_PARTICIPANT,
@@ -84,6 +90,7 @@ import {
     MONEY_RECEIPT_ACCEPTANCE,
     MONEY_ACTIVATION_PARTICIPANT,
     MONEY_REFUND_POLICY,
+    REFUND_POLICY_SOURCE,
     MONEY_REFUND_ADAPTER,
     MONEY_REFUND_CONFIRMATION_PARTICIPANT,
     MONEY_FINANCE_READ,

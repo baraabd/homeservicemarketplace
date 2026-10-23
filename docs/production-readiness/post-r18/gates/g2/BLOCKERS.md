@@ -15,7 +15,7 @@ history. The owner-merged publication is now independently verified in
 | G3 source-artifact review finding        | Exact source/tree and complete provenance required; twelve negative regressions pass.                                                                             | Closed by verified candidate                       |
 | G2 owner publication                     | Closed: owner merged #183 as `986b4707776711e80564f0642133ede90ba16f3c`; ancestry, record-tree equality and postmerge checks independently verified.              | Closed by owner merge and coordinator verification |
 | R30 source session                       | Assigned to root session `hsm-r30-590834e66da5`; exact ownership and runtime allocation are recorded in R30 evidence. Implementation acceptance remains separate. | R30 root and named delegated writers               |
-| Other Wave 3 sessions                    | R29, R31 and R32 retain their session holds until their coordinator assigns an isolated writer and exact leases.                                                  | Coordinator                                        |
+| Other Wave 3 sessions                    | Only R29 retains its source-session hold. R30/R31 are owner-merged; R32/R33 source assignments and serialized handoff are recorded in the Wave 3 plan.            | Coordinator                                        |
 | G3 / Wave 4                              | Actual R29–R33 implementations and integrated evidence must satisfy G3 before R34–R38 start.                                                                      | Future coordinator                                 |
 | R39                                      | No supplied package or acceptance criteria exist in the current registry.                                                                                         | Owner supplies scope                               |
 
@@ -29,4 +29,6 @@ must be reported by the lane; publication verification does not supply them.
 R33 retains its assigned source session and exact ownership in the Wave 3 plan.
 Its independent historical G2 verification is preserved in
 `../../../r33/G2_PUBLICATION_VERIFICATION.json`. R30 shared leases expired
-on owner-merged PR #184 and are retained as completed history.
+on owner-merged PR #184 and are retained as completed history. R31 #186 leases
+are likewise completed; R32 #187 shared leases are handed off to this R33
+integration branch at the exact corrected source, without asserting its merge.
