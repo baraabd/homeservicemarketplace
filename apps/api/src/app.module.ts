@@ -30,6 +30,8 @@ import { BidsModule } from './modules/bids/bids.module';
 import { BookingsModule } from './modules/bookings/bookings.module';
 import { ReviewsModule } from './modules/reviews/reviews.module';
 import { MoneyModule } from './modules/money/money.module';
+import { RefundsModule } from './modules/money/refunds/refunds.module';
+import { RefundOutboxConsumer } from './modules/money/recovery/refund-outbox.consumer';
 import { SubscriptionsModule } from './modules/money/subscriptions/subscriptions.module';
 import { SubscriptionOutboxHandler } from './modules/money/subscriptions/subscription-outbox.handler';
 import { ConversationsModule } from './modules/conversations/conversations.module';
@@ -90,6 +92,7 @@ import { SupportModule } from './modules/support/support.module';
         RealtimeModule,
         DisputesModule,
         NotificationsModule,
+        RefundsModule,
         SubscriptionsModule,
       ],
       handlers: [
@@ -105,6 +108,7 @@ import { SupportModule } from './modules/support/support.module';
         SubscriptionActivatedHandler,
         SubscriptionOutboxHandler,
         ProviderStatusEmailHandler,
+        RefundOutboxConsumer,
       ],
     }),
     // Global, transport-agnostic post-commit security notifications
@@ -149,6 +153,7 @@ import { SupportModule } from './modules/support/support.module';
     // ledger authority. R31 activation enlists in its caller transaction;
     // external collection/configuration/refund adapters remain unconfigured.
     MoneyModule,
+    RefundsModule,
     // R13 — durable, authenticated help/support tickets.
     SupportModule,
     DisputesModule,

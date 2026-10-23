@@ -787,6 +787,23 @@ realDescribe('R30 manual payments with real private storage and ClamAV', () => {
     );
     expect(reservation.status).toBe(201);
     const refundId = reservation.body.id;
+    const untouched = await f.h.prisma.moneyDispatch.findUniqueOrThrow({ where: { refundId } });
+    expect(untouched.status).toBe('NOT_DISPATCHED');
+    failure(
+      await reviewer.request('/v1/money/review/refunds/' + refundId + '/query', {
+        method: 'POST',
+        idempotencyKey: f.h.key('refund-query-before-dispatch'),
+        body: VERSION,
+      }),
+      409,
+      'MONEY_REFUND_NOT_DISPATCHED',
+    );
+    expect(await f.h.prisma.moneyDispatch.findUniqueOrThrow({ where: { refundId } })).toEqual(
+      untouched,
+    );
+    expect(
+      await f.h.prisma.moneyManualRefundOperation.findUnique({ where: { refundId } }),
+    ).toBeNull();
     const dispatch = await reviewer.request('/v1/money/review/refunds/' + refundId + '/dispatch', {
       method: 'POST',
       idempotencyKey: f.h.key('refund-dispatch'),
@@ -885,6 +902,26 @@ realDescribe('R30 manual payments with real private storage and ClamAV', () => {
     expect(operation.providerIdempotencyKey).toBe(firstOperation.providerIdempotencyKey);
     expect(operation.confirmationUserId).not.toBe(operation.dispatchUserId);
     expect(await f.h.prisma.moneyManualRefundEvent.count({ where: { refundId } })).toBe(2);
+    // Real R30 transport proof is consumed by R32 only after an explicit query.
+    // The consequence remains a labeled synthetic transaction participant.
+    const consequenceKey = 'it-r30-refund-contract:' + refundId;
+    expect(await f.h.prisma.platformSetting.count({ where: { key: consequenceKey } })).toBe(0);
+    const queryKey = f.h.key('refund-query');
+    const query = () =>
+      reviewer.request('/v1/money/review/refunds/' + refundId + '/query', {
+        method: 'POST',
+        idempotencyKey: queryKey,
+        body: VERSION,
+      });
+    expect((await query()).status).toBe(202);
+    const finalized = await f.h.prisma.moneyRefund.findUniqueOrThrow({ where: { id: refundId } });
+    expect(finalized.status).toBe('SUCCEEDED');
+    expect(finalized.compensatingLedgerTransactionId).not.toBeNull();
+    expect(await f.h.prisma.platformSetting.count({ where: { key: consequenceKey } })).toBe(1);
+    const postings = await f.h.prisma.ledgerTransaction.count();
+    expect((await query()).status).toBe(202);
+    expect(await f.h.prisma.ledgerTransaction.count()).toBe(postings);
+    expect(await f.h.prisma.platformSetting.count({ where: { key: consequenceKey } })).toBe(1);
     await expect(
       f.h.prisma.moneyManualRefundEvent.updateMany({
         where: { refundId },

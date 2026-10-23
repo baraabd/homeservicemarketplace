@@ -7,6 +7,9 @@ import {
 } from '../../src/modules/money/ports/activation.port';
 import {
   MONEY_REFUND_POLICY,
+  MONEY_REFUND_CONFIRMATION_PARTICIPANT,
+  type MoneyConfirmedRefund,
+  type MoneyRefundConfirmationParticipantPort,
   type MoneyRefundPolicyPort,
 } from '../../src/modules/money/ports/refund.port';
 import {
@@ -58,6 +61,41 @@ class R30RefundPolicyContractComponent implements MoneyRefundPolicyPort {
   }
 }
 
+/** Explicit synthetic consequence for the frozen R32 transaction port. This
+ * records enlistment only, never grants or revokes real subscription rights. */
+class R30RefundConfirmationContractComponent implements MoneyRefundConfirmationParticipantPort {
+  isConfigured(): boolean {
+    return true;
+  }
+  async applyConfirmedRefund(input: MoneyConfirmedRefund, tx: PrismaTx): Promise<void> {
+    const request = await tx.moneyRefundRequest.findUniqueOrThrow({
+      where: { id: input.refundRequestId },
+    });
+    const posting = await tx.ledgerTransaction.findUniqueOrThrow({
+      where: { id: input.compensatingLedgerTransactionId },
+    });
+    if (
+      request.reasonCode !== 'R30_SANDBOX_CONTRACT' ||
+      request.policyVersion !== 'r30-test-contract-only' ||
+      input.policyVersion !== request.policyVersion ||
+      request.refundId !== input.refundId ||
+      request.paymentConfirmationId !== input.paymentConfirmationId ||
+      request.amountMinor.toString() !== input.amount.amountMinor ||
+      request.currency !== input.amount.currency ||
+      posting.currency !== request.currency ||
+      posting.status !== 'POSTED' ||
+      posting.kind !== 'STANDARD'
+    )
+      throw new Error('Unknown R30 refund confirmation contract');
+    await tx.platformSetting.create({
+      data: {
+        key: 'it-r30-refund-contract:' + input.refundId,
+        value: { ...input, evidence: 'TRANSACTION_CONTRACT_ONLY' },
+      },
+    });
+  }
+}
+
 /** Real HTTP/cookie OTP/CSRF/RBAC, migrated PostgreSQL, Redis, private storage and
  * real ClamAV. No collection, receipt, configuration or refund transport doubles.
  * All prices, instructions and settlement references are synthetic XTS data.
@@ -73,6 +111,10 @@ export async function r30ManualHttpFixture() {
     adapters: [
       { token: MONEY_ACTIVATION_PARTICIPANT, value: activation },
       { token: MONEY_REFUND_POLICY, value: new R30RefundPolicyContractComponent() },
+      {
+        token: MONEY_REFUND_CONFIRMATION_PARTICIPANT,
+        value: new R30RefundConfirmationContractComponent(),
+      },
     ],
   });
   try {
