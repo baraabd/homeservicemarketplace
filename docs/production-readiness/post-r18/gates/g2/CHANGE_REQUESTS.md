@@ -1,5 +1,16 @@
 # G2 — Coordinator change and decision register
 
+## 2026-10-22 successor dispositions
+
+The earlier rows below are historical. CR-002-successor-publication.md and the new exact leases in OWNERSHIP.md govern this repair. G2-DEC-01/G2-DEC-04's 6/13/12/9 relaxation proposal is superseded: the coordinator implements bounded projections to satisfy the unchanged original ceilings. No owner approval of relaxed budgets is asserted.
+
+- G2-CR-10: parameterized read projections with PostgreSQL equivalence, original cursor/authorization semantics and unchanged monetary values.
+- G2-CR-11: same-lock successor measurement baseline 96e928, explicit comparator/complete-browser/source checks and original budget enforcement; no weakening of the old comparator.
+- G2-CR-12: recovered full R29–R38 instructions, canonical registry, conditional exact ownership, archived historical blockers and fail-closed G3/Wave 4 readiness.
+- G2-DEC-05: only owner-approved and verified publication can release R29–R33; R34–R38 require G3. No merge or deployment here.
+
+## Historical requests and decisions
+
 | ID        | Exact authority / disposition                                                                                                                                                                                                                                             |
 | --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | G2-CR-01  | The four governance files in OWNERSHIP.md implement fail-closed G2/Wave 3 validation; original G1 publication semantics retained.                                                                                                                                         |

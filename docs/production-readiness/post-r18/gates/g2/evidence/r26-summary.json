@@ -1,0 +1,48 @@
+{
+  "schemaVersion": 1,
+  "sourceSha": "72b4aaeb0a71d806b7fca7363dd9ca59bbcee644",
+  "treeSha": "43e9c6a4e58cfb934b12789feeb38b588e1cb7c6",
+  "artifactId": 12466122543,
+  "runId": 39870750635,
+  "zipSha256": "f3f2e03f5f7f60cd3bb89db20ab48c5bfdf3eb491b8e76b8448b3805f64a649b",
+  "zipDigestVerified": true,
+  "browser": {
+    "sourceSha": "72b4aaeb0a71d806b7fca7363dd9ca59bbcee644",
+    "cases": [
+      {
+        "title": "built document enforces scripts and connections while real API boundaries stay safe",
+        "status": "expected",
+        "attempts": ["passed"]
+      },
+      {
+        "title": "real cookies protect uploaded PDF and gallery while the built Admin previews both",
+        "status": "expected",
+        "attempts": ["passed"]
+      }
+    ],
+    "stats": {
+      "startTime": "2026-10-22T23:19:07.044Z",
+      "duration": 8987.173999999999,
+      "expected": 2,
+      "skipped": 0,
+      "unexpected": 0,
+      "flaky": 0
+    }
+  },
+  "boundaries": {
+    "sourceSha": "72b4aaeb0a71d806b7fca7363dd9ca59bbcee644",
+    "builtIndexSha256": "b8bc2c621ae48167bff19ab1aa28a813a5f7bc13cddec695cf591e3a9db552ff",
+    "observedAt": "2026-10-22T23:19:06.293Z",
+    "apiReady": 200,
+    "servedDocumentMatchesBuild": true,
+    "browserOrigin": "http://127.0.0.1:5326",
+    "apiOrigin": "http://127.0.0.1:4326",
+    "policy": "default-src 'none'; script-src 'self'; script-src-attr 'none'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob: http://127.0.0.1:4326 https://tile.openstreetmap.org https://a.tile.openstreetmap.org https://b.tile.openstreetmap.org https://c.tile.openstreetmap.org; media-src 'self' blob: http://127.0.0.1:4326; connect-src 'self' http://127.0.0.1:4326 ws://127.0.0.1:4326 https://nominatim.openstreetmap.org; worker-src 'self'; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'self'; manifest-src 'self'",
+    "apiRuntime": "compiled development runtime on disposable loopback services",
+    "scanner": "test component; no malware-detection acceptance",
+    "hostedAcceptance": false,
+    "repositoryAlertInventory": "EXTERNAL_BLOCKED"
+  },
+  "screenshotsInspected": ["synthetic-gallery.png", "synthetic-pdf.png"],
+  "screenshotInspection": "Actual current-source screenshots inspected: synthetic gallery and single-page PDF render in the Admin review dialogs with their respective controls."
+}

@@ -59,7 +59,7 @@ export type ProviderBookingListRow = Pick<
 > & {
   request: BookingListRequest;
   bid: Pick<Bid, 'pricingType' | 'note'>;
-  seeker: Pick<User, 'firstName'>;
+  seeker: Pick<User, 'id' | 'firstName'>;
 };
 
 export type AdminFinancialBookingListRow = Pick<
@@ -72,22 +72,6 @@ export type AdminFinancialBookingListRow = Pick<
   };
   seeker: Pick<User, 'id' | 'firstName'>;
 };
-
-type JoinedRequestColumns = Pick<BookingListRequest, 'customServiceText' | 'addressSnapshot'> & {
-  requestCategory: BookingListRequest['category'];
-};
-
-// These aliases belong to the two bounded page queries below. Only string
-// category fields use JSON; timestamps stay scalar so Prisma returns Dates.
-// Type the keys explicitly so normalized pg_stat_statements queries also
-// support EXPLAIN (GENERIC_PLAN) without guessing polymorphic argument types.
-const BOOKING_REQUEST_LIST_COLUMNS = Prisma.sql`
-  request."customServiceText", request."addressSnapshot",
-  CASE WHEN category."id" IS NULL THEN NULL ELSE jsonb_build_object(
-    'id'::text, category."id", 'slug'::text, category."slug",
-    'labelEn'::text, category."labelEn", 'labelAr'::text, category."labelAr"
-  ) END AS "requestCategory"
-`;
 
 // A primary key supplies at most one request. Keep that lookup correlated to
 // each page row even when a generic plan cannot know the page-size parameter;
@@ -207,111 +191,85 @@ export class BookingRepository {
 
   // ─── Provider-side surfaces (Sprint 5 slice 5.4) ──────────────────────────
 
-  // Shared full relation reader used by the existing wallet projections.
-  // The booking-list surface uses its narrower joined projection below.
+  // G2/R27: one bounded page + joins instead of six relation-hydration reads.
+  // The provider summary does not consume the provider profile, the full bid
+  // or private seeker fields. Dates remain scalar PostgreSQL values so Prisma
+  // decodes them as Date rather than strings nested in a JSON document.
   listForProvider(
     args: { providerId: string; status?: BookingStatus; take: number; cursor?: string },
     tx?: PrismaTx,
-  ): Promise<BookingWithProviderRelations[]> {
-    const where: Prisma.BookingWhereInput = {
-      providerId: args.providerId,
-      deletedAt: null,
-      ...(args.status ? { status: args.status } : {}),
-    };
-    return this.db(tx).booking.findMany({
-      where,
-      take: args.take,
-      ...(args.cursor ? { cursor: { id: args.cursor }, skip: 1 } : {}),
-      orderBy: [
-        { scheduledAt: { sort: 'desc', nulls: 'last' } },
-        { createdAt: 'desc' },
-        { id: 'desc' },
-      ],
-      include: {
-        request: { include: { category: true } },
-        bid: true,
-        provider: true,
-        seeker: { select: { id: true, firstName: true } },
-      },
-    }) as Promise<BookingWithProviderRelations[]>;
-  }
-
-  // Select the authorized page before joining the serializer's to-one
-  // relations. The provider lookup and cursor ownership check remain in the
-  // service; this projection does not replace either fresh authorization read.
-  async listForProviderSummary(
-    args: { providerId: string; status?: BookingStatus; take: number; cursor?: string },
-    tx?: PrismaTx,
   ): Promise<ProviderBookingListRow[]> {
-    // Prisma's nullable scheduledAt cursor is resolved within the filtered
-    // result. A deleted or status-excluded anchor produces an empty page,
-    // even though the separate ownership check accepts a deleted owned ID.
     const cursorJoin = args.cursor
-      ? Prisma.sql`CROSS JOIN (
-          SELECT "id", "scheduledAt", "createdAt" FROM "Booking"
-          WHERE "id" = ${args.cursor} AND "providerId" = ${args.providerId} AND "deletedAt" IS NULL
-            ${args.status ? Prisma.sql`AND "status" = ${args.status}::"BookingStatus"` : Prisma.empty}
-        ) anchor`
+      ? Prisma.sql`JOIN (
+          SELECT id, "scheduledAt", "createdAt" FROM "Booking"
+          WHERE id = ${args.cursor} AND "providerId" = ${args.providerId} AND "deletedAt" IS NULL
+            ${args.status ? Prisma.sql`AND status = ${args.status}::"BookingStatus"` : Prisma.empty}
+        ) cursor ON TRUE`
       : Prisma.empty;
     const cursorWhere = args.cursor
       ? Prisma.sql`AND (
-          booking."scheduledAt" < anchor."scheduledAt"
-          OR (booking."scheduledAt" IS NULL AND anchor."scheduledAt" IS NOT NULL)
-          OR (booking."scheduledAt" IS NOT DISTINCT FROM anchor."scheduledAt" AND (
-            booking."createdAt" < anchor."createdAt"
-            OR (booking."createdAt" = anchor."createdAt" AND booking."id" <= anchor."id")
+          booking."scheduledAt" < cursor."scheduledAt"
+          OR (booking."scheduledAt" IS NULL AND cursor."scheduledAt" IS NOT NULL)
+          OR (booking."scheduledAt" IS NOT DISTINCT FROM cursor."scheduledAt" AND (
+            booking."createdAt" < cursor."createdAt"
+            OR (booking."createdAt" = cursor."createdAt" AND booking.id <= cursor.id)
           ))
         )`
       : Prisma.empty;
-    const rows = await this.db(tx).$queryRaw<
-      Array<
-        Omit<ProviderBookingListRow, 'request' | 'bid' | 'seeker'> &
-          JoinedRequestColumns & {
-            pricingType: Bid['pricingType'];
-            bidNote: Bid['note'];
-            seekerFirstName: User['firstName'];
-          }
-      >
-    >(Prisma.sql`
-      SELECT page."id", page."requestId", page."bidId", page."status", page."scheduledAt",
-        page."priceAmount", page."currency", page."createdAt", page."updatedAt",
-        ${BOOKING_REQUEST_LIST_COLUMNS}, bid."pricingType", bid."note" AS "bidNote",
-        seeker."firstName" AS "seekerFirstName"
-      FROM (
-        SELECT booking."id", booking."requestId", booking."bidId", booking."seekerUserId",
-          booking."status", booking."scheduledAt", booking."priceAmount", booking."currency",
-          booking."createdAt", booking."updatedAt"
-        FROM "Booking" booking
-        ${cursorJoin}
-        WHERE booking."providerId" = ${args.providerId} AND booking."deletedAt" IS NULL
-          ${args.status ? Prisma.sql`AND booking."status" = ${args.status}::"BookingStatus"` : Prisma.empty}
-          ${cursorWhere}
-        ORDER BY booking."scheduledAt" DESC NULLS LAST, booking."createdAt" DESC, booking."id" DESC
-        LIMIT ${args.take} OFFSET ${args.cursor ? 1 : 0}
-      ) page
-      ${BOOKING_REQUEST_LIST_JOIN}
-      LEFT JOIN "ServiceCategory" category ON category."id" = request."categoryId"
-      JOIN "Bid" bid ON bid."id" = page."bidId"
-      JOIN "User" seeker ON seeker."id" = page."seekerUserId"
-      ORDER BY page."scheduledAt" DESC NULLS LAST, page."createdAt" DESC, page."id" DESC
-    `);
-    return rows.map((row) => {
-      const {
-        customServiceText,
-        addressSnapshot,
-        requestCategory,
-        pricingType,
-        bidNote,
-        seekerFirstName,
-        ...booking
-      } = row;
-      return {
-        ...booking,
-        request: { customServiceText, addressSnapshot, category: requestCategory },
-        bid: { pricingType, note: bidNote },
-        seeker: { firstName: seekerFirstName },
-      };
-    });
+    // Keep Prisma's existing inclusive cursor + skip:1 contract. For this
+    // nullable ordering its cursor must still belong to the filtered page:
+    // a deleted or status-changed own cursor produces an empty page. The
+    // service still rejects foreign/invented cursor IDs before this read.
+    return this.db(tx)
+      .$queryRaw<ProviderBookingListProjection[]>(
+        Prisma.sql`
+        SELECT page.id, page."requestId", page."bidId", page.status::text AS status,
+          page."scheduledAt", page."priceAmount", page.currency, page."createdAt", page."updatedAt",
+          request."addressSnapshot", request."customServiceText",
+          category.id AS "categoryId", category.slug AS "categorySlug", category."labelEn" AS "categoryLabelEn",
+          category."labelAr" AS "categoryLabelAr", bid."pricingType"::text AS "pricingType", bid.note AS "bidNote",
+          seeker.id AS "seekerId", seeker."firstName" AS "seekerFirstName"
+        FROM (
+          SELECT booking.* FROM "Booking" booking
+          ${cursorJoin}
+          WHERE booking."providerId" = ${args.providerId} AND booking."deletedAt" IS NULL
+            ${args.status ? Prisma.sql`AND booking.status = ${args.status}::"BookingStatus"` : Prisma.empty}
+            ${cursorWhere}
+          ORDER BY booking."scheduledAt" DESC NULLS LAST, booking."createdAt" DESC, booking.id DESC
+          LIMIT ${args.take} OFFSET ${args.cursor ? 1 : 0}
+        ) page
+        ${BOOKING_REQUEST_LIST_JOIN}
+        LEFT JOIN "ServiceCategory" category ON category.id = request."categoryId"
+        JOIN "Bid" bid ON bid.id = page."bidId"
+        JOIN "User" seeker ON seeker.id = page."seekerUserId"
+        ORDER BY page."scheduledAt" DESC NULLS LAST, page."createdAt" DESC, page.id DESC
+      `,
+      )
+      .then((rows) =>
+        rows.map((row) => ({
+          id: row.id,
+          requestId: row.requestId,
+          bidId: row.bidId,
+          status: row.status,
+          scheduledAt: row.scheduledAt,
+          priceAmount: row.priceAmount,
+          currency: row.currency,
+          createdAt: row.createdAt,
+          updatedAt: row.updatedAt,
+          request: listRequest(row),
+          bid: { pricingType: row.pricingType, note: row.bidNote },
+          seeker: { id: row.seekerId, firstName: row.seekerFirstName },
+        })),
+      );
+  }
+
+  // Both the booking screen and wallet use one bounded projection. Keep this
+  // entry point for existing callers without maintaining a second SQL query.
+  listForProviderSummary(
+    args: { providerId: string; status?: BookingStatus; take: number; cursor?: string },
+    tx?: PrismaTx,
+  ): Promise<ProviderBookingListRow[]> {
+    return this.listForProvider(args, tx);
   }
 
   // R17-E closure — is this id a booking of this provider (deleted or not)?
@@ -590,76 +548,57 @@ export class BookingRepository {
     }));
   }
 
-  // Bound the completed/nondeleted page before joining display fields. No
-  // Bid or full profile is needed by the financial serializer. Preserve the
-  // existing mutable updatedAt/id cursor, including its skip-one semantics.
+  // The completed-booking page is bounded before relation joins. The exact
+  // existing updatedAt/id cursor and monetary values are retained; this does
+  // not turn a mutable sort key into a snapshot or read the unused Bid row.
   async listCompletedBookingsForAdmin(
     args: { take: number; cursor?: string },
     tx?: PrismaTx,
-  ): Promise<AdminFinancialBookingListRow[]> {
+  ): Promise<BookingWithAdminRelations[]> {
     const cursorJoin = args.cursor
-      ? Prisma.sql`CROSS JOIN (
-          SELECT "id", "updatedAt" FROM "Booking" WHERE "id" = ${args.cursor}
-        ) anchor`
+      ? Prisma.sql`JOIN (
+          SELECT id, "updatedAt" FROM "Booking" WHERE id = ${args.cursor}
+        ) cursor ON TRUE`
       : Prisma.empty;
-    const cursorWhere = args.cursor
-      ? Prisma.sql`AND (booking."updatedAt", booking."id") <= (anchor."updatedAt", anchor."id")`
-      : Prisma.empty;
-    const rows = await this.db(tx).$queryRaw<
-      Array<
-        Pick<AdminFinancialBookingListRow, 'id' | 'priceAmount' | 'currency' | 'updatedAt'> &
-          JoinedRequestColumns & {
-            providerId: string;
-            providerDisplayName: string;
-            providerUser: AdminFinancialBookingListRow['provider']['user'];
-            seekerId: string;
-            seekerFirstName: User['firstName'];
-          }
-      >
-    >(Prisma.sql`
-      SELECT page."id", page."priceAmount", page."currency", page."updatedAt",
-        ${BOOKING_REQUEST_LIST_COLUMNS}, provider."id" AS "providerId",
-        provider."displayName" AS "providerDisplayName",
-        CASE WHEN provider_user."id" IS NULL THEN NULL ELSE jsonb_build_object(
-          'id'::text, provider_user."id", 'email'::text, provider_user."email"
-        ) END AS "providerUser",
-        seeker."id" AS "seekerId", seeker."firstName" AS "seekerFirstName"
+    // Infer the constant status literal from the column's enum, including when
+    // a schema-local table reuses an enum defined in a different schema.
+    const rows = await this.db(tx).$queryRaw<AdminFinancialBookingProjection[]>(Prisma.sql`
+      SELECT page.id, page."priceAmount", page.currency, page."updatedAt",
+        request."addressSnapshot", request."customServiceText",
+        category.id AS "categoryId", category.slug AS "categorySlug", category."labelEn" AS "categoryLabelEn",
+        category."labelAr" AS "categoryLabelAr",
+        provider.id AS "providerId", provider."displayName" AS "providerDisplayName",
+        provider_user.id AS "providerUserId", provider_user.email AS "providerEmail",
+        seeker.id AS "seekerId", seeker."firstName" AS "seekerFirstName"
       FROM (
-        SELECT booking."id", booking."requestId", booking."providerId", booking."seekerUserId",
-          booking."priceAmount", booking."currency", booking."updatedAt"
-        FROM "Booking" booking
+        SELECT booking.* FROM "Booking" booking
         ${cursorJoin}
-        WHERE booking."deletedAt" IS NULL AND booking."status" = 'COMPLETED'
-          ${cursorWhere}
-        ORDER BY booking."updatedAt" DESC, booking."id" DESC
+        WHERE booking."deletedAt" IS NULL AND booking.status = 'COMPLETED'
+          ${args.cursor ? Prisma.sql`AND (booking."updatedAt", booking.id) <= (cursor."updatedAt", cursor.id)` : Prisma.empty}
+        ORDER BY booking."updatedAt" DESC, booking.id DESC
         LIMIT ${args.take} OFFSET ${args.cursor ? 1 : 0}
       ) page
       ${BOOKING_REQUEST_LIST_JOIN}
-      LEFT JOIN "ServiceCategory" category ON category."id" = request."categoryId"
-      JOIN "ProviderProfile" provider ON provider."id" = page."providerId"
-      LEFT JOIN "User" provider_user ON provider_user."id" = provider."userId"
-      JOIN "User" seeker ON seeker."id" = page."seekerUserId"
-      ORDER BY page."updatedAt" DESC, page."id" DESC
+      LEFT JOIN "ServiceCategory" category ON category.id = request."categoryId"
+      JOIN "ProviderProfile" provider ON provider.id = page."providerId"
+      LEFT JOIN "User" provider_user ON provider_user.id = provider."userId"
+      JOIN "User" seeker ON seeker.id = page."seekerUserId"
+      ORDER BY page."updatedAt" DESC, page.id DESC
     `);
-    return rows.map((row) => {
-      const {
-        customServiceText,
-        addressSnapshot,
-        requestCategory,
-        providerId,
-        providerDisplayName,
-        providerUser,
-        seekerId,
-        seekerFirstName,
-        ...booking
-      } = row;
-      return {
-        ...booking,
-        request: { customServiceText, addressSnapshot, category: requestCategory },
-        provider: { id: providerId, displayName: providerDisplayName, user: providerUser },
-        seeker: { id: seekerId, firstName: seekerFirstName },
-      };
-    });
+    return rows.map((row) => ({
+      id: row.id,
+      priceAmount: row.priceAmount,
+      currency: row.currency,
+      updatedAt: row.updatedAt,
+      request: listRequest(row),
+      provider: {
+        id: row.providerId,
+        displayName: row.providerDisplayName,
+        user:
+          row.providerUserId === null ? null : { id: row.providerUserId, email: row.providerEmail },
+      },
+      seeker: { id: row.seekerId, firstName: row.seekerFirstName },
+    }));
   }
 
   // Per-provider rollup. SUM + COUNT grouped by providerId, sorted
@@ -700,16 +639,54 @@ export type BookingWithProviderRelations = Booking & {
   seeker: Pick<User, 'id' | 'firstName'>;
 };
 
-// Sprint 6.4 — eager-loaded shape used by the admin financials list.
-// Same as the provider shape but includes the provider's linked user
-// so the admin table can show the provider's email alongside the
-// display name.
-export type BookingWithAdminRelations = Booking & {
-  request: ServiceRequest & { category: ServiceCategory | null };
-  bid: Bid;
-  provider: ProviderProfile & { user: Pick<User, 'id' | 'email'> | null };
-  seeker: Pick<User, 'id' | 'firstName'>;
-};
+// The financial mapper uses the same category projection as provider lists;
+// amounts remain Booking-owned and no ledger or Bid read is introduced.
+export type BookingWithAdminRelations = AdminFinancialBookingListRow;
+
+type BookingListRequestProjection = Pick<ServiceRequest, 'addressSnapshot' | 'customServiceText'> &
+  (
+    | { categoryId: string; categorySlug: string; categoryLabelEn: string; categoryLabelAr: string }
+    | { categoryId: null; categorySlug: null; categoryLabelEn: null; categoryLabelAr: null }
+  );
+
+// Built-in text preserves enum labels without cold-connection pg_type lookups
+// in the raw-query decoder. Predicate columns retain their indexed enum types.
+type ProviderBookingListProjection = Omit<ProviderBookingListRow, 'request' | 'bid' | 'seeker'> &
+  BookingListRequestProjection & {
+    pricingType: Bid['pricingType'];
+    bidNote: Bid['note'];
+    seekerId: User['id'];
+    seekerFirstName: User['firstName'];
+  };
+
+type AdminFinancialBookingProjection = Pick<
+  Booking,
+  'id' | 'priceAmount' | 'currency' | 'updatedAt'
+> &
+  BookingListRequestProjection & {
+    providerId: ProviderProfile['id'];
+    providerDisplayName: ProviderProfile['displayName'];
+    providerUserId: User['id'] | null;
+    providerEmail: User['email'];
+    seekerId: User['id'];
+    seekerFirstName: User['firstName'];
+  };
+
+function listRequest(row: BookingListRequestProjection): BookingListRequest {
+  return {
+    addressSnapshot: row.addressSnapshot,
+    customServiceText: row.customServiceText,
+    category:
+      row.categorySlug === null
+        ? null
+        : {
+            id: row.categoryId,
+            slug: row.categorySlug,
+            labelEn: row.categoryLabelEn,
+            labelAr: row.categoryLabelAr,
+          },
+  };
+}
 
 // Aggregate result for the earnings-summary endpoint. All amounts are
 // integers in the marketplace's currency unit (cents-equivalent).

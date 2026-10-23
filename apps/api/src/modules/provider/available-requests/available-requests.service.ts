@@ -10,7 +10,7 @@ import type {
 import { BidRepository } from '../../../infrastructure/persistence/bids/bid.repository';
 import {
   ProviderProfileRepository,
-  type ProviderAvailableRequestProfile,
+  type ProviderMarketplaceProfile,
 } from '../../../infrastructure/persistence/bids/provider-profile.repository';
 import {
   ServiceRequestRepository,
@@ -71,7 +71,7 @@ export class AvailableRequestsService {
     providerUserId: string,
     query: ProviderAvailableRequestsQuery,
   ): Promise<ProviderAvailableRequestListResponse> {
-    const profile = await this.providers.findByUserIdForAvailableRequests(providerUserId);
+    const profile = await this.providers.findMarketplaceProfileByUserId(providerUserId);
     if (!profile) {
       // ProviderActiveGuard already proved a profile exists; this
       // covers the concurrent soft-delete race only.
@@ -132,7 +132,7 @@ export class AvailableRequestsService {
   }
 
   async detail(providerUserId: string, requestId: string): Promise<ProviderAvailableRequestDetail> {
-    const profile = await this.providers.findByUserIdWithCategories(providerUserId);
+    const profile = await this.providers.findMarketplaceProfileByUserId(providerUserId);
     if (!profile) {
       throw new AppError('NOT_FOUND', 'Provider profile not found.', 404);
     }
@@ -174,7 +174,7 @@ export class AvailableRequestsService {
 function toSummary(
   row: ServiceRequestForProvider,
   bidsCount: number,
-  provider: Pick<ProviderAvailableRequestProfile, 'serviceAreaLat' | 'serviceAreaLng'>,
+  provider: ProviderMarketplaceProfile,
 ): ProviderAvailableRequestSummary {
   const snapshot = row.addressSnapshot as unknown as {
     city: string;

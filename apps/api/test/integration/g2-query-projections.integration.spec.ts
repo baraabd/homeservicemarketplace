@@ -59,7 +59,7 @@ dbDescribe('G2 bounded query projections (real PostgreSQL)', () => {
       },
     },
     bid: { select: { pricingType: true, note: true } },
-    seeker: { select: { firstName: true } },
+    seeker: { select: { id: true, firstName: true } },
   } satisfies Prisma.BookingSelect;
 
   const financialSelect = {
@@ -349,6 +349,47 @@ dbDescribe('G2 bounded query projections (real PostgreSQL)', () => {
       await lock?.release();
     }
   }, 120_000);
+
+  it('returns built-in text enum labels without changing the provider projection', async () => {
+    const db =
+      require('@homeservicemarketplace/database') as typeof import('@homeservicemarketplace/database');
+    const { BookingRepository: Bookings } =
+      require('../../src/infrastructure/persistence/bookings/booking.repository') as typeof import('../../src/infrastructure/persistence/bookings/booking.repository');
+    await snapshot(async (tx) => {
+      const emitted: Prisma.Sql[] = [];
+      const client = {
+        $queryRaw: (query: Prisma.Sql) => {
+          emitted.push(query);
+          return tx.$queryRaw(query);
+        },
+      };
+      const repository = new Bookings({ client } as unknown as PrismaService);
+      const actual = await repository.listForProvider({ providerId: provider, take: 5 });
+      const expected = await tx.booking.findMany({
+        where: { providerId: provider, deletedAt: null },
+        take: 5,
+        orderBy: [
+          { scheduledAt: { sort: 'desc', nulls: 'last' } },
+          { createdAt: 'desc' },
+          { id: 'desc' },
+        ],
+        select: providerSelect,
+      });
+      expect(actual).toEqual(expected);
+      expect(emitted).toHaveLength(1);
+      // Inspect the actual emitted result types in PostgreSQL. Enum output
+      // triggers cold-connection pg_type decoding reads even when values and
+      // Prisma's application query events otherwise look identical.
+      const wireTypes = await tx.$queryRaw<Array<{ statusType: string; pricingType: string }>>(
+        db.Prisma.sql`
+          SELECT pg_typeof(projected.status)::text AS "statusType",
+            pg_typeof(projected."pricingType")::text AS "pricingType"
+          FROM (${emitted[0]}) projected LIMIT 1
+        `,
+      );
+      expect(wireTypes).toEqual([{ statusType: 'text', pricingType: 'text' }]);
+    });
+  });
 
   const providerCases: Array<{
     name: string;

@@ -91,6 +91,29 @@ export type ServiceRequestForProvider = ServiceRequestWithCategory & {
   seeker: ServiceRequestSeekerPreview;
 };
 
+type SeekerPageDetails = { requestId: string; bidsCount: bigint } & (
+  | ServiceCategory
+  | { [Key in keyof ServiceCategory]: null }
+);
+
+function pageCategory(row: SeekerPageDetails): ServiceCategory | null {
+  if (row.id === null) return null;
+  return {
+    id: row.id,
+    slug: row.slug,
+    labelEn: row.labelEn,
+    labelAr: row.labelAr,
+    icon: row.icon,
+    sortOrder: row.sortOrder,
+    isActive: row.isActive,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+    deletedAt: row.deletedAt,
+    parentId: row.parentId,
+    isLeaf: row.isLeaf,
+  };
+}
+
 // Service-request persistence. Every read site filters `deletedAt: null`
 // so soft-deleted rows never escape the repository. Mutating call sites
 // match on { id, seekerUserId, deletedAt: null } so a foreign id from
@@ -123,54 +146,46 @@ export class ServiceRequestRepository {
       // skip or duplicate rows.
       orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
       include: {
-        category: true,
+        // Sprint 7.x — latest non-deleted booking, projected narrowly
+        // (id / status / updatedAt only). The service maps this onto
+        // ServiceRequestSummary.activeBooking* so the seeker's Active
+        // Leads carousel renders the booking lifecycle status (e.g.
+        // "In Progress") even though the parent ServiceRequest stays
+        // at BID_ACCEPTED across the booking transitions.
+        bookings: {
+          where: { deletedAt: null },
+          orderBy: [{ updatedAt: 'desc' }, { id: 'desc' }],
+          take: 1,
+          select: { id: true, status: true, updatedAt: true },
+        },
       },
     });
-    if (rows.length === 0) return rows;
-    // Both enrichments start from the authorized page IDs. Keep the bounded
-    // Bid read from CR-R27-05, while sharing its round trip with the latest
-    // visible booking instead of loading another batched relation query.
-    const enrichments = await db.$queryRaw<
-      Array<{
-        requestId: string;
-        bidCount: bigint;
-        bookingId: string | null;
-        bookingStatus: BookingStatus | null;
-        bookingUpdatedAt: Date | null;
-      }>
-    >(Prisma.sql`
-      SELECT page."requestId",
+    if (rows.length === 0) return [];
+    // G2/R27: hydrate the category and count bids in ONE page-bounded read.
+    // The authorized page supplies both IDs: do not re-read a request's
+    // category after it may have changed, or restore Prisma's whole-Bid
+    // aggregate (CR-R27-05). Each correlated count uses the requestId index.
+    // All values, including nullable category IDs, remain bound parameters.
+    // The fixed status literal takes its enum type from the bid column, even
+    // when a schema-local table reuses an enum defined in another schema.
+    const details = await db.$queryRaw<SeekerPageDetails[]>(Prisma.sql`
+      SELECT page."requestId", category.*,
         (SELECT COUNT(*) FROM "Bid" bid
-          WHERE bid."requestId" = page."requestId"
-            AND bid."deletedAt" IS NULL AND bid."status" <> 'WITHDRAWN') AS "bidCount",
-        latest."id" AS "bookingId", latest."status" AS "bookingStatus",
-        latest."updatedAt" AS "bookingUpdatedAt"
-      FROM (VALUES ${Prisma.join(rows.map((row) => Prisma.sql`(${row.id})`))})
-        AS page("requestId")
-      LEFT JOIN LATERAL (
-        SELECT booking."id", booking."status", booking."updatedAt"
-        FROM "Booking" booking
-        WHERE booking."requestId" = page."requestId" AND booking."deletedAt" IS NULL
-        ORDER BY booking."updatedAt" DESC, booking."id" DESC
-        LIMIT 1
-      ) latest ON TRUE
+         WHERE bid."requestId" = page."requestId"
+           AND bid."deletedAt" IS NULL
+           AND bid.status <> 'WITHDRAWN') AS "bidsCount"
+      FROM (VALUES ${Prisma.join(
+        rows.map((row) => Prisma.sql`(${row.id}::text, ${row.categoryId}::text)`),
+      )}) AS page("requestId", "categoryId")
+      LEFT JOIN "ServiceCategory" category ON category.id = page."categoryId"
     `);
-    const byRequest = new Map(enrichments.map((row) => [row.requestId, row]));
+    const byRequest = new Map(details.map((row) => [row.requestId, row]));
     return rows.map((row) => {
-      const extra = byRequest.get(row.id);
+      const detail = byRequest.get(row.id);
       return {
         ...row,
-        bookings:
-          extra?.bookingId && extra.bookingStatus && extra.bookingUpdatedAt
-            ? [
-                {
-                  id: extra.bookingId,
-                  status: extra.bookingStatus,
-                  updatedAt: extra.bookingUpdatedAt,
-                },
-              ]
-            : [],
-        _count: { bids: Number(extra?.bidCount ?? 0) },
+        category: detail ? pageCategory(detail) : null,
+        _count: { bids: Number(detail?.bidsCount ?? 0) },
       };
     });
   }

@@ -27,7 +27,7 @@ Only authoritative SUCCEEDED evidence permits local linked compensation. Termina
 
 `PENDING` and `UNKNOWN` mean financial capacity remains reserved. A timeout, lease expiry, missing lookup or inconclusive provider response is not a definitive failure or absence proof. The adapter must normalize it to UNKNOWN unless it has authoritative evidence for a bound operation. No network call may occur under a PrismaTx or lock.
 
-## Explicit R32 work after approval
+## Explicit R32 work after published G2 acceptance
 
 1. The new confirmed-refund participant is a frozen callable interface and composition default. MoneyCommandService does not invoke it in this G2 change. R32 must wire authoritative compensation and the approved consequence into one transaction; missing configuration and consequence/audit failure must roll back local success.
 2. Existing dispatch selection accepts a caller `queryOnly` choice. R32 must inspect durable prior uncertainty and enforce query-first recovery before another external action. A compile-time fixture does not prove this orchestration.
@@ -39,4 +39,18 @@ Only authoritative SUCCEEDED evidence permits local linked compensation. Termina
 
 R19-P2 and the existing R16/R18 policy holds remain. Refund windows, pro-rata calculation, fees/tax, supported markets/currencies, plan pricing, actor-separation choices and paid-entitlement effects require explicit policy. The current delegation authorizes engineering coordination, not invented commercial rules, live rails, payouts, escrow or verification grants. Unconfigured money ports remain unavailable.
 
-A source can be proposed for freeze only after the exact candidate tests. The manifest currently controls whether that has happened. Owner review/publication precedes R32 work; an interface document or green PR alone cannot release the lane.
+A source can be proposed for freeze only after the exact candidate tests. The manifest currently controls whether that has happened. Owner review/publication precedes all R29–R33 work; an interface document or green PR alone cannot release a lane. R34–R38 additionally require the separately published G3 gate.
+
+## Successor interface preservation and five-lane handoff
+
+The 2026-10-22 repair changes read projections and governance only. The four R24 port contents, `hsm.money.v1`, all 72 migrations and the existing unavailable defaults remain unchanged from the owner-merged execution base. New-source port digests are recorded from verified source bytes at acceptance; a baseline digest alone is not a new freeze.
+
+| Wave 3 owner | Frozen authority consumed                                                                       | Serialized coordinator composition                                                                                                     |
+| ------------ | ----------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| R29          | Collection and refund transport ports; verified event/account/mode bindings                     | Register the selected Stripe sandbox adapter and exact signed raw-body endpoint without changing global parser/CSRF rules in parallel. |
+| R30          | Manual collection/refund ports and transaction-bound receipt acceptance; R20 restricted storage | Register the manual adapter/reviewer module and owned UI route; preserve protected evidence and approved reviewer authority.           |
+| R31          | Activation participant, R19 plan/period/usage schema and existing provider capability service   | Compose the real participant in the existing MoneyModule once; paid access never grants identity/work eligibility.                     |
+| R32          | Refund policy/reservation, transport, confirmed-result participant and R22 outbox boundaries    | Wire durable dispatch and confirmed entitlement consequences on the assembled candidate; no import from unmerged R29/R30/R31 branches. |
+| R33          | Finance read port, monetary wire contracts and existing server permissions                      | Register bounded read/controller/UI composition and links to owned R30/R31 surfaces only at serialized integration.                    |
+
+The full source prompts and conditional exact ownership are under this gate's `prompts/` and `waves/OWNERSHIP_R29_R38.md`. Any missing interface is a concrete integration request before edits, never a package-relative source import or a second ledger/notification/storage authority.

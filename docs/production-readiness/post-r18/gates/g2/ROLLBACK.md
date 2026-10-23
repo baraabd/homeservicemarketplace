@@ -1,23 +1,19 @@
-# G2 — Rollback and publication recovery
+# G2 — Rollback and stop conditions
 
-No merge, deployment or external infrastructure operation is performed in this task. The review branch and records can be amended before approval without affecting develop. Preserve all historical G1 and observed failed-run evidence.
+## Before merge
 
-## Source rollback
+The review branch is isolated. If the candidate fails a required test or artifact validation, keep G2 blocked and the PR Draft, retain failures and correct the same branch. Do not mark the wave ready, rewrite accepted historical evidence, raise budgets or import a running peer branch. Withdrawing the review changes affects no deployed application or user database.
 
-Revert the reviewed G2 source commits through a normal reviewed follow-up if required. Do not force-push, erase posted ledger records, rewrite historical evidence or restore stale dependency versions. The additive refund participant may be removed with its token registration/export/fixture as one coherent source revert; it never implemented a live policy or runtime refund consequence.
+## After an explicitly authorized merge
 
-The private HTTP policy is registered once. Any rollback must review private success and error responses, existing public immutable media behavior and real logout/permission cases; do not disable guards or CSRF to regain green. R28 plan/validator files are configuration-only, so removing them tears down no resource, secret, network or hosted target.
+No merge or deployment is performed by this task. If a later authorized integration needs reversal, the owner/coordinator prepares normal reviewed revert commits for this successor's source/CI changes. The execution base is `96e92825f9b65cf124317f43b55ce42fc97f5b49`; no schema, migration, lockfile or feature flag changes are introduced by this repair. Preserve any newer independent work and never reset develop or force-push it.
 
-## Index migration
+Return affected future waves to a recorded hold when acceptance is withdrawn. Preserve publication history, exact source/trees, failed artifacts and the original prompt provenance. Do not remove existing G1 acceptance or reopen its frozen source by rewriting its files. A live runtime rollback is a separate owner-approved operation using the existing compatible image/configuration procedure.
 
-The added Booking_status_updatedAt_id_deletedAt_idx is additive. If rollback becomes necessary, prefer a reviewed forward migration dropping only that named index after query-plan review. Do not delete or modify the applied migration, alter booking amounts/statuses, reset a working database or touch ledger history. Recheck migration/schema agreement and representative pages. Hosted concurrent-build/removal and scheduling remain separately authorized operator work.
+## Local fixture cleanup
 
-## Gate and lane state
+The disposable database and binary tooling belong only to this G2 task. Stop the exact PostgreSQL instance at `/tmp/hsm-g2-postgres/data` through its recorded owner and `pg_ctl` identity after tests. Do not signal unrelated processes, drop shared databases, remove shared volumes or flush Redis. No task fixture is a production recovery target.
 
-A failed mandatory check keeps or returns G2 to BLOCKED, clears frozen source/tree and all startable lanes, and records the failure/owner. Do not edit G1 acceptance to hide a later failure. If a future published acceptance is invalidated, pause downstream source work and issue a new coordinator-reviewed record naming the precise failed source and recovery path.
+## Money boundary
 
-R32 starts only from a full accepted frozen SHA after approved publication verification. Reconcile new develop commits through normal merge and re-run relevant checks; never substitute a green prior tree. No hosted rollback or live refund operation can be inferred from this source procedure.
-
-## Local cleanup
-
-Stop only process IDs/groups and service data created for this coordinator task. Never discover-and-kill by port/name, reset a peer database, flush shared Redis, remove unrelated volumes or expose private diagnostic artifacts. Keep the sanitized source/count/fingerprint evidence and dispose of task-only credentials and raw fixtures when no longer needed.
+Application rollback is not a payment refund or ledger reversal. This repair writes no monetary records and enables no live rail. R15 immutable history, R16 payout holds, R18 open owner decisions and `docs/money/LIVE_MONEY_GATE.md` remain binding after any technical revert.

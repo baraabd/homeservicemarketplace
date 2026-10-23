@@ -16,7 +16,19 @@ import {
 const root = fileURLToPath(new URL('../../', import.meta.url));
 const recorded = await readBundle();
 const historical = await readHistoricalBundle();
-const clone = () => structuredClone(recorded);
+const archive = JSON.parse(
+  await readFile(
+    path.join(
+      root,
+      'docs/production-readiness/post-r18/gates/g2/history/pre-gate-96e92825/BUNDLE.json',
+    ),
+    'utf8',
+  ),
+);
+const blocked = Object.fromEntries(
+  Object.entries(archive.files).map(([key, file]) => [key, JSON.parse(file.content)]),
+);
+const clone = () => structuredClone(blocked);
 const syntheticSha = (value) => value.repeat(40);
 const digest = '1'.repeat(64);
 const gatePath = 'docs/production-readiness/post-r18/gates/g2/SOURCE_MANIFEST.json';
@@ -28,17 +40,29 @@ test('active canonical G2 and the preserved legacy closeout are both consistent'
   assert.equal(historical.gate.gate, 'G2');
   assert.deepEqual(recordProblems(recorded), []);
   assert.deepEqual(recordProblems(historical), []);
-  for (const id of ['R29', 'R30', 'R31', 'R32', 'R33'])
-    assert.ok(
-      readinessProblems(recorded, id).some((message) => message.includes('not authorized')),
-    );
+  assert.deepEqual(recordProblems(blocked), []);
+  for (const id of ['R29', 'R30', 'R31', 'R32', 'R33']) {
+    const lane = recorded.wave.lanes.find((entry) => entry.id === id);
+    const released =
+      recorded.gate.decision === 'ACCEPTED' &&
+      recorded.gate.publication.state === 'MERGED' &&
+      recorded.gate.publication.verifiedMerge === true &&
+      recorded.wave.status === 'READY_TO_START' &&
+      lane.status === 'READY_TO_START' &&
+      recorded.wave.startableLanes.includes(id);
+    if (released) assert.deepEqual(readinessProblems(recorded, id), []);
+    else
+      assert.ok(
+        readinessProblems(recorded, id).some((message) => message.includes('not authorized')),
+      );
+  }
 });
 
 test('the earlier failed browser observation is not relabeled as current successful evidence', () => {
   assert.equal(historical.r25.browser.exitCode, 1);
   assert.equal(historical.r25.browser.failed, null);
-  assert.equal(recorded.gate.decision, 'BLOCKED');
-  assert.equal(recorded.gate.frozenBaseSha, null);
+  assert.equal(blocked.gate.decision, 'BLOCKED');
+  assert.equal(blocked.gate.frozenBaseSha, null);
   assert.equal(recorded.gate.preservedG1SourceSha, recorded.g1.frozenBaseSha);
 });
 
@@ -256,6 +280,7 @@ function acceptedDouble(published = true) {
       'CI gate',
       'Analyze JavaScript/TypeScript',
       'Production governance',
+      'R27 comparable measurements and unchanged budgets',
     ].map((name, i) => ({
       name,
       id: 9000 + i,
@@ -271,7 +296,16 @@ function acceptedDouble(published = true) {
       annotationsCount: 0,
     },
   };
-  b.gate.sourceArtifact = { treeRecomputed: true, trackedBlobsVerified: 100, zipSha256: digest };
+  b.gate.sourceArtifact = {
+    sourceSha: source,
+    treeSha: tree,
+    artifactId: 9100,
+    runId: 9101,
+    treeRecomputed: true,
+    trackedBlobsVerified: 100,
+    zipSha256: digest,
+    innerArchiveSha256: digest,
+  };
   b.gate.contracts = {
     sourceSha: source,
     version: 'hsm.money.v1',
@@ -315,15 +349,9 @@ function acceptedDouble(published = true) {
     browser: { exitCode: 0, passed: 1, failed: 0, skipped: 0, timedOut: false },
     commands: [{ label: 'browser', exitCode: 0, timedOut: false, signal: null }],
   };
-  // Every provided package shares the synthetic accepted wave's frozen source,
-  // including packages still held for a separate lane handoff.
-  for (const registeredLane of b.wave.lanes) {
-    const registeredSprint = b.registry.sprints.find((s) => s.id === registeredLane.id);
-    if (registeredSprint?.status === 'RESERVED_PENDING_PACKAGE') continue;
-    registeredLane.frozenBaseSha = registeredSprint.frozenBase = source;
-  }
   const lane = b.wave.lanes[3];
   const s = b.registry.sprints.find((s) => s.id === 'R32');
+  lane.frozenBaseSha = s.frozenBase = source;
   if (published) {
     b.gate.publication = {
       branch: 'chore/g2-wave2-acceptance',
@@ -335,6 +363,12 @@ function acceptedDouble(published = true) {
     b.wave.startableLanes = ['R32'];
     b.wave.blockedLanes = ['R29', 'R30', 'R31', 'R33'];
     lane.status = s.status = 'READY_TO_START';
+    lane.ownershipApproval = s.ownershipApproval = 'APPROVED_AFTER_VERIFIED_G2_PUBLICATION';
+    lane.sessionAssignment = {
+      sessionId: 'synthetic-r32-session',
+      assignedBy: 'synthetic fixture coordinator',
+      assignedAt: '2026-10-22T00:00:00Z',
+    };
   }
   return b;
 }
@@ -346,6 +380,85 @@ test('complete canonical contract double needs separate verified publication bef
   assert.ok(readinessProblems(acceptedDouble(), 'R29').length > 0);
   assert.ok(readinessProblems(acceptedDouble(), 'R30').length > 0);
 });
+
+for (const [name, field, value] of [
+  ['wrong source', 'sourceSha', syntheticSha('a')],
+  ['wrong tree', 'treeSha', syntheticSha('a')],
+  ['missing source', 'sourceSha', undefined],
+  ['missing tree', 'treeSha', undefined],
+  ['missing artifact identity', 'artifactId', undefined],
+  ['nonpositive artifact identity', 'artifactId', 0],
+  ['missing run identity', 'runId', undefined],
+  ['fractional run identity', 'runId', 1.5],
+  ['missing inner archive digest', 'innerArchiveSha256', undefined],
+  ['invalid inner archive digest', 'innerArchiveSha256', 'g'.repeat(64)],
+]) {
+  test(`source artifact rejects ${name}`, () => {
+    const b = acceptedDouble();
+    assert.deepEqual(recordProblems(b), []);
+    if (value === undefined) delete b.gate.sourceArtifact[field];
+    else b.gate.sourceArtifact[field] = value;
+    assert.ok(
+      recordProblems(b).some((message) =>
+        /Verified source artifact identity required/u.test(message),
+      ),
+      name,
+    );
+    assert.ok(readinessProblems(b, 'R32').length > 0, name);
+  });
+}
+
+for (const [name, mutate] of [
+  [
+    'missing session assignment',
+    (b) => {
+      b.wave.lanes[3].sessionAssignment = null;
+    },
+  ],
+  [
+    'missing session identity',
+    (b) => {
+      delete b.wave.lanes[3].sessionAssignment.sessionId;
+    },
+  ],
+  [
+    'missing assignment authority',
+    (b) => {
+      delete b.wave.lanes[3].sessionAssignment.assignedBy;
+    },
+  ],
+  [
+    'missing assignment timestamp',
+    (b) => {
+      delete b.wave.lanes[3].sessionAssignment.assignedAt;
+    },
+  ],
+  [
+    'matching but conditional ownership',
+    (b) => {
+      b.wave.lanes[3].ownershipApproval =
+        'CONDITIONAL_AFTER_VERIFIED_G2_PUBLICATION_AND_SESSION_ASSIGNMENT';
+      b.registry.sprints.find((sprint) => sprint.id === 'R32').ownershipApproval =
+        b.wave.lanes[3].ownershipApproval;
+    },
+  ],
+  [
+    'registry approval mismatch',
+    (b) => {
+      b.registry.sprints.find((sprint) => sprint.id === 'R32').ownershipApproval = 'CONDITIONAL';
+    },
+  ],
+])
+  test(`canonical Wave 3 readiness rejects ${name}`, () => {
+    const b = acceptedDouble();
+    assert.deepEqual(readinessProblems(b, 'R32'), []);
+    mutate(b);
+    assert.ok(
+      readinessProblems(b, 'R32').some((message) =>
+        /approved ownership and exact writer assignment/u.test(message),
+      ),
+    );
+  });
 
 for (const [name, mutate] of [
   [
@@ -388,6 +501,22 @@ for (const [name, mutate] of [
     'incomplete inventory',
     (b) => {
       b.gate.checks.completeInventoryVerified = false;
+    },
+  ],
+  [
+    'missing unchanged-budget acceptance check',
+    (b) => {
+      b.gate.checks.observed = b.gate.checks.observed.filter(
+        (check) => check.name !== 'R27 comparable measurements and unchanged budgets',
+      );
+    },
+  ],
+  [
+    'failed unchanged-budget acceptance check',
+    (b) => {
+      b.gate.checks.observed.find(
+        (check) => check.name === 'R27 comparable measurements and unchanged budgets',
+      ).conclusion = 'failure';
     },
   ],
   [
@@ -499,12 +628,6 @@ for (const [name, mutate] of [
     },
   ],
   [
-    'inconsistent held R30 base',
-    (b) => {
-      b.registry.sprints.find((s) => s.id === 'R30').frozenBase = syntheticSha('a');
-    },
-  ],
-  [
     'different registry ownership',
     (b) => {
       b.registry.sprints.find((s) => s.id === 'R32').ownedPaths.exact = [];
@@ -559,7 +682,7 @@ test('both CLI modes read active files, never falling back to the preserved lega
       { encoding: 'utf8', timeout: 10000 },
     );
   assert.equal(run('--check').status, 0);
-  assert.equal(run('--ready').status, 1);
+  assert.equal(run('--ready').status, readinessProblems(recorded, 'R32').length ? 1 : 0);
   await writeFile(path.join(directory, gatePath), '{private_invalid_fixture');
   for (const mode of ['--check', '--ready']) {
     const result = run(mode);
@@ -583,4 +706,41 @@ test('archived files retain the exact owner-merged Git blobs', async () => {
     );
   }
   assert.equal(expected.sourceCommit, '6e13120f140e973e793e9e1a7e76170dcb1850a0');
+});
+
+test('blocked canonical controls preserve all seven exact source blobs independently of active acceptance', () => {
+  assert.equal(archive.schemaVersion, 1);
+  assert.equal(archive.sourceCommit, '96e92825f9b65cf124317f43b55ce42fc97f5b49');
+  assert.deepEqual(Object.keys(archive.files).sort(), [
+    'closeout',
+    'g1',
+    'gate',
+    'r25',
+    'registry',
+    'wave',
+    'wave2',
+  ]);
+  assert.deepEqual(
+    Object.fromEntries(Object.entries(archive.files).map(([key, file]) => [key, file.blobSha])),
+    {
+      gate: '488888eff9e10739364a3fa5ddb00b452a2a2a4d',
+      closeout: 'd380f36007cd0d05fa14e90159f4f6bec3dbf230',
+      wave: 'd1fc12c16d7ab0b13a6aa7f6d4ea3e2c2f35ce2e',
+      r25: 'c044719445ea2264e3fdebdaa6b023236e938ca5',
+      registry: 'ca23801b5e8dbbd410538bbe505ae39117833e07',
+      g1: 'a1648718f2f892cc9bebbde23c416a03c096915f',
+      wave2: '3a08d715466cf70c010ca594ef5ec45ba0f43e43',
+    },
+  );
+  for (const [key, file] of Object.entries(archive.files)) {
+    const bytes = Buffer.from(file.content, 'utf8');
+    assert.equal(
+      createHash('sha1').update(`blob ${bytes.length}\0`).update(bytes).digest('hex'),
+      file.blobSha,
+      key,
+    );
+    assert.match(file.path, /^docs\/production-readiness\/post-r18\//u);
+  }
+  for (const id of ['R29', 'R30', 'R31', 'R32', 'R33'])
+    assert.ok(readinessProblems(blocked, id).some((message) => message.includes('not authorized')));
 });

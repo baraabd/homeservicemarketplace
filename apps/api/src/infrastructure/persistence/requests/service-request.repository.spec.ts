@@ -1,8 +1,23 @@
-import type { Prisma, PrismaTx } from '@homeservicemarketplace/database';
+import type { Prisma, PrismaTx, ServiceCategory } from '@homeservicemarketplace/database';
 import type { PrismaService } from '../../prisma/prisma.service';
 import { ServiceRequestRepository } from './service-request.repository';
 
-describe('seeker page booking and bid projections', () => {
+const category: ServiceCategory = {
+  id: 'category-a',
+  slug: 'plumbing',
+  labelEn: 'Plumbing',
+  labelAr: 'سباكة',
+  icon: 'wrench',
+  sortOrder: 0,
+  isActive: true,
+  createdAt: new Date('2026-01-01T00:00:00Z'),
+  updatedAt: new Date('2026-01-02T00:00:00Z'),
+  deletedAt: null,
+  parentId: null,
+  isLeaf: true,
+};
+
+describe('seeker page category and bid counts', () => {
   function setup() {
     const client = { serviceRequest: { findMany: jest.fn() }, $queryRaw: jest.fn() };
     return { client, repo: new ServiceRequestRepository({ client } as unknown as PrismaService) };
@@ -10,23 +25,14 @@ describe('seeker page booking and bid projections', () => {
 
   it('counts only authorized page IDs, preserves ordering and returns zero for no visible bids', async () => {
     const { client, repo } = setup();
-    client.serviceRequest.findMany.mockResolvedValue([{ id: 'owned-a' }, { id: 'owned-b' }]);
-    const updatedAt = new Date('2026-10-01T12:00:00Z');
+    client.serviceRequest.findMany.mockResolvedValue([
+      { id: 'owned-a', categoryId: category.id },
+      { id: 'owned-b', categoryId: null },
+    ]);
+    // SQL result order deliberately differs from the authorized page order.
     client.$queryRaw.mockResolvedValue([
-      {
-        requestId: 'owned-b',
-        bidCount: 0n,
-        bookingId: null,
-        bookingStatus: null,
-        bookingUpdatedAt: null,
-      },
-      {
-        requestId: 'owned-a',
-        bidCount: 2n,
-        bookingId: 'latest',
-        bookingStatus: 'IN_PROGRESS',
-        bookingUpdatedAt: updatedAt,
-      },
+      { requestId: 'owned-b', id: null, bidsCount: 0n },
+      { requestId: 'owned-a', ...category, bidsCount: 2n },
     ]);
     const rows = await repo.listForSeeker({
       seekerUserId: 'owner',
@@ -38,6 +44,8 @@ describe('seeker page booking and bid projections', () => {
       ['owned-a', 2],
       ['owned-b', 0],
     ]);
+    expect(rows[0].category).toEqual(category);
+    expect(rows[1].category).toBeNull();
     expect(client.serviceRequest.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { seekerUserId: 'owner', deletedAt: null, status: 'OPEN_FOR_BIDS' },
@@ -45,41 +53,38 @@ describe('seeker page booking and bid projections', () => {
         cursor: { id: 'prior' },
         skip: 1,
         orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
-        include: { category: true },
+        include: {
+          bookings: {
+            where: { deletedAt: null },
+            orderBy: [{ updatedAt: 'desc' }, { id: 'desc' }],
+            take: 1,
+            select: { id: true, status: true, updatedAt: true },
+          },
+        },
       }),
     );
-    expect(rows[0].bookings).toEqual([{ id: 'latest', status: 'IN_PROGRESS', updatedAt }]);
-    expect(rows[1].bookings).toEqual([]);
     expect(client.$queryRaw).toHaveBeenCalledTimes(1);
-    const projection = client.$queryRaw.mock.calls[0][0] as Prisma.Sql;
-    expect(projection.values).toEqual(['owned-a', 'owned-b']);
-    expect(projection.sql).toContain('bid."requestId" = page."requestId"');
-    expect(projection.sql).toContain('bid."deletedAt" IS NULL');
-    expect(projection.sql).toContain('bid."status" <> \'WITHDRAWN\'');
-    expect(projection.sql).toContain('booking."deletedAt" IS NULL');
-    expect(projection.sql).toContain('ORDER BY booking."updatedAt" DESC, booking."id" DESC');
+    const query = client.$queryRaw.mock.calls[0][0] as Prisma.Sql;
+    expect(query.values).toEqual(['owned-a', category.id, 'owned-b', null]);
+    expect(query.text).toContain('bid."requestId" = page."requestId"');
+    expect(query.text).toContain('bid."deletedAt" IS NULL');
+    expect(query.text).toContain("bid.status <> 'WITHDRAWN'");
   });
 
-  it('does not scan bids for an empty or unauthorized page', async () => {
+  it('does not scan bids or categories for an empty or unauthorized page', async () => {
     const { client, repo } = setup();
     client.serviceRequest.findMany.mockResolvedValue([]);
     expect(await repo.listForSeeker({ seekerUserId: 'other', take: 20 })).toEqual([]);
     expect(client.$queryRaw).not.toHaveBeenCalled();
   });
 
-  it('uses the supplied transaction for both the page and enrichment, never the global connection', async () => {
+  it('uses the supplied transaction for the page and enrichment, never the global connection', async () => {
     const { client, repo } = setup();
     const tx = {
-      serviceRequest: { findMany: jest.fn().mockResolvedValue([{ id: 'tx-row' }]) },
-      $queryRaw: jest.fn().mockResolvedValue([
-        {
-          requestId: 'tx-row',
-          bidCount: 0n,
-          bookingId: null,
-          bookingStatus: null,
-          bookingUpdatedAt: null,
-        },
-      ]),
+      serviceRequest: {
+        findMany: jest.fn().mockResolvedValue([{ id: 'tx-row', categoryId: null }]),
+      },
+      $queryRaw: jest.fn().mockResolvedValue([{ requestId: 'tx-row', id: null, bidsCount: 0n }]),
     };
     const rows = await repo.listForSeeker(
       { seekerUserId: 'owner', take: 1 },
@@ -90,5 +95,17 @@ describe('seeker page booking and bid projections', () => {
     expect(tx.$queryRaw).toHaveBeenCalledTimes(1);
     expect(client.serviceRequest.findMany).not.toHaveBeenCalled();
     expect(client.$queryRaw).not.toHaveBeenCalled();
+  });
+
+  it('binds page identities as data and propagates enrichment failure instead of a false zero', async () => {
+    const { client, repo } = setup();
+    const id = "page' OR TRUE --";
+    client.serviceRequest.findMany.mockResolvedValue([{ id, categoryId: null }]);
+    const failure = new Error('unavailable');
+    client.$queryRaw.mockRejectedValue(failure);
+    await expect(repo.listForSeeker({ seekerUserId: 'owner', take: 1 })).rejects.toBe(failure);
+    const query = client.$queryRaw.mock.calls[0][0] as Prisma.Sql;
+    expect(query.text).not.toContain(id);
+    expect(query.values).toEqual([id, null]);
   });
 });

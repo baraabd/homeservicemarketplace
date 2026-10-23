@@ -1,14 +1,134 @@
 {
   "schemaVersion": 1,
-  "kind": "DERIVED_SAFE_SUMMARY",
-  "runId": 39062646647,
-  "artifactId": 12111448781,
-  "zipSha256": "1ce6534f4377fad0e3c6a8177b05ff09389a30693bc402be634b1843f84798a6",
-  "zipDigestVerified": true,
-  "attempt": "20261017193408059-828a2209",
-  "headSha": "4e87bf03663fb3c72ffee983fdb70c2863e1ce8a",
-  "treeSha": "eaca9cdeab15e719570f7997c4fc3bbeb64e562e",
-  "status": "INTEGRATION_PENDING",
+  "sprint": "R25",
+  "attempt": "20261022233220385-8adea8c9",
+  "frozenBaseSha": "40cdac5c9ce6acaa8dedc0385984a807ae9a84d0",
+  "headSha": "72b4aaeb0a71d806b7fca7363dd9ca59bbcee644",
+  "treeSha": "43e9c6a4e58cfb934b12789feeb38b588e1cb7c6",
+  "configurationFingerprint": "ca290b89670427d45ad4189707b4112862edec7c7159fd46676f58c204e6faa4",
+  "commands": [
+    {
+      "label": "migrations",
+      "command": ["pnpm", "--filter", "@homeservicemarketplace/database", "migrate:deploy"],
+      "exitCode": 0,
+      "signal": null,
+      "timedOut": false,
+      "cleanup": "stopped",
+      "durationMs": 1933
+    },
+    {
+      "label": "database-build",
+      "command": ["pnpm", "--filter", "@homeservicemarketplace/database", "build"],
+      "exitCode": 0,
+      "signal": null,
+      "timedOut": false,
+      "cleanup": "stopped",
+      "durationMs": 5296
+    },
+    {
+      "label": "seed",
+      "command": ["pnpm", "--filter", "@homeservicemarketplace/database", "seed"],
+      "exitCode": 0,
+      "signal": null,
+      "timedOut": false,
+      "cleanup": "stopped",
+      "durationMs": 742
+    },
+    {
+      "label": "api-integration",
+      "command": [
+        "pnpm",
+        "--filter",
+        "@homeservicemarketplace/api",
+        "test",
+        "--runTestsByPath",
+        "test/integration/r25-realtime-recovery.integration.spec.ts",
+        "--json",
+        "--outputFile=/home/runner/work/homeservicemarketplace/homeservicemarketplace/apps/web/test-results/r25-ci_39870749767_1/20261022233220385-8adea8c9/private/api-results.json"
+      ],
+      "exitCode": 0,
+      "signal": null,
+      "timedOut": false,
+      "cleanup": "stopped",
+      "durationMs": 19398
+    },
+    {
+      "label": "api-build",
+      "command": ["pnpm", "--filter", "@homeservicemarketplace/api", "build"],
+      "exitCode": 0,
+      "signal": null,
+      "timedOut": false,
+      "cleanup": "stopped",
+      "durationMs": 23089
+    },
+    {
+      "label": "web-typecheck",
+      "command": ["pnpm", "--filter", "@homeservicemarketplace/web", "typecheck"],
+      "exitCode": 0,
+      "signal": null,
+      "timedOut": false,
+      "cleanup": "stopped",
+      "durationMs": 16912
+    },
+    {
+      "label": "web-build-A",
+      "command": [
+        "pnpm",
+        "--filter",
+        "@homeservicemarketplace/web",
+        "exec",
+        "vite",
+        "build",
+        "--outDir",
+        "/home/runner/work/homeservicemarketplace/homeservicemarketplace/apps/web/test-results/r25-ci_39870749767_1/20261022233220385-8adea8c9/web-A"
+      ],
+      "exitCode": 0,
+      "signal": null,
+      "timedOut": false,
+      "cleanup": "stopped",
+      "durationMs": 8780
+    },
+    {
+      "label": "web-build-B",
+      "command": [
+        "pnpm",
+        "--filter",
+        "@homeservicemarketplace/web",
+        "exec",
+        "vite",
+        "build",
+        "--outDir",
+        "/home/runner/work/homeservicemarketplace/homeservicemarketplace/apps/web/test-results/r25-ci_39870749767_1/20261022233220385-8adea8c9/web-B"
+      ],
+      "exitCode": 0,
+      "signal": null,
+      "timedOut": false,
+      "cleanup": "stopped",
+      "durationMs": 9053
+    },
+    {
+      "label": "browser",
+      "command": [
+        "pnpm",
+        "--filter",
+        "@homeservicemarketplace/web",
+        "exec",
+        "playwright",
+        "test",
+        "e2e/r25-realtime-recovery.real-api.spec.ts",
+        "--project=chromium-desktop",
+        "--retries=0",
+        "--reporter=json",
+        "--output=/home/runner/work/homeservicemarketplace/homeservicemarketplace/apps/web/test-results/r25-ci_39870749767_1/20261022233220385-8adea8c9/private/browser-output"
+      ],
+      "exitCode": 0,
+      "signal": null,
+      "timedOut": false,
+      "cleanup": "stopped",
+      "durationMs": 36524
+    }
+  ],
+  "status": "SANDBOX_ACCEPTED",
   "api": {
     "suites": 1,
     "passed": 13,
@@ -16,71 +136,34 @@
     "skipped": 0,
     "success": true
   },
-  "browser": {
-    "exitCode": 1,
-    "timedOut": false,
-    "signal": null,
-    "passed": null,
-    "failed": null,
-    "skipped": null,
-    "assertion": "NOT_PUBLISHED"
+  "apiBuild": {
+    "files": 949,
+    "sha256": "f456ea9e922a697e05464a52cfae645c573e7dedf2cf943dc37064c9d543d62f"
   },
-  "commands": [
-    {
-      "label": "migrations",
-      "exitCode": 0,
-      "timedOut": false,
-      "signal": null
+  "webBuilds": {
+    "A": {
+      "files": 85,
+      "sha256": "034d957e114946c816a5cd870689915efeb9ef2ddfcee30c2268201ae33d64a4"
     },
-    {
-      "label": "database-build",
-      "exitCode": 0,
-      "timedOut": false,
-      "signal": null
-    },
-    {
-      "label": "seed",
-      "exitCode": 0,
-      "timedOut": false,
-      "signal": null
-    },
-    {
-      "label": "api-integration",
-      "exitCode": 0,
-      "timedOut": false,
-      "signal": null
-    },
-    {
-      "label": "api-build",
-      "exitCode": 0,
-      "timedOut": false,
-      "signal": null
-    },
-    {
-      "label": "web-typecheck",
-      "exitCode": 0,
-      "timedOut": false,
-      "signal": null
-    },
-    {
-      "label": "web-build-A",
-      "exitCode": 0,
-      "timedOut": false,
-      "signal": null
-    },
-    {
-      "label": "web-build-B",
-      "exitCode": 0,
-      "timedOut": false,
-      "signal": null
-    },
-    {
-      "label": "browser",
-      "exitCode": 1,
-      "timedOut": false,
-      "signal": null
+    "B": {
+      "files": 85,
+      "sha256": "c431c7b5069d071102f9a0edb9a0f4264858ae9178a807b386bed68fce0bcc92"
     }
-  ],
-  "configurationFingerprint": "5eae2bbfff7c8b63b5f86224af741aea17e944be04c487d0d66c7509edcb998d",
-  "cleanup": "owned process groups stopped"
+  },
+  "browser": {
+    "passed": 1,
+    "failed": 0,
+    "skipped": 0,
+    "flaky": 0,
+    "exitCode": 0,
+    "signal": null,
+    "timedOut": false
+  },
+  "cleanup": "owned process groups stopped",
+  "artifactId": 12467540006,
+  "runId": 39870749767,
+  "zipSha256": "ef684f10bc447d457d819ae19c4277fe6f66c0c3ff1b60dde7fde3b8f9bbf988",
+  "zipDigestVerified": true,
+  "kind": "DERIVED_SAFE_SUMMARY",
+  "derivation": "Browser exit/signal/timeout copied from actual command, never inferred from counts."
 }
