@@ -25,7 +25,7 @@ R29 remains PLANNED in this branch, and R34–R38 remain PLANNED behind G3.
 | R26 | Application security and effective authorization hardening                         | 2    | READY_TO_START   | feat/r26-application-security      | #174       |
 | R27 | Measured startup, bundle and database performance                                  | 2    | READY_TO_START   | feat/r27-performance-capacity      | #173       |
 | R28 | Authorized hosted topology, infrastructure and release inputs                      | 2    | READY_TO_START   | feat/r28-hosted-platform           | #179, #181 |
-| R29 | Stripe sandbox subscription collections, signed webhooks and refund adapter        | 3    | PLANNED          | feat/r29-stripe-sandbox-webhooks   | —          |
+| R29 | Stripe sandbox subscription collections, signed webhooks and refund adapter        | 3    | READY_TO_START   | feat/r29-stripe-sandbox-webhooks   | —          |
 | R30 | Manual subscription payment rails and protected receipt review                     | 3    | READY_TO_START   | feat/r30-manual-payment-review     | —          |
 | R31 | Subscription plans, My Plan and atomic entitlements                                | 3    | READY_TO_START   | feat/r31-subscription-entitlements | —          |
 | R32 | Refund eligibility, reservations and ambiguous-outcome recovery                    | 3    | READY_TO_START   | feat/r32-refund-recovery           | —          |
