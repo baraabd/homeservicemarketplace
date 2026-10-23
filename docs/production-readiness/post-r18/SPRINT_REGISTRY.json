@@ -1316,7 +1316,6 @@
           "apps/web/src/app/features/manual-payments/manual-payments.copy.ts",
           "apps/web/src/app/features/manual-payments/manual-payments.copy.test.ts",
           "apps/web/src/app/features/manual-payments/index.ts",
-          "apps/api/test/integration/r30-manual-payments.integration.spec.ts",
           "apps/web/e2e/r30-manual-payments/manual-payments.real-api.spec.ts",
           "scripts/production/manual-payments/verify-receipt-flow.cjs",
           "scripts/production/manual-payments/verify-receipt-flow.test.cjs",
@@ -1350,7 +1349,6 @@
           "docs/production-readiness/r30/shared-change-requests/CR-003-private-evidence.md",
           "docs/production-readiness/r30/shared-change-requests/CR-004-atomic-confirmation.md",
           "docs/production-readiness/r30/shared-change-requests/CR-005-web-contracts.md",
-          "apps/api/test/support/r30-manual-http.fixture.ts",
           "docs/production-readiness/r30/shared-change-requests/CR-006-final-ci-remediation.md"
         ],
         "prefixes": [],
@@ -1418,6 +1416,18 @@
             },
             "closedBy": "Owner-merged PR #184",
             "mergedCommitSha": "aaa22a9a04025fc312cbcc2121687aca2e467cac"
+          }
+        ],
+        "transferredPaths": [
+          {
+            "path": "apps/api/test/support/r30-manual-http.fixture.ts",
+            "to": "R32",
+            "reason": "Serialized owner-requested PR #187 integration repair after R30 #184 merge"
+          },
+          {
+            "path": "apps/api/test/integration/r30-manual-payments.integration.spec.ts",
+            "to": "R32",
+            "reason": "Serialized owner-requested PR #187 integration repair after R30 #184 merge"
           }
         ]
       },
@@ -1626,6 +1636,18 @@
               "scripts/perf/post-r18/lib/lane-env.mjs",
               "scripts/perf/post-r18/lib/runtime.test.mjs"
             ]
+          },
+          {
+            "id": "R32-R30-TEST-20261023",
+            "grantedBy": "Owner request to repair PRs #185/#186/#187; root serializes shared changes",
+            "writer": "root PR repair session aa623b77a7b8",
+            "scope": "Provide the labeled confirmed-refund transaction component required by R32 in the R30 real-transport fixture; verify independent proof, actual R32 finalization and exact-once ledger/consequence effects. Production gates unchanged.",
+            "paths": [
+              "apps/api/test/support/r30-manual-http.fixture.ts",
+              "apps/api/test/integration/r30-manual-payments.integration.spec.ts"
+            ],
+            "expires": "PR #187 closure or coordinator revocation",
+            "handoff": "docs/production-readiness/r32/ACCEPTANCE.md"
           }
         ]
       },

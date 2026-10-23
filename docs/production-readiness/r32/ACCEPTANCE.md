@@ -255,3 +255,21 @@ and cannot assign the unprivileged PostgreSQL runtime user. The corrected
 branch is published for the mandatory GitHub real-service/browser checks;
 those results must be read on its new head, not inferred from these local checks.
 Prior policy, assembled-wave and release holds remain unchanged.
+
+### Real R30 transport / R32 consequence boundary
+
+Corrected-head job 120434873439 ran 16 real service cases: 15 passed and the
+manual refund dispatch returned 503 instead of 202. R32 correctly requires a
+configured confirmed-refund participant before first dispatch; the older R30
+fixture supplied only activation and reservation-policy components. Add an
+explicitly synthetic confirmed-refund participant that validates the retained
+request/policy/amount and posted compensation in the same transaction, then
+writes an inert marker. Production composition and its unavailable default
+remain unchanged.
+
+The same real service case now queries the authoritative manual proof through
+R32, checks SUCCEEDED, linked compensation and one consequence marker, and
+replays the query to prove no duplicate ledger or consequence effect. All 16
+mandatory cases remain. Two exact R30 test files transfer to the serialized R32
+repair lease with prior ownership retained. Local governance passes; the real
+service result is pending the new GitHub head due to the local runtime limit.
