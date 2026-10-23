@@ -1,4 +1,5 @@
 import { expect, test, type TestInfo } from '@playwright/test';
+import { isLegacyContractModuleError } from './legacy-contract-error';
 import { spawn, spawnSync, type ChildProcess } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { createServer } from 'node:http';
@@ -227,6 +228,13 @@ test('commands pin the source config and typechecking emits no shadow config', a
   expect(loadCommonJs('@homeservicemarketplace/contracts').LEGACY_PUBLICATION_ACK_TEXT).toBe(
     'PROVIDER_CONFIRMED_RIGHT_TO_PUBLISH',
   );
+  expect(loadCommonJs('@homeservicemarketplace/contracts').DISPUTE_WORKSPACE_STATES).toEqual([
+    'GATHERING',
+    'PROPOSED',
+    'DECIDED',
+    'APPEALED',
+    'CLOSED',
+  ]);
 });
 
 test('isolates the selector and recovers the affected admin route when an old config is auto-discovered', async ({
@@ -251,18 +259,12 @@ test('isolates the selector and recovers the affected admin route when an old co
     await seedLanguage(page, 'en');
     await stubApi(page, { me: signedInAdmin() });
     await page.goto(server.baseURL);
-    // Admin's ReviewDossier imports the affected value. Splitting routes must
-    // keep this old configuration defect out of an unrelated public entry.
+    // ReviewDossier and AdminDisputeInbox import runtime values from this CJS
+    // barrel. Either can fail linking first; public entry must remain isolated.
     await expect(page.getByTestId('app-card-seeker')).toBeVisible();
     expect(contractRequests).toEqual([]);
     await page.getByTestId('app-card-admin').click();
-    await expect
-      .poll(() =>
-        errors.some((message) =>
-          /does not provide an export named 'LEGACY_PUBLICATION_ACK_TEXT'/.test(message),
-        ),
-      )
-      .toBe(true);
+    await expect.poll(() => errors.some(isLegacyContractModuleError)).toBe(true);
     expect(contractRequests.length).toBeGreaterThan(0);
     await expect(page.getByRole('alert')).toContainText('The page could not load');
     await expect(page.getByRole('button', { name: 'Reload page', exact: true })).toBeVisible();
@@ -270,12 +272,20 @@ test('isolates the selector and recovers the affected admin route when an old co
     const screenshot = info.outputPath('before-legacy-recovery.png');
     await page.screenshot({ path: screenshot, fullPage: true });
     await info.attach('before-legacy-recovery', { path: screenshot, contentType: 'image/png' });
+  } catch (error) {
+    const screenshot = info.outputPath('legacy-failure.png');
+    await page.screenshot({ path: screenshot, fullPage: true });
+    await info.attach('legacy-failure', { path: screenshot, contentType: 'image/png' });
+    throw error;
+  } finally {
+    // Preserve the actual module error even when the negative-control assertion
+    // fails. A timeout without this evidence cannot distinguish a broken
+    // failure fixture from a regression in the real application's recovery.
     await info.attach('legacy-errors', {
       body: JSON.stringify({ errors, contractRequests }, null, 2),
       contentType: 'application/json',
     });
-    console.log('REPRODUCED', JSON.stringify(errors));
-  } finally {
+    console.log('LEGACY_MODULE_DIAGNOSTICS', JSON.stringify({ errors, contractRequests }));
     await server.close();
   }
 });
