@@ -62,10 +62,12 @@ export function selectDependencyControls({ root, record, candidate, proposedRepa
     const changed = git('diff-tree', '--no-commit-id', '--name-only', '-r', control.commit)
       .split('\n')
       .sort();
-    assert.deepEqual(
-      changed,
-      DEPENDENCY_PATHS,
-      `${label} must change only the three dependency files`,
+    // A package update need not modify the root manifest. Every control must
+    // contain a real dependency change, and all three resulting blobs still
+    // have to match the candidate below. Runtime changes remain forbidden.
+    assert.ok(
+      changed.length > 0 && changed.every((path) => DEPENDENCY_PATHS.includes(path)),
+      `${label} must change only the three dependency files (at least one)`,
     );
     for (const path of DEPENDENCY_PATHS) {
       assert.equal(

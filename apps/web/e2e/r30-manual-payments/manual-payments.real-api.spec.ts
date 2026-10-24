@@ -14,6 +14,7 @@ import type {
 import { randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { PNG } from 'pngjs';
+import { utcDatetimeLocal } from '../datetime-local';
 
 type StorageState = Awaited<ReturnType<BrowserContext['storageState']>>;
 type Actor = 'owner' | 'reviewer' | 'recorder' | 'outsider';
@@ -473,7 +474,7 @@ test('real sandbox receipt replacement, private previews and independent review 
         .fill('1000');
       await recorder
         .getByLabel('Deposit time (UTC)', { exact: true })
-        .fill(new Date().toISOString().slice(0, 19));
+        .fill(utcDatetimeLocal(new Date()));
       const settlement = postResponse(recorder, reviewUrl + '/settlements');
       await recorder.getByRole('button', { name: 'Record simulated deposit', exact: true }).click();
       expect((await settlement).status()).toBe(201);
