@@ -1220,10 +1220,10 @@
       "lane": 1,
       "branch": "feat/r29-stripe-sandbox-webhooks",
       "owner": {
-        "lane": "R29 future lane session; coordinator assigns the writer only after verified G2 publication",
+        "lane": "root — R29 session r29-20261023-b3dda4f7",
         "coordinator": "Owner-delegated engineering coordinator for baraabd"
       },
-      "status": "PLANNED",
+      "status": "READY_TO_START",
       "frozenBase": "72b4aaeb0a71d806b7fca7363dd9ca59bbcee644",
       "dependencies": ["R24", "R20", "R22", "R23"],
       "legacyAliases": ["P38", "P39", "P41-stripe-adapter"],
@@ -1252,7 +1252,13 @@
           "docs/production-readiness/r29/OWNERSHIP.md",
           "docs/production-readiness/r29/shared-change-requests/CR-001-sdk-api-pin.md",
           "docs/production-readiness/r29/shared-change-requests/CR-002-raw-body-wiring.md",
-          "docs/production-readiness/r29/shared-change-requests/CR-003-inbox-binding.md"
+          "docs/production-readiness/r29/shared-change-requests/CR-003-inbox-binding.md",
+          "apps/api/src/modules/money/adapters/stripe/stripe-sdk.ts",
+          "apps/api/src/modules/money/adapters/stripe/stripe-sdk.spec.ts",
+          "apps/api/src/modules/money/webhooks/stripe/stripe-inbox.job.ts",
+          "apps/api/src/modules/money/webhooks/stripe/stripe-inbox.job.spec.ts",
+          "apps/api/src/modules/money/webhooks/stripe/stripe-webhook.module.spec.ts",
+          "apps/api/test/support/r29-stripe.fixture.ts"
         ],
         "prefixes": [],
         "leases": []
@@ -1273,8 +1279,16 @@
         "publication": "NOT_RELEASED",
         "sourceRecord": "docs/production-readiness/post-r18/gates/g2/SOURCE_MANIFEST.json"
       },
-      "ownershipApproval": "CONDITIONAL_AFTER_VERIFIED_G2_PUBLICATION_AND_SESSION_ASSIGNMENT",
-      "sourcePrompt": "docs/production-readiness/post-r18/gates/g2/prompts/R29.md"
+      "ownershipApproval": "APPROVED_AFTER_VERIFIED_G2_PUBLICATION",
+      "sourcePrompt": "docs/production-readiness/post-r18/gates/g2/prompts/R29.md",
+      "sessionAssignment": {
+        "sessionId": "r29-20261023-b3dda4f7",
+        "assignedBy": "/root — owner-delegated engineering coordinator for baraabd",
+        "assignedAt": "2026-10-23T20:54:49.936631+00:00",
+        "ownershipRecord": "docs/production-readiness/r29/OWNERSHIP.md",
+        "checkoutStartSha": "72b4aaeb0a71d806b7fca7363dd9ca59bbcee644",
+        "implementationBaseSha": "5ff2b7e6a46b4e42114184fac89928372f4c8d4c"
+      }
     },
     {
       "id": "R30",
