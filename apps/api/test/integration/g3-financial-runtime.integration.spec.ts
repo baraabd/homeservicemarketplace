@@ -24,10 +24,10 @@ db('G3 mounted financial runtime (real infrastructure)', () => {
   let h: R24MoneyHttpFixture;
   beforeAll(async () => {
     h = await r24MoneyHttpFixture({ isolateRateLimits: true });
-  });
+  }, 120_000);
   afterAll(async () => {
     await h?.dispose();
-  });
+  }, 30_000);
   it('binds one shared concrete implementation for every integrated port', () => {
     for (const [token, implementation] of [
       [MONEY_CONFIGURATION, MoneyRailConfiguration],
@@ -63,13 +63,11 @@ db('G3 mounted financial runtime (real infrastructure)', () => {
     expect(result.status).toBe(400);
   });
   it('mounts signed ingress and fails closed without a configured Stripe account', async () => {
-    const result = await h
-      .session()
-      .request('/v1/money/webhooks/stripe', {
-        method: 'POST',
-        body: { id: 'synthetic-event' },
-        headers: { 'stripe-signature': 't=1,v1=synthetic-negative-fixture' },
-      });
+    const result = await h.session().request('/v1/money/webhooks/stripe', {
+      method: 'POST',
+      body: { id: 'synthetic-event' },
+      headers: { 'stripe-signature': 't=1,v1=synthetic-negative-fixture' },
+    });
     expect(result.status).toBe(503);
     expect(JSON.stringify(result.body)).not.toMatch(/sk_test_|whsec_/u);
   });

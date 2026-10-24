@@ -83,3 +83,8 @@ d316a2f46270024b301c78bfa86d15e94e2350c9:.github/workflows/r13-validation.yml:ge
 # G2 R36 — one reviewed recovery-requirements prose match; see section 14
 # of docs/security/gitleaks-historical-baseline.md. Historical occurrence only.
 6c7aac2ea68ee4943d60b0db3be33012d572ac8d:docs/production-readiness/post-r18/gates/g2/prompts/R36.md:generic-api-key:72
+
+# G3 — two recomputed SHA-256 evidence digests, individually reviewed in
+# docs/security/gitleaks-historical-baseline.md section 15. Historical only.
+2757d86f7d9e4a3b1cd655a5c4c9cd1d7848787c:docs/production-readiness/post-r18/gates/g3/IMPLEMENTATION.md:generic-api-key:25
+2757d86f7d9e4a3b1cd655a5c4c9cd1d7848787c:docs/production-readiness/post-r18/gates/g3/evidence/LOCAL_CHECKS.json:generic-api-key:227

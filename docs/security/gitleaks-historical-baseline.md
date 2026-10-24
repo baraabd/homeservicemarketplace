@@ -506,3 +506,42 @@ separate temporary repository were both detected (`generic-api-key` and
 their temporary repository was removed. All seven existing tracked-tree scanner
 policy tests also passed. Final corrected-commit tree scanning and exact-head
 CI remain required; the earlier failed run is retained.
+
+## 15. G3 evidence digest matches (2026-10-24)
+
+The Codex coordinator individually reviewed two `generic-api-key` findings
+in published commit `2757d86f7d9e4a3b1cd655a5c4c9cd1d7848787c` under the
+user's G3 integration authorization. This is an agent classification, not
+independent human security approval.
+
+| File                                                                     | Line | Classification                                   |
+| ------------------------------------------------------------------------ | ---- | ------------------------------------------------ |
+| `docs/production-readiness/post-r18/gates/g3/IMPLEMENTATION.md`          | 25   | SHA-256 of the sanitized configuration inventory |
+| `docs/production-readiness/post-r18/gates/g3/evidence/LOCAL_CHECKS.json` | 227  | SHA-256 of the local API test report             |
+
+Both complete source records were inspected at the originating commit. Each
+64-character value was independently recomputed from its exact input and
+matched: canonical sorted compact JSON for the configuration inventory, and
+raw bytes for the test report. They were authored by this session for evidence
+integrity. Neither authenticates, signs, authorizes or comes from a provider
+account or credential store. No production environment was inspected. This
+bounded derivation proof does not assert a repository-wide credential audit.
+
+The actual Gitleaks 8.24.3 first-parent/non-merge range from `73a4a64a` to
+`2757d86f` reproduced exactly these two findings (exit 2), matching the
+tracked-tree scan. The current prose and artifact-digest layout are clarified
+without changing either digest. Only the two exact historical fingerprints
+are added. No scanner rule, path pattern, range, budget or blocking status is
+changed, and no history is rewritten. Local-only commit aliases receive no
+ignore entries.
+
+Review/remove these entries under section 5 when the originating commit is
+unreachable or at release review. The corrected tracked-tree scan and final
+remote CI remain mandatory.
+
+Verification: the unchanged historical range scanned five commits and 134,200
+bytes after the two fingerprints, with exit 0 and no findings. An isolated
+temporary Git repository carrying the updated baseline received two freshly
+generated canaries. Both generic-api-key and github-pat were detected (exit 2,
+two findings); their values were never printed or committed here, and the
+temporary source was deleted.

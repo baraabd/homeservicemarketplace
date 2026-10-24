@@ -22,3 +22,12 @@ Initial typecheck found a branded-money-string test fixture; fixed with toMoneyW
 `node .github/scripts/g3-record.mjs --check` passes consistency. `--ready R34` exits 1 intentionally: acceptance and verified publication are still missing. No accepted SHA or active R34 implementation lease is fabricated.
 
 A task-owned empty orphaned Prisma generation lock from the earlier completed generation was quarantined outside the worktree; the waiting repository generator reacquired its lock normally and completed. No peer process was stopped and no generation guard was disabled.
+
+The first evidence-inclusive tracked-tree scan reported two generic matches
+on SHA-256 evidence digests. Both were recomputed from their inputs and
+individually classified in `docs/security/gitleaks-historical-baseline.md`
+section 15. The current representation was clarified and only two exact
+historical occurrences were baselined. The history range then passed; fresh
+canaries still triggered both rules. No scanner rule or budget was relaxed.
+The new runtime integration setup/teardown uses the same 120s/30s per-hook
+bounds as the existing R29 fixture; global and scenario timeouts are unchanged.

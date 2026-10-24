@@ -22,7 +22,7 @@ Status: IMPLEMENTED; local source checks completed/published as recorded in ACCE
 
 Refund policy rows require a real approval reference, exact version/scope, approval/effective dates, strict existing R32 rules and explicit entitlement effect. The operator must separately authorize policy data and sandbox credentials. The migration creates neither grants nor an approval. Existing R16/R18 market, fee, payout and verification holds are preserved.
 
-Source schema version: Prisma 6.12.0 plus `20261024120000_g3_financial_integration`; money contracts remain `hsm.money.v1` with additive session/reconciliation types; new action protocol is `hsm.reconciliation.v2`. Configuration fingerprint without secrets: `bc65c33b8aa687e5f123347e6522ad19cfff015c6f0011f14cc7b9f8fc0badd3`.
+Source schema version: Prisma 6.12.0 plus `20261024120000_g3_financial_integration`; money contracts remain `hsm.money.v1` with additive session/reconciliation types; new action protocol is `hsm.reconciliation.v2`. Configuration SHA-256: `bc65c33b8aa687e5f123347e6522ad19cfff015c6f0011f14cc7b9f8fc0badd3`.
 
 Official integration references inspected: [PaymentIntents](https://docs.stripe.com/payments/payment-intents), [Payment Element](https://docs.stripe.com/payments/payment-element), [intent-first integration](https://docs.stripe.com/payments/accept-a-payment-intent-first), [webhook raw body](https://docs.stripe.com/webhooks), [official SDK](https://github.com/stripe/stripe-node).
 

@@ -223,11 +223,26 @@
     "baseline": "ebbf70579a1d15f9e4e40b0b4b89abf145a7de82",
     "repair": "59df0cd4c8416c4a512973763396f78bcb2ccc82"
   },
-  "artifactDigests": {
-    "g3-api-final.json": "bffc68eead0a7c07b86bd1538b06ddfd1abf9970490d72bd781b403f05c86c08",
-    "g3-web-unit.json": "37ccc17de524cf1da7fb3465407bcf6ef9b9eb6fbe8d0aec736b4d65a0e317df",
-    "g3-audit-full.json": "8299b9c566946044775caaf85d083325fb41d7fee967e48424edebb0bbd0cddb",
-    "g3-source-gitleaks.sarif": "f1cc1fc5bf34d5e9643655ac6480ff4681e27aa9c2c639f03067fc7ea8595e3d",
-    "g3-dependency-controls-check.json": "ff9fd37eb8c29ce5ba9ac5341235a205315d43bc44fe1416a8ea47212d90fa10"
-  }
+  "artifactDigests": [
+    {
+      "sha256": "bffc68eead0a7c07b86bd1538b06ddfd1abf9970490d72bd781b403f05c86c08",
+      "artifact": "g3-api-final.json"
+    },
+    {
+      "sha256": "37ccc17de524cf1da7fb3465407bcf6ef9b9eb6fbe8d0aec736b4d65a0e317df",
+      "artifact": "g3-web-unit.json"
+    },
+    {
+      "sha256": "8299b9c566946044775caaf85d083325fb41d7fee967e48424edebb0bbd0cddb",
+      "artifact": "g3-audit-full.json"
+    },
+    {
+      "sha256": "f1cc1fc5bf34d5e9643655ac6480ff4681e27aa9c2c639f03067fc7ea8595e3d",
+      "artifact": "g3-source-gitleaks.sarif"
+    },
+    {
+      "sha256": "ff9fd37eb8c29ce5ba9ac5341235a205315d43bc44fe1416a8ea47212d90fa10",
+      "artifact": "g3-dependency-controls-check.json"
+    }
+  ]
 }
