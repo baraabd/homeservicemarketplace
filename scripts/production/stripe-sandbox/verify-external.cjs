@@ -321,6 +321,39 @@ function installLoader() {
   };
 }
 
+async function reserveEvidenceFile(output) {
+  requireCondition(path.isAbsolute(output), 'G3_EVIDENCE_MUST_BE_OUTSIDE_SOURCE');
+  output = path.resolve(output);
+  requireCondition(
+    output !== ROOT && !output.startsWith(ROOT + path.sep),
+    'G3_EVIDENCE_MUST_BE_OUTSIDE_SOURCE',
+  );
+  requireCondition(Number.isInteger(fs.constants.O_NOFOLLOW), 'G3_SAFE_OUTPUT_UNSUPPORTED');
+  await fsp.mkdir(path.dirname(output), { recursive: true, mode: 0o700 });
+  const parent = await fsp.realpath(path.dirname(output));
+  requireCondition(
+    parent !== ROOT && !parent.startsWith(ROOT + path.sep),
+    'G3_EVIDENCE_MUST_BE_OUTSIDE_SOURCE',
+  );
+  try {
+    // Reserve before provider I/O. Exclusive creation rejects an existing file
+    // or symlink atomically; all later writes use this exact descriptor even if
+    // another process subsequently replaces the requested pathname.
+    return await fsp.open(
+      path.join(parent, path.basename(output)),
+      fs.constants.O_WRONLY | fs.constants.O_CREAT | fs.constants.O_EXCL | fs.constants.O_NOFOLLOW,
+      0o600,
+    );
+  } catch (error) {
+    throw new Error(
+      ['EEXIST', 'ELOOP'].includes(error?.code)
+        ? 'G3_OUTPUT_ALREADY_EXISTS'
+        : 'G3_OUTPUT_RESERVATION_FAILED',
+      { cause: error },
+    );
+  }
+}
+
 async function main(args = process.argv.slice(2)) {
   requireCondition(
     args.length === 4 &&
@@ -331,11 +364,6 @@ async function main(args = process.argv.slice(2)) {
     'G3_USAGE_INPUT_OUTPUT_ABSOLUTE',
   );
   const output = path.resolve(args[3]);
-  requireCondition(
-    output !== ROOT && !output.startsWith(ROOT + path.sep),
-    'G3_EVIDENCE_MUST_BE_OUTSIDE_SOURCE',
-  );
-  requireCondition(!fs.existsSync(output), 'G3_OUTPUT_ALREADY_EXISTS');
   const report = {
     schemaVersion: 1,
     scope: 'G3_EXTERNAL_STRIPE_HTTP_DATABASE_LIFECYCLE',
@@ -351,6 +379,7 @@ async function main(args = process.argv.slice(2)) {
   };
   let restoreLoader;
   let restoreOutput;
+  const evidenceFile = await reserveEvidenceFile(output);
   try {
     const bytes = await fsp.readFile(args[1]);
     requireCondition(bytes.length <= 65536, 'G3_INPUT_TOO_LARGE');
@@ -432,19 +461,14 @@ async function main(args = process.argv.slice(2)) {
       report.recoveryRequiredBeforeCleanup = true;
     }
   } finally {
-    restoreLoader?.();
-    restoreOutput?.();
-    report.finishedAt = new Date().toISOString();
-    await fsp.mkdir(path.dirname(output), { recursive: true, mode: 0o700 });
-    const parent = await fsp.realpath(path.dirname(output));
-    requireCondition(
-      parent !== ROOT && !parent.startsWith(ROOT + path.sep),
-      'G3_EVIDENCE_MUST_BE_OUTSIDE_SOURCE',
-    );
-    await fsp.writeFile(output, JSON.stringify(report, null, 2) + '\n', {
-      flag: 'wx',
-      mode: 0o600,
-    });
+    try {
+      restoreLoader?.();
+      restoreOutput?.();
+      report.finishedAt = new Date().toISOString();
+      await evidenceFile.writeFile(JSON.stringify(report, null, 2) + '\n');
+    } finally {
+      await evidenceFile.close();
+    }
   }
   process.stdout.write(JSON.stringify(report) + '\n');
   return report.status === 'EXTERNAL_STRIPE_SCENARIOS_PASSED' ? 0 : 2;
@@ -462,4 +486,11 @@ if (require.main === module) {
       process.exitCode = 2;
     });
 }
-module.exports = { SCENARIOS, validateInputs, guardEnvironment, validateObservation, main };
+module.exports = {
+  SCENARIOS,
+  validateInputs,
+  guardEnvironment,
+  validateObservation,
+  reserveEvidenceFile,
+  main,
+};

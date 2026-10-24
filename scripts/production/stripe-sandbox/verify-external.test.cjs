@@ -2,7 +2,8 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { mkdtemp, readFile, writeFile, rm } = require('node:fs/promises');
+const fsp = require('node:fs/promises');
+const { mkdtemp, readFile, writeFile, rm, symlink, readlink, rename } = fsp;
 const { tmpdir } = require('node:os');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
@@ -11,6 +12,8 @@ const {
   validateInputs,
   guardEnvironment,
   validateObservation,
+  reserveEvidenceFile,
+  main,
 } = require('./verify-external.cjs');
 
 const NOW = Date.parse('2026-10-24T12:00:00Z');
@@ -407,3 +410,147 @@ test('CLI missing authority is BLOCKED with zero network scenarios and no raw-in
     await rm(directory, { recursive: true, force: true });
   }
 });
+
+test('reserves a new private evidence file before writing any report', async () => {
+  const directory = await mkdtemp(path.join(tmpdir(), 'g3-output-private-'));
+  let handle;
+  try {
+    const output = path.join(directory, 'new', 'evidence.json');
+    handle = await reserveEvidenceFile(output);
+    const info = await handle.stat();
+    assert.equal(info.isFile(), true);
+    assert.equal(info.mode & 0o777, 0o600);
+    assert.equal(await readFile(output, 'utf8'), '');
+    await handle.writeFile('synthetic-evidence-only\n');
+    assert.equal(await readFile(output, 'utf8'), 'synthetic-evidence-only\n');
+  } finally {
+    await handle?.close();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test('simultaneous evidence reservations have exactly one winner', async () => {
+  const directory = await mkdtemp(path.join(tmpdir(), 'g3-output-concurrent-'));
+  const attempts = [];
+  try {
+    const output = path.join(directory, 'evidence.json');
+    attempts.push(
+      ...(await Promise.allSettled([reserveEvidenceFile(output), reserveEvidenceFile(output)])),
+    );
+    const winners = attempts.filter((entry) => entry.status === 'fulfilled');
+    const losers = attempts.filter((entry) => entry.status === 'rejected');
+    assert.equal(winners.length, 1);
+    assert.equal(losers.length, 1);
+    assert.equal(losers[0].reason.message, 'G3_OUTPUT_ALREADY_EXISTS');
+    await winners[0].value.writeFile('single-owner\n');
+    assert.equal(await readFile(output, 'utf8'), 'single-owner\n');
+  } finally {
+    for (const attempt of attempts) if (attempt.status === 'fulfilled') await attempt.value.close();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test('rejects an existing evidence file before processing input and preserves its bytes', async () => {
+  const directory = await mkdtemp(path.join(tmpdir(), 'g3-output-existing-'));
+  try {
+    const output = path.join(directory, 'evidence.json');
+    await writeFile(output, 'existing-private-evidence\n', { mode: 0o600 });
+    await assert.rejects(
+      main(['--input', path.join(directory, 'absent.json'), '--output', output]),
+      { message: 'G3_OUTPUT_ALREADY_EXISTS' },
+    );
+    assert.equal(await readFile(output, 'utf8'), 'existing-private-evidence\n');
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+for (const dangling of [false, true]) {
+  test(`rejects a ${dangling ? 'dangling' : 'regular'} evidence symlink before processing input`, async () => {
+    const directory = await mkdtemp(path.join(tmpdir(), 'g3-output-symlink-'));
+    try {
+      const target = path.join(directory, 'target.json');
+      const output = path.join(directory, 'evidence.json');
+      if (!dangling) await writeFile(target, 'untouched-target\n', { mode: 0o600 });
+      await symlink(target, output);
+      await assert.rejects(
+        main(['--input', path.join(directory, 'absent.json'), '--output', output]),
+        { message: 'G3_OUTPUT_ALREADY_EXISTS' },
+      );
+      assert.equal(await readlink(output), target);
+      if (dangling) await assert.rejects(readFile(target), { code: 'ENOENT' });
+      else assert.equal(await readFile(target, 'utf8'), 'untouched-target\n');
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+}
+
+test('refuses an outside pathname whose parent resolves inside the source', async () => {
+  const directory = await mkdtemp(path.join(tmpdir(), 'g3-output-source-alias-'));
+  try {
+    const alias = path.join(directory, 'source');
+    await symlink(path.resolve(__dirname, '../../..'), alias, 'dir');
+    await assert.rejects(reserveEvidenceFile(path.join(alias, 'evidence.json')), {
+      message: 'G3_EVIDENCE_MUST_BE_OUTSIDE_SOURCE',
+    });
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test('writes through the reserved descriptor when its pathname is replaced by a symlink', async () => {
+  const directory = await mkdtemp(path.join(tmpdir(), 'g3-output-replaced-'));
+  let handle;
+  try {
+    const output = path.join(directory, 'evidence.json');
+    const retained = path.join(directory, 'reserved-inode.json');
+    const target = path.join(directory, 'untouched-target.json');
+    await writeFile(target, 'untouched-target\n', { mode: 0o600 });
+    handle = await reserveEvidenceFile(output);
+    await rename(output, retained);
+    await symlink(target, output);
+    await handle.writeFile('reserved-report\n');
+    assert.equal(await readFile(retained, 'utf8'), 'reserved-report\n');
+    assert.equal(await readFile(target, 'utf8'), 'untouched-target\n');
+    assert.equal(await readlink(output), target);
+  } finally {
+    await handle?.close();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+for (const writeFails of [false, true]) {
+  test(`closes the reserved descriptor after ${writeFails ? 'a report write failure' : 'blocked preflight'}`, async (t) => {
+    const directory = await mkdtemp(path.join(tmpdir(), 'g3-output-close-'));
+    const open = fsp.open;
+    let handle;
+    try {
+      // Real exclusive creation and descriptor; only the write failure is injected.
+      t.mock.method(fsp, 'open', async (...args) => {
+        handle = await open(...args);
+        if (writeFails)
+          t.mock.method(handle, 'writeFile', async () => {
+            throw new Error('synthetic-output-write-failure');
+          });
+        return handle;
+      });
+      t.mock.method(process.stdout, 'write', () => true);
+      const output = path.join(directory, 'evidence.json');
+      const execution = main(['--input', path.join(directory, 'absent.json'), '--output', output]);
+      if (writeFails)
+        await assert.rejects(execution, { message: 'synthetic-output-write-failure' });
+      else {
+        assert.equal(await execution, 2);
+        const report = JSON.parse(await readFile(output, 'utf8'));
+        assert.equal(report.status, 'BLOCKED');
+        assert.equal(report.passed, 0);
+      }
+      assert.equal(handle.fd, -1);
+    } finally {
+      t.mock.restoreAll();
+      await handle?.close();
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+}

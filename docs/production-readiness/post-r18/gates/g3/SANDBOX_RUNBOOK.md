@@ -101,6 +101,13 @@ named `G3_EXTERNAL_STRIPE_HTTP_DATABASE_LIFECYCLE` checkpoints passed. Exit 2
 means BLOCKED or FAILED. Read the actual status and counts; an output file's
 existence is not evidence of success.
 
+The runner reserves the private output atomically before reading input or
+starting any provider operation, then writes through that same retained file
+descriptor. An existing file or symlink refuses execution without overwriting
+its target. The runtime must support the required no-follow file-open flag;
+unsupported runtimes fail closed. Use a new output filename for a newly
+authorized run and retain earlier evidence unchanged.
+
 The checkpoints verify the real account, registered money implementations,
 server price/ownership/current permission, stable collection retries, real
 payment, authentic durable inbox ingestion, raw-body tampering and concurrent

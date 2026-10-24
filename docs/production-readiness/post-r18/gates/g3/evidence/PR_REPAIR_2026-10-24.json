@@ -47,7 +47,7 @@
       "change": "Add explicit approved-input external Stripe runner with authentic forwarded signatures and independent provider observations.",
       "externalScenarios": 14,
       "executedExternalScenarios": 0,
-      "guardTests": 40,
+      "guardTests": 49,
       "status": "NOT_RUN_AUTHORITY_ABSENT",
       "exclusions": [
         "manual-rail",
@@ -56,6 +56,19 @@
         "process-kill-crash",
         "full-R29-required-external-matrix"
       ]
+    },
+    {
+      "id": "PR198-CODEQL-ATOMIC-EVIDENCE-OUTPUT",
+      "observedSourceSha": "f3f8d960773f4bcc4bdd0a3db6c53b6f70f8b775",
+      "checkRunId": 120878327399,
+      "severity": "HIGH",
+      "title": "Potential file system race condition",
+      "path": "scripts/production/stripe-sandbox/verify-external.cjs",
+      "cause": "Evidence pathname existence check preceded a later pathname write.",
+      "change": "Atomically reserve a private new file before input/provider work, reject existing files and symlinks, retain the descriptor for writing and unconditional closure.",
+      "addedRealFilesystemCases": 9,
+      "codeqlRulesChanged": false,
+      "remoteSecurityResult": "REQUIRED_ON_FINAL_SOURCE"
     }
   ],
   "checks": [
@@ -112,19 +125,19 @@
     },
     {
       "command": "node --test .github/scripts/*.test.mjs scripts/production/stripe-sandbox/verify-external.test.cjs",
-      "passed": 540,
+      "passed": 549,
       "failed": 0,
       "skipped": 0,
       "cancelled": 0,
       "todo": 0,
       "includes": {
         "governance": 500,
-        "externalRunnerGuards": 40,
+        "externalRunnerGuards": 49,
         "g3AndWaveSubset": 170
       },
       "exitCode": 0,
-      "logSha256": "3c3b3dc59c7a19f19ec301b7e2f3c773a3753f656ed33532f40db673fe61494b",
-      "logName": "final-governance-tests.log"
+      "logSha256": "34bc86dbd88a9fe9d300cf6b60b2ce2e7bac1f171c939da414768d8e79fd1fac",
+      "logName": "final-atomic-governance-tests.log"
     }
   ],
   "staticChecks": {
@@ -167,11 +180,11 @@
     },
     {
       "path": "scripts/production/stripe-sandbox/verify-external.cjs",
-      "sha256": "1fb12aad962cddb5ccd951882e05fe6233d53061b0a0048538095b7638d08644"
+      "sha256": "6d427027ac05ec97b56e418d572f2f4eb54597fd0485d3141692962fca577570"
     },
     {
       "path": "scripts/production/stripe-sandbox/verify-external.test.cjs",
-      "sha256": "699c6c63fc5062d87b214f28a57dcc5504611ec679aaea1f0a87eb7e5ec6b9b7"
+      "sha256": "7efca1cc13101558b0abf453373e934971e2fe7d81f004814f48dde3bc03f5f0"
     }
   ],
   "relatedPullRequests": [
@@ -181,13 +194,20 @@
       "failedRunId": 40078253861,
       "failedJobId": 120827610955,
       "cause": "R17-E provider transition interactive transaction exceeded 5000ms (5599ms); the identical relevant source passed in peer PR runs.",
-      "action": "Root successfully requested one failed-jobs rerun on 2026-10-24 after confirming attempt 1 was the latest; final result is recorded in PR #198 and the completion report.",
-      "sourceModified": false
+      "action": "One root-requested failed-jobs rerun completed successfully on unchanged source.",
+      "sourceModified": false,
+      "runAttempt": 2,
+      "checks": "38_CURRENT_CHECKS_PASSED",
+      "r17e": {
+        "passed": 44,
+        "failed": 0,
+        "skipped": 0
+      }
     },
     {
       "number": 197,
       "headSha": "16d3a658bcf2116f49dd7aed6eb0709b6e82824e",
-      "checks": "SUCCESS_AT_REPAIR_REVIEW",
+      "checks": "38_CURRENT_CHECKS_PASSED",
       "sourceModified": false
     }
   ],
@@ -204,5 +224,34 @@
     "currentFixtureIdentifier": "g3.test",
     "scannerRulesChanged": false,
     "historyRewritten": false
+  },
+  "interimRemoteEvidence": {
+    "sourceSha": "f3f8d960773f4bcc4bdd0a3db6c53b6f70f8b775",
+    "treeSha": "e00b8cff0c16cfd6ccad4a524e88f345aaa792c7",
+    "runId": 40095796959,
+    "finalSourceAcceptance": false,
+    "r31": {
+      "jobId": 120878522336,
+      "artifactId": 12560534468,
+      "artifactSha256": "1d6602f1365038d83b3741fe96e84a77a78b23b5c1992026d7f2bb5485e6de8d",
+      "journeysPassed": 4,
+      "commandsPassed": 8,
+      "screenshotsVerifiedAndInspected": 20,
+      "failed": 0,
+      "skipped": 0,
+      "flaky": 0
+    },
+    "r30AndG3": {
+      "jobId": 120878522233,
+      "artifactId": 12561410428,
+      "artifactSha256": "6a253076cec376c2d1a3e7ba68871d7500fc3eae1c7434d9a0d0833ab1dd117e",
+      "r30Passed": 16,
+      "g3Passed": 6,
+      "browserHarnessPassed": 1,
+      "browserScenariosPassed": 2,
+      "failed": 0,
+      "skipped": 0,
+      "flaky": 0
+    }
   }
 }
