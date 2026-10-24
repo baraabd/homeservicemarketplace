@@ -141,3 +141,22 @@ settlement time precision and hardens the legacy CommonJS test boundary.
 See the shared G3 PR repair evidence for the failed R30 run, Windows diagnostic
 limits and 12 passing local regression tests. Final-head browser/service CI is
 required; no prior green run is substituted for this source tree.
+
+## Newly reported dependency advisories
+
+The earlier zero-finding audit is historical. CI run 40039997523 and a local
+reproduction found newly reported advisories. Shared coordinator repair
+48d812936ea9bb24f52607f24b73f684b1c143e2 upgrades only affected packages and
+uses one dependency set for every PR: multer 2.5.0, fast-uri 3.1.9, undici
+7.30.1, Happy DOM 21.0.4 and exact Nodemailer 10.1.4; body-parser 2.4.0 remains.
+
+The common evidence records official releases, exact leases, failed attempts,
+minimal test-only WAAPI cancellation compatibility and retained AbortError
+semantics. Full/production audits now report zero findings. Full web: 2686
+passed, 0 failed/unhandled errors; accepted-runtime API control: 5279 passed,
+0 failed, 1856 conditional/pending; governance: 500 passed. New final-head
+real-service/browser/security evidence is required, including R29's additions.
+
+Both earlier comparison variants are superseded by the exact immutable record
+in this tree. No runtime source in either historical control was changed.
+No G3, sandbox, hosted or release acceptance is inferred.
