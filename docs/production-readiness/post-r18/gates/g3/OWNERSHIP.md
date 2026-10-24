@@ -53,3 +53,15 @@ entitlement consequence, audit and outbox together on any participant failure.
 No transport, eligibility, authorization, policy or financial finality check may
 be bypassed. The assembled real-infrastructure regression owns the integration
 proof.
+
+## Test identifier scanner classification
+
+Before changing the already-leased `.gitleaksignore` and
+`docs/security/gitleaks-historical-baseline.md`, the coordinator authorizes
+individual classification of the five observed test-only entitlement identifier
+matches in repair commit `2433b0fab1d5b3e826f5c28e278994702efe35dd`.
+Only those exact historical commit/path/rule/line fingerprints may be added.
+The current fixture uses a shorter ordinary domain identifier; all six real
+integration cases must still pass. No history rewrite, new path exclusion,
+scanner-rule change or budget relaxation is authorized. Preserve the reported
+failure and verify both the final tracked tree and fresh scanner canaries.

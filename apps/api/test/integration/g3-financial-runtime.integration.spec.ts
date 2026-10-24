@@ -180,7 +180,7 @@ db('G3 mounted financial runtime (real infrastructure)', () => {
           billingInterval: 'MONTHLY',
           priceMinor: 1000n,
           currency: 'XTS',
-          entitlements: [{ key: 'g3.synthetic-capability', value: { kind: 'LIMIT', limit: 2 } }],
+          entitlements: [{ key: 'g3.test', value: { kind: 'LIMIT', limit: 2 } }],
           publishedAt: new Date(Date.now() - 60_000),
         },
       });
@@ -343,12 +343,12 @@ db('G3 mounted financial runtime (real infrastructure)', () => {
       expect(active.status).toBe(200);
       expect(active.body.status).toBe('ACTIVE');
       expect(active.body.entitlements).toEqual([
-        expect.objectContaining({ key: 'g3.synthetic-capability', allowed: true, remaining: 2 }),
+        expect.objectContaining({ key: 'g3.test', allowed: true, remaining: 2 }),
       ]);
       expect(
         await h.app.get(EntitlementUsageService).consume(h.actors.owner.userId, {
           subscriptionId: period.subscriptionId,
-          entitlementKey: 'g3.synthetic-capability',
+          entitlementKey: 'g3.test',
           usageKey: 'g3-synthetic-use:' + label,
         }),
       ).toMatchObject({ allowed: true, used: 1, remaining: 1 });
@@ -529,12 +529,12 @@ db('G3 mounted financial runtime (real infrastructure)', () => {
         expect(finalPlan.status).toBe(200);
         expect(finalPlan.body.status).toBe(expectedStatus);
         expect(finalPlan.body.entitlements).toEqual([
-          expect.objectContaining({ key: 'g3.synthetic-capability', allowed: false, used: 1 }),
+          expect.objectContaining({ key: 'g3.test', allowed: false, used: 1 }),
         ]);
         await expect(
           h.app.get(EntitlementUsageService).consume(h.actors.owner.userId, {
             subscriptionId: f.period.subscriptionId,
-            entitlementKey: 'g3.synthetic-capability',
+            entitlementKey: 'g3.test',
             usageKey: 'g3-after-refund:' + refund.id,
           }),
         ).rejects.toMatchObject({ code: 'CONFLICT', status: 409 });

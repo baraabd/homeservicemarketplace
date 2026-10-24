@@ -545,3 +545,51 @@ temporary Git repository carrying the updated baseline received two freshly
 generated canaries. Both generic-api-key and github-pat were detected (exit 2,
 two findings); their values were never printed or committed here, and the
 temporary source was deleted.
+
+## 16. G3 assembled-fixture entitlement identifier (2026-10-24)
+
+The pinned Gitleaks 8.24.3 tracked-tree scan of the normal-hook repair commit
+reported five `generic-api-key` matches. The equivalent connector Git object is
+`2433b0fab1d5b3e826f5c28e278994702efe35dd`, whose tree exactly matches the
+local normal-hook commit. Its branch is not advanced until the corrective
+follow-up is ready. No commit is amended, squashed or removed.
+
+All five findings are in
+`apps/api/test/integration/g3-financial-runtime.integration.spec.ts`:
+
+| Line | Individually reviewed use                                                            |
+| ---- | ------------------------------------------------------------------------------------ |
+| 183  | Names the synthetic plan's entitlement in the newly created isolated test database.  |
+| 346  | Asserts that same named entitlement is allowed after actual subscription activation. |
+| 351  | Selects that entitlement for a real usage-service request.                           |
+| 532  | Asserts that entitlement is denied after the approved fixture refund consequence.    |
+| 537  | Selects the same entitlement for the expected denied usage request.                  |
+
+The author and coordinator inspected each complete occurrence and its data
+flow. The shared literal is a readable domain identifier authored for these
+fixtures. It is not an authentication input, token, signature, provider value,
+environment secret or external credential. Its public spelling has no security
+meaning. This is an agent classification under the user's PR repair request,
+not independent human security approval or a credential-store audit. Rotation
+does not apply.
+
+The current fixture consistently uses `g3.test` for all five occurrences; no
+behavioral assertion or fixture boundary changed. All six actual
+PostgreSQL/Redis/ClamAV cases passed again with zero failed/skipped cases.
+Exactly five historical fingerprints for the published Git object above are
+added. Local-only commit aliases receive no ignore entries. Existing entries,
+rules, scan ranges, path coverage and blocking behavior are unchanged. A new
+occurrence at another commit or line still fails.
+
+Review/remove these entries under section 5 when the originating commit is no
+longer reachable and at each release review. The final corrected tracked tree,
+the original historical range with these exact fingerprints, and fresh generic
+and GitHub-token canaries must be checked before publication. Final-source CI
+remains required; a clean local scan does not establish G3 acceptance.
+
+Verification for section 16: the exact original one-commit history range in a
+detached task-owned checkout scanned 113,732 bytes and produced those five
+findings (exit 2). With only the five reviewed historical fingerprints, the
+same range produced zero findings (exit 0). Fresh generated generic API and
+GitHub-token canaries were both detected with exit 2; values were never printed
+or committed. The temporary checkout and canary source were removed.

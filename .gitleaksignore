@@ -88,3 +88,11 @@ d316a2f46270024b301c78bfa86d15e94e2350c9:.github/workflows/r13-validation.yml:ge
 # docs/security/gitleaks-historical-baseline.md section 15. Historical only.
 2757d86f7d9e4a3b1cd655a5c4c9cd1d7848787c:docs/production-readiness/post-r18/gates/g3/IMPLEMENTATION.md:generic-api-key:25
 2757d86f7d9e4a3b1cd655a5c4c9cd1d7848787c:docs/production-readiness/post-r18/gates/g3/evidence/LOCAL_CHECKS.json:generic-api-key:227
+
+# G3 repair — five occurrences of one synthetic entitlement domain identifier,
+# individually reviewed in docs/security/gitleaks-historical-baseline.md §16.
+2433b0fab1d5b3e826f5c28e278994702efe35dd:apps/api/test/integration/g3-financial-runtime.integration.spec.ts:generic-api-key:183
+2433b0fab1d5b3e826f5c28e278994702efe35dd:apps/api/test/integration/g3-financial-runtime.integration.spec.ts:generic-api-key:346
+2433b0fab1d5b3e826f5c28e278994702efe35dd:apps/api/test/integration/g3-financial-runtime.integration.spec.ts:generic-api-key:351
+2433b0fab1d5b3e826f5c28e278994702efe35dd:apps/api/test/integration/g3-financial-runtime.integration.spec.ts:generic-api-key:532
+2433b0fab1d5b3e826f5c28e278994702efe35dd:apps/api/test/integration/g3-financial-runtime.integration.spec.ts:generic-api-key:537

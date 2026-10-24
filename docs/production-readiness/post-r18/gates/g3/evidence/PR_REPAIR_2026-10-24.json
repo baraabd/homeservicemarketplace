@@ -76,7 +76,11 @@
       "skipped": 0,
       "infrastructure": ["actual AppModule", "PostgreSQL", "Redis", "ClamAV"],
       "commercialApproval": false,
-      "exitCode": 0
+      "exitCode": 0,
+      "logName": "g3-financial-runtime-short-key.log",
+      "logSha256": "3a93c2f4e7b571d211408c48fd1aed2a9a0ad15bbd0aff5dd47a3e8edeb1c5d5",
+      "jsonReportName": "g3-financial-runtime-short-key.json",
+      "jsonReportSha256": "fb3b2158efe5b49ada4ad1fa6fbdd227ff02d16ea6e100f7f937b70cdbfe34ee"
     },
     {
       "command": "pnpm --filter @homeservicemarketplace/api exec jest --runInBand --runTestsByPath test/integration/r30-manual-payments.integration.spec.ts",
@@ -139,7 +143,7 @@
     },
     {
       "path": "apps/api/test/integration/g3-financial-runtime.integration.spec.ts",
-      "sha256": "d5cdbf21d18cc6a1c6d6ca6f82539998219c1812eead00db8d2a10b6debcec28"
+      "sha256": "6ecd2de24dd19bd6fccbaa7364a3a1de9381adda74a9dbf0cfa5d946da87c284"
     },
     {
       "path": "apps/api/test/integration/g3-financial-foundation.integration.spec.ts",
@@ -192,5 +196,13 @@
     "Local task evidence does not substitute for final-source GitHub artifacts.",
     "No actual external Stripe or Payment Element payment was performed.",
     "No financial policy, G3 acceptance/publication, frozen SHA or R34 lease was fabricated."
-  ]
+  ],
+  "secretScanRepair": {
+    "introducingGitObject": "2433b0fab1d5b3e826f5c28e278994702efe35dd",
+    "classification": "five individually reviewed occurrences of one synthetic entitlement domain identifier; no credential",
+    "historicalFingerprintsAdded": 5,
+    "currentFixtureIdentifier": "g3.test",
+    "scannerRulesChanged": false,
+    "historyRewritten": false
+  }
 }

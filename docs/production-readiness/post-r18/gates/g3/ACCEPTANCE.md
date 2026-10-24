@@ -23,6 +23,8 @@ TypeScript, scoped ESLint, formatting and repository/baseline/G3 consistency che
 
 The new external runner uses the actual AppModule and official Stripe transport, explicit approved input and an authentic provider-forwarded signature. Its 40 guard tests are part of the 540 cases above. They prove input/evidence rejection, not provider execution. The 14 external scenarios are **NOT_RUN** because authorized test credentials, a matching webhook forwarder and approved financial policy inputs are absent. See [SANDBOX_RUNBOOK.md](SANDBOX_RUNBOOK.md) for the exact handoff and the remaining browser/crash scenarios. No mandatory G3 evidence category is promoted to PASS merely because this runner exists.
 
+The first repair-tree secret scan reported five occurrences of a synthetic entitlement domain identifier. Each declaration/assertion/request was reviewed and classified in the security baseline, section 16. The current spelling is `g3.test`; the same six real-service cases passed again. Only the exact historical fingerprints are recorded. No scanner rule, path coverage, required gate or test assertion is relaxed, and no commit is rewritten. Final tracked-tree and historical scans remain required before advancing the PR branch.
+
 ## Earlier implementation record (historical)
 
 Initial implementation source: `134301e255d339d2b31acd7038787a2c3924210d`, tree `f1fddb0a55a234e141697cc0b045be3733059c55`. The following observations describe that earlier execution; the repair section above supersedes its local-service availability statements.
