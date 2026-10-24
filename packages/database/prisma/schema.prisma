@@ -82,6 +82,8 @@ model User {
   manualRefundDispatches     MoneyManualRefundOperation[]   @relation("ManualRefundDispatcher")
   manualRefundConfirmations  MoneyManualRefundOperation[]   @relation("ManualRefundConfirmer")
   manualRefundEvents         MoneyManualRefundEvent[]
+  reconciliationDecisionsMade MoneyReconciliationDecision[] @relation("ReconciliationDecisionMaker")
+  reconciliationDecisionsChecked MoneyReconciliationDecision[] @relation("ReconciliationDecisionChecker")
 
   @@index([deletedAt])
   @@index([status])
@@ -2902,6 +2904,7 @@ model LedgerTransaction {
   // R19 — subscription money foundation (back-relations only; no column change).
   moneyConfirmation       MoneyPaymentConfirmation?
   moneyRefundCompensation MoneyRefund?
+  reconciliationCorrections MoneyReconciliationDecision[]
 
   @@unique([id, currency])
   @@index([bookingId])
@@ -3831,6 +3834,9 @@ model MoneyReconciliationDecision {
   correctionTransactionId String?                 @db.VarChar(64)
   createdAt               DateTime                @default(now())
   operation               MoneyReconciliationCase @relation(fields: [exceptionId], references: [exceptionId], onDelete: Restrict)
+  maker                   User @relation("ReconciliationDecisionMaker", fields: [makerUserId], references: [id], onDelete: Restrict, onUpdate: NoAction, map: "g3_decision_maker_fk")
+  checker                 User? @relation("ReconciliationDecisionChecker", fields: [checkerUserId], references: [id], onDelete: Restrict, onUpdate: NoAction, map: "g3_decision_checker_fk")
+  correctionTransaction   LedgerTransaction? @relation(fields: [correctionTransactionId], references: [id], onDelete: Restrict, onUpdate: NoAction, map: "g3_decision_correction_fk")
 
   @@unique([exceptionId, revision])
 }
