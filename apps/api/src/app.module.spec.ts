@@ -1,4 +1,7 @@
 import 'reflect-metadata';
+import { StripeRuntimeModule } from './modules/money/runtime/stripe-runtime.module';
+import { StripeWebhookModule } from './modules/money/webhooks/stripe/stripe-webhook.module';
+import { StripeInboxScheduler } from './modules/money/runtime/stripe-inbox.scheduler';
 
 import { MODULE_METADATA } from '@nestjs/common/constants';
 
@@ -76,4 +79,25 @@ describe('AppModule feature registration', () => {
       1,
     );
   });
+});
+
+it('mounts one shared Stripe transport, one signed ingress and one scheduler', () => {
+  const imports = Reflect.getMetadata(MODULE_METADATA.IMPORTS, AppModule) as Array<
+    { module?: unknown; imports?: unknown[] } | unknown
+  >;
+  expect(imports.filter((entry) => entry === StripeRuntimeModule)).toHaveLength(1);
+  const ingress = imports.filter(
+    (entry): entry is { module: unknown; imports: unknown[] } =>
+      typeof entry === 'object' &&
+      entry !== null &&
+      'module' in entry &&
+      entry.module === StripeWebhookModule,
+  );
+  expect(ingress).toHaveLength(1);
+  expect(ingress[0]!.imports).toEqual([StripeRuntimeModule, MoneyModule]);
+  expect(
+    (Reflect.getMetadata(MODULE_METADATA.PROVIDERS, AppModule) as unknown[]).filter(
+      (entry) => entry === StripeInboxScheduler,
+    ),
+  ).toHaveLength(1);
 });

@@ -144,7 +144,7 @@ for (const [name, mutate, expected] of [
       v.record.baseline = emptyControl;
       v.baseline = emptyControl.commit;
     },
-    /only the three dependency files/u,
+    /only the four dependency files/u,
   ],
   [
     'unknown old-dependency base',
@@ -201,7 +201,7 @@ for (const [name, mutate, expected] of [
       v.record.baseline = changedRuntime;
       v.baseline = changedRuntime.commit;
     },
-    /only the three dependency files/u,
+    /only the four dependency files/u,
   ],
   [
     'unrelated repair control',

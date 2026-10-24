@@ -1,4 +1,12 @@
 import 'reflect-metadata';
+import {
+  MoneyRailConfiguration,
+  MoneyCollectionRouter,
+  MoneyRefundRouter,
+} from './runtime/money-rail-router';
+import { ApprovedRefundPolicySource } from './runtime/approved-refund-policy.source';
+import { ApprovedRefundParticipant } from './runtime/approved-refund.participant';
+import { StripeSessionController } from './runtime/stripe-session.controller';
 import { MODULE_METADATA } from '@nestjs/common/constants';
 
 import { MoneyController, MoneyReviewController } from './api/money.controller';
@@ -49,20 +57,6 @@ const providers = Reflect.getMetadata(MODULE_METADATA.PROVIDERS, MoneyModule) as
   | unknown
 >;
 
-function configuredProvider(token: symbol) {
-  const matches = providers.filter(
-    (
-      entry,
-    ): entry is {
-      provide: symbol;
-      useClass: new () => Record<string, (...args: never[]) => unknown>;
-    } =>
-      typeof entry === 'object' && entry !== null && 'provide' in entry && entry.provide === token,
-  );
-  expect(matches).toHaveLength(1);
-  return new matches[0]!.useClass();
-}
-
 describe('R24/R31 MoneyModule composition and unavailable external defaults', () => {
   it('imports and exports the existing ledger once without creating another posting authority', () => {
     expect(
@@ -79,6 +73,7 @@ describe('R24/R31 MoneyModule composition and unavailable external defaults', ()
     expect(providers).not.toContain(SubscriptionActivationService);
     expect(providers).toEqual(expect.arrayContaining([MoneyCommandService, MoneyQueryService]));
     expect(Reflect.getMetadata(MODULE_METADATA.CONTROLLERS, MoneyModule)).toEqual([
+      StripeSessionController,
       MoneyController,
       MoneyReviewController,
       ManualPaymentController,
@@ -116,10 +111,10 @@ describe('R24/R31 MoneyModule composition and unavailable external defaults', ()
       ),
     ).toHaveLength(1);
     for (const [provide, useExisting] of [
-      [MONEY_CONFIGURATION, ManualRailConfiguration],
-      [MONEY_COLLECTION_ADAPTER, ManualCollectionAdapter],
+      [MONEY_CONFIGURATION, MoneyRailConfiguration],
+      [MONEY_COLLECTION_ADAPTER, MoneyCollectionRouter],
       [MONEY_RECEIPT_ACCEPTANCE, ReceiptAcceptanceParticipant],
-      [MONEY_REFUND_ADAPTER, ManualRefundAdapter],
+      [MONEY_REFUND_ADAPTER, MoneyRefundRouter],
     ]) {
       expect(
         providers.filter(
@@ -161,7 +156,15 @@ describe('R24/R31 MoneyModule composition and unavailable external defaults', ()
   ] as const)(
     'keeps the mounted manual participant %s unavailable to live or non-manual bindings',
     (token, implementation) => {
-      expect(providers).toContainEqual({ provide: token, useExisting: implementation });
+      expect(providers).toContainEqual({
+        provide: token,
+        useExisting:
+          token === MONEY_COLLECTION_ADAPTER
+            ? MoneyCollectionRouter
+            : token === MONEY_REFUND_ADAPTER
+              ? MoneyRefundRouter
+              : implementation,
+      });
       const binding: MoneyTransportBinding = {
         planVersionId: 'plan',
         method: 'SHAM_CASH',
@@ -191,21 +194,31 @@ describe('R24/R31 MoneyModule composition and unavailable external defaults', ()
           entry.provide === MONEY_REFUND_POLICY,
       ),
     ).toEqual([{ provide: MONEY_REFUND_POLICY, useExisting: RefundEligibilityPolicy }]);
-    await expect(configuredProvider(REFUND_POLICY_SOURCE).resolve()).resolves.toBeNull();
+    expect(providers).toContainEqual({
+      provide: REFUND_POLICY_SOURCE,
+      useExisting: ApprovedRefundPolicySource,
+    });
+    const tx = {
+      $queryRaw: jest.fn().mockResolvedValue([{ now: new Date() }]),
+      moneyApprovedRefundPolicy: { findMany: jest.fn().mockResolvedValue([]) },
+    };
+    await expect(
+      new ApprovedRefundPolicySource().resolve(
+        { planVersionId: 'plan', method: 'STRIPE', currency: 'XTS', mode: 'SANDBOX' },
+        tx as unknown as PrismaTx,
+      ),
+    ).resolves.toBeNull();
   });
 
-  it('exports one unavailable G2 confirmed-refund participant without applying a consequence', async () => {
+  it('exports one transaction-bound confirmed refund participant with no implicit policy', () => {
     expect(
       (Reflect.getMetadata(MODULE_METADATA.EXPORTS, MoneyModule) as unknown[]).filter(
         (entry) => entry === MONEY_REFUND_CONFIRMATION_PARTICIPANT,
       ),
     ).toHaveLength(1);
-    const participant = configuredProvider(MONEY_REFUND_CONFIRMATION_PARTICIPANT);
-    expect(participant.isConfigured()).toBe(false);
-    await expect(participant.applyConfirmedRefund()).rejects.toMatchObject({
-      code: 'DEPENDENCY_UNAVAILABLE',
-      status: 503,
-      details: { reason: 'MONEY_REFUND_POLICY_UNAVAILABLE' },
+    expect(providers).toContainEqual({
+      provide: MONEY_REFUND_CONFIRMATION_PARTICIPANT,
+      useExisting: ApprovedRefundParticipant,
     });
   });
 });

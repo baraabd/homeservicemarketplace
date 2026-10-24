@@ -308,6 +308,11 @@ export const EXCEPTION_LABELS: Record<
     DUPLICATE_EXTERNAL_CONFIRMATION: 'Duplicate external confirmation',
     REFUND_WITHOUT_COMPENSATION: 'Refund without compensating posting',
     PERIOD_WITHOUT_CONFIRMATION: 'Subscription period without confirmation',
+    TIMING_DIFFERENCE: 'Timing difference',
+    MISSING_EXTERNAL_EFFECT: 'Missing external effect',
+    UNMATCHED_EXTERNAL_REFERENCE: 'Unmatched external reference',
+    MISSING_ACTIVATION: 'Missing subscription activation',
+    AMBIGUOUS_REFUND_OUTCOME: 'Unknown refund outcome',
   },
   ar: {
     CONFIRMATION_WITHOUT_POSTING: 'تأكيد دون قيد',
@@ -317,6 +322,11 @@ export const EXCEPTION_LABELS: Record<
     DUPLICATE_EXTERNAL_CONFIRMATION: 'تأكيد خارجي مكرر',
     REFUND_WITHOUT_COMPENSATION: 'استرداد دون قيد تعويضي',
     PERIOD_WITHOUT_CONFIRMATION: 'فترة اشتراك دون تأكيد',
+    TIMING_DIFFERENCE: 'فرق توقيت',
+    MISSING_EXTERNAL_EFFECT: 'أثر خارجي مفقود',
+    UNMATCHED_EXTERNAL_REFERENCE: 'مرجع خارجي غير مطابق',
+    MISSING_ACTIVATION: 'تفعيل اشتراك مفقود',
+    AMBIGUOUS_REFUND_OUTCOME: 'نتيجة استرداد غير محسومة',
   },
 };
 

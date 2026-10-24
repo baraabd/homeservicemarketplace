@@ -95,3 +95,32 @@ describe.each([true, false])('R26 HTTP parser boundary (production=%s)', (produc
     expect(large.status).toBe(413);
   });
 });
+
+describe('G3 exact Stripe raw parser', () => {
+  it('retains signed bytes only on the exact POST endpoint', async () => {
+    const body = '{ "signed": true }';
+    const exact = await request(server(true))
+      .post('/v1/money/webhooks/stripe')
+      .type('application/json')
+      .send(body);
+    expect(exact.body.bytes).toBe(Buffer.byteLength(body));
+    for (const path of ['/v1/money/webhooks/stripe/other', '/v1/auth/login']) {
+      const normal = await request(server(true)).post(path).type('application/json').send(body);
+      expect(normal.body.bytes).toBe(0);
+    }
+  });
+  it('rejects oversized or compressed signed bodies without reflecting payloads', async () => {
+    const large = await request(server(true))
+      .post('/v1/money/webhooks/stripe')
+      .type('application/json')
+      .send('x'.repeat(65537));
+    expect(large.status).toBe(413);
+    const compressed = await request(server(true))
+      .post('/v1/money/webhooks/stripe')
+      .type('application/json')
+      .set('Content-Encoding', 'gzip')
+      .send('private-sentinel');
+    expect(compressed.status).toBe(415);
+    expect(JSON.stringify(compressed.body)).not.toContain('private-sentinel');
+  });
+});

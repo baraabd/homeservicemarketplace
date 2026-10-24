@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "gateId": "G3",
   "decision": "BLOCKED",
-  "authority": "Owner-delegated coordinator review of develop 5ff2b7e6a46b4e42114184fac89928372f4c8d4c after the request to repair PR #188, verify Wave 3 merges and prepare G3 before R34. Source inspection is not integrated G3 acceptance.",
+  "authority": "Owner-delegated G3 integration coordinator, 2026-10-24; implementation based on develop 73a4a64a77844db7815466f47d8afdefb0b35c2f. Source verification is not independent financial acceptance.",
   "candidateSourceSha": null,
   "candidateTreeSha": null,
   "frozenBaseSha": null,
@@ -67,19 +67,19 @@
   ],
   "blockers": [
     {
-      "id": "G3-R29-IMPLEMENTATION-MISSING",
-      "owner": "G3 coordinator and assigned R29 implementation writer",
-      "reason": "All 24 registered R29 source/test/evidence paths are absent from inspected develop 5ff2b7e6a46b4e42114184fac89928372f4c8d4c. No Stripe collection/refund adapter or webhook module is registered. R30-R33 are merged; see READINESS_REVIEW_2026-10-23.json."
+      "id": "G3-INTEGRATION-CANDIDATE-REVIEW",
+      "owner": "G3 coordinator",
+      "reason": "Stripe runtime/purchase integration, durable approved refund policy composition and reconciliation foundation are implemented in the draft integration candidate. Final candidate CI, real database, browser and independent sandbox evidence must pass before acceptance."
     },
     {
-      "id": "G3-REFUND-POLICY-AND-CONSEQUENCE-UNAVAILABLE",
-      "owner": "Product/policy owner and G3 integration coordinator",
-      "reason": "MoneyModule still registers UnavailableRefundPolicySource and UnavailableMoneyRefundConfirmationParticipant. Approved immutable refund rules and entitlement consequences must be supplied and wired through the existing ports; synthetic fixture policies cannot establish approval."
+      "id": "G3-APPROVED-POLICY-INPUT-MISSING",
+      "owner": "Product/policy owner and authorized sandbox operator",
+      "reason": "A real immutable sandbox refund policy and explicit whole-subscription consequence must be supplied. The implementation supports explicitly approved SUSPEND_SUBSCRIPTION or CANCEL_SUBSCRIPTION; neither is selected by migration or module boot. Synthetic test policy records are not approval."
     },
     {
       "id": "G3-COMBINED-REAL-SANDBOX-EVIDENCE-MISSING",
       "owner": "G3 coordinator and authorized sandbox operator",
-      "reason": "No complete R29-R33 candidate has passed all seven G3 categories using real registered implementations, independent Stripe sandbox operations and approved manual authority. Lane-head green checks and merged source do not replace integrated acceptance, a frozen source/tree, or separately verified G3 publication."
+      "reason": "No Stripe sandbox credentials, approved manual authority/configuration or hosted environment were supplied to this execution. Independent payment/refund and combined confirmation/activation/outbox evidence remain NOT_RUN; no frozen G3 SHA or Wave 4 start authorization is issued."
     }
   ],
   "publication": {

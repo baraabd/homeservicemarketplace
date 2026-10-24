@@ -375,13 +375,17 @@ export class SubscriptionLifecycleService {
 
   /** R32 may compose this only after its approved policy and successful refund
    * compensation are already present in the same caller transaction. */
-  applyConfirmedRefund(input: MoneyConfirmedRefund, tx: PrismaTx) {
+  applyConfirmedRefund(
+    input: MoneyConfirmedRefund,
+    tx: PrismaTx,
+    policy: SubscriptionLifecyclePolicy = this.policy,
+  ) {
     if (
       !tx ||
       !input ||
-      !approvedVersion(this.policy.version) ||
-      input.policyVersion !== this.policy.version ||
-      this.policy.refundEffect === 'BLOCKED'
+      !approvedVersion(policy.version) ||
+      input.policyVersion !== policy.version ||
+      policy.refundEffect === 'BLOCKED'
     )
       throw policyBlocked('REFUND_EFFECT_POLICY_UNAPPROVED');
     for (const value of [
@@ -433,8 +437,7 @@ export class SubscriptionLifecycleService {
         const subscription = await tx.providerSubscription.findUniqueOrThrow({
           where: { id: period.subscriptionId },
         });
-        const target =
-          this.policy.refundEffect === 'CANCEL_SUBSCRIPTION' ? 'CANCELLED' : 'SUSPENDED';
+        const target = policy.refundEffect === 'CANCEL_SUBSCRIPTION' ? 'CANCELLED' : 'SUSPENDED';
         const changed = await this.setPolicyStatus(
           subscription.id,
           subscription.status,
@@ -450,6 +453,7 @@ export class SubscriptionLifecycleService {
           policyVersion: input.policyVersion,
         };
       },
+      policy,
     );
   }
 
@@ -520,6 +524,7 @@ export class SubscriptionLifecycleService {
     request: object,
     tx: PrismaTx,
     apply: () => Promise<LifecycleResult>,
+    policy: SubscriptionLifecyclePolicy = this.policy,
   ): Promise<LifecycleResult & { replayed: boolean }> {
     const idempotencyKey = `r31_${createHash('sha256').update(identity).digest('hex')}`;
     const requestDigest = createHash('sha256')
@@ -527,7 +532,7 @@ export class SubscriptionLifecycleService {
         canonicalJson({
           action,
           request,
-          policy: this.policy,
+          policy,
           contractVersion: MONEY_CONTRACT_VERSION,
         }),
       )
@@ -555,7 +560,7 @@ export class SubscriptionLifecycleService {
         typeof response.subscriptionId !== 'string' ||
         typeof response.subscriptionPeriodId !== 'string' ||
         typeof response.changed !== 'boolean' ||
-        response.policyVersion !== this.policy.version ||
+        response.policyVersion !== policy.version ||
         !['ACTIVE', 'PENDING_PAYMENT', 'CANCELLED', 'SUSPENDED', 'EXPIRED'].includes(
           response.status,
         )

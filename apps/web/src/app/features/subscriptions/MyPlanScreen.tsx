@@ -20,6 +20,7 @@ import {
   subscriptionErrorStatus,
   subscriptionQueryKeys,
 } from './subscriptions.api';
+import { StripePlanPurchase } from './StripePlanPurchase';
 import { SUBSCRIPTION_COPY } from './subscriptions.copy';
 
 type Language = 'ar' | 'en';
@@ -251,6 +252,19 @@ export function MyPlanScreen() {
   const { lang, dir, toggleLang, darkMode, toggleDarkMode } = useLang();
   const copy = SUBSCRIPTION_COPY[lang];
   const [search, setSearch] = useSearchParams();
+  // Stripe redirect parameters carry no authority and must not remain in URLs.
+  useEffect(() => {
+    if (
+      search.has('payment_intent_client_secret') ||
+      search.has('payment_intent') ||
+      search.has('redirect_status')
+    ) {
+      const clean = new URLSearchParams(search);
+      for (const key of ['payment_intent_client_secret', 'payment_intent', 'redirect_status'])
+        clean.delete(key);
+      setSearch(clean, { replace: true });
+    }
+  }, [search, setSearch]);
   const subscriptionId = search.get('subscriptionId') || undefined;
   const userId = user?.id ?? 'signed-out';
   const [offline, setOffline] = useState(() => !navigator.onLine);
@@ -464,6 +478,12 @@ export function MyPlanScreen() {
                     {plans.map((item) => (
                       <li key={item.id} className="min-w-0 rounded-xl border border-border p-4">
                         <PlanVersion plan={item} copy={copy} />
+                        <StripePlanPurchase
+                          key={`${userId}:${item.id}`}
+                          plan={item}
+                          lang={lang}
+                          userId={userId}
+                        />
                       </li>
                     ))}
                   </ul>

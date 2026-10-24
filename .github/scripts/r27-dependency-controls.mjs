@@ -6,7 +6,12 @@ import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { parseArgs } from 'node:util';
 
-export const DEPENDENCY_PATHS = ['apps/api/package.json', 'package.json', 'pnpm-lock.yaml'];
+export const DEPENDENCY_PATHS = [
+  'apps/api/package.json',
+  'apps/web/package.json',
+  'package.json',
+  'pnpm-lock.yaml',
+];
 const RECORD = 'docs/performance/post-r18/r27-dependency-controls.json';
 const SHA = /^(?!0{40}$)[a-f0-9]{40}$/u;
 const DIGEST = /^[a-f0-9]{64}$/u;
@@ -63,11 +68,11 @@ export function selectDependencyControls({ root, record, candidate, proposedRepa
       .split('\n')
       .sort();
     // A package update need not modify the root manifest. Every control must
-    // contain a real dependency change, and all three resulting blobs still
+    // contain a real dependency change, and all four resulting blobs still
     // have to match the candidate below. Runtime changes remain forbidden.
     assert.ok(
       changed.length > 0 && changed.every((path) => DEPENDENCY_PATHS.includes(path)),
-      `${label} must change only the three dependency files (at least one)`,
+      `${label} must change only the four dependency files (at least one)`,
     );
     for (const path of DEPENDENCY_PATHS) {
       assert.equal(

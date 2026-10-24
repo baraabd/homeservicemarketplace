@@ -80,3 +80,15 @@ export const MONEY_API_FAILURE_REASONS = [
   'MONEY_CONFIRMATION_RECONCILIATION_REQUIRED',
   'MONEY_REFUND_OUTCOME_CONFLICT',
 ] as const;
+
+/** Ephemeral owner-only response. Never cache, persist, log or place the client
+ * secret in a URL. Only authoritative application reads establish confirmation. */
+export interface MoneyStripeSessionV1 {
+  contractVersion: MoneyContractVersion;
+  attemptId: string;
+  paymentIntentId: string;
+  amount: MoneyWire;
+  state: 'AWAITING_PAYMENT' | 'PROCESSING' | 'CONFIRMED';
+  publishableKey: string | null;
+  clientSecret: string | null;
+}
