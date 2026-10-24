@@ -1,29 +1,10 @@
-# G3 residual risks and owners
+# G3 residual risks and blockers
 
-| Blocker                            | Consequence                                                                                 | Owner and closing evidence                                                                                                                                   |
-| ---------------------------------- | ------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| R29 absent                         | Stripe collection, authentic webhook recovery and Stripe refunds cannot run                 | R29 writer delivers the existing sprint through frozen R24 ports; coordinator integrates only reviewed/owner-merged source                                   |
-| Refund policy unavailable          | Real application cannot authorize a refund using an approved historical policy              | Product/finance owner supplies explicit sandbox scope, version, window, partial/full rules, reason codes and separation controls; R32 integrates that source |
-| Refund consequence unavailable     | A confirmed refund cannot atomically apply approved subscription/entitlement consequences   | R31/R32 implement the approved entitlement policy in the caller transaction, with rollback, replay and concurrent-refund evidence                            |
-| No real combined-rail proof        | Individual green component tests may conceal unavailable bindings or fixture overrides      | Coordinator exercises both real registered rail families, actual operator actions and post-commit outbox on one source                                       |
-| Incomplete candidate CI inventory  | PR-head success or running merged-source checks can be mistaken for exact-source acceptance | Complete CI/R18/R27/security and official CodeQL on the actual candidate; verify artifacts and skipped-case dispositions                                     |
-| G3 publication not accepted/merged | R34 has no permitted frozen base or active writer                                           | Coordinator acceptance followed by explicit owner review/merge and independent publication verification                                                      |
+- POLICY_BLOCKED — Product/policy owner must approve the complete R32 rules and whole-subscription consequence. This implementation does not support an inferred partial-refund-retains-access or prorated model; current accepted entitlement reads deny paid access after a successful refund. No live rails, supported market/currency, price, fee, tax, payout or identity approval changes.
+- EXTERNAL_BLOCKED — Authorized sandbox operator must provide short-lived Stripe test credentials and account/binding configuration through the approved secret mechanism, plus approved manual collection authority. No secrets should be pasted into Git or public artifacts.
+- INTEGRATION_PENDING — Coordinator must verify final PR CI/CodeQL and real disposable PostgreSQL/Redis/storage/browser results, then independently exercise both rail families with the integrated policy participant and outbox. Ten new real-infrastructure cases are present; default gated skips prove nothing.
+- R34 boundary — Durable foundation and v2 contracts are supplied, but independent reconciliation, maker/checker execution, run-status provider and Admin resolve/reopen are intentionally R34 implementation after accepted G3. No automatic balancing transaction exists. The UI must continue showing unavailable until those routes are integrated.
+- Browser evidence — Payment Element availability, CSP/network behavior, refresh/new-login recovery, AR/EN/RTL at 320/390/768/1440, keyboard/zoom and required engines need real-route sandbox evidence. Component tests do not certify those journeys. Client secrets are ephemeral; screenshots/traces must never capture them.
+- Existing web lint warnings and large bundle warnings remain visible. No timeout, security or performance budget was raised. A green local build cannot guarantee future merge compatibility.
 
-No authorized Stripe sandbox account, external statements or commercial refund
-policy was supplied to this task. Do not put credentials, private receipts, raw
-environment files or session traces in Git. Use an authorized secret channel
-and isolated resources when the missing implementation is ready for testing.
-
-The observed candidate has 98 service-profile skipped API tests; their existence
-is recorded rather than counted as passes. Dedicated R30/R31 jobs close some
-different evidence categories, not all G3 requirements. Screenshots were not
-visually inspected in this task, so no visual/RTL/accessibility acceptance is
-claimed from their count.
-
-The open Dependabot PR #188 proposes a Zod major-version update and is not an
-R29–R33 delivery. It is outside this bounded gate inspection and is not imported.
-Future dependency changes require their own compatibility verification.
-
-R16 provider payout/funding holds, R18 unresolved decisions, approved-market and
-currency policy, production verification policy and the live-money gate remain
-unchanged. Subscription revenue never becomes provider withdrawable earnings.
+R34 start requires all seven mandatory G3 categories, owner/coordinator acceptance, a separately verified merged gate publication, full frozen source/tree SHA and recorded exact path delegation. The current source manifest remains BLOCKED.

@@ -1,0 +1,233 @@
+{
+  "schemaVersion": 1,
+  "runId": "g3-local-2026-10-24",
+  "baseSha": "73a4a64a77844db7815466f47d8afdefb0b35c2f",
+  "sourceSha": "134301e255d339d2b31acd7038787a2c3924210d",
+  "sourceTreeSha": "f1fddb0a55a234e141697cc0b045be3733059c55",
+  "localEquivalentSha": "da1bbede4390d753f85d88cef6752a869f0ed5a4",
+  "configuration": {
+    "node": "24.21.0",
+    "pnpm": "10.32.1",
+    "prisma": "6.12.0",
+    "stripeNode": "23.0.1",
+    "stripeJs": "10.1.0",
+    "stripeApi": "2026-09-30.endive",
+    "stripeCredentials": "ABSENT",
+    "refundPolicyApproval": "ABSENT",
+    "localDatabase": "UNAVAILABLE",
+    "localRedis": "UNAVAILABLE",
+    "liveMoney": false,
+    "hostedEnvironment": "ABSENT",
+    "webBuildApi": "http://127.0.0.1:4334",
+    "unitAuth": "synthetic-random-secret-not-retained",
+    "unitDatabaseUrl": "synthetic-loopback-syntax-only-no-service"
+  },
+  "configurationSha256": "bc65c33b8aa687e5f123347e6522ad19cfff015c6f0011f14cc7b9f8fc0badd3",
+  "changedPaths": [
+    ".github/scripts/r27-dependency-controls.mjs",
+    ".github/scripts/r27-dependency-controls.test.mjs",
+    ".github/workflows/r27-performance.yml",
+    "apps/api/package.json",
+    "apps/api/src/app.module.spec.ts",
+    "apps/api/src/app.module.ts",
+    "apps/api/src/config/env.schema.ts",
+    "apps/api/src/infrastructure/http/request-body.spec.ts",
+    "apps/api/src/infrastructure/http/request-body.ts",
+    "apps/api/src/modules/money/money.module.spec.ts",
+    "apps/api/src/modules/money/money.module.ts",
+    "apps/api/src/modules/money/refunds/refund-eligibility.policy.ts",
+    "apps/api/src/modules/money/runtime/approved-refund-policy.source.spec.ts",
+    "apps/api/src/modules/money/runtime/approved-refund-policy.source.ts",
+    "apps/api/src/modules/money/runtime/approved-refund.participant.spec.ts",
+    "apps/api/src/modules/money/runtime/approved-refund.participant.ts",
+    "apps/api/src/modules/money/runtime/money-rail-router.spec.ts",
+    "apps/api/src/modules/money/runtime/money-rail-router.ts",
+    "apps/api/src/modules/money/runtime/stripe-inbox.scheduler.spec.ts",
+    "apps/api/src/modules/money/runtime/stripe-inbox.scheduler.ts",
+    "apps/api/src/modules/money/runtime/stripe-runtime.module.spec.ts",
+    "apps/api/src/modules/money/runtime/stripe-runtime.module.ts",
+    "apps/api/src/modules/money/runtime/stripe-session.controller.ts",
+    "apps/api/src/modules/money/runtime/stripe-session.service.spec.ts",
+    "apps/api/src/modules/money/runtime/stripe-session.service.ts",
+    "apps/api/src/modules/money/subscriptions/subscription-lifecycle.service.ts",
+    "apps/api/src/modules/money/webhooks/stripe/stripe-webhook.module.ts",
+    "apps/api/test/integration/g3-financial-foundation.integration.spec.ts",
+    "apps/api/test/integration/g3-financial-runtime.integration.spec.ts",
+    "apps/web/package.json",
+    "apps/web/src/app/features/financial-operations/financial-operations.copy.ts",
+    "apps/web/src/app/features/subscriptions/MyPlanScreen.tsx",
+    "apps/web/src/app/features/subscriptions/StripePlanPurchase.test.tsx",
+    "apps/web/src/app/features/subscriptions/StripePlanPurchase.tsx",
+    "apps/web/src/app/features/subscriptions/stripe-purchase.api.test.ts",
+    "apps/web/src/app/features/subscriptions/stripe-purchase.api.ts",
+    "docs/performance/post-r18/r27-dependency-controls.json",
+    "docs/production-readiness/post-r18/gates/g3/OWNERSHIP.md",
+    "docs/production-readiness/post-r18/gates/g3/SOURCE_MANIFEST.json",
+    "docs/production-readiness/post-r18/gates/g3/evidence/ALLOWLIST.json",
+    "docs/production-readiness/post-r18/gates/g3/shared-change-requests/CR-004-g3-integration.md",
+    "packages/contracts/src/money/api-contracts.ts",
+    "packages/contracts/src/money/financial-contracts.ts",
+    "packages/contracts/src/money/financial-operations.ts",
+    "packages/database/prisma/migrations/20261024120000_g3_financial_integration/migration.sql",
+    "packages/database/prisma/schema.prisma",
+    "pnpm-lock.yaml"
+  ],
+  "checks": [
+    {
+      "command": "pnpm install --frozen-lockfile --offline --store-dir /workspace/scratch/b5653dea7992/wave4-pnpm-store",
+      "exitCode": 0
+    },
+    {
+      "command": "pnpm --filter @homeservicemarketplace/database generate",
+      "exitCode": 0
+    },
+    {
+      "command": "DATABASE_URL=<synthetic-loopback-syntax-only> pnpm --filter @homeservicemarketplace/database prisma:validate",
+      "exitCode": 0,
+      "connectsToDatabase": false
+    },
+    {
+      "command": "pnpm --filter @homeservicemarketplace/api test --runInBand src/modules/money src/app.module.spec.ts src/config src/infrastructure/http/request-body.spec.ts",
+      "exitCode": 0,
+      "passed": 955,
+      "failed": 0,
+      "skipped": 0,
+      "stage": "before final refund authorization switch"
+    },
+    {
+      "command": "pnpm --filter @homeservicemarketplace/api test --runInBand src/modules/money/runtime/approved-refund-policy.source.spec.ts src/modules/money/money.module.spec.ts",
+      "exitCode": 0,
+      "passed": 20,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "command": "pnpm --filter @homeservicemarketplace/web test src/app/features/subscriptions src/app/features/financial-operations --reporter=json --outputFile=<scratch>/g3-web-unit.json",
+      "exitCode": 0,
+      "passed": 97,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "command": "node --test .github/scripts/*.test.mjs scripts/security/*.test.cjs",
+      "exitCode": 0,
+      "passed": 546,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "command": "node scripts/production/stripe-sandbox/verify-sandbox.cjs --offline-signatures --sdk-root /workspace/scratch/b5653dea7992/g3/apps/api",
+      "exitCode": 0,
+      "passed": 14,
+      "failed": 0,
+      "skipped": 0,
+      "externalRequests": 0,
+      "sandboxAccepted": false
+    },
+    {
+      "command": "pnpm --filter @homeservicemarketplace/web lint",
+      "exitCode": 0,
+      "warnings": 34,
+      "errors": 0
+    },
+    {
+      "command": "pnpm security:audit",
+      "exitCode": 0,
+      "vulnerabilities": {
+        "info": 0,
+        "low": 0,
+        "moderate": 0,
+        "high": 0,
+        "critical": 0
+      }
+    },
+    {
+      "command": "node .github/scripts/g3-record.mjs --check",
+      "exitCode": 0,
+      "state": "BLOCKED"
+    },
+    {
+      "command": "node .github/scripts/g3-record.mjs --ready R34",
+      "exitCode": 1,
+      "expected": true,
+      "reason": "G3 not accepted or published; no start authorization"
+    },
+    {
+      "command": "node .github/scripts/r27-dependency-controls.mjs --candidate 3b6607cf93458c392341c2ad977b658f8a67b982 --repair-base 73a4a64a77844db7815466f47d8afdefb0b35c2f --baseline ebbf70579a1d15f9e4e40b0b4b89abf145a7de82 --github-env <scratch>/g3-control-env.txt --report <scratch>/g3-dependency-controls-check.json",
+      "exitCode": 0,
+      "selection": "EXPLICIT_DEPENDENCY_CONTROL"
+    },
+    {
+      "command": "pnpm --filter @homeservicemarketplace/api test --maxWorkers=2 --json --outputFile=<scratch>/g3-api-final.json",
+      "environment": "synthetic boot-only database URL and random test JWT; RUN_DB_INTEGRATION absent",
+      "exitCode": 0,
+      "passed": 5464,
+      "failed": 0,
+      "skipped": 1872,
+      "todo": 0,
+      "passedSuites": 310,
+      "skippedSuites": 101,
+      "note": "Default suite; infrastructure skips are not acceptance. Later DB/schema correction requires CI."
+    },
+    {
+      "command": "pnpm --filter @homeservicemarketplace/api typecheck",
+      "exitCode": 0
+    },
+    {
+      "command": "pnpm --filter @homeservicemarketplace/api build",
+      "exitCode": 0
+    },
+    {
+      "command": "pnpm --filter @homeservicemarketplace/web typecheck",
+      "exitCode": 0
+    },
+    {
+      "command": "pnpm --filter @homeservicemarketplace/web build",
+      "exitCode": 0
+    },
+    {
+      "command": "pnpm --filter @homeservicemarketplace/api lint",
+      "exitCode": 0,
+      "errors": 0
+    },
+    {
+      "command": "node scripts/security/secret-scan-tree.cjs --gitleaks <scratch>/wave4-tools/gitleaks --commit e13f7fdad1ba4a371a754a7df37aa3b2dd9f1873 --report <scratch>/g3-source-gitleaks.sarif",
+      "exitCode": 0,
+      "files": 2891,
+      "bytes": 25932492,
+      "findings": 0
+    },
+    {
+      "command": "git diff --check and exact allowlist comparison",
+      "exitCode": 0,
+      "unleasedSourcePaths": 0
+    },
+    {
+      "command": "pnpm exec prettier --write <exact changed allowlisted paths>",
+      "exitCode": 0
+    }
+  ],
+  "requiredExternal": {
+    "postgresRedisStorage": "CI_PENDING",
+    "stripeSandbox": "BLOCKED_CREDENTIALS_ABSENT",
+    "manualAuthority": "BLOCKED_APPROVAL_ABSENT",
+    "refundPolicy": "BLOCKED_APPROVAL_ABSENT",
+    "realRouteBrowser": "NOT_RUN",
+    "inspectedScreenshots": 0,
+    "hosted": "BLOCKED_ENVIRONMENT_ABSENT",
+    "finalCiCodeql": "PENDING_PR"
+  },
+  "g3Accepted": false,
+  "frozenBaseSha": null,
+  "dependencyControls": {
+    "baseline": "ebbf70579a1d15f9e4e40b0b4b89abf145a7de82",
+    "repair": "59df0cd4c8416c4a512973763396f78bcb2ccc82"
+  },
+  "artifactDigests": {
+    "g3-api-final.json": "bffc68eead0a7c07b86bd1538b06ddfd1abf9970490d72bd781b403f05c86c08",
+    "g3-web-unit.json": "37ccc17de524cf1da7fb3465407bcf6ef9b9eb6fbe8d0aec736b4d65a0e317df",
+    "g3-audit-full.json": "8299b9c566946044775caaf85d083325fb41d7fee967e48424edebb0bbd0cddb",
+    "g3-source-gitleaks.sarif": "f1cc1fc5bf34d5e9643655ac6480ff4681e27aa9c2c639f03067fc7ea8595e3d",
+    "g3-dependency-controls-check.json": "ff9fd37eb8c29ce5ba9ac5341235a205315d43bc44fe1416a8ea47212d90fa10"
+  }
+}
