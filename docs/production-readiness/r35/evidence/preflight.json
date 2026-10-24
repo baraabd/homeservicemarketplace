@@ -1,0 +1,259 @@
+{
+  "schemaVersion": 1,
+  "kind": "PREFLIGHT_OBSERVATION_NOT_ACCEPTANCE",
+  "recordedDate": "2026-10-24",
+  "repository": "baraabd/homeservicemarketplace",
+  "sprint": "R35",
+  "branch": "test/r35-cross-role-certification",
+  "source": {
+    "observedSha": "73a4a64a77844db7815466f47d8afdefb0b35c2f",
+    "observedTreeSha": "04fbecf5ff028f95136cdddca5aeb7bb7451e09f",
+    "approvedG3BaseSha": null,
+    "approvedG3TreeSha": null,
+    "finalDocumentationIdentity": "PR metadata after publication; no self-referential hash"
+  },
+  "state": {
+    "implementation": "NOT_STARTED",
+    "sourceVerified": false,
+    "integration": "INTEGRATION_PENDING",
+    "policy": "POLICY_BLOCKED",
+    "external": "EXTERNAL_BLOCKED",
+    "sandboxAccepted": false,
+    "hostedAccepted": false,
+    "releaseAccepted": false
+  },
+  "ownership": {
+    "documentationFiles": [
+      "docs/production-readiness/r35/OWNERSHIP.md",
+      "docs/production-readiness/r35/IMPLEMENTATION.md",
+      "docs/production-readiness/r35/ACCEPTANCE.md",
+      "docs/production-readiness/r35/RISKS.md",
+      "docs/production-readiness/r35/ROLLBACK.md",
+      "docs/production-readiness/r35/evidence/preflight.json",
+      "docs/production-readiness/r35/shared-change-requests/CR-001-integration.md"
+    ],
+    "runtimeLeaseGranted": false,
+    "runtimeOwnershipApproval": "CONDITIONAL_AFTER_VERIFIED_G3_PUBLICATION_AND_SESSION_ASSIGNMENT",
+    "conditionalSourceAndTestPlan": [
+      "apps/web/e2e/post-r18-certification/seeker-provider-journeys.real-api.spec.ts",
+      "apps/web/e2e/post-r18-certification/admin-finance-journeys.real-api.spec.ts",
+      "apps/web/e2e/post-r18-certification/subscription-refund-journeys.real-api.spec.ts",
+      "apps/web/e2e/post-r18-certification/accessibility-locales.real-api.spec.ts",
+      "apps/web/e2e/post-r18-certification/fixtures.ts",
+      "apps/api/test/integration/post-r18-certification/money-lifecycle.integration.spec.ts",
+      "apps/api/test/integration/post-r18-certification/private-evidence.integration.spec.ts",
+      "apps/api/test/integration/post-r18-certification/fixture.ts",
+      "scripts/production/cross-role-certification/run.cjs",
+      "scripts/production/cross-role-certification/run.test.cjs",
+      "scripts/production/cross-role-certification/verify-evidence.cjs",
+      "scripts/production/cross-role-certification/verify-evidence.test.cjs",
+      "docs/production-readiness/r35/IMPLEMENTATION.md",
+      "docs/production-readiness/r35/ACCEPTANCE.md",
+      "docs/production-readiness/r35/RISKS.md",
+      "docs/production-readiness/r35/ROLLBACK.md",
+      "docs/production-readiness/r35/OWNERSHIP.md",
+      "docs/production-readiness/r35/shared-change-requests/CR-001-integration.md"
+    ],
+    "sharedWrites": []
+  },
+  "contracts": {
+    "money": "hsm.money.v1",
+    "finance": "hsm.finance-operations.v1",
+    "changed": false,
+    "schemaChanged": false,
+    "migrationAdded": false
+  },
+  "fingerprints": {
+    "package.json": "5b1918cfd23189939190a6ded41c41d4f445750c79617f8c8515ca8b2fe3dafe",
+    "apps/api/package.json": "a79871592a5a072c092c88f17306fe91beccee3300b09023254cbb0d9ba10043",
+    "pnpm-lock.yaml": "bb7d02ac93f0b53fc4433779c179b6e533efe09a3faa0565a2f525c8f23a695a",
+    "packages/database/prisma/schema.prisma": "8d408b8219f8aa8c1ededc1d50cd8261adddc07f716261c2ce8432b52e946515",
+    "packages/contracts/src/money/index.ts": "42ceba1440bafe23a2f5be29275c5fe220808698ce5b9c1ad2ce47bb62728d0a",
+    "packages/contracts/src/money/financial-operations.ts": "7d5db17246bd794ed73b2127988fde119f25c997b484362c96ed41b49f4cef69",
+    "apps/api/src/modules/money/money.module.ts": "48af19edc09ce2e0526750ab7706b9b0deabc9ee5d8173f815739b7986b9e696",
+    "apps/api/src/modules/money/reporting/financial-reporting.module.ts": "3b5c8aea938950ad7ec0c8a378fd714b0e1cf56898b63b03d20c62d202e21229",
+    "docs/production-readiness/post-r18/gates/g3/SOURCE_MANIFEST.json": "1a6b9ff7c3f25166a12698a922b36cb8698ac5d08df8ecf0df9fe8473fedc642",
+    "docs/production-readiness/post-r18/waves/wave-04.plan.json": "4ec343c977988fff06c6f32fcf3a022cb13e10c1766565fb4712c46eba04f9b7"
+  },
+  "nonSecretConfiguration": {
+    "node": "24.21.0",
+    "pnpm": "10.32.1",
+    "prisma": "6.12.0",
+    "platform": "Linux",
+    "architecture": "x86_64",
+    "runtimeProvisioned": false,
+    "database": "NOT_PROVISIONED",
+    "redis": "NOT_PROVISIONED",
+    "storage": "NOT_PROVISIONED",
+    "browser": "NOT_STARTED",
+    "sandboxCredentials": "NOT_SUPPLIED_OR_USED",
+    "hostedTarget": "NOT_SUPPLIED_OR_CONTACTED",
+    "liveRailsActivated": false
+  },
+  "configurationSha256": "d4d8c3cc455b2d72e59a515d5d981a9b01382624856ae7dc0ca9f9552a66d9e6",
+  "commands": [
+    {
+      "argv": [
+        "node",
+        "--test",
+        ".github/scripts/g1-runtime-evidence.test.mjs",
+        ".github/scripts/g2-current-record.test.mjs",
+        ".github/scripts/g2-record.test.mjs",
+        ".github/scripts/g3-record.test.mjs",
+        ".github/scripts/merge-integrity.test.mjs",
+        ".github/scripts/pr-acceptance.test.mjs",
+        ".github/scripts/production-governance.test.mjs",
+        ".github/scripts/r27-acceptance.test.mjs",
+        ".github/scripts/r27-dependency-controls.test.mjs",
+        ".github/scripts/r27-workflow.test.mjs",
+        ".github/scripts/release-baseline.test.mjs",
+        ".github/scripts/sprint-registry.test.mjs",
+        ".github/scripts/wave-gate.test.mjs"
+      ],
+      "exitCode": 0,
+      "summary": "\u2714 malformed G3 nested records fail closed without throwing (1.000522ms)\n\u2139 tests 500\n\u2139 suites 0\n\u2139 pass 500\n\u2139 fail 0\n\u2139 cancelled 0\n\u2139 skipped 0\n\u2139 todo 0\n\u2139 duration_ms 3532.670914",
+      "logSha256": "d06903ccbae30fc9f85c7ba2a65e8af09c1568fee62421dcb2f6061101204cc3"
+    },
+    {
+      "argv": ["node", ".github/scripts/g2-record.mjs", "--check"],
+      "exitCode": 0,
+      "summary": "PASS G2 record consistency; this does not authenticate remote evidence or grant approval.\nRecorded G2: ACCEPTED; Wave 3: READY_TO_START",
+      "logSha256": "a51c84216cc443f486bfcc5be1936a1458bd60bdcbefc361dbb1ed90d6999426"
+    },
+    {
+      "argv": ["node", ".github/scripts/g3-record.mjs", "--check"],
+      "exitCode": 0,
+      "summary": "PASS G3 record consistency; this does not authenticate evidence or grant approval.\nRecorded G3: BLOCKED; Wave 4: BLOCKED; R38 final G4 join: BLOCKED",
+      "logSha256": "e41517f403d8c38df98e9d80166b9b5fc41bc9d892f65e866e393c8c90da6530"
+    },
+    {
+      "argv": ["node", ".github/scripts/g3-record.mjs", "--ready", "R34"],
+      "exitCode": 1,
+      "summary": "FAIL R34 is not authorized to start",
+      "logSha256": "ae06afa70850adbe67bf4f81aaba08df6acb505b67e0b1e241e8aaa2d8ba38a1"
+    },
+    {
+      "argv": ["node", ".github/scripts/g3-record.mjs", "--ready", "R35"],
+      "exitCode": 1,
+      "summary": "FAIL R35 is not authorized to start",
+      "logSha256": "56119f674a902c078114665b49a110738b8524af66a1d899b7b981eb17bb248d"
+    },
+    {
+      "argv": ["node", ".github/scripts/sprint-registry.mjs"],
+      "exitCode": 0,
+      "summary": "PASS post-R18 sprint registry; this is not sprint acceptance",
+      "logSha256": "64d45f1bcdbfb312a9402ccf548d04c3c9ff88cbd6e176301a67eb2ec076f07c"
+    },
+    {
+      "argv": ["node", ".github/scripts/production-governance.mjs"],
+      "exitCode": 0,
+      "summary": "PASS repository governance files\nGitHub protection is NOT verified by this local check.",
+      "logSha256": "7da89fb67eeee2bd4af5d93cc785de5265ada0712c9fed580cc20a44a8095b21"
+    }
+  ],
+  "testCounts": {
+    "scope": "one existing governance run shared by both preflight references",
+    "passed": 500,
+    "failed": 0,
+    "cancelled": 0,
+    "skipped": 0,
+    "todo": 0,
+    "productScenarioCounts": null
+  },
+  "frozenInstall": {
+    "command": "pnpm install --frozen-lockfile --store-dir /workspace/scratch/b5653dea7992/wave4-pnpm-store --reporter=append-only",
+    "exitCode": 0,
+    "independentNodeModules": true,
+    "lockfileUnchanged": true,
+    "logSha256": "8f8eef7657839e9e602bd80606fd1790be417a2bd4aaccae9f8196fc635943da",
+    "warnings": [
+      "Existing ignored build scripts: @parcel/watcher@2.6.0 and unrs-resolver@1.12.2; no approval setting changed"
+    ]
+  },
+  "mergedPrerequisites": [
+    {
+      "pr": 184,
+      "url": "https://github.com/baraabd/homeservicemarketplace/pull/184",
+      "state": "closed",
+      "merged": true,
+      "head": "feat/r30-manual-payment-review",
+      "head_sha": "f83829ef687f66012736af5c262a7cf9764018c4",
+      "merge_commit_sha": "aaa22a9a04025fc312cbcc2121687aca2e467cac",
+      "merged_at": "2026-10-23T12:50:31Z",
+      "ancestorOfObservedDevelop": true,
+      "ancestryExitCode": 0
+    },
+    {
+      "pr": 185,
+      "url": "https://github.com/baraabd/homeservicemarketplace/pull/185",
+      "state": "closed",
+      "merged": true,
+      "head": "feat/r33-financial-operations-ui",
+      "head_sha": "25fec75db092cd68ea1f08297601d8baecde6b1a",
+      "merge_commit_sha": "5ff2b7e6a46b4e42114184fac89928372f4c8d4c",
+      "merged_at": "2026-10-23T20:00:50Z",
+      "ancestorOfObservedDevelop": true,
+      "ancestryExitCode": 0
+    },
+    {
+      "pr": 186,
+      "url": "https://github.com/baraabd/homeservicemarketplace/pull/186",
+      "state": "closed",
+      "merged": true,
+      "head": "feat/r31-subscription-entitlements",
+      "head_sha": "6805d505db6af348c6d636068abdc15ceaa8e981",
+      "merge_commit_sha": "c3c080cf28f142ed46495ec7e5d549937da90096",
+      "merged_at": "2026-10-23T16:05:39Z",
+      "ancestorOfObservedDevelop": true,
+      "ancestryExitCode": 0
+    },
+    {
+      "pr": 187,
+      "url": "https://github.com/baraabd/homeservicemarketplace/pull/187",
+      "state": "closed",
+      "merged": true,
+      "head": "feat/r32-refund-recovery",
+      "head_sha": "ea3c4c1eab49901106f59ea3a7724ae6cbe98b2f",
+      "merge_commit_sha": "70962ea24be36035b62c81e537002353795ca00a",
+      "merged_at": "2026-10-23T20:00:36Z",
+      "ancestorOfObservedDevelop": true,
+      "ancestryExitCode": 0
+    },
+    {
+      "pr": 193,
+      "url": "https://github.com/baraabd/homeservicemarketplace/pull/193",
+      "state": "closed",
+      "merged": true,
+      "head": "feat/r29-stripe-sandbox-webhooks",
+      "head_sha": "8c393009412fc9884f20a8bc3c3384aadc977cb5",
+      "merge_commit_sha": "794e9ce82978f94c97ad598e7d1f3708020c6fc1",
+      "merged_at": "2026-10-24T07:05:54Z",
+      "ancestorOfObservedDevelop": true,
+      "ancestryExitCode": 0
+    }
+  ],
+  "findings": [
+    "G3 BLOCKED with null frozen source/tree and no active lane assignment",
+    "R29 source is now merged; historical all-paths-absent wording is stale",
+    "Stripe SDK dependency/parser/ingress/router/scheduler and purchase surface remain unintegrated",
+    "Refund policy and confirmation consequences remain unavailable",
+    "Independent sandbox and combined G3 evidence are absent from the canonical gate",
+    "Existing browser projects are Chromium; other engines cannot be inferred",
+    "New certification matrix and deployed bundle/API parity have not been executed"
+  ],
+  "acceptanceArtifacts": {
+    "runIds": [],
+    "artifactIds": [],
+    "screenshotsInspected": 0,
+    "matched": null,
+    "unmatched": null,
+    "unresolvedExceptionSeverities": null
+  },
+  "restrictions": {
+    "merge": false,
+    "deploy": false,
+    "liveMoney": false,
+    "externalSpend": false,
+    "accountGrants": false
+  }
+}
