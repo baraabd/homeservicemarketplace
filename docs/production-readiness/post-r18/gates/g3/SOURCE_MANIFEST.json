@@ -79,7 +79,7 @@
     {
       "id": "G3-COMBINED-REAL-SANDBOX-EVIDENCE-MISSING",
       "owner": "G3 coordinator and authorized sandbox operator",
-      "reason": "No Stripe sandbox credentials, approved manual authority/configuration or hosted environment were supplied to this execution. Independent payment/refund and combined confirmation/activation/outbox evidence remain NOT_RUN; no frozen G3 SHA or Wave 4 start authorization is issued."
+      "reason": "Authorized Stripe test credentials, authentic provider webhook forwarding and explicit sandbox financial policy/operator inputs are absent from this execution. The external runner and concrete integration regressions do not replace an executed, artifact-backed combined sandbox acceptance run. No frozen G3 SHA or Wave 4 start authorization is issued. Hosted acceptance belongs to its separate in-scope release gate."
     }
   ],
   "publication": {

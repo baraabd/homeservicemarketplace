@@ -7,6 +7,7 @@
   "paths": [
     ".github/scripts/r27-dependency-controls.mjs",
     ".github/scripts/r27-dependency-controls.test.mjs",
+    ".github/workflows/ci.yml",
     ".github/workflows/r27-performance.yml",
     ".gitleaksignore",
     "apps/api/package.json",
@@ -15,6 +16,8 @@
     "apps/api/src/config/env.schema.ts",
     "apps/api/src/infrastructure/http/request-body.spec.ts",
     "apps/api/src/infrastructure/http/request-body.ts",
+    "apps/api/src/modules/money/application/money-command.service.spec.ts",
+    "apps/api/src/modules/money/application/money-command.service.ts",
     "apps/api/src/modules/money/money.module.spec.ts",
     "apps/api/src/modules/money/money.module.ts",
     "apps/api/src/modules/money/refunds/refund-eligibility.policy.ts",
@@ -36,6 +39,7 @@
     "apps/api/src/modules/money/webhooks/stripe/stripe-webhook.module.ts",
     "apps/api/test/integration/g3-financial-foundation.integration.spec.ts",
     "apps/api/test/integration/g3-financial-runtime.integration.spec.ts",
+    "apps/api/test/support/g3-stripe-external.fixture.ts",
     "apps/web/package.json",
     "apps/web/src/app/features/financial-operations/financial-operations.copy.ts",
     "apps/web/src/app/features/subscriptions/MyPlanScreen.tsx",
@@ -47,11 +51,14 @@
     "docs/production-readiness/post-r18/gates/g3/ACCEPTANCE.md",
     "docs/production-readiness/post-r18/gates/g3/IMPLEMENTATION.md",
     "docs/production-readiness/post-r18/gates/g3/OWNERSHIP.md",
+    "docs/production-readiness/post-r18/gates/g3/REQUIREMENTS.md",
     "docs/production-readiness/post-r18/gates/g3/RISKS.md",
     "docs/production-readiness/post-r18/gates/g3/ROLLBACK.md",
+    "docs/production-readiness/post-r18/gates/g3/SANDBOX_RUNBOOK.md",
     "docs/production-readiness/post-r18/gates/g3/SOURCE_MANIFEST.json",
     "docs/production-readiness/post-r18/gates/g3/evidence/ALLOWLIST.json",
     "docs/production-readiness/post-r18/gates/g3/evidence/LOCAL_CHECKS.json",
+    "docs/production-readiness/post-r18/gates/g3/evidence/PR_REPAIR_2026-10-24.json",
     "docs/production-readiness/post-r18/gates/g3/shared-change-requests/CR-004-g3-integration.md",
     "docs/security/gitleaks-historical-baseline.md",
     "packages/contracts/src/money/api-contracts.ts",
@@ -62,6 +69,8 @@
     "packages/database/prisma/schema.prisma",
     "pnpm-lock.yaml",
     "scripts/production/security-app/verify-boundaries.test.cjs",
-    "scripts/production/security-app/web-csp.cjs"
+    "scripts/production/security-app/web-csp.cjs",
+    "scripts/production/stripe-sandbox/verify-external.cjs",
+    "scripts/production/stripe-sandbox/verify-external.test.cjs"
   ]
 }

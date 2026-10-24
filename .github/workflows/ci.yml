@@ -2270,6 +2270,13 @@ jobs:
           pnpm --filter @homeservicemarketplace/api exec jest --runInBand --runTestsByPath \
             test/integration/r30-manual-payments.integration.spec.ts \
             --json --outputFile=r30-manual-service-ci.json
+      - name: Verify G3 concrete confirmation, activation, refund and outbox integration
+        run: |
+          pnpm --filter @homeservicemarketplace/api exec jest --runInBand --runTestsByPath \
+            test/integration/g3-financial-runtime.integration.spec.ts \
+            --json --outputFile=g3-financial-runtime-ci.json
+      - name: Verify external Stripe runner authorization and evidence guards
+        run: node --test scripts/production/stripe-sandbox/verify-external.test.cjs
       - name: Verify R30 bilingual browser against the same real services
         env:
           RUN_R30_BROWSER: '1'
@@ -2283,6 +2290,7 @@ jobs:
           const fs = require('node:fs');
           for (const [file, expected] of [
             ['apps/api/r30-manual-service-ci.json', 16],
+            ['apps/api/g3-financial-runtime-ci.json', 6],
             ['apps/api/r30-manual-browser-ci.json', 1],
           ]) {
             const r = JSON.parse(fs.readFileSync(file, 'utf8'));
@@ -2303,6 +2311,7 @@ jobs:
           name: r30-manual-real-evidence
           path: |
             apps/api/r30-manual-service-ci.json
+            apps/api/g3-financial-runtime-ci.json
             apps/api/r30-manual-browser-ci.json
             apps/web/test-results/r30-manual-results.json
             apps/web/test-results/r30-manual-browser/**/*.png

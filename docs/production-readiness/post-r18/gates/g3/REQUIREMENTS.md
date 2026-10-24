@@ -2,14 +2,23 @@
 
 ## Current state and authority
 
-G3 is **BLOCKED**. The coordinator review of develop
-`5ff2b7e6a46b4e42114184fac89928372f4c8d4c` verifies merged R30–R33 source,
-but R29 implementation is absent and the production composition still uses
-unavailable refund-policy and refund-confirmation participants. See
-[the source readiness review](READINESS_REVIEW_2026-10-23.md) and its API
-snapshot. No complete integrated Wave 3 candidate has been accepted, so
-candidate and frozen source/tree identities remain null and every mandatory
-category is `NOT_RUN`. G2 acceptance/publication cannot release R34–R38 directly.
+G3 is **BLOCKED**. The 2026-10-23 coordinator review of develop
+`5ff2b7e6a46b4e42114184fac89928372f4c8d4c` is a historical snapshot: it found
+merged R30–R33 source, absent R29 implementation, and unavailable refund
+participants. Preserve [that review](READINESS_REVIEW_2026-10-23.md) and its
+API snapshot as historical evidence.
+
+The current integration branch starts from develop
+`73a4a64a77844db7815466f47d8afdefb0b35c2f`, where all R29–R33 merge commits
+are ancestors. PR #198 composes the actual Stripe transport, checkout,
+explicit approved-policy/refund participants and additive reconciliation
+persistence/contracts. Its subsequent repair adds concrete cross-lane
+regressions and an explicitly authorized external Stripe runner. Implemented
+source and passing component/infrastructure checks alone do not satisfy the
+seven categories below. No complete combined candidate has been accepted;
+independent sandbox execution and explicit policy inputs remain required.
+The canonical manifest records the evidence and publication state. G2
+acceptance/publication cannot release R34–R38 directly.
 
 Authority is the original coordinator prompt, Mode 3, and full R29–R38 prompts
 preserved under `../g2/prompts/`, with original pack provenance in

@@ -46,6 +46,10 @@ const copy = {
   },
 } as const;
 
+// Match My Plan: theme changes must update foreground and background together
+// instead of animating through low-contrast intermediate colors.
+const controlClass = 'min-h-11 whitespace-normal transition-none';
+
 /** No redirect, local status or Stripe browser result activates a subscription. */
 export function StripePlanPurchase({
   plan,
@@ -132,7 +136,7 @@ export function StripePlanPurchase({
         <Button
           type="button"
           variant="outline"
-          className="min-h-11 whitespace-normal"
+          className={controlClass}
           disabled={busy}
           onClick={() =>
             void run(async () => {
@@ -158,7 +162,7 @@ export function StripePlanPurchase({
           {!attempt && (
             <Button
               type="button"
-              className="min-h-11 whitespace-normal"
+              className={controlClass}
               disabled={busy}
               onClick={() =>
                 void run(async () => {
@@ -180,7 +184,7 @@ export function StripePlanPurchase({
           {session?.state === 'AWAITING_PAYMENT' && (
             <Button
               type="button"
-              className="min-h-11 whitespace-normal"
+              className={controlClass}
               disabled={busy || !ready}
               onClick={() =>
                 void run(async () => {
@@ -206,7 +210,7 @@ export function StripePlanPurchase({
           <Button
             type="button"
             variant="outline"
-            className="min-h-11 whitespace-normal"
+            className={controlClass}
             disabled={busy}
             onClick={() =>
               void run(async () => {

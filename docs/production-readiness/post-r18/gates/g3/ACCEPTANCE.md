@@ -1,12 +1,37 @@
 # G3 acceptance evidence
 
-Decision: **BLOCKED**. No SANDBOX_ACCEPTED, HOSTED_ACCEPTED, RELEASE_ACCEPTED or Wave 4 start authorization is asserted. Source: `134301e255d339d2b31acd7038787a2c3924210d`, tree `f1fddb0a55a234e141697cc0b045be3733059c55`; subsequent source/evidence commits and final-head CI are recorded in the PR.
+Decision: **BLOCKED**. No SANDBOX_ACCEPTED, HOSTED_ACCEPTED, RELEASE_ACCEPTED or Wave 4 start authorization is asserted. The latest repair evidence is [PR_REPAIR_2026-10-24.json](evidence/PR_REPAIR_2026-10-24.json); its published source/tree and final-head CI are recorded in PR #198. A source document cannot contain its own final commit identity.
+
+## 2026-10-24 PR repairs and assembled execution
+
+The repair starts from PR #198 head `ec9d86df306b3f93bf1589bdee8dcc479c6d9809`. Its R31 browser failure was a serious axe color-contrast result while the newly added checkout buttons animated between themes. Those four controls now use the existing My Plan immediate-transition convention. The affected component/API tests passed 7/7; the pinned real browser/axe workflow must verify the final published source. The local pinned Chromium download failed at the provider CDN, so no local browser pass is claimed.
+
+The actual assembled manual flow exposed a separate product defect: the refund orchestrator invoked the concrete subscription participant before storing the successful refund status and compensation link that participant requires. The repair stores both fields before invoking the participant, inside the same transaction. A failure still rolls back the terminal refund, compensation, subscription consequence, lifecycle receipt, audit and outbox together.
+
+Task-owned PostgreSQL 16, Redis 7 and ClamAV with verified official signatures were available for this repair. Six G3 runtime cases passed with zero failures/skips, including two complete receipt/inspection/settlement/confirmation/activation/refund flows with real registered money participants. Both SUSPEND_SUBSCRIPTION and CANCEL_SUBSCRIPTION are exercised. A failure after the real cancellation participant proves rollback followed by recovery with the original query key. Synthetic XTS plans, approvals and settlement assertions remain explicitly synthetic.
+
+| Local verification                                             | Passed | Failed | Skipped |
+| -------------------------------------------------------------- | -----: | -----: | ------: |
+| G3 additive schema and persistence against PostgreSQL          |      6 |      0 |       0 |
+| G3 actual AppModule/HTTP/PostgreSQL/Redis/ClamAV lifecycle     |      6 |      0 |       0 |
+| Original R30 real-service cases, unchanged                     |     16 |      0 |       0 |
+| Money command and R32 recovery suites                          |     92 |      0 |       0 |
+| Affected checkout component/API cases                          |      7 |      0 |       0 |
+| All governance validators plus new external-runner guard tests |    540 |      0 |       0 |
+
+TypeScript, scoped ESLint, formatting and repository/baseline/G3 consistency checks also passed. The G3/Wave gate subset passed 170 cases and is included in the 540-case governance total, not an additional independent acceptance run. CI now executes the six G3 runtime cases in the existing R30 real-services job with a separate JSON report and exact-count/zero-skip assertion. The original R30 service count remains 16 and its browser count remains unchanged.
+
+The new external runner uses the actual AppModule and official Stripe transport, explicit approved input and an authentic provider-forwarded signature. Its 40 guard tests are part of the 540 cases above. They prove input/evidence rejection, not provider execution. The 14 external scenarios are **NOT_RUN** because authorized test credentials, a matching webhook forwarder and approved financial policy inputs are absent. See [SANDBOX_RUNBOOK.md](SANDBOX_RUNBOOK.md) for the exact handoff and the remaining browser/crash scenarios. No mandatory G3 evidence category is promoted to PASS merely because this runner exists.
+
+## Earlier implementation record (historical)
+
+Initial implementation source: `134301e255d339d2b31acd7038787a2c3924210d`, tree `f1fddb0a55a234e141697cc0b045be3733059c55`. The following observations describe that earlier execution; the repair section above supersedes its local-service availability statements.
 
 Local runs use Node 24.21.0 / pnpm 10.32.1. Exact command/result inventory and sanitized configuration fingerprint: [LOCAL_CHECKS.json](evidence/LOCAL_CHECKS.json). Full default API run initially passed 5,463 tests with 1,872 infrastructure-gated skips after supplying synthetic test boot configuration. The final default-suite repeat passed 5,464 tests with the same 1,872 infrastructure-gated skips, 310 passed suites and 101 skipped suites. Twenty focused policy/module tests also passed. Later additive schema/DB-fixture corrections passed typecheck; real database execution remains required. Affected web tests passed 97, governance/security-runner tests passed 546, and official SDK offline signature cases passed 14, all with zero failures/skips in those focused runs.
 
 Frozen install, generated Prisma client, schema syntax validation, affected lint/typecheck/build and dependency audit were executed. Web lint reports 34 existing warnings, zero errors; no warning budget changed. The full dependency audit reports zero info/low/moderate/high/critical findings. A tracked-tree Gitleaks scan at the first implementation commit inspected 2,891 files / 25,932,492 bytes with zero findings; final evidence-tree scan is recorded separately.
 
-## Required evidence not established locally
+## Evidence not established at initial implementation
 
 - Real PostgreSQL/Redis/storage tests: local services are absent. Ten new integration cases are included under the existing RUN_DB_INTEGRATION gate; CI must execute them, not count their default skips as acceptance.
 - Real Stripe sandbox payment/refund/missed-webhook recovery: credentials absent. Offline SDK signatures and transport doubles are explicitly component evidence, not external funds evidence.
