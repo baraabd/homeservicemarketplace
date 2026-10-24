@@ -82,6 +82,8 @@ model User {
   manualRefundDispatches     MoneyManualRefundOperation[]   @relation("ManualRefundDispatcher")
   manualRefundConfirmations  MoneyManualRefundOperation[]   @relation("ManualRefundConfirmer")
   manualRefundEvents         MoneyManualRefundEvent[]
+  reconciliationDecisionsMade MoneyReconciliationDecision[] @relation("ReconciliationDecisionMaker")
+  reconciliationDecisionsChecked MoneyReconciliationDecision[] @relation("ReconciliationDecisionChecker")
 
   @@index([deletedAt])
   @@index([status])
@@ -2902,6 +2904,7 @@ model LedgerTransaction {
   // R19 — subscription money foundation (back-relations only; no column change).
   moneyConfirmation       MoneyPaymentConfirmation?
   moneyRefundCompensation MoneyRefund?
+  reconciliationCorrections MoneyReconciliationDecision[]
 
   @@unique([id, currency])
   @@index([bookingId])
@@ -2997,6 +3000,11 @@ enum MoneyReconciliationKind {
   DUPLICATE_EXTERNAL_CONFIRMATION
   REFUND_WITHOUT_COMPENSATION
   PERIOD_WITHOUT_CONFIRMATION
+  TIMING_DIFFERENCE
+  MISSING_EXTERNAL_EFFECT
+  UNMATCHED_EXTERNAL_REFERENCE
+  MISSING_ACTIVATION
+  AMBIGUOUS_REFUND_OUTCOME
 }
 
 /// An immutable commercial snapshot (ADR 0014 decision 3). Only retiredAt may
@@ -3210,11 +3218,12 @@ model MoneyEntitlementUsage {
 }
 
 model MoneyReconciliationException {
-  id             String                  @id @default(cuid())
+  operation      MoneyReconciliationCase?
+  id             String                   @id @default(cuid())
   kind           MoneyReconciliationKind
   subjectType    String
   subjectId      String
-  detectedAt     DateTime                @default(now())
+  detectedAt     DateTime                 @default(now())
   resolvedAt     DateTime?
   resolutionCode String?
 
@@ -3553,18 +3562,18 @@ model MoneyManualReceiptVersion {
 }
 
 model MoneyManualReview {
-  paymentIntentId      String    @id
-  instructionVersionId String
-  currentReceiptId     String?   @unique
-  version              Int       @default(0)
-  state                String    @default("RECEIPT_REQUIRED")
-  pendingDecisionId    String?   @unique
-  nextAttemptAt        DateTime?
-  attemptCount         Int       @default(0)
-  lastErrorCode        String?
-  reconciliationRequired Boolean @default(false)
-  createdAt            DateTime  @default(now())
-  updatedAt            DateTime  @updatedAt
+  paymentIntentId        String    @id
+  instructionVersionId   String
+  currentReceiptId       String?   @unique
+  version                Int       @default(0)
+  state                  String    @default("RECEIPT_REQUIRED")
+  pendingDecisionId      String?   @unique
+  nextAttemptAt          DateTime?
+  attemptCount           Int       @default(0)
+  lastErrorCode          String?
+  reconciliationRequired Boolean   @default(false)
+  createdAt              DateTime  @default(now())
+  updatedAt              DateTime  @updatedAt
 
   paymentIntent   MoneyPaymentIntent            @relation(fields: [paymentIntentId], references: [id], onDelete: Restrict)
   instruction     MoneyManualInstructionVersion @relation(fields: [instructionVersionId], references: [id], onDelete: Restrict)
@@ -3589,12 +3598,12 @@ model MoneyManualReviewDecision {
   requestDigest   String   @db.Char(64)
   createdAt       DateTime @default(now())
 
-  paymentIntent MoneyPaymentIntent          @relation(fields: [paymentIntentId], references: [id], onDelete: Restrict)
-  receipt       MoneyManualReceiptVersion   @relation(fields: [receiptId], references: [id], onDelete: Restrict)
+  paymentIntent MoneyPaymentIntent           @relation(fields: [paymentIntentId], references: [id], onDelete: Restrict)
+  receipt       MoneyManualReceiptVersion    @relation(fields: [receiptId], references: [id], onDelete: Restrict)
   inspection    MoneyManualReceiptInspection @relation(fields: [inspectionId], references: [id], onDelete: Restrict)
-  reviewer      User                        @relation(fields: [reviewerUserId], references: [id], onDelete: Restrict)
-  settlement    MoneyManualSettlement?      @relation(fields: [settlementId], references: [id], onDelete: Restrict)
-  pendingFor    MoneyManualReview?          @relation("ManualPendingDecision")
+  reviewer      User                         @relation(fields: [reviewerUserId], references: [id], onDelete: Restrict)
+  settlement    MoneyManualSettlement?       @relation(fields: [settlementId], references: [id], onDelete: Restrict)
+  pendingFor    MoneyManualReview?           @relation("ManualPendingDecision")
   claim         MoneyManualSettlementClaim?
 
   @@index([paymentIntentId, createdAt, id])
@@ -3670,6 +3679,7 @@ model MoneyManualRefundOperation {
   dispatcher User?                    @relation("ManualRefundDispatcher", fields: [dispatchUserId], references: [id], onDelete: Restrict)
   confirmer  User?                    @relation("ManualRefundConfirmer", fields: [confirmationUserId], references: [id], onDelete: Restrict)
   events     MoneyManualRefundEvent[]
+
   @@unique([adapterId, mode, accountReference, externalOperationId], map: "MoneyManualRefundOperation_scoped_operation_key")
   @@unique([adapterId, mode, accountReference, reference], map: "MoneyManualRefundOperation_scoped_reference_key")
 }
@@ -3691,4 +3701,142 @@ model MoneyManualRefundEvent {
   recordedBy User                       @relation(fields: [recordedByUserId], references: [id], onDelete: Restrict)
 
   @@index([refundId, createdAt, id])
+}
+
+// G3 frozen foundation. Configuration approvals are external authority: the
+// migration inserts no policy, permission, financial row or acceptance record.
+model MoneyApprovedRefundPolicy {
+  version           String                       @id @db.VarChar(100)
+  planVersionId     String                       @db.VarChar(64)
+  method            MoneyPaymentMethod
+  mode              MoneyAdapterMode
+  currency          String                       @db.Char(3)
+  approvalReference String                       @db.VarChar(200)
+  approvedAt        DateTime
+  validFrom         DateTime
+  validUntil        DateTime
+  rules             Json
+  entitlementEffect MoneyRefundEntitlementEffect
+  createdAt         DateTime                     @default(now())
+
+  @@index([planVersionId, method, mode, currency, validFrom, validUntil])
+}
+
+enum MoneyRefundEntitlementEffect {
+  SUSPEND_SUBSCRIPTION
+  CANCEL_SUBSCRIPTION
+}
+
+enum MoneyReconciliationRunState {
+  RUNNING
+  COMPLETED
+  BLOCKED
+  FAILED
+}
+
+enum MoneyReconciliationSeverity {
+  INFO
+  WARNING
+  CRITICAL
+}
+
+model MoneyReconciliationWindow {
+  id               String                           @id @default(cuid())
+  adapterId        String                           @db.VarChar(100)
+  mode             MoneyAdapterMode
+  accountReference String                           @db.VarChar(200)
+  currency         String                           @db.Char(3)
+  startsAt         DateTime
+  endsAt           DateTime
+  // Durable checkpoint advances only with committed observations/effects.
+  cursor           String?                          @db.VarChar(2048)
+  revision         Int                              @default(0)
+  leaseOwner       String?                          @db.VarChar(100)
+  leaseUntil       DateTime?
+  fence            Int                              @default(0)
+  createdAt        DateTime                         @default(now())
+  updatedAt        DateTime                         @updatedAt
+  runs             MoneyReconciliationRun[]
+  cases            MoneyReconciliationCase[]
+  observations     MoneyReconciliationObservation[]
+
+  @@unique([adapterId, mode, accountReference, currency, startsAt, endsAt], map: "money_reconciliation_window_scope_key")
+  @@index([leaseUntil, updatedAt, id])
+}
+
+model MoneyReconciliationRun {
+  id              String                      @id @default(cuid())
+  windowId        String
+  state           MoneyReconciliationRunState @default(RUNNING)
+  startedAt       DateTime                    @default(now())
+  completedAt     DateTime?
+  lastCheckedAt   DateTime                    @default(now())
+  sourceKind      String                      @db.VarChar(40)
+  sourceReference String                      @db.VarChar(200)
+  // A digest/reference, never a raw statement, credential or receipt.
+  evidenceDigest  String?                     @db.Char(64)
+  sourceComplete  Boolean                     @default(false)
+  matchedCount    Int                         @default(0)
+  unmatchedCount  Int                         @default(0)
+  failureCode     String?                     @db.VarChar(80)
+  fence           Int
+  window          MoneyReconciliationWindow   @relation(fields: [windowId], references: [id], onDelete: Restrict)
+
+  @@index([windowId, startedAt, id])
+  @@index([state, completedAt, id])
+}
+
+model MoneyReconciliationObservation {
+  id               String                    @id @default(cuid())
+  windowId         String
+  adapterId        String                    @db.VarChar(100)
+  mode             MoneyAdapterMode
+  accountReference String                    @db.VarChar(200)
+  currency         String                    @db.Char(3)
+  sourceEventId    String                    @db.VarChar(200)
+  payloadDigest    String                    @db.Char(64)
+  observedAt       DateTime
+  recordedAt       DateTime                  @default(now())
+  window           MoneyReconciliationWindow @relation(fields: [windowId], references: [id], onDelete: Restrict)
+
+  // Dedupe survives overlap and restart; differing payload hashes conflict.
+  @@unique([adapterId, mode, accountReference, currency, sourceEventId], map: "money_reconciliation_observation_source_key")
+  @@index([windowId, recordedAt, id])
+}
+
+model MoneyReconciliationCase {
+  exceptionId            String                        @id
+  windowId               String
+  severity               MoneyReconciliationSeverity
+  originalEvidenceDigest String                        @db.Char(64)
+  originalResolvedAt     DateTime?
+  originalResolutionCode String?                       @db.VarChar(64)
+  lastCheckedAt          DateTime
+  revision               Int                           @default(0)
+  exception              MoneyReconciliationException  @relation(fields: [exceptionId], references: [id], onDelete: Restrict)
+  window                 MoneyReconciliationWindow     @relation(fields: [windowId], references: [id], onDelete: Restrict)
+  decisions              MoneyReconciliationDecision[]
+
+  @@index([severity, lastCheckedAt, exceptionId])
+}
+
+model MoneyReconciliationDecision {
+  id                      String                  @id @default(cuid())
+  exceptionId             String
+  revision                Int
+  action                  String                  @db.VarChar(32)
+  makerUserId             String                  @db.VarChar(64)
+  checkerUserId           String?                 @db.VarChar(64)
+  idempotencyKey          String                  @unique @db.VarChar(128)
+  payloadHash             String                  @db.Char(64)
+  reasonCode              String                  @db.VarChar(64)
+  // Only a reference to a separately authorized correction; no balancing write.
+  correctionTransactionId String?                 @db.VarChar(64)
+  createdAt               DateTime                @default(now())
+  operation               MoneyReconciliationCase @relation(fields: [exceptionId], references: [exceptionId], onDelete: Restrict)
+  maker                   User @relation("ReconciliationDecisionMaker", fields: [makerUserId], references: [id], onDelete: Restrict, onUpdate: NoAction, map: "g3_decision_maker_fk")
+  checker                 User? @relation("ReconciliationDecisionChecker", fields: [checkerUserId], references: [id], onDelete: Restrict, onUpdate: NoAction, map: "g3_decision_checker_fk")
+  correctionTransaction   LedgerTransaction? @relation(fields: [correctionTransactionId], references: [id], onDelete: Restrict, onUpdate: NoAction, map: "g3_decision_correction_fk")
+
+  @@unique([exceptionId, revision])
 }

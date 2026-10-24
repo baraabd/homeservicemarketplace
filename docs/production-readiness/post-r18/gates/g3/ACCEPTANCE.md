@@ -1,142 +1,72 @@
-# G3 acceptance inspection
+# G3 acceptance evidence
 
-**G3 BLOCKED; R34 NOT_STARTED.** No SANDBOX_ACCEPTED, HOSTED_ACCEPTED or
-RELEASE_ACCEPTED claim is made. The repository's consistency validator accepting
-this blocked record is not acceptance of the financial implementation.
+Decision: **BLOCKED**. No SANDBOX_ACCEPTED, HOSTED_ACCEPTED, RELEASE_ACCEPTED or Wave 4 start authorization is asserted. The latest repair evidence is [PR_REPAIR_2026-10-24.json](evidence/PR_REPAIR_2026-10-24.json); its published source/tree and final-head CI are recorded in PR #198. A source document cannot contain its own final commit identity.
 
-Inspected source: `5ff2b7e6a46b4e42114184fac89928372f4c8d4c`.
-Inspected tree: `54e00d4e9eaa7bd81146f01b69dfa9b396eab45c`.
-The documentation PR's final SHA/tree are recorded in its body after commit.
-Machine-readable remote observations, source file digests and non-secret runtime
-fingerprint are in [evidence/preflight.json](evidence/preflight.json).
+## 2026-10-24 PR repairs and assembled execution
 
-## Merge and remote check verification
+The repair starts from PR #198 head `ec9d86df306b3f93bf1589bdee8dcc479c6d9809`. Its R31 browser failure was a serious axe color-contrast result while the newly added checkout buttons animated between themes. Those four controls now use the existing My Plan immediate-transition convention. The affected component/API tests passed 7/7; the pinned real browser/axe workflow must verify the final published source. The local pinned Chromium download failed at the provider CDN, so no local browser pass is claimed.
 
-GitHub reported owner merges for R30 #184, R31 #186, R32 #187 and R33 #185.
-Local `git merge-base --is-ancestor <merge-SHA> HEAD` succeeded for all four
-and the G2 publication. The R33 reviewed-head versus merged-source tree diff
-was empty. No R29 branch or implementation PR was found, and the current source
-contains neither its adapter nor its evidence directory.
+The actual assembled manual flow exposed a separate product defect: the refund orchestrator invoked the concrete subscription participant before storing the successful refund status and compensation link that participant requires. The repair stores both fields before invoking the participant, inside the same transaction. A failure still rolls back the terminal refund, compensation, subscription consequence, lifecycle receipt, audit and outbox together.
 
-The latest returned context for each `(check name, app)` on the final PR heads
-was successful: #183 **38/38**, #184 **39/39**, and #185/#186/#187 **40/40**
-each. Superseded governance runs include cancellations and are retained by ID
-in the snapshot; they are not presented as successful executions. These are
-historical PR-head observations, not the merged candidate's final verdict.
+Task-owned PostgreSQL 16, Redis 7 and ClamAV with verified official signatures were available for this repair. Six G3 runtime cases passed with zero failures/skips, including two complete receipt/inspection/settlement/confirmation/activation/refund flows with real registered money participants. Both SUSPEND_SUBSCRIPTION and CANCEL_SUBSCRIPTION are exercised. A failure after the real cancellation participant proves rollback followed by recovery with the original query key. Synthetic XTS plans, approvals and settlement assertions remain explicitly synthetic.
 
-At the initial merged-source observation, 28 of 32 returned checks were successful
-and four were running. A subsequent read showed 31 successful and one running.
-The completed CI gate/R18 aggregate, exact-source R27 unchanged-budget acceptance
-and official `github-advanced-security` CodeQL were not present in that inventory.
-The successful `Analyze JavaScript/TypeScript` workflow does not replace the
-separately required official CodeQL check. A newer final-PR inventory must be
-verified before claiming any merge readiness.
+| Local verification                                             | Passed | Failed | Skipped |
+| -------------------------------------------------------------- | -----: | -----: | ------: |
+| G3 additive schema and persistence against PostgreSQL          |      6 |      0 |       0 |
+| G3 actual AppModule/HTTP/PostgreSQL/Redis/ClamAV lifecycle     |      6 |      0 |       0 |
+| Original R30 real-service cases, unchanged                     |     16 |      0 |       0 |
+| Money command and R32 recovery suites                          |     92 |      0 |       0 |
+| Affected checkout component/API cases                          |      7 |      0 |       0 |
+| All governance validators plus new external-runner guard tests |    549 |      0 |       0 |
 
-The following counts were read from actual GitHub job logs on the inspected
-merged source. They overlap and must not be summed:
+TypeScript, scoped ESLint, formatting and repository/baseline/G3 consistency checks also passed. The G3/Wave gate subset passed 170 cases and is included in the 549-case governance total, not an additional independent acceptance run. CI now executes the six G3 runtime cases in the existing R30 real-services job with a separate JSON report and exact-count/zero-skip assertion. The original R30 service count remains 16 and its browser count remains unchanged.
 
-| Run / job                            | Observation                                                              | Limit                                                                      |
-| ------------------------------------ | ------------------------------------------------------------------------ | -------------------------------------------------------------------------- |
-| CI `40015902423`, API `120628702267` | 5,272 passed; 1,856 skipped; 0 failed                                    | Default API profile; service skips are not passes                          |
-| Same run, web `120628408718`         | 2,670 tests in 220 files passed                                          | Web unit verification                                                      |
-| Same run, integration `120630277436` | 7,030 passed; 98 skipped; 0 failed; separate SQL-projection run 3 passed | Real PostgreSQL/Redis; not an independent Stripe settlement test           |
-| Same run, R30 `120630277488`         | Service suite 16/16; browser harness 1/1; no failures/skips              | Manual operator simulation; retains explicit component test participants   |
-| Same run, R31 `120630277643`         | 4/4 journeys; 20/20 screenshots reported                                 | Captures were not visually inspected by this task                          |
-| Same run, Admin/R33 `120630277282`   | Admin 15 passed; R33 3 passed; seven wire documents checked              | Wire reports truthfully say reconciliation UNAVAILABLE; not R34 acceptance |
+The new external runner uses the actual AppModule and official Stripe transport, explicit approved input and an authentic provider-forwarded signature. Its 49 guard tests are part of the 549 cases above. They prove input/evidence rejection, not provider execution. The 14 external scenarios are **NOT_RUN** because authorized test credentials, a matching webhook forwarder and approved financial policy inputs are absent. See [SANDBOX_RUNBOOK.md](SANDBOX_RUNBOOK.md) for the exact handoff and the remaining browser/crash scenarios. No mandatory G3 evidence category is promoted to PASS merely because this runner exists.
 
-## Local commands and results
+The first repair-tree secret scan reported five occurrences of a synthetic entitlement domain identifier. Each declaration/assertion/request was reviewed and classified in the security baseline, section 16. The current spelling is `g3.test`; the same six real-service cases passed again. Only the exact historical fingerprints are recorded. No scanner rule, path coverage, required gate or test assertion is relaxed, and no commit is rewritten. Final tracked-tree and historical scans remain required before advancing the PR branch.
 
-Commands ran in this task-owned worktree with Node **24.21.0**, pnpm
-**10.32.1**, Prisma **6.12.0**. Node was checked against the official archive
-SHA-256; pnpm against the SHA-512 pin in package.json. PATH changes were local
-to each invocation. No global NVM change or shared node_modules was used.
+### Security-result follow-up
 
-| Exact command                                             | Result                                                                                                              |
-| --------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
-| `pnpm install --frozen-lockfile`                          | Exit 0, six workspace projects, 1,166 locked packages; normal preinstall/prepare hooks executed; lockfile unchanged |
-| `pnpm --filter @homeservicemarketplace/database generate` | Exit 0, Prisma 6.12.0; isolated generated output and native engine smoke                                            |
-| `pnpm --filter @homeservicemarketplace/api typecheck`     | Exit 0, including normal database/contracts builds                                                                  |
-| `pnpm --filter @homeservicemarketplace/api lint`          | Exit 0                                                                                                              |
-| `pnpm --filter @homeservicemarketplace/api build`         | Exit 0, including normal database/contracts builds                                                                  |
-| `node --test scripts/security/secret-scan-tree.test.cjs`  | Exit 0, 7 passed, 0 failed/skipped; scanner-policy regression only                                                  |
-| Selected Jest command below                               | Exit 0, 5 suites, **154 passed, 0 failed, 0 skipped**                                                               |
-| `node --test .github/scripts/*.test.mjs`                  | Exit 0, **480 passed, 0 failed, 0 skipped/cancelled** on the final supplemental evidence tree                       |
-| `node .github/scripts/g3-record.mjs --check`              | Exit 0; consistent BLOCKED record only                                                                              |
-| `node .github/scripts/g3-record.mjs --ready R34`          | Exit **1**, expected: `R34 is not authorized to start`                                                              |
-| `node .github/scripts/g2-record.mjs --check`              | Exit 0; existing accepted G2 source preserved                                                                       |
-| `node .github/scripts/sprint-registry.mjs`                | Exit 0; registry consistency, not sprint acceptance                                                                 |
-| `node .github/scripts/production-governance.mjs`          | Exit 0; local repository files only, not GitHub protection                                                          |
-| `git diff --exit-code -- pnpm-lock.yaml package.json`     | Exit 0; pins and lockfile unchanged                                                                                 |
+On published source `f3f8d960773f4bcc4bdd0a3db6c53b6f70f8b775`, the actual R31 browser/axe job passed all four journeys and all eight commands with zero skipped, retried or flaky cases. All 20 source-bound PNG digests were verified and the images inspected, including Arabic/English at six widths, dark mode and the recorded states. The R30 artifact independently reported 16 service cases, 6 G3 cases, one browser harness and two browser scenarios, all passing without skipped cases. These are interim-source observations; the next source must repeat final-head checks.
 
-Selected Jest command (executed, no new assertions or test skips introduced):
+The separate official CodeQL security-result check reported one high-severity potential filesystem race in the new external runner, despite its analysis job completing successfully. Its evidence-path existence check preceded a later pathname-based write. The follow-up reserves a new private evidence file atomically before input or provider execution, rejects existing files/symlinks, writes only through the retained file descriptor and always closes it. It removes the check-then-use pattern and adds actual filesystem concurrency, symlink, replacement and cleanup regressions. The alert is fixed in source; it is not dismissed or suppressed. Final-source CodeQL with zero annotations remains required.
 
-```bash
-pnpm --filter @homeservicemarketplace/api exec jest --runTestsByPath \
-  src/modules/money/money.module.spec.ts \
-  src/modules/money/adapters/manual/manual-rail.config.spec.ts \
-  src/modules/money/refunds/refund-eligibility.policy.spec.ts \
-  src/modules/money/subscriptions/subscription-activation.participant.spec.ts \
-  src/modules/money/reporting/financial-report.service.spec.ts \
-  --json --outputFile=/workspace/scratch/b3dda4f7b9ef/g3-money-tests.json
-```
+## Earlier implementation record (historical)
 
-These existing tests substantiate the inspected module boundaries and fail-closed
-defaults; they use unit doubles and do not establish returned funds or actual
-combined financial acceptance. No application source was changed by this task.
+Initial implementation source: `134301e255d339d2b31acd7038787a2c3924210d`, tree `f1fddb0a55a234e141697cc0b045be3733059c55`. The following observations describe that earlier execution; the repair section above supersedes its local-service availability statements.
 
-## Failures, warnings and unrun checks
+Local runs use Node 24.21.0 / pnpm 10.32.1. Exact command/result inventory and sanitized configuration fingerprint: [LOCAL_CHECKS.json](evidence/LOCAL_CHECKS.json). Full default API run initially passed 5,463 tests with 1,872 infrastructure-gated skips after supplying synthetic test boot configuration. The final default-suite repeat passed 5,464 tests with the same 1,872 infrastructure-gated skips, 310 passed suites and 101 skipped suites. Twenty focused policy/module tests also passed. Later additive schema/DB-fixture corrections passed typecheck; real database execution remains required. Affected web tests passed 97, governance/security-runner tests passed 546, and official SDK offline signature cases passed 14, all with zero failures/skips in those focused runs.
 
-The initial diagnostic governance run also passed 480 tests on the host's Node
-24.19.0, but it is not the pinned result above. Task-local archive extraction
-first exited 2 because this single-UID host cannot assign the archive's UID;
-re-extraction with `--no-same-owner` succeeded without changing code or checks.
-Frozen install retained existing ignored-build-script warnings for
-`@parcel/watcher` and `unrs-resolver`; no approval/configuration was bypassed.
-Jest retained its existing ts-jest isolatedModules deprecation warning.
-The first Gitleaks download did not follow the release redirect and produced an
-empty file; checksum validation rejected it before extraction or execution.
-The corrected download followed redirects and matched the unchanged repository
-8.24.3 SHA-256 pin.
+Frozen install, generated Prisma client, schema syntax validation, affected lint/typecheck/build and dependency audit were executed. Web lint reports 34 existing warnings, zero errors; no warning budget changed. The full dependency audit reports zero info/low/moderate/high/critical findings. A tracked-tree Gitleaks scan at the first implementation commit inspected 2,891 files / 25,932,492 bytes with zero findings; final evidence-tree scan is recorded separately.
 
-No local PostgreSQL, Redis, Docker, ClamAV or provider runtime was provisioned;
-the host lacks the service executables and no external account was allocated.
-The generation/typecheck invocation used a deliberately non-listening loopback
-compile-only DSN; no database was contacted or user's .env copied. Local real
-service/browser/security-container and external settlement tests were NOT_RUN.
-The remote jobs above are separately attributed observations.
+## Evidence not established at initial implementation
 
-No new UI exists, and no screenshot was inspected in this task. AR/EN/RTL/mobile,
-keyboard and finance-exception resolution are not claimed as R34 acceptance.
-Matched payments, unmatched payments and unresolved exception severity counts
-are **NOT_MEASURED**, not zero. Independent statements are missing, so a clean
-reconciliation verdict would be false.
+- Real PostgreSQL/Redis/storage tests: local services are absent. Ten new integration cases are included under the existing RUN_DB_INTEGRATION gate; CI must execute them, not count their default skips as acceptance.
+- Real Stripe sandbox payment/refund/missed-webhook recovery: credentials absent. Offline SDK signatures and transport doubles are explicitly component evidence, not external funds evidence.
+- Approved manual settlement/receipt authority and refund policy: absent. Synthetic fixture approvals are not product or operational approval.
+- Real-route payment UI, AR/EN/RTL/mobile/keyboard/zoom/browser-engine evidence: not run for the new checkout locally. No new browser screenshot was inspected and no screenshot/trace is presented as proof. Existing My Plan browser CI should be repeated on the candidate and an authorized Payment Element journey added to the sandbox run.
+- Hosted acceptance: environment absent. The built bundle's API URL is an isolated local build target, not evidence of a reachable API.
+- Final PR CI/CodeQL and comparison results: see final PR check IDs/status; a green isolated lane is not G3 acceptance.
 
-Formatting: `pnpm exec prettier --check docs/production-readiness/post-r18/gates/g3 docs/production-readiness/post-r18/ACTIVE_STATUS.md docs/production-readiness/post-r18/waves/WAVE_04.md` and `git diff --check` passed. Final normal-hook commit and exact tracked-tree secret scan results are recorded in the PR body. No source code was changed, so no new product tests were added.
+## Failures retained in the record
 
-The first committed-tree Gitleaks scan exited 1 with three generic-key findings
-on the API log SHA-256 dictionary entries. These were recomputed log digests,
-not credentials. The evidence now stores filename and SHA-256 in separate
-fields. No scanner rule or ignore entry was changed. The corrected committed
-tree must pass the same pinned scan; its result is recorded in the PR.
+Initial typecheck found a branded-money-string test fixture; fixed with toMoneyWire. Initial full default tests failed to load three existing suites because DATABASE_URL/JWT_ACCESS_SECRET were absent; rerun with synthetic boot-only configuration passed. Initial Prisma validation lacked DATABASE_URL; syntax-only rerun with a synthetic loopback URL passed without connecting to a database. An initial Gitleaks command referenced an absent config; the repository tracked-tree scanner then ran successfully. R27 negative-test error text was updated from three to four dependency files without weakening the assertion. The audit tool generated an untracked report in the root; it was moved outside the source tree and the exact allowlist check passed.
 
-## Remaining acceptance and publication
+`node .github/scripts/g3-record.mjs --check` passes consistency. `--ready R34` exits 1 intentionally: acceptance and verified publication are still missing. No accepted SHA or active R34 implementation lease is fabricated.
 
-The seven categories in REQUIREMENTS.md remain mandatory. Close the R29 and
-refund-policy/consequence blockers, execute the actual combined application,
-verify source-bound artifacts and all final checks, then prepare technical G3
-acceptance. A separately owner-reviewed, merged and verified publication and
-exact R34 session assignment are still required. This Draft PR changes no start
-barrier or operational permission and does not authorize merge/deployment.
+A task-owned empty orphaned Prisma generation lock from the earlier completed generation was quarantined outside the worktree; the waiting repository generator reacquired its lock normally and completed. No peer process was stopped and no generation guard was disabled.
 
-## Concurrent publication and transport boundary
+The first evidence-inclusive tracked-tree scan reported two generic matches
+on SHA-256 evidence digests. Both were recomputed from their inputs and
+individually classified in `docs/security/gitleaks-historical-baseline.md`
+section 15. The current representation was clarified and only two exact
+historical occurrences were baselined. The history range then passed; fresh
+canaries still triggered both rules. No scanner rule or budget was relaxed.
+The new runtime integration setup/teardown uses the same 120s/30s per-hook
+bounds as the existing R29 fixture; global and scenario timeouts are unchanged.
 
-GitHub inspection found existing Draft coordinator PR #189 while this task was
-preparing publication. Its branch and four changed paths were left untouched.
-This final supplemental diff has nine disjoint paths and preserves the original
-canonical manifest. A separate normal local commit records that adjustment; no
-force-push, rebase or peer source import occurs.
+## CSP and PR metadata follow-up
 
-The direct Git push attempt exited 128 because no Git HTTPS username was
-available. Publication uses the connected GitHub Git-data/PR tools with the
-exact locally hook-checked and scanned tree. Remote commit identity is recorded
-in the PR; the identical Git tree binds the locally verified file contents.
+The first PR governance job failed because the description omitted the exact mandatory template field names. The description was corrected; no validator changed. The browser security review also found that the default document CSP blocked Payment Element. An explicit `VITE_STRIPE_SANDBOX_ENABLED=true` build option now admits the documented Stripe resource subset, preserving strict defaults. `node --test scripts/production/security-app/verify-boundaries.test.cjs` passed 32 tests, zero failures/skips/todos; malformed flags and unmodified unrelated directives are checked. The existing R26 workflow executes these tests. Build and final CI results are recorded on the PR. This is not an external Stripe browser acceptance claim.
+
+Self-review found three SQL foreign keys for decision maker/checker/correction that lacked Prisma relation declarations. The schema now maps the exact existing constraint names and NoAction update behavior; migration semantics and evidence restrictions are unchanged. Schema validation, client generation and API typecheck were repeated successfully. The real migration-drift check remains a CI requirement.

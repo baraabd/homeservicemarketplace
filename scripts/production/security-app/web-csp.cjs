@@ -44,6 +44,10 @@ function originList(raw, name) {
 }
 
 function buildWebCsp(env) {
+  const stripeOption = env.VITE_STRIPE_SANDBOX_ENABLED ?? '';
+  if (!['', 'false', 'true'].includes(stripeOption))
+    throw new Error('VITE_STRIPE_SANDBOX_ENABLED must be true or false');
+  const stripeSandbox = stripeOption === 'true';
   const api = exactOrigin(env.VITE_API_URL, 'VITE_API_URL');
   const socket = new URL(api);
   socket.protocol = socket.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -51,7 +55,13 @@ function buildWebCsp(env) {
   const uploads = originList(env.VITE_CSP_UPLOAD_ORIGINS, 'VITE_CSP_UPLOAD_ORIGINS');
   const directives = {
     'default-src': ["'none'"],
-    'script-src': ["'self'"],
+    // Stripe.js must be provider-hosted. Only this explicit sandbox build
+    // option admits its documented frame origins; arbitrary hosts remain invalid.
+    // https://docs.stripe.com/security/guide#content-security-policy
+    'script-src': [
+      "'self'",
+      ...(stripeSandbox ? ['https://js.stripe.com', 'https://*.js.stripe.com'] : []),
+    ],
     'script-src-attr': ["'none'"],
     // Existing React/MUI/Radix inline styles and explicit current font imports.
     // This exception does NOT enable inline scripts, eval or remote scripts.
@@ -75,11 +85,14 @@ function buildWebCsp(env) {
       socket.origin,
       ...uploads,
       'https://nominatim.openstreetmap.org',
+      ...(stripeSandbox ? ['https://api.stripe.com'] : []),
     ],
     // Restricted PDFs use the existing self-hosted PDF.js worker and canvas,
     // with scripting/eval/XFA/remote auxiliary fetches disabled by that loader.
     'worker-src': ["'self'"],
-    'frame-src': ["'none'"],
+    'frame-src': stripeSandbox
+      ? ["'self'", 'https://js.stripe.com', 'https://*.js.stripe.com', 'https://hooks.stripe.com']
+      : ["'none'"],
     'object-src': ["'none'"],
     'base-uri': ["'none'"],
     'form-action': ["'self'"],

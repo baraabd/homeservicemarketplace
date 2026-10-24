@@ -9,6 +9,13 @@ const trueish = z
   );
 
 const baseEnvSchema = z.object({
+  MONEY_REFUND_AUTHORIZATION_ENABLED: trueish.default(false),
+  // Secret manager supplied sandbox configuration; never serialize or log this value.
+  MONEY_STRIPE_SANDBOX_JSON: z.string().max(65536).default(''),
+  MONEY_STRIPE_PUBLISHABLE_KEY: z
+    .string()
+    .regex(/^$|^pk_test_[A-Za-z0-9]{16,200}$/u)
+    .default(''),
   // No default key and no public rollout: private collaboration is explicitly configured.
   DISPUTE_PRIVATE_ACTIVE_KEY: z.string().default(''),
   DISPUTE_PRIVATE_KEYS_JSON: z.string().default(''),

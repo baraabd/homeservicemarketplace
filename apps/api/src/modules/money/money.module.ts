@@ -1,4 +1,14 @@
 import { Module } from '@nestjs/common';
+import { StripeSessionService } from './runtime/stripe-session.service';
+import { StripeSessionController } from './runtime/stripe-session.controller';
+import { ApprovedRefundPolicySource } from './runtime/approved-refund-policy.source';
+import { ApprovedRefundParticipant } from './runtime/approved-refund.participant';
+import { StripeRuntimeModule } from './runtime/stripe-runtime.module';
+import {
+  MoneyRailConfiguration,
+  MoneyCollectionRouter,
+  MoneyRefundRouter,
+} from './runtime/money-rail-router';
 
 import { AuditModule } from '../iam/audit/audit.module';
 import { AuthenticationModule } from '../iam/authentication/authentication.module';
@@ -7,9 +17,6 @@ import { MoneyController, MoneyReviewController } from './api/money.controller';
 import { MoneyCommandService } from './application/money-command.service';
 import { MoneyQueryService } from './application/money-query.service';
 import { LedgerModule } from './ledger/ledger.module';
-import { ManualRailConfiguration } from './adapters/manual/manual-rail.config';
-import { ManualCollectionAdapter } from './adapters/manual/manual-collection.adapter';
-import { ManualRefundAdapter } from './adapters/manual/manual-refund.adapter';
 import { ManualReviewModule } from './manual-review/manual-review.module';
 import {
   ManualPaymentController,
@@ -33,16 +40,11 @@ import {
   MONEY_REFUND_ADAPTER,
   MONEY_REFUND_CONFIRMATION_PARTICIPANT,
   MONEY_REFUND_POLICY,
-  UnavailableMoneyRefundConfirmationParticipant,
 } from './ports/refund.port';
-import {
-  REFUND_POLICY_SOURCE,
-  RefundEligibilityPolicy,
-  UnavailableRefundPolicySource,
-} from './refunds/refund-eligibility.policy';
+import { REFUND_POLICY_SOURCE, RefundEligibilityPolicy } from './refunds/refund-eligibility.policy';
 
-// One composition boundary. R30 provides sandbox-only manual transports through
-// the existing R24 ports; R31 supplies the transaction-bound activation participant.
+// One composition boundary. G3 routes accepted Stripe/manual transports through
+// the existing R24 ports; R31 supplies transaction-bound activation/refund effects.
 // No instruction, permission grant, activation policy or
 // refund policy is created by module boot; every live rail remains unavailable.
 @Module({
@@ -52,9 +54,11 @@ import {
     AuditModule,
     LedgerModule,
     ManualReviewModule,
+    StripeRuntimeModule,
     SubscriptionsModule,
   ],
   controllers: [
+    StripeSessionController,
     MoneyController,
     MoneyReviewController,
     ManualPaymentController,
@@ -62,21 +66,27 @@ import {
     ManualFinanceReviewController,
   ],
   providers: [
+    StripeSessionService,
     MoneyCommandService,
     MoneyQueryService,
     ManualEventProcessingJob,
-    { provide: MONEY_CONFIGURATION, useExisting: ManualRailConfiguration },
+    MoneyRailConfiguration,
+    MoneyCollectionRouter,
+    MoneyRefundRouter,
+    ApprovedRefundPolicySource,
+    ApprovedRefundParticipant,
+    { provide: MONEY_CONFIGURATION, useExisting: MoneyRailConfiguration },
     { provide: MONEY_CATALOG, useClass: PrismaMoneyCatalogFactory },
-    { provide: MONEY_COLLECTION_ADAPTER, useExisting: ManualCollectionAdapter },
+    { provide: MONEY_COLLECTION_ADAPTER, useExisting: MoneyCollectionRouter },
     { provide: MONEY_RECEIPT_ACCEPTANCE, useExisting: ReceiptAcceptanceParticipant },
-    { provide: REFUND_POLICY_SOURCE, useClass: UnavailableRefundPolicySource },
+    { provide: REFUND_POLICY_SOURCE, useExisting: ApprovedRefundPolicySource },
     RefundEligibilityPolicy,
     { provide: MONEY_REFUND_POLICY, useExisting: RefundEligibilityPolicy },
     { provide: MONEY_ACTIVATION_PARTICIPANT, useExisting: SubscriptionActivationParticipant },
-    { provide: MONEY_REFUND_ADAPTER, useExisting: ManualRefundAdapter },
+    { provide: MONEY_REFUND_ADAPTER, useExisting: MoneyRefundRouter },
     {
       provide: MONEY_REFUND_CONFIRMATION_PARTICIPANT,
-      useClass: UnavailableMoneyRefundConfirmationParticipant,
+      useExisting: ApprovedRefundParticipant,
     },
     { provide: MONEY_FINANCE_READ, useExisting: MoneyQueryService },
   ],

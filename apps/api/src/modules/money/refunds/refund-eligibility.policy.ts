@@ -23,7 +23,7 @@ const version = z
   .max(100)
   .refine((value) => value === value.trim());
 const reason = z.string().regex(/^[A-Z][A-Z0-9_]{2,63}$/u);
-const approvedPolicySchema = z
+export const approvedPolicySchema = z
   .object({
     version,
     approvalReference: z.string().trim().min(1).max(200),

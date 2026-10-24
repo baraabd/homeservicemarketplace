@@ -128,7 +128,12 @@ export interface FinancialReconciliationPageV1 {
   capabilities: FinancialOperationsCapabilitiesV1;
 }
 
-export const FINANCIAL_RECONCILIATION_ACTIONS = ['ACKNOWLEDGE', 'REQUEST_RECHECK'] as const;
+export const FINANCIAL_RECONCILIATION_ACTIONS = [
+  'ACKNOWLEDGE',
+  'REQUEST_RECHECK',
+  'RESOLVE',
+  'REOPEN',
+] as const;
 export type FinancialReconciliationAction = (typeof FINANCIAL_RECONCILIATION_ACTIONS)[number];
 
 export interface FinancialReconciliationDetailV1 {
@@ -156,4 +161,38 @@ export interface FinancialReconciliationActionResultV1 {
   status: 'ACCEPTED' | 'UNAVAILABLE';
   exceptionId: string;
   reason: string | null;
+}
+
+/** G3 additive frozen handoff. R34 must implement and verify this workflow.
+ * No client state, empty exception list or dry run establishes reconciliation.
+ * Existing v1 mutation contract remains unmounted for compatibility. */
+export interface FinancialReconciliationActionRequestV2 {
+  contractVersion: 'hsm.reconciliation.v2';
+  exceptionId: string;
+  action: FinancialReconciliationAction;
+  expectedRevision: number;
+  reasonCode: string;
+  correctionTransactionId: string | null;
+  dryRun: boolean;
+  idempotencyKey: string;
+  // Required on execution: hash returned by a dry run of this exact payload.
+  payloadHash: string | null;
+  // Required for resolution: independently authenticated checker authorization.
+  approvalDecisionId: string | null;
+}
+export interface FinancialReconciliationActionResultV2 {
+  contractVersion: 'hsm.reconciliation.v2';
+  status: 'DRY_RUN' | 'ACCEPTED' | 'BLOCKED';
+  exceptionId: string;
+  revision: number;
+  payloadHash: string;
+  decisionId: string | null;
+  reason: string | null;
+}
+export interface FinancialReconciliationProvenanceV2 {
+  revision: number;
+  severity: 'INFO' | 'WARNING' | 'CRITICAL';
+  sourceWindowId: string;
+  lastCheckedAt: string;
+  originalEvidenceDigest: string;
 }
