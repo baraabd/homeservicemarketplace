@@ -5,7 +5,7 @@ Status: IMPLEMENTED; local source checks completed/published as recorded in ACCE
 - Actual starting source: `73a4a64a77844db7815466f47d8afdefb0b35c2f`; tree `04fbecf5ff028f95136cdddca5aeb7bb7451e09f`.
 - Published implementation source: `134301e255d339d2b31acd7038787a2c3924210d`; tree `f1fddb0a55a234e141697cc0b045be3733059c55`.
 - Equivalent normal-hook local implementation commit: `da1bbede4390d753f85d88cef6752a869f0ed5a4`.
-- Branch: `coord/g3-wave4-start-gate`. Evidence-only successor commits and the final PR head are recorded in the PR; a document cannot contain its own final commit SHA. No G3 frozen execution SHA is issued.
+- Branch: `coord/g3-wave4-start-gate`. Subsequent source/evidence commits and the final PR head are recorded in the PR; a document cannot contain its own final commit SHA. No G3 frozen execution SHA is issued.
 - Writer: owner-delegated G3 coordinator; exact lease: [OWNERSHIP.md](OWNERSHIP.md) and [ALLOWLIST.json](evidence/ALLOWLIST.json). No same-wave peer source is consumed.
 
 ## Implemented behavior
@@ -18,13 +18,13 @@ Status: IMPLEMENTED; local source checks completed/published as recorded in ACCE
 
 ## Configuration and authority
 
-`MONEY_STRIPE_SANDBOX_JSON` is a secret-manager supplied JSON document matching the existing R29 strict configuration: test secret, webhook secret, account reference, expiry no more than 24 hours away, signature tolerance and explicit immutable plan/account/currency bindings. `MONEY_STRIPE_PUBLISHABLE_KEY` accepts test publishable keys only. Empty settings leave Stripe disabled. `OUTBOX_WORKER_ENABLED` controls scheduled processing. Do not print these settings or copy another session's environment.
+`MONEY_STRIPE_SANDBOX_JSON` is a secret-manager supplied JSON document matching the existing R29 strict configuration: test secret, webhook secret, account reference, expiry no more than 24 hours away, signature tolerance and explicit immutable plan/account/currency bindings. `MONEY_STRIPE_PUBLISHABLE_KEY` accepts test publishable keys only. Empty settings leave Stripe disabled. `OUTBOX_WORKER_ENABLED` controls scheduled processing. The isolated sandbox web build additionally requires `VITE_STRIPE_SANDBOX_ENABLED=true` to admit the documented Stripe.js/API/3DS frame origins in the enforced document CSP. The default remains self-only scripts and no frames; malformed values fail the build. Existing Vite policy injection consumes this option. Server test-mode binding remains authoritative; this browser option cannot enable a live rail. Any additional deployment header policy must admit the same reviewed subset or the sandbox remains blocked. Do not print these settings or copy another session's environment.
 
 Refund policy rows require a real approval reference, exact version/scope, approval/effective dates, strict existing R32 rules and explicit entitlement effect. The operator must separately authorize policy data and sandbox credentials. The migration creates neither grants nor an approval. Existing R16/R18 market, fee, payout and verification holds are preserved.
 
 Source schema version: Prisma 6.12.0 plus `20261024120000_g3_financial_integration`; money contracts remain `hsm.money.v1` with additive session/reconciliation types; new action protocol is `hsm.reconciliation.v2`. Configuration SHA-256: `bc65c33b8aa687e5f123347e6522ad19cfff015c6f0011f14cc7b9f8fc0badd3`.
 
-Official integration references inspected: [PaymentIntents](https://docs.stripe.com/payments/payment-intents), [Payment Element](https://docs.stripe.com/payments/payment-element), [intent-first integration](https://docs.stripe.com/payments/accept-a-payment-intent-first), [webhook raw body](https://docs.stripe.com/webhooks), [official SDK](https://github.com/stripe/stripe-node).
+Official integration references inspected: [PaymentIntents](https://docs.stripe.com/payments/payment-intents), [Payment Element](https://docs.stripe.com/payments/payment-element), [intent-first integration](https://docs.stripe.com/payments/accept-a-payment-intent-first), [webhook raw body](https://docs.stripe.com/webhooks), [official SDK](https://github.com/stripe/stripe-node), [Elements CSP](https://docs.stripe.com/security/guide#content-security-policy).
 
 ## Changed paths
 
@@ -75,3 +75,5 @@ Official integration references inspected: [PaymentIntents](https://docs.stripe.
 - `packages/database/prisma/migrations/20261024120000_g3_financial_integration/migration.sql`
 - `packages/database/prisma/schema.prisma`
 - `pnpm-lock.yaml`
+
+CSP follow-up owned paths: `scripts/production/security-app/web-csp.cjs` and `scripts/production/security-app/verify-boundaries.test.cjs`.

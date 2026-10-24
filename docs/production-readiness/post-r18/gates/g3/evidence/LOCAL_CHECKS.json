@@ -70,7 +70,9 @@
     "packages/contracts/src/money/financial-operations.ts",
     "packages/database/prisma/migrations/20261024120000_g3_financial_integration/migration.sql",
     "packages/database/prisma/schema.prisma",
-    "pnpm-lock.yaml"
+    "pnpm-lock.yaml",
+    "scripts/production/security-app/verify-boundaries.test.cjs",
+    "scripts/production/security-app/web-csp.cjs"
   ],
   "checks": [
     {
@@ -205,6 +207,19 @@
     {
       "command": "pnpm exec prettier --write <exact changed allowlisted paths>",
       "exitCode": 0
+    },
+    {
+      "command": "node --test scripts/production/security-app/verify-boundaries.test.cjs",
+      "exitCode": 0,
+      "passed": 32,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "command": "VITE_API_URL=http://127.0.0.1:4334 VITE_STRIPE_SANDBOX_ENABLED=true pnpm --filter @homeservicemarketplace/web build",
+      "exitCode": 0,
+      "scope": "Build-only sandbox document; enforced CSP equality and ordering checked. No live API/browser/provider execution."
     }
   ],
   "requiredExternal": {
@@ -243,6 +258,14 @@
     {
       "sha256": "ff9fd37eb8c29ce5ba9ac5341235a205315d43bc44fe1416a8ea47212d90fa10",
       "artifact": "g3-dependency-controls-check.json"
+    },
+    {
+      "sha256": "de00ce9482a711bc71fe421949a965652bf36cb695a8216b36f9d68b18f11bbf",
+      "artifact": "g3-csp-tests.log"
+    },
+    {
+      "sha256": "676b9e07e9dc530cb684aa24430d4d3286e47dc963fa9161cd601cd91f339a01",
+      "artifact": "g3-csp-build.log"
     }
   ]
 }

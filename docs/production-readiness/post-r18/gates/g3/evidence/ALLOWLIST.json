@@ -60,6 +60,8 @@
     "packages/contracts/src/money/index.ts",
     "packages/database/prisma/migrations/20261024120000_g3_financial_integration/migration.sql",
     "packages/database/prisma/schema.prisma",
-    "pnpm-lock.yaml"
+    "pnpm-lock.yaml",
+    "scripts/production/security-app/verify-boundaries.test.cjs",
+    "scripts/production/security-app/web-csp.cjs"
   ]
 }

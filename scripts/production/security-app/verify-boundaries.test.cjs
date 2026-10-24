@@ -9,6 +9,47 @@ const parse = (value) =>
     }),
   );
 
+test('Stripe sandbox opt-in permits only documented Elements resources and the 3DS return origin', () => {
+  const baseline = parse(buildWebCsp({ VITE_API_URL: 'https://api.example.test' }));
+  const policy = parse(
+    buildWebCsp({
+      VITE_API_URL: 'https://api.example.test',
+      VITE_STRIPE_SANDBOX_ENABLED: 'true',
+    }),
+  );
+  assert.deepEqual(policy['script-src'], [
+    "'self'",
+    'https://js.stripe.com',
+    'https://*.js.stripe.com',
+  ]);
+  assert.deepEqual(policy['connect-src'], [...baseline['connect-src'], 'https://api.stripe.com']);
+  assert.deepEqual(policy['frame-src'], [
+    "'self'",
+    'https://js.stripe.com',
+    'https://*.js.stripe.com',
+    'https://hooks.stripe.com',
+  ]);
+  for (const name of Object.keys(baseline)) {
+    if (!['script-src', 'connect-src', 'frame-src'].includes(name))
+      assert.deepEqual(policy[name], baseline[name]);
+  }
+  assert.ok(
+    !policy['script-src'].some((source) =>
+      ["'unsafe-inline'", "'unsafe-eval'", '*', 'https:'].includes(source),
+    ),
+  );
+});
+
+test('Stripe opt-out retains the restrictive default; malformed flags fail closed without echoing input', () => {
+  const env = { VITE_API_URL: 'https://api.example.test' };
+  for (const value of ['', 'false'])
+    assert.equal(buildWebCsp({ ...env, VITE_STRIPE_SANDBOX_ENABLED: value }), buildWebCsp(env));
+  for (const value of ['TRUE', '1', true, 'https://private.example.test', 'true; script-src *'])
+    assert.throws(() => buildWebCsp({ ...env, VITE_STRIPE_SANDBOX_ENABLED: value }), {
+      message: 'VITE_STRIPE_SANDBOX_ENABLED must be true or false',
+    });
+});
+
 test('CSP explicitly binds API, socket, media and upload origins without widening scripts', () => {
   const csp = parse(
     buildWebCsp({

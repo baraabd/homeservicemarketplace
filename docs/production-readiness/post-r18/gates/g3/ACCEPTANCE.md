@@ -1,6 +1,6 @@
 # G3 acceptance evidence
 
-Decision: **BLOCKED**. No SANDBOX_ACCEPTED, HOSTED_ACCEPTED, RELEASE_ACCEPTED or Wave 4 start authorization is asserted. Source: `134301e255d339d2b31acd7038787a2c3924210d`, tree `f1fddb0a55a234e141697cc0b045be3733059c55`; evidence-only successors must retain and recheck the code tree.
+Decision: **BLOCKED**. No SANDBOX_ACCEPTED, HOSTED_ACCEPTED, RELEASE_ACCEPTED or Wave 4 start authorization is asserted. Source: `134301e255d339d2b31acd7038787a2c3924210d`, tree `f1fddb0a55a234e141697cc0b045be3733059c55`; subsequent source/evidence commits and final-head CI are recorded in the PR.
 
 Local runs use Node 24.21.0 / pnpm 10.32.1. Exact command/result inventory and sanitized configuration fingerprint: [LOCAL_CHECKS.json](evidence/LOCAL_CHECKS.json). Full default API run initially passed 5,463 tests with 1,872 infrastructure-gated skips after supplying synthetic test boot configuration. The final default-suite repeat passed 5,464 tests with the same 1,872 infrastructure-gated skips, 310 passed suites and 101 skipped suites. Twenty focused policy/module tests also passed. Later additive schema/DB-fixture corrections passed typecheck; real database execution remains required. Affected web tests passed 97, governance/security-runner tests passed 546, and official SDK offline signature cases passed 14, all with zero failures/skips in those focused runs.
 
@@ -31,3 +31,7 @@ historical occurrences were baselined. The history range then passed; fresh
 canaries still triggered both rules. No scanner rule or budget was relaxed.
 The new runtime integration setup/teardown uses the same 120s/30s per-hook
 bounds as the existing R29 fixture; global and scenario timeouts are unchanged.
+
+## CSP and PR metadata follow-up
+
+The first PR governance job failed because the description omitted the exact mandatory template field names. The description was corrected; no validator changed. The browser security review also found that the default document CSP blocked Payment Element. An explicit `VITE_STRIPE_SANDBOX_ENABLED=true` build option now admits the documented Stripe resource subset, preserving strict defaults. `node --test scripts/production/security-app/verify-boundaries.test.cjs` passed 32 tests, zero failures/skips/todos; malformed flags and unmodified unrelated directives are checked. The existing R26 workflow executes these tests. Build and final CI results are recorded on the PR. This is not an external Stripe browser acceptance claim.

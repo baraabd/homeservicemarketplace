@@ -11,3 +11,7 @@ The lease covers composition, additive schema/contracts and their tests. It does
 ## Dependency comparison controls
 
 The coordinator also authorizes one detached disposable control worktree at the registered prior R27 baseline `462418888be76ec642664ea77971da9239ffb02a`. Its exact write set is `apps/api/package.json`, `apps/web/package.json`, `package.json`, and `pnpm-lock.yaml`. It receives the candidate dependency blobs only, keeps an independent installation, and runs normal commit hooks. No runtime source or peer branch is imported. The companion repair control is a dependency-only ancestor of this integration branch. Both controls are published as Git objects for CI verification; neither is a product sprint or merge request.
+
+## Payment Element document policy extension
+
+Before editing, the coordinator extends the single-writer lease to `scripts/production/security-app/web-csp.cjs` and its existing `verify-boundaries.test.cjs`. The explicit sandbox build option must preserve the default restrictive policy and cannot enable live payments or arbitrary host configuration. Vite already consumes this builder, so no parallel policy or edge entrypoint is introduced.
