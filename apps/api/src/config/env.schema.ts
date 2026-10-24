@@ -9,6 +9,7 @@ const trueish = z
   );
 
 const baseEnvSchema = z.object({
+  MONEY_REFUND_AUTHORIZATION_ENABLED: trueish.default(false),
   // Secret manager supplied sandbox configuration; never serialize or log this value.
   MONEY_STRIPE_SANDBOX_JSON: z.string().max(65536).default(''),
   MONEY_STRIPE_PUBLISHABLE_KEY: z

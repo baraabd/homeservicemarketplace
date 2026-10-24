@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { AppConfigService } from '../../../config/app-config.service';
 import type { MoneyApprovedRefundPolicy, PrismaTx } from '@homeservicemarketplace/database';
 import {
   approvedPolicySchema,
@@ -11,7 +12,9 @@ import {
  * reviewed policy versions. Recovery retains the exact historical version. */
 @Injectable()
 export class ApprovedRefundPolicySource implements RefundPolicySourcePort {
+  constructor(private readonly config: AppConfigService) {}
   async resolve(scope: RefundPolicyScope, tx: PrismaTx): Promise<ApprovedRefundPolicy | null> {
+    if (!this.config.get('MONEY_REFUND_AUTHORIZATION_ENABLED')) return null;
     const [clock] = await tx.$queryRaw<Array<{ now: Date }>>`SELECT CURRENT_TIMESTAMP AS now`;
     if (!clock || !Number.isFinite(clock.now.getTime())) return null;
     const rows = await tx.moneyApprovedRefundPolicy.findMany({

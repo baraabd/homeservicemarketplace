@@ -1,3 +1,4 @@
+import type { AppConfigService } from '../../../config/app-config.service';
 import type { PrismaTx } from '@homeservicemarketplace/database';
 import { ApprovedRefundPolicySource } from './approved-refund-policy.source';
 const scope = {
@@ -38,7 +39,11 @@ function setup(rows: unknown[]) {
       findUnique: jest.fn().mockResolvedValue(rows[0] ?? null),
     },
   };
-  return { tx, prisma: tx as unknown as PrismaTx, source: new ApprovedRefundPolicySource() };
+  return {
+    tx,
+    prisma: tx as unknown as PrismaTx,
+    source: new ApprovedRefundPolicySource({ get: () => true } as unknown as AppConfigService),
+  };
 }
 describe('G3 explicit immutable refund policy source (synthetic approvals)', () => {
   it('has no fallback policy when no approved row exists', async () => {
@@ -76,4 +81,14 @@ describe('G3 explicit immutable refund policy source (synthetic approvals)', () 
       where: { version: rules.version },
     });
   });
+});
+
+it('keeps new refund authorization off by default without disabling historical recovery', async () => {
+  const h = setup([row]);
+  const source = new ApprovedRefundPolicySource({
+    get: () => false,
+  } as unknown as AppConfigService);
+  expect(await source.resolve(scope, h.prisma)).toBeNull();
+  expect(h.tx.moneyApprovedRefundPolicy.findMany).not.toHaveBeenCalled();
+  expect(await source.byVersion(rules.version, h.prisma)).toMatchObject({ policy: rules });
 });

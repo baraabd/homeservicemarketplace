@@ -1,3 +1,4 @@
+import type { AppConfigService } from '../../config/app-config.service';
 import 'reflect-metadata';
 import {
   MoneyRailConfiguration,
@@ -203,7 +204,7 @@ describe('R24/R31 MoneyModule composition and unavailable external defaults', ()
       moneyApprovedRefundPolicy: { findMany: jest.fn().mockResolvedValue([]) },
     };
     await expect(
-      new ApprovedRefundPolicySource().resolve(
+      new ApprovedRefundPolicySource({ get: () => true } as unknown as AppConfigService).resolve(
         { planVersionId: 'plan', method: 'STRIPE', currency: 'XTS', mode: 'SANDBOX' },
         tx as unknown as PrismaTx,
       ),
