@@ -125,7 +125,7 @@ db('G3 durable financial foundation (real PostgreSQL)', () => {
       data: { ...windowData, accountReference: prefix + 'case' },
     });
     const exception = await prisma.moneyReconciliationException.create({
-      data: { kind: 'MISSING_ACTIVATION', subjectType: 'SyntheticG3', subjectId: prefix },
+      data: { kind: 'MISSING_ACTIVATION', subjectType: 'SubscriptionPeriod', subjectId: prefix },
     });
     const operation = await prisma.moneyReconciliationCase.create({
       data: {
@@ -162,10 +162,41 @@ db('G3 durable financial foundation (real PostgreSQL)', () => {
         data: { ...decision, checkerUserId: users[0]!.id },
       }),
     ).rejects.toThrow();
-    const saved = await prisma.moneyReconciliationDecision.create({ data: decision });
-    await prisma.moneyReconciliationDecision.create({
-      data: { ...decision, revision: 2, action: 'REOPEN', idempotencyKey: prefix + 'reopen' },
+    const saved = await prisma.$transaction(async (tx) => {
+      await tx.moneyReconciliationCase.update({
+        where: { exceptionId: exception.id },
+        data: { revision: 1 },
+      });
+      const saved = await tx.moneyReconciliationDecision.create({ data: decision });
+      await tx.moneyReconciliationException.update({
+        where: { id: exception.id },
+        data: { resolvedAt: saved.createdAt, resolutionCode: decision.reasonCode },
+      });
+      return saved;
     });
+    await expect(
+      prisma.moneyReconciliationException.update({
+        where: { id: exception.id },
+        data: { resolvedAt: null, resolutionCode: null },
+      }),
+    ).rejects.toThrow();
+    await prisma.$transaction(async (tx) => {
+      await tx.moneyReconciliationCase.update({
+        where: { exceptionId: exception.id },
+        data: { revision: 2 },
+      });
+      await tx.moneyReconciliationDecision.create({
+        data: { ...decision, revision: 2, action: 'REOPEN', idempotencyKey: prefix + 'reopen' },
+      });
+      await tx.moneyReconciliationException.update({
+        where: { id: exception.id },
+        data: { resolvedAt: null, resolutionCode: null },
+      });
+    });
+    expect(
+      (await prisma.moneyReconciliationException.findUniqueOrThrow({ where: { id: exception.id } }))
+        .resolvedAt,
+    ).toBeNull();
     await expect(
       prisma.moneyReconciliationDecision.update({
         where: { id: saved.id },

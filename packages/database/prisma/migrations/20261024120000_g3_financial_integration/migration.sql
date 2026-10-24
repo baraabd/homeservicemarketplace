@@ -101,6 +101,8 @@ CREATE TABLE "MoneyReconciliationCase" (
     "windowId" TEXT NOT NULL,
     "severity" "MoneyReconciliationSeverity" NOT NULL,
     "originalEvidenceDigest" CHAR(64) NOT NULL,
+    "originalResolvedAt" TIMESTAMP(3),
+    "originalResolutionCode" VARCHAR(64),
     "lastCheckedAt" TIMESTAMP(3) NOT NULL,
     "revision" INTEGER NOT NULL DEFAULT 0,
 
@@ -213,8 +215,8 @@ CREATE TRIGGER g3_decision_immutable BEFORE UPDATE OR DELETE ON "MoneyReconcilia
 
 CREATE FUNCTION g3_preserve_reconciliation_source() RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN
-  IF TG_OP = 'DELETE' OR (NEW."exceptionId", NEW."windowId", NEW."originalEvidenceDigest") IS DISTINCT FROM
-    (OLD."exceptionId", OLD."windowId", OLD."originalEvidenceDigest") THEN
+  IF TG_OP = 'DELETE' OR (NEW."exceptionId", NEW."windowId", NEW."originalEvidenceDigest", NEW."originalResolvedAt", NEW."originalResolutionCode") IS DISTINCT FROM
+    (OLD."exceptionId", OLD."windowId", OLD."originalEvidenceDigest", OLD."originalResolvedAt", OLD."originalResolutionCode") THEN
     RAISE EXCEPTION 'Reopening preserves original exception evidence' USING ERRCODE = 'restrict_violation';
   END IF;
   IF NEW."revision" < OLD."revision" OR NEW."lastCheckedAt" < OLD."lastCheckedAt" THEN
@@ -248,3 +250,48 @@ BEGIN
 END;
 $$;
 CREATE TRIGGER g3_window_identity_guard BEFORE UPDATE ON "MoneyReconciliationWindow" FOR EACH ROW EXECUTE FUNCTION g3_preserve_window_identity();
+
+-- Preserve the pre-existing resolution when attaching operational provenance to
+-- a legacy exception. A future reopen cannot erase that original fact.
+CREATE FUNCTION g3_snapshot_original_resolution() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+  SELECT "resolvedAt", "resolutionCode" INTO NEW."originalResolvedAt", NEW."originalResolutionCode"
+    FROM "MoneyReconciliationException" WHERE "id" = NEW."exceptionId";
+  RETURN NEW;
+END;
+$$;
+CREATE TRIGGER g3_case_resolution_snapshot BEFORE INSERT ON "MoneyReconciliationCase" FOR EACH ROW EXECUTE FUNCTION g3_snapshot_original_resolution();
+
+-- Legacy exceptions retain their resolved-once behavior. Cases with new run
+-- provenance require a matching append-only decision for every state change.
+CREATE OR REPLACE FUNCTION money_reconciliation_exception_guard() RETURNS trigger LANGUAGE plpgsql AS $$
+DECLARE
+  case_revision INTEGER;
+  decision_action TEXT;
+  decision_reason TEXT;
+  decision_time TIMESTAMP(3);
+BEGIN
+  IF (NEW."id", NEW."kind", NEW."subjectType", NEW."subjectId", NEW."detectedAt") IS DISTINCT FROM
+     (OLD."id", OLD."kind", OLD."subjectType", OLD."subjectId", OLD."detectedAt") THEN
+    RAISE EXCEPTION 'A reconciliation exception keeps its original identity' USING ERRCODE = 'restrict_violation';
+  END IF;
+  SELECT "revision" INTO case_revision FROM "MoneyReconciliationCase" WHERE "exceptionId" = OLD."id";
+  IF case_revision IS NULL THEN
+    IF OLD."resolvedAt" IS NOT NULL THEN
+      RAISE EXCEPTION 'Legacy exception requires operational provenance before reopening' USING ERRCODE = 'restrict_violation';
+    END IF;
+    RETURN NEW;
+  END IF;
+  IF (NEW."resolvedAt", NEW."resolutionCode") IS NOT DISTINCT FROM (OLD."resolvedAt", OLD."resolutionCode") THEN RETURN NEW; END IF;
+  SELECT "action", "reasonCode", "createdAt" INTO decision_action, decision_reason, decision_time
+    FROM "MoneyReconciliationDecision" WHERE "exceptionId" = OLD."id" AND "revision" = case_revision;
+  IF OLD."resolvedAt" IS NULL AND NEW."resolvedAt" IS NOT NULL AND
+     decision_action = 'RESOLVE' AND NEW."resolutionCode" = decision_reason AND NEW."resolvedAt" >= decision_time THEN
+    RETURN NEW;
+  END IF;
+  IF OLD."resolvedAt" IS NOT NULL AND NEW."resolvedAt" IS NULL AND NEW."resolutionCode" IS NULL AND decision_action = 'REOPEN' THEN
+    RETURN NEW;
+  END IF;
+  RAISE EXCEPTION 'Exception transition requires a matching immutable decision' USING ERRCODE = 'restrict_violation';
+END;
+$$;

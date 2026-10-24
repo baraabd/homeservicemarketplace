@@ -3806,6 +3806,8 @@ model MoneyReconciliationCase {
   windowId               String
   severity               MoneyReconciliationSeverity
   originalEvidenceDigest String                        @db.Char(64)
+  originalResolvedAt     DateTime?
+  originalResolutionCode String?                       @db.VarChar(64)
   lastCheckedAt          DateTime
   revision               Int                           @default(0)
   exception              MoneyReconciliationException  @relation(fields: [exceptionId], references: [id], onDelete: Restrict)

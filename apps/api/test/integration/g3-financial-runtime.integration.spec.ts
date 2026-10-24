@@ -65,7 +65,11 @@ db('G3 mounted financial runtime (real infrastructure)', () => {
   it('mounts signed ingress and fails closed without a configured Stripe account', async () => {
     const result = await h
       .session()
-      .request('/v1/money/webhooks/stripe', { method: 'POST', body: { id: 'synthetic-event' } });
+      .request('/v1/money/webhooks/stripe', {
+        method: 'POST',
+        body: { id: 'synthetic-event' },
+        headers: { 'stripe-signature': 't=1,v1=synthetic-negative-fixture' },
+      });
     expect(result.status).toBe(503);
     expect(JSON.stringify(result.body)).not.toMatch(/sk_test_|whsec_/u);
   });
