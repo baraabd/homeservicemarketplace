@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "experiment": "r27-october-2026-security-refresh",
+  "experiment": "g3-stripe-sdk-integration",
   "advisories": [
     "GHSA-27r3-jxmh-p828",
     "GHSA-q7qp-rjg7-q26m",
@@ -16,20 +16,21 @@
     "GHSA-333x-w4r6-6crp"
   ],
   "priorBaseline": "462418888be76ec642664ea77971da9239ffb02a",
-  "originalPrBase": "fa556f50216d188303de26dce9805717b17107e7",
+  "originalPrBase": "73a4a64a77844db7815466f47d8afdefb0b35c2f",
   "dependencySha256": {
-    "apps/api/package.json": "a79871592a5a072c092c88f17306fe91beccee3300b09023254cbb0d9ba10043",
+    "apps/api/package.json": "4fc9a4b11f880245b341ffef8087db5daff48393e331a2f8e7a7d72f635949a1",
+    "apps/web/package.json": "d7cc575b382eaabfb1cf07a2eec80eb246872498ca716fd2be95a0562e53860b",
     "package.json": "5b1918cfd23189939190a6ded41c41d4f445750c79617f8c8515ca8b2fe3dafe",
-    "pnpm-lock.yaml": "bb7d02ac93f0b53fc4433779c179b6e533efe09a3faa0565a2f525c8f23a695a"
+    "pnpm-lock.yaml": "0fbc9017b26168e7b3b150d16f9721cd5f044e900e22285954d93050ac83074e"
   },
   "baseline": {
-    "commit": "0b3d6a78d66e655e68f8289177f85725c9ff970a",
-    "tree": "db750194930bee0c5d5e32009f4a43f1dc7caa01",
+    "commit": "ebbf70579a1d15f9e4e40b0b4b89abf145a7de82",
+    "tree": "014af9e5b0d9dd435331ce1470dcf9203cf48b52",
     "parent": "462418888be76ec642664ea77971da9239ffb02a"
   },
   "repair": {
-    "commit": "3f809114048764aa37a7db38d58eddc176dc3d7f",
-    "tree": "b686d99efc88328393f2fb0b4a9194b3f450491a",
-    "parent": "fa556f50216d188303de26dce9805717b17107e7"
+    "commit": "59df0cd4c8416c4a512973763396f78bcb2ccc82",
+    "tree": "2071028f253f71511abae6ff42e85867955d7130",
+    "parent": "73a4a64a77844db7815466f47d8afdefb0b35c2f"
   }
 }

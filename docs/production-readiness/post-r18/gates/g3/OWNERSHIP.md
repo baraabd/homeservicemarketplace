@@ -1,54 +1,67 @@
-# G3 coordinator inspection ownership
+# G3 integration ownership
 
-Session: `g3-b3dda4f7b9ef`; sole writer: `/root`.
-Authority: the owner's current request to execute G3 before R34, with explicit
-no-merge/no-deploy restrictions. Delivery mode: A, integration inspection and
-correction of stale coordination records. This is a gate PR, not R34 execution.
+Status: coordinator-approved implementation lease; G3 acceptance remains BLOCKED.
 
-Worktree: `/workspace/scratch/b3dda4f7b9ef/hsm-r34`.
-Branch: `coord/g3-evidence-b3dda4f7`.
-Actual inspected/branch-start source:
-`5ff2b7e6a46b4e42114184fac89928372f4c8d4c`.
-Tree: `54e00d4e9eaa7bd81146f01b69dfa9b396eab45c`.
-The worktree was a new task-owned clone, clean after checkout, with no stash.
-No peer worktree, branch, unmerged implementation or shared runtime was used.
+The user explicitly commissioned the coordinator to complete the G3 blockers on 2026-10-24. This dedicated worktree uses `coord/g3-wave4-start-gate` at `73a4a64a77844db7815466f47d8afdefb0b35c2f`. All R29–R33 changes consumed here are already merged ancestors of that base. No peer branch is imported.
 
-## Exact approved write allowlist
+The exact single-writer allowlist is [evidence/ALLOWLIST.json](evidence/ALLOWLIST.json). The coordinator approves these paths before implementation; additions require a recorded extension before editing. Previous sprint evidence remains historical. R34/R35 application implementation leases remain conditional on a genuinely accepted, published G3 source.
 
-The owner-delegated coordinator records this documentation-only lease before
-the other edits. No runtime, CI, contract, schema or dependency lease is granted.
+The lease covers composition, additive schema/contracts and their tests. It does not authorize a commercial refund policy, permission grants, production configuration, external spend, merge, deployment or live money activation.
 
-- `docs/production-readiness/post-r18/gates/g3/OWNERSHIP.md`
-- `docs/production-readiness/post-r18/gates/g3/IMPLEMENTATION.md`
-- `docs/production-readiness/post-r18/gates/g3/ACCEPTANCE.md`
-- `docs/production-readiness/post-r18/gates/g3/RISKS.md`
-- `docs/production-readiness/post-r18/gates/g3/ROLLBACK.md`
-- `docs/production-readiness/post-r18/gates/g3/evidence/preflight.json`
-- `docs/production-readiness/post-r18/gates/g3/shared-change-requests/CR-001-financial-integration.md`
-- `docs/production-readiness/post-r18/ACTIVE_STATUS.md`
-- `docs/production-readiness/post-r18/waves/WAVE_04.md`
+## Dependency comparison controls
 
-The last two shared documentation paths are leased solely to correct observed
-merge facts and link the G3 findings. Existing frozen identities, assignments,
-registry states, acceptance requirements and operational restrictions are retained.
-The lease ends when this gate PR closes or the coordinator explicitly hands it
-off. No other writer is assigned by this task.
+The coordinator also authorizes one detached disposable control worktree at the registered prior R27 baseline `462418888be76ec642664ea77971da9239ffb02a`. Its exact write set is `apps/api/package.json`, `apps/web/package.json`, `package.json`, and `pnpm-lock.yaml`. It receives the candidate dependency blobs only, keeps an independent installation, and runs normal commit hooks. No runtime source or peer branch is imported. The companion repair control is a dependency-only ancestor of this integration branch. Both controls are published as Git objects for CI verification; neither is a product sprint or merge request.
 
-## R34 ownership remains conditional
+## Payment Element document policy extension
 
-The exact 24-file R34 proposal already exists in `waves/wave-04.plan.json`.
-It has no frozen source or assigned session. No R34 source, test or evidence
-file is authored in this gate PR. Its proposed branch is not created from an
-unaccepted candidate. Future implementation requires the unchanged G3 start
-contract and a recorded session assignment, then uses its own worktree.
+Before editing, the coordinator extends the single-writer lease to `scripts/production/security-app/web-csp.cjs` and its existing `verify-boundaries.test.cjs`. The explicit sandbox build option must preserve the default restrictive policy and cannot enable live payments or arbitrary host configuration. Vite already consumes this builder, so no parallel policy or edge entrypoint is introduced.
 
-## Concurrent coordinator handoff
+## 2026-10-24 CI repair and independent sandbox runner extension
 
-Before publication, remote inspection discovered coordinator PR #189 at
-`30b8de80aee6d1b7212298634b171cae4f2b371a`, created by another session on
-`coord/g3-wave4-start-gate`. It owns REQUIREMENTS.md and SOURCE_MANIFEST.json.
-Those two paths were restored to the branch-start bytes in this worktree and
-removed from this final nine-file lease. No peer branch was imported or changed.
-This supplemental evidence PR uses a distinct task-owned branch and leaves #189
-as the canonical gate-review PR. The final changed paths are disjoint from its
-four paths at observation. Merge neither PR as G3 acceptance.
+Before these edits, the owner-delegated G3 coordinator extends the exact lease
+to `scripts/production/stripe-sandbox/verify-external.cjs`, its
+`verify-external.test.cjs`, and
+`apps/api/test/support/g3-stripe-external.fixture.ts`. The runner must retain the
+actual AppModule and money implementations, use explicitly authorized test-only
+Stripe configuration and an authentic signed webhook forwarder, and import only
+explicitly approved policy data into a newly created disposable database. Missing
+inputs remain BLOCKED. No external signature, approval, grant in an existing
+database, or passing sandbox result may be fabricated.
+
+The coordinator also leases this gate's `REQUIREMENTS.md`,
+`SANDBOX_RUNBOOK.md`, and `evidence/PR_REPAIR_2026-10-24.json` to correct the
+historical-state description, document a runnable operator handoff, and retain
+actual CI repair results. Existing frozen-base, publication and lane-readiness
+requirements remain unchanged. The checkout contrast repair stays within the
+existing StripePlanPurchase component lease.
+
+The coordinator additionally leases `.github/workflows/ci.yml` before adding the
+G3 concrete manual integration spec to the existing R30 real-services job. That
+job already owns disposable PostgreSQL/Redis, private storage and actual ClamAV.
+The existing required jobs, scenario counts and zero-failure/zero-skip assertions
+remain enforced. No gate, timeout or security default is relaxed.
+
+## Concrete refund transaction ordering repair
+
+Before the repair, the coordinator leases
+`apps/api/src/modules/money/application/money-command.service.ts` and its
+`money-command.service.spec.ts`. The concrete R31 refund participant validates
+the successful refund row and its compensating posting inside the caller's
+transaction; the existing orchestrator called it before assigning those fields.
+The fix must preserve one transaction and roll back the refund state, ledger,
+entitlement consequence, audit and outbox together on any participant failure.
+No transport, eligibility, authorization, policy or financial finality check may
+be bypassed. The assembled real-infrastructure regression owns the integration
+proof.
+
+## Test identifier scanner classification
+
+Before changing the already-leased `.gitleaksignore` and
+`docs/security/gitleaks-historical-baseline.md`, the coordinator authorizes
+individual classification of the five observed test-only entitlement identifier
+matches in repair commit `2433b0fab1d5b3e826f5c28e278994702efe35dd`.
+Only those exact historical commit/path/rule/line fingerprints may be added.
+The current fixture uses a shorter ordinary domain identifier; all six real
+integration cases must still pass. No history rewrite, new path exclusion,
+scanner-rule change or budget relaxation is authorized. Preserve the reported
+failure and verify both the final tracked tree and fresh scanner canaries.

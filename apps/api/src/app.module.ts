@@ -29,6 +29,9 @@ import { AdminProviderReviewEventsHandler } from './modules/admin/provider-revie
 import { BidsModule } from './modules/bids/bids.module';
 import { BookingsModule } from './modules/bookings/bookings.module';
 import { ReviewsModule } from './modules/reviews/reviews.module';
+import { StripeRuntimeModule } from './modules/money/runtime/stripe-runtime.module';
+import { StripeInboxScheduler } from './modules/money/runtime/stripe-inbox.scheduler';
+import { StripeWebhookModule } from './modules/money/webhooks/stripe/stripe-webhook.module';
 import { MoneyModule } from './modules/money/money.module';
 import { FinancialReportingModule } from './modules/money/reporting/financial-reporting.module';
 import { RefundsModule } from './modules/money/refunds/refunds.module';
@@ -152,8 +155,10 @@ import { SupportModule } from './modules/support/support.module';
     ReviewsModule,
     // R24 — one money API composition, containing the existing R15/R19
     // ledger authority. R31 activation enlists in its caller transaction;
-    // external collection/configuration/refund adapters remain unconfigured.
+    // sandbox transports and explicit refund policy records remain disabled until configured.
     MoneyModule,
+    StripeRuntimeModule,
+    StripeWebhookModule.register({ imports: [StripeRuntimeModule, MoneyModule] }),
     // R33 — authorized read-only subscription financial operations.
     FinancialReportingModule,
     RefundsModule,
@@ -172,6 +177,7 @@ import { SupportModule } from './modules/support/support.module';
     MediaModule,
   ],
   providers: [
+    StripeInboxScheduler,
     // AppThrottlerGuard replaces the stock ThrottlerGuard so a 429 carries the
     // stable RATE_LIMITED envelope instead of the "ThrottlerException: Too
     // Many Requests" framework string.

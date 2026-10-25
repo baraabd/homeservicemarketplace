@@ -21,7 +21,7 @@ concurrency:
 # G1 remains 40cdac5... in its immutable gate; its historical R27 comparison
 # has a different lock digest and must not be relabelled comparable.
 env:
-  R27_BASELINE_SHA: 0b3d6a78d66e655e68f8289177f85725c9ff970a
+  R27_BASELINE_SHA: ebbf70579a1d15f9e4e40b0b4b89abf145a7de82
   R27_CANDIDATE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
 
 jobs:

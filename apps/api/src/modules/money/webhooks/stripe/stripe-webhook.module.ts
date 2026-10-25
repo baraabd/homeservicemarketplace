@@ -1,4 +1,10 @@
-import { Module, type DynamicModule, type ModuleMetadata } from '@nestjs/common';
+import {
+  Module,
+  type DynamicModule,
+  type ModuleMetadata,
+  type Provider,
+  type FactoryProvider,
+} from '@nestjs/common';
 import { PrismaService } from '../../../../infrastructure/prisma/prisma.service';
 import { MoneyCommandService } from '../../application/money-command.service';
 import { StripeBindings } from '../../adapters/stripe/stripe-bindings';
@@ -20,12 +26,45 @@ export class StripeTransportModule {
     configuration: StripeSandboxConfiguration;
     sdk?: StripeConstructor;
   }): DynamicModule {
+    return this.compose(
+      options.imports,
+      { provide: StripeSandboxConfiguration, useValue: options.configuration },
+      options.sdk,
+    );
+  }
+
+  static registerAsync(options: {
+    imports: NonNullable<ModuleMetadata['imports']>;
+    inject: FactoryProvider['inject'];
+    configuration: (...args: never[]) => StripeSandboxConfiguration;
+    sdk: StripeConstructor;
+  }): DynamicModule {
+    return this.compose(
+      options.imports,
+      {
+        provide: StripeSandboxConfiguration,
+        inject: options.inject,
+        useFactory: options.configuration,
+      },
+      options.sdk,
+    );
+  }
+
+  private static compose(
+    imports: NonNullable<ModuleMetadata['imports']>,
+    configuration: Provider,
+    sdk?: StripeConstructor,
+  ): DynamicModule {
     return {
       module: StripeTransportModule,
-      imports: options.imports,
+      imports,
       providers: [
-        { provide: StripeSandboxConfiguration, useValue: options.configuration },
-        { provide: StripeSdk, useFactory: () => new StripeSdk(options.configuration, options.sdk) },
+        configuration,
+        {
+          provide: StripeSdk,
+          inject: [StripeSandboxConfiguration],
+          useFactory: (config: StripeSandboxConfiguration) => new StripeSdk(config, sdk),
+        },
         {
           provide: StripeBindings,
           inject: [PrismaService],
@@ -50,7 +89,13 @@ export class StripeTransportModule {
           ) => new StripeRefundAdapter(config, sdk, bindings),
         },
       ],
-      exports: [StripeCollectionAdapter, StripeRefundAdapter, StripeSandboxConfiguration],
+      exports: [
+        StripeCollectionAdapter,
+        StripeRefundAdapter,
+        StripeSandboxConfiguration,
+        StripeSdk,
+        StripeBindings,
+      ],
     };
   }
 }

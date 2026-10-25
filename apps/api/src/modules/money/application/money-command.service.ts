@@ -58,6 +58,7 @@ import {
   MONEY_REFUND_ADAPTER,
   MONEY_REFUND_CONFIRMATION_PARTICIPANT,
   MONEY_REFUND_POLICY,
+  type MoneyConfirmedRefund,
   type MoneyRefundConfirmationParticipantPort,
   type MoneyRefundAdapterPort,
   type MoneyRefundObservation,
@@ -924,6 +925,7 @@ export class MoneyCommandService {
         if (refund.status === 'RESERVED')
           await tx.moneyRefund.update({ where: { id: refund.id }, data: { status: 'DISPATCHED' } });
         let postingId: string | null = null;
+        let confirmedRefund: MoneyConfirmedRefund | undefined;
         if (observed.status === 'SUCCEEDED') {
           if (!this.refundParticipant.isConfigured())
             throw unavailableMoneyPort('MONEY_REFUND_POLICY_UNAVAILABLE');
@@ -982,17 +984,14 @@ export class MoneyCommandService {
           );
           if (posting.replayed) throw conflict('MONEY_REFUND_COMPENSATION_ORPHAN');
           postingId = posting.transaction.id;
-          await this.refundParticipant.applyConfirmedRefund(
-            {
-              refundId: refund.id,
-              refundRequestId: approved.id,
-              paymentConfirmationId: refund.paymentConfirmationId,
-              policyVersion: approved.policyVersion,
-              amount: toMoneyWire({ amountMinor: refund.amountMinor, currency: refund.currency }),
-              compensatingLedgerTransactionId: postingId,
-            },
-            tx,
-          );
+          confirmedRefund = {
+            refundId: refund.id,
+            refundRequestId: approved.id,
+            paymentConfirmationId: refund.paymentConfirmationId,
+            policyVersion: approved.policyVersion,
+            amount: toMoneyWire({ amountMinor: refund.amountMinor, currency: refund.currency }),
+            compensatingLedgerTransactionId: postingId,
+          };
         }
         const row = await tx.moneyRefund.update({
           where: { id: refund.id },
@@ -1002,6 +1001,10 @@ export class MoneyCommandService {
             compensatingLedgerTransactionId: postingId,
           },
         });
+        // The concrete subscription participant verifies the successful refund
+        // and compensation link through this same transaction. Neither becomes
+        // visible if the participant, dispatch update or final audit fails.
+        if (confirmedRefund) await this.refundParticipant.applyConfirmedRefund(confirmedRefund, tx);
         await tx.moneyDispatch.update({
           where: { id: dispatch.id },
           data: {
