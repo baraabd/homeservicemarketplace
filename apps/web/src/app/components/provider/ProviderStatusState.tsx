@@ -3,6 +3,7 @@ import { Clock, ShieldAlert, ShieldCheck, ShieldX } from 'lucide-react';
 import type { ProviderProfileStatus } from '@homeservicemarketplace/contracts';
 import { useLang } from '../../i18n/LanguageContext';
 import { useAuth } from '../../../lib/auth-provider';
+import { ProviderButton } from '../../features/provider-ui';
 
 // Sprint 5.1.2 — non-ACTIVE provider state surface.
 //
@@ -161,12 +162,15 @@ export interface ProviderStatusStateProps {
   onContinueOnboarding?: () => void;
   /** Legacy ACTIVE is not itself a work-access decision. */
   workAccessDenied?: boolean;
+  /** The latest server capability; status alone never authorizes verification. */
+  canManageVerification?: boolean;
 }
 
 export function ProviderStatusState({
   status,
   onContinueOnboarding,
   workAccessDenied = false,
+  canManageVerification = false,
 }: ProviderStatusStateProps) {
   const navigate = useNavigate();
   const { logout } = useAuth();
@@ -239,6 +243,17 @@ export function ProviderStatusState({
         >
           {copy.ctaLabel}
         </button>
+        {canManageVerification && (
+          <ProviderButton
+            tone="secondary"
+            shape="onboarding"
+            size="block"
+            data-testid="provider-status-verification"
+            onClick={() => navigate('/provider/verification')}
+          >
+            {lang === 'ar' ? 'وثائق الهوية' : 'Identity documents'}
+          </ProviderButton>
+        )}
         <button
           data-testid="provider-status-logout"
           onClick={async () => {

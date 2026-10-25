@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { isAxiosError } from 'axios';
 import type { VerificationDocumentKindCode } from '@homeservicemarketplace/contracts';
 
 import { useLang } from '../../../i18n/LanguageContext';
@@ -8,6 +9,7 @@ import { Badge } from '../../../components/ui/badge';
 import { Progress } from '../../../components/ui/progress';
 import { Skeleton } from '../../../components/ui/skeleton';
 import { useProviderProfile } from '../../../hooks/provider/useProviderProfile';
+import { isProviderOnboardingV2Enabled } from '../../../../lib/feature-flags';
 import {
   getProviderCapabilities,
   getVerificationCase,
@@ -43,13 +45,57 @@ const CASE_KEY = ['provider', 'verification', 'case'] as const;
 const CAPS_KEY = ['provider', 'verification', 'capabilities'] as const;
 const ACCEPTED = 'image/jpeg,image/png,image/webp,application/pdf';
 
+type ApplicationCorrection = 'profileRequired' | 'termsRequired' | 'profileAndTermsRequired';
+
+/** Explain only the server's documented readiness blockers; never echo its prose. */
+function applicationCorrectionFrom(error: unknown): ApplicationCorrection | null {
+  if (
+    !isAxiosError<{ error?: { code?: unknown; details?: { blockers?: unknown } } }>(error) ||
+    error.response?.status !== 422 ||
+    error.response.data?.error?.code !== 'VALIDATION_ERROR'
+  ) {
+    return null;
+  }
+  const blockers = error.response.data.error.details?.blockers;
+  if (!Array.isArray(blockers)) return null;
+  const codes = new Set(
+    blockers.flatMap((blocker: unknown) =>
+      blocker !== null && typeof blocker === 'object' && 'code' in blocker ? [blocker.code] : [],
+    ),
+  );
+  const profile = codes.has('ONBOARDING_INCOMPLETE');
+  const terms = codes.has('TERMS_NOT_ACCEPTED');
+  return profile && terms
+    ? 'profileAndTermsRequired'
+    : profile
+      ? 'profileRequired'
+      : terms
+        ? 'termsRequired'
+        : null;
+}
+
 export function ProviderVerificationScreen() {
   const { lang, dir } = useLang();
   const qc = useQueryClient();
   const t = UI_COPY[lang];
+  const applicationHref = isProviderOnboardingV2Enabled()
+    ? '/provider/onboarding'
+    : '/provider/profile';
 
   const capsQuery = useQuery({ queryKey: CAPS_KEY, queryFn: getProviderCapabilities });
-  const caseQuery = useQuery({ queryKey: CASE_KEY, queryFn: getVerificationCase });
+  const caseQuery = useQuery({
+    queryKey: CASE_KEY,
+    queryFn: getVerificationCase,
+    refetchInterval: (query) =>
+      capsQuery.data?.allowed.includes('MANAGE_VERIFICATION') &&
+      query.state.status !== 'error' &&
+      Array.isArray(query.state.data?.case?.documents) &&
+      query.state.data.case.documents.some(
+        (document) => !document.superseded && document.scanState === 'PENDING',
+      )
+        ? 2000
+        : false,
+  });
   const profileQuery = useProviderProfile();
 
   const [progress, setProgress] = useState<number | null>(null);
@@ -80,8 +126,18 @@ export function ProviderVerificationScreen() {
     void qc.invalidateQueries({ queryKey: CAPS_KEY });
   };
 
-  const startMut = useMutation({ mutationFn: startVerificationCase, onSuccess: invalidate });
-  const submitMut = useMutation({ mutationFn: submitVerificationCase, onSuccess: invalidate });
+  const startMut = useMutation({
+    mutationFn: startVerificationCase,
+    onMutate: () => setErrorText(null),
+    onSuccess: invalidate,
+    onError: () => setErrorText(t.startFailed),
+  });
+  const submitMut = useMutation({
+    mutationFn: submitVerificationCase,
+    onMutate: () => setErrorText(null),
+    onSuccess: invalidate,
+    onError: (error) => setErrorText(t[applicationCorrectionFrom(error) ?? 'submitFailed']),
+  });
 
   const loading = capsQuery.isLoading || caseQuery.isLoading;
   const failed = capsQuery.isError || caseQuery.isError;
@@ -137,7 +193,7 @@ export function ProviderVerificationScreen() {
   const copy = STATE_COPY[lang][view.state];
 
   async function onFileChosen(file: File) {
-    if (!pendingKind) return;
+    if (!pendingKind || !view.canManageVerification || busy || offline) return;
     setErrorText(null);
     setProgress(0);
     try {
@@ -155,13 +211,14 @@ export function ProviderVerificationScreen() {
       // shape, and a provider on a phone needs "try again" far more than a
       // taxonomy. The specific refusals they CAN act on arrive as scan states
       // on the document list below.
-      setErrorText(t.loadFailed);
+      setErrorText(t.uploadFailed);
     } finally {
       setProgress(null);
     }
   }
 
   function primaryAction() {
+    if (!view.canManageVerification || busy || offline) return;
     switch (view.state) {
       // Sprint 9B.24 — opening a NEW case is the answer to an expired one.
       // VERIFIED_NO_ACCESS is deliberately absent from this group: that
@@ -178,9 +235,11 @@ export function ProviderVerificationScreen() {
       case 'EVIDENCE_REQUIRED':
       case 'EVIDENCE_UNUSABLE':
       case 'CHANGES_REQUESTED': {
-        const first = view.outstanding[0] ?? null;
-        setPendingKind((first?.kind as VerificationDocumentKindCode) ?? 'INDIVIDUAL_IDENTITY');
-        setPendingCategory(first?.serviceCategoryId ?? null);
+        const first = view.uploadTarget;
+        // Never invent a document kind when the server supplied no target.
+        if (!first) return;
+        setPendingKind(first.kind);
+        setPendingCategory(first.serviceCategoryId);
         fileInput.current?.click();
         return;
       }
@@ -204,18 +263,28 @@ export function ProviderVerificationScreen() {
    * where pressing it means something.
    */
   const canSubmitCase =
-    view.state === 'READY_TO_SUBMIT' && view.availableActions.includes('submit');
+    view.canManageVerification &&
+    (view.state === 'READY_TO_SUBMIT' || view.state === 'CHANGES_REQUESTED') &&
+    view.outstanding.length === 0 &&
+    view.scanning.length === 0 &&
+    view.unusable.length === 0 &&
+    view.availableActions.includes('submit');
 
-  /** Only the states where sending a document is actually possible.
-   *
-   *  The picker is not rendered otherwise, and that is an accessibility fix
-   *  rather than tidiness: a file input is exposed as a BUTTON to assistive
-   *  technology, so leaving it mounted puts a "choose a file" control in the
-   *  tab order of a screen — "with our team" — where uploading does nothing. */
+  /** Mount the programmatic picker only where uploading is permitted.
+   * Visible Add/Replace buttons select the document target before opening it. */
   const canUpload =
-    view.state === 'EVIDENCE_REQUIRED' ||
-    view.state === 'EVIDENCE_UNUSABLE' ||
-    view.state === 'CHANGES_REQUESTED';
+    view.canManageVerification &&
+    view.uploadTarget !== null &&
+    (view.state === 'EVIDENCE_REQUIRED' ||
+      view.state === 'EVIDENCE_UNUSABLE' ||
+      view.state === 'CHANGES_REQUESTED');
+  const correctionRequested = caseQuery.data?.case?.state === 'ACTION_REQUIRED';
+  const submissionNeedsApplication =
+    submitMut.isError && applicationCorrectionFrom(submitMut.error) !== null;
+  const showApplicationReturn =
+    view.state === 'PENDING_REVIEW' &&
+    capsQuery.data?.primaryReason === 'ONBOARDING_INCOMPLETE' &&
+    capsQuery.data.allowed.includes('COMPLETE_ONBOARDING');
 
   return (
     <section
@@ -255,15 +324,39 @@ export function ProviderVerificationScreen() {
       )}
 
       {errorText && (
-        <p role="alert" data-testid="verification-error" className="text-sm text-destructive">
-          {errorText}
-        </p>
+        <div className="space-y-2">
+          <p role="alert" data-testid="verification-error" className="text-sm text-destructive">
+            {errorText}
+          </p>
+          {submissionNeedsApplication && (
+            <a
+              className="inline-flex min-h-11 items-center text-sm font-semibold underline"
+              href={applicationHref}
+            >
+              {t.returnToApplication}
+            </a>
+          )}
+        </div>
+      )}
+
+      {showApplicationReturn && (
+        <div className="space-y-2 rounded-xl border p-3">
+          <p role="status" className="text-sm">
+            {t.applicationNext}
+          </p>
+          <a
+            className="inline-flex min-h-11 items-center text-sm font-semibold underline"
+            href={applicationHref}
+          >
+            {t.returnToApplication}
+          </a>
+        </div>
       )}
 
       <VerificationAxisBadges axes={view.axes} />
 
       {/* What the reviewer said, when there is something to act on. */}
-      {(view.state === 'CHANGES_REQUESTED' || view.state === 'REJECTED') && (
+      {(correctionRequested || view.state === 'REJECTED') && (
         <section aria-label={t.reasonHeading} className="rounded-xl border p-3">
           <h3 className="text-sm font-semibold">{t.reasonHeading}</h3>
           <p className="mt-1 text-sm" data-testid="verification-reason">
@@ -312,6 +405,21 @@ export function ProviderVerificationScreen() {
                   {SCAN_STATE_LABELS[lang][d.scanState]}
                 </Badge>
                 {d.superseded && <span className="text-xs text-muted-foreground">↺</span>}
+                {canUpload && !d.superseded && d.scanState !== 'PENDING' && (
+                  <Button
+                    variant="secondary"
+                    tone="provider"
+                    state={busy || offline ? 'disabled' : 'default'}
+                    onClick={() => {
+                      setPendingKind(d.kind);
+                      setPendingCategory(d.serviceCategoryId);
+                      fileInput.current?.click();
+                    }}
+                  >
+                    {t.replace}
+                    <span className="sr-only">: {DOCUMENT_KIND_LABELS[lang][d.kind]}</span>
+                  </Button>
+                )}
               </li>
             ))}
           </ul>
@@ -330,10 +438,9 @@ export function ProviderVerificationScreen() {
           ref={fileInput}
           type="file"
           accept={ACCEPTED}
-          className="sr-only"
-          // Its own accessible name, distinct from the button that opens it:
-          // two controls sharing one name is an ambiguity for anyone
-          // navigating by name.
+          // Keyboard and assistive-technology users use the visible buttons,
+          // which establish a document target before opening the file picker.
+          hidden
           aria-label={t.uploadLabel}
           onChange={(e) => {
             const file = e.target.files?.[0];
@@ -343,18 +450,29 @@ export function ProviderVerificationScreen() {
         />
       )}
 
-      {/* Sprint 9B.24 — READY_TO_SUBMIT is the one state whose CTA is a case
-          TRANSITION rather than a local navigation, so it is the one gated on
-          the server's own action list. The others open a file picker or start a
-          new case, neither of which the transition table governs. */}
-      {copy.cta && (view.state !== 'READY_TO_SUBMIT' || canSubmitCase) && (
+      {/* Submission and resubmission both use the server's action list.
+          Opening a case and uploading still require MANAGE_VERIFICATION. */}
+      {copy.cta &&
+        view.canManageVerification &&
+        (view.state !== 'READY_TO_SUBMIT' || canSubmitCase) && (
+          <Button
+            variant={view.state === 'CHANGES_REQUESTED' && canSubmitCase ? 'secondary' : 'primary'}
+            tone="provider"
+            fullWidth
+            state={busy ? 'loading' : offline ? 'disabled' : 'default'}
+            onClick={primaryAction}
+          >
+            {copy.cta}
+          </Button>
+        )}
+      {view.state === 'CHANGES_REQUESTED' && canSubmitCase && (
         <Button
           tone="provider"
           fullWidth
-          state={busy ? 'loading' : 'default'}
-          onClick={primaryAction}
+          state={busy ? 'loading' : offline ? 'disabled' : 'default'}
+          onClick={() => submitMut.mutate()}
         >
-          {copy.cta}
+          {t.resubmit}
         </Button>
       )}
     </section>

@@ -4,6 +4,7 @@ import MockAdapter from 'axios-mock-adapter';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 import { api } from '../../../../lib/api';
+import * as verificationApi from '../../../../lib/provider/provider-verification-api';
 import { LanguageProvider } from '../../../i18n/LanguageContext';
 import { ProviderVerificationScreen } from './ProviderVerificationScreen';
 import { AXIS_COPY, STATE_COPY, UI_COPY } from '../copy/provider-verification-copy';
@@ -20,7 +21,10 @@ const PROFILE_URL = '/v1/me/provider/profile';
 
 let mock: MockAdapter;
 
-const caps = (allowed: string[] = [], primaryReason: string | null = null) => ({
+const caps = (
+  allowed: string[] = ['MANAGE_VERIFICATION'],
+  primaryReason: string | null = null,
+) => ({
   capabilities: [],
   allowed,
   nextActions: [],
@@ -324,6 +328,41 @@ describe('documents and what the reviewer said', () => {
 });
 
 describe('starting and submitting', () => {
+  it('starts missing identity verification after an admin returns the application for correction', async () => {
+    stub({
+      caps: caps(['MANAGE_VERIFICATION', 'COMPLETE_ONBOARDING'], 'ONBOARDING_INCOMPLETE'),
+    });
+    mock.onPost(CASE_URL).reply(() => {
+      mock.onGet(CASE_URL).reply(200, kase());
+      return [201, { ...kase(), created: true }];
+    });
+    renderScreen();
+
+    fireEvent.click(
+      await screen.findByRole('button', { name: STATE_COPY.en.NOT_STARTED.cta as string }),
+    );
+    await screen.findByTestId('verification-EVIDENCE_REQUIRED');
+    expect(screen.getByLabelText(UI_COPY.en.uploadLabel)).toBeInTheDocument();
+    expect(screen.getByTestId('axis-onboardingComplete')).toHaveAttribute('data-active', 'false');
+    expect(screen.getByTestId('axis-workAccessActive')).toHaveAttribute('data-active', 'false');
+  });
+
+  it.each([
+    ['case creation', { case: null }],
+    ['upload', kase()],
+    ['submission', kase({ documents: [doc()] })],
+    ['resubmission', kase({ state: 'ACTION_REQUIRED', documents: [doc()] })],
+  ])(
+    'offers no %s action when the server withholds MANAGE_VERIFICATION',
+    async (_action, response) => {
+      stub({ caps: caps([]), kase: response });
+      renderScreen();
+      await screen.findByTestId('verification-axes');
+      expect(screen.queryByRole('button')).not.toBeInTheDocument();
+      expect(screen.queryByLabelText(UI_COPY.en.uploadLabel)).not.toBeInTheDocument();
+    },
+  );
+
   it('starts a case from the not-started screen', async () => {
     let started = false;
     stub({ kase: { case: null } });
@@ -354,17 +393,241 @@ describe('starting and submitting', () => {
     await waitFor(() => expect(submitted).toBe(true));
   });
 
-  it('gives the hidden file input its own accessible name', async () => {
-    // Two controls sharing one name is an ambiguity for anyone navigating by
-    // name — the screen reader announces the same thing twice.
-    stub({ kase: kase({ documents: [] }) });
-    renderScreen();
-    await screen.findByTestId('verification-EVIDENCE_REQUIRED');
+  it.each(['en', 'ar'] as const)(
+    'resubmits corrected identity evidence with the reviewer reason still visible in %s',
+    async (lang) => {
+      let submitted = false;
+      stub({
+        caps: caps(['MANAGE_VERIFICATION', 'COMPLETE_ONBOARDING'], 'ONBOARDING_INCOMPLETE'),
+        kase: kase({
+          state: 'ACTION_REQUIRED',
+          documents: [doc({ superseded: true }), doc({ id: 'replacement' })],
+          latestDecision: {
+            outcome: 'ACTION_REQUIRED',
+            reasonCode: 'DOCUMENT_ILLEGIBLE',
+            decidedAt: '2026-08-02T00:00:00.000Z',
+          },
+        }),
+      });
+      mock.onPost(`${CASE_URL}/submit`).reply(() => {
+        submitted = true;
+        mock
+          .onGet(CASE_URL)
+          .reply(200, kase({ state: 'SUBMITTED', documents: [doc({ id: 'replacement' })] }));
+        return [200, {}];
+      });
+      renderScreen(lang);
 
-    const input = screen.getByLabelText(UI_COPY.en.uploadLabel);
-    expect(input).toHaveAttribute('type', 'file');
-    expect(UI_COPY.en.uploadLabel).not.toBe(STATE_COPY.en.EVIDENCE_REQUIRED.cta);
+      const submit = await screen.findByRole('button', { name: UI_COPY[lang].resubmit });
+      expect(screen.getByTestId('verification-reason')).toBeInTheDocument();
+      expect(
+        screen.getByRole('button', { name: STATE_COPY[lang].CHANGES_REQUESTED.cta as string }),
+      ).toBeInTheDocument();
+      fireEvent.click(submit);
+      await waitFor(() => expect(submitted).toBe(true));
+      await screen.findByTestId('verification-PENDING_REVIEW');
+      expect(screen.queryByLabelText(UI_COPY[lang].uploadLabel)).not.toBeInTheDocument();
+      expect(screen.getByTestId('axis-workAccessActive')).toHaveAttribute('data-active', 'false');
+      expect(screen.getByRole('link', { name: UI_COPY[lang].returnToApplication })).toHaveAttribute(
+        'href',
+        '/provider/profile',
+      );
+    },
+  );
+
+  it('does not offer resubmission when the server action list is empty', async () => {
+    stub({ kase: kase({ state: 'ACTION_REQUIRED', documents: [doc()], availableActions: [] }) });
+    renderScreen();
+    await screen.findByTestId('verification-CHANGES_REQUESTED');
+    expect(screen.queryByRole('button', { name: UI_COPY.en.resubmit })).not.toBeInTheDocument();
+    expect(screen.getByLabelText(UI_COPY.en.uploadLabel)).toBeInTheDocument();
   });
+
+  it('shows a failed start and can retry without exposing the server error', async () => {
+    stub({});
+    mock.onPost(CASE_URL).replyOnce(500, { message: 'private storage path' });
+    mock.onPost(CASE_URL).reply(() => {
+      mock.onGet(CASE_URL).reply(200, kase());
+      return [201, { ...kase(), created: true }];
+    });
+    renderScreen();
+
+    fireEvent.click(
+      await screen.findByRole('button', { name: STATE_COPY.en.NOT_STARTED.cta as string }),
+    );
+    expect(await screen.findByRole('alert')).toHaveTextContent(UI_COPY.en.startFailed);
+    expect(screen.queryByText('private storage path')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: STATE_COPY.en.NOT_STARTED.cta as string }));
+    await screen.findByTestId('verification-EVIDENCE_REQUIRED');
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
+  it('shows a failed submission and retains the uploaded documents', async () => {
+    stub({ kase: kase({ documents: [doc()] }) });
+    mock.onPost(`${CASE_URL}/submit`).reply(422, { message: 'internal policy details' });
+    renderScreen();
+
+    fireEvent.click(
+      await screen.findByRole('button', { name: STATE_COPY.en.READY_TO_SUBMIT.cta as string }),
+    );
+    expect(await screen.findByRole('alert')).toHaveTextContent(UI_COPY.en.submitFailed);
+    expect(screen.getByTestId('document-d1')).toBeInTheDocument();
+    expect(screen.queryByText('internal policy details')).not.toBeInTheDocument();
+  });
+
+  it.each([
+    ['en', false, ['ONBOARDING_INCOMPLETE'], 'profileRequired'],
+    ['en', true, ['TERMS_NOT_ACCEPTED'], 'termsRequired'],
+    ['ar', false, ['ONBOARDING_INCOMPLETE', 'TERMS_NOT_ACCEPTED'], 'profileAndTermsRequired'],
+    ['ar', true, ['ONBOARDING_INCOMPLETE'], 'profileRequired'],
+  ] as const)(
+    'explains server application blockers in %s with V2=%s',
+    async (lang, enabled, codes, copyKey) => {
+      window.localStorage.setItem('hsm.ff.providerOnboardingV2', String(enabled));
+      stub({ kase: kase({ documents: [doc()] }) });
+      mock.onPost(`${CASE_URL}/submit`).reply(422, {
+        success: false,
+        error: {
+          code: 'VALIDATION_ERROR',
+          message: 'private server explanation',
+          details: { blockers: codes.map((code) => ({ code, field: 'private field detail' })) },
+        },
+      });
+      renderScreen(lang);
+
+      fireEvent.click(
+        await screen.findByRole('button', { name: STATE_COPY[lang].READY_TO_SUBMIT.cta as string }),
+      );
+      expect(await screen.findByRole('alert')).toHaveTextContent(UI_COPY[lang][copyKey]);
+      expect(screen.getByRole('link', { name: UI_COPY[lang].returnToApplication })).toHaveAttribute(
+        'href',
+        enabled ? '/provider/onboarding' : '/provider/profile',
+      );
+      expect(screen.getByTestId('document-d1')).toBeInTheDocument();
+      expect(
+        screen.queryByText(/private server explanation|private field detail/),
+      ).not.toBeInTheDocument();
+    },
+  );
+
+  it.each([
+    [403, [{ code: 'ONBOARDING_INCOMPLETE' }]],
+    [422, { code: 'ONBOARDING_INCOMPLETE' }],
+    [422, [{ code: 'UNKNOWN_SERVER_RULE' }, null, 'ONBOARDING_INCOMPLETE']],
+  ])(
+    'keeps the safe generic failure for unrecognized application errors: %s %s',
+    async (status, blockers) => {
+      stub({ kase: kase({ documents: [doc()] }) });
+      mock.onPost(`${CASE_URL}/submit`).reply(status as number, {
+        success: false,
+        error: { code: 'VALIDATION_ERROR', details: { blockers } },
+      });
+      renderScreen();
+
+      fireEvent.click(
+        await screen.findByRole('button', { name: STATE_COPY.en.READY_TO_SUBMIT.cta as string }),
+      );
+      expect(await screen.findByRole('alert')).toHaveTextContent(UI_COPY.en.submitFailed);
+      expect(
+        screen.queryByRole('link', { name: UI_COPY.en.returnToApplication }),
+      ).not.toBeInTheDocument();
+    },
+  );
+
+  it.each([false, true])(
+    'returns pending identity review to the unfinished application with V2=%s',
+    async (enabled) => {
+      window.localStorage.setItem('hsm.ff.providerOnboardingV2', String(enabled));
+      stub({
+        caps: caps(['MANAGE_VERIFICATION', 'COMPLETE_ONBOARDING'], 'ONBOARDING_INCOMPLETE'),
+        kase: kase({ state: 'SUBMITTED', documents: [doc()] }),
+      });
+      renderScreen();
+
+      await screen.findByTestId('verification-PENDING_REVIEW');
+      expect(screen.getByRole('status')).toHaveTextContent(UI_COPY.en.applicationNext);
+      expect(screen.getByRole('link', { name: UI_COPY.en.returnToApplication })).toHaveAttribute(
+        'href',
+        enabled ? '/provider/onboarding' : '/provider/profile',
+      );
+      expect(screen.getByTestId('axis-workAccessActive')).toHaveAttribute('data-active', 'false');
+    },
+  );
+
+  it('refreshes a pending required scan and exposes submission when it clears', async () => {
+    vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('visible');
+    stub({});
+    let reads = 0;
+    mock.onGet(CASE_URL).reply(() => [
+      200,
+      kase({
+        documents: [doc({ scanState: reads++ === 0 ? 'PENDING' : 'CLEAN' })],
+      }),
+    ]);
+    renderScreen();
+
+    await screen.findByTestId('verification-SCANNING');
+    expect(screen.queryByLabelText(UI_COPY.en.uploadLabel)).not.toBeInTheDocument();
+    await screen.findByTestId('verification-READY_TO_SUBMIT', {}, { timeout: 3500 });
+    expect(
+      screen.getByRole('button', { name: STATE_COPY.en.READY_TO_SUBMIT.cta as string }),
+    ).toBeInTheDocument();
+  });
+
+  it('replaces the selected business document using its real kind', async () => {
+    const upload = vi.spyOn(verificationApi, 'uploadEvidence').mockResolvedValue({} as never);
+    stub({
+      kase: kase({
+        state: 'ACTION_REQUIRED',
+        requirements: [
+          { kind: 'BUSINESS_REGISTRATION', serviceCategoryId: null },
+          { kind: 'AUTHORIZED_REPRESENTATIVE_IDENTITY', serviceCategoryId: null },
+        ],
+        documents: [
+          doc({ id: 'registration', kind: 'BUSINESS_REGISTRATION' }),
+          doc({ id: 'representative', kind: 'AUTHORIZED_REPRESENTATIVE_IDENTITY' }),
+        ],
+      }),
+    });
+    renderScreen();
+    const list = await screen.findByTestId('verification-documents');
+    const replacementButtons = within(list).getAllByRole('button');
+    fireEvent.click(replacementButtons[1]);
+    const file = new File(['replacement'], 'representative.png', { type: 'image/png' });
+    fireEvent.change(screen.getByLabelText(UI_COPY.en.uploadLabel), { target: { files: [file] } });
+    await waitFor(() =>
+      expect(upload).toHaveBeenCalledWith(
+        expect.objectContaining({
+          file,
+          kind: 'AUTHORIZED_REPRESENTATIVE_IDENTITY',
+          serviceCategoryId: null,
+        }),
+      ),
+    );
+  });
+
+  it.each([
+    ['DRAFT', 'EVIDENCE_REQUIRED'],
+    ['ACTION_REQUIRED', 'CHANGES_REQUESTED'],
+  ] as const)(
+    'opens the hidden picker through the visible %s action',
+    async (caseState, viewState) => {
+      stub({ kase: kase({ state: caseState, documents: [] }) });
+      renderScreen();
+      await screen.findByTestId(`verification-${viewState}`);
+
+      const input = screen.getByLabelText(UI_COPY.en.uploadLabel);
+      expect(input).toHaveAttribute('type', 'file');
+      expect(input).toHaveAttribute('hidden');
+      expect(input).not.toBeVisible();
+      const opener = screen.getByRole('button', { name: STATE_COPY.en[viewState].cta as string });
+      expect(opener).toBeVisible();
+      expect(opener).toBeEnabled();
+      const openPicker = vi.spyOn(input, 'click');
+      fireEvent.click(opener);
+      expect(openPicker).toHaveBeenCalledOnce();
+    },
+  );
 });
 
 describe('Arabic', () => {

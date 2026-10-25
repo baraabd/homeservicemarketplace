@@ -87,7 +87,7 @@ interface LoadedCase {
     serviceAreaRadiusKm: number | null;
     acceptedConsentVersion: string | null;
     user?: { emailVerifiedAt?: Date | null } | null;
-    _count?: { serviceCategories?: number } | null;
+    _count?: { serviceCategories?: number; categoryApplications?: number } | null;
   };
   documents: Array<{
     id: string;
@@ -978,7 +978,14 @@ export class VerificationCaseWorkflowService {
             // emailVerifiedAt, not a boolean: the column records WHEN, and a
             // derived boolean is what the onboarding policy wants.
             user: { select: { emailVerifiedAt: true } },
-            _count: { select: { serviceCategories: true } },
+            _count: {
+              select: {
+                serviceCategories: true,
+                // Match the onboarding profile projection: a current pending
+                // specialty is awaiting our review, not missing provider input.
+                categoryApplications: { where: { status: 'PENDING', supersededAt: null } },
+              },
+            },
           },
         },
         documents: {
@@ -1044,6 +1051,7 @@ export class VerificationCaseWorkflowService {
       serviceAreaCountry: p.serviceAreaCountryCode ?? p.serviceAreaCountry,
       serviceAreaRadiusKm: p.serviceAreaRadiusKm,
       serviceCategoryCount: p._count?.serviceCategories ?? 0,
+      pendingSpecialtyCount: p._count?.categoryApplications ?? 0,
       emailVerified: p.user?.emailVerifiedAt != null,
     };
   }

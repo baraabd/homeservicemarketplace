@@ -45,7 +45,7 @@ const COMPLETE_PROFILE = {
   serviceAreaRadiusKm: 25,
   acceptedConsentVersion: null,
   user: { emailVerifiedAt: new Date('2026-01-01T00:00:00Z') },
-  _count: { serviceCategories: 2 },
+  _count: { serviceCategories: 2, categoryApplications: 0 },
 };
 
 interface CaseRow {
@@ -213,6 +213,61 @@ describe('submit', () => {
     const h = harness({ row: caseRow({ state: 'ACTION_REQUIRED' }) });
     const out = await h.service.submit(PROVIDER_USER, { caseId: CASE_ID });
     expect(out.state).toBe('SUBMITTED');
+  });
+
+  it.each(['DRAFT', 'ACTION_REQUIRED'])(
+    'submits %s evidence while the current specialty awaits administrative review',
+    async (state) => {
+      const h = harness({
+        row: caseRow({
+          state,
+          providerProfile: {
+            ...COMPLETE_PROFILE,
+            _count: { serviceCategories: 0, categoryApplications: 1 },
+          },
+        }),
+      });
+      expect(await h.service.submit(PROVIDER_USER, { caseId: CASE_ID })).toMatchObject({
+        state: 'SUBMITTED',
+        changed: true,
+      });
+      expect(h.decisions).toEqual([]);
+    },
+  );
+
+  it('still requires a specialty when there is neither approved membership nor a current application', async () => {
+    const h = harness({
+      row: caseRow({
+        providerProfile: {
+          ...COMPLETE_PROFILE,
+          _count: { serviceCategories: 0, categoryApplications: 0 },
+        },
+      }),
+    });
+    const err = await failure(h.service.submit(PROVIDER_USER, { caseId: CASE_ID }));
+    expect(err.status).toBe(422);
+    expect(err.details).toMatchObject({
+      blockers: [{ code: 'ONBOARDING_INCOMPLETE', field: 'serviceCategories' }],
+    });
+    expect(h.updates).toEqual([]);
+  });
+
+  it('keeps provider-editable omissions blocking while a specialty is pending', async () => {
+    const h = harness({
+      row: caseRow({
+        providerProfile: {
+          ...COMPLETE_PROFILE,
+          bio: '',
+          _count: { serviceCategories: 0, categoryApplications: 1 },
+        },
+      }),
+    });
+    const err = await failure(h.service.submit(PROVIDER_USER, { caseId: CASE_ID }));
+    expect(err.status).toBe(422);
+    expect(err.details).toMatchObject({
+      blockers: [{ code: 'ONBOARDING_INCOMPLETE', field: 'bio' }],
+    });
+    expect(h.updates).toEqual([]);
   });
 
   it('pins the update to the state it observed', async () => {

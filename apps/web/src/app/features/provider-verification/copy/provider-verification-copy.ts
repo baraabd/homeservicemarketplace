@@ -80,7 +80,7 @@ export const STATE_COPY: Record<Lang, Record<VerificationViewState, StateCopy>> 
     },
     PENDING_REVIEW: {
       title: 'With our team',
-      body: 'We have your documents. You do not need to do anything — we will tell you as soon as there is news.',
+      body: 'We have your documents for review. We will tell you when there is an update.',
       cta: null,
     },
     CHANGES_REQUESTED: {
@@ -157,7 +157,7 @@ export const STATE_COPY: Record<Lang, Record<VerificationViewState, StateCopy>> 
     },
     PENDING_REVIEW: {
       title: 'لدى فريقنا',
-      body: 'استلمنا مستنداتك. لا حاجة لفعل أي شيء — سنخبرك فور توفر جديد.',
+      body: 'استلمنا مستنداتك للمراجعة. سنخبرك عند توفر تحديث.',
       cta: null,
     },
     CHANGES_REQUESTED: {
@@ -263,8 +263,21 @@ export const UI_COPY: Record<Lang, Record<string, string>> = {
   en: {
     loading: 'Loading your verification',
     loadFailed: 'We could not load your verification.',
+    startFailed: 'We could not start verification. Try again.',
+    submitFailed: 'We could not send your documents for review. Your files are kept; try again.',
+    profileRequired:
+      'Complete the missing details in your application, then return here to send your documents for review.',
+    termsRequired:
+      'Review and accept the current terms in your application, then return here to send your documents for review.',
+    profileAndTermsRequired:
+      'Complete the missing application details and accept the current terms, then return here to send your documents for review.',
+    returnToApplication: 'Return to application',
+    applicationNext:
+      'Your identity documents are with our team. Return to your application to complete any remaining steps and send it for review.',
+    uploadFailed: 'We could not upload this document. Try again.',
+    resubmit: 'Send updates for review',
     retry: 'Try again',
-    offline: 'You are offline. We will retry when you are back.',
+    offline: 'You are offline. Reconnect to continue verification.',
     documentsHeading: 'Your documents',
     requirementsHeading: 'What we need',
     noDocuments: 'Nothing sent yet.',
@@ -276,8 +289,21 @@ export const UI_COPY: Record<Lang, Record<string, string>> = {
   ar: {
     loading: 'جارٍ تحميل حالة التوثيق',
     loadFailed: 'تعذر تحميل حالة التوثيق.',
+    startFailed: 'تعذر بدء التوثيق. أعد المحاولة.',
+    submitFailed: 'تعذر إرسال مستنداتك للمراجعة. ملفاتك محفوظة؛ أعد المحاولة.',
+    profileRequired:
+      'أكمل البيانات الناقصة في طلب الانضمام، ثم عد إلى هنا لإرسال مستنداتك للمراجعة.',
+    termsRequired:
+      'راجع الشروط الحالية ووافق عليها في طلب الانضمام، ثم عد إلى هنا لإرسال مستنداتك للمراجعة.',
+    profileAndTermsRequired:
+      'أكمل بيانات طلب الانضمام الناقصة ووافق على الشروط الحالية، ثم عد إلى هنا لإرسال مستنداتك للمراجعة.',
+    returnToApplication: 'العودة إلى طلب الانضمام',
+    applicationNext:
+      'مستندات هويتك لدى فريقنا. عد إلى طلب الانضمام لاستكمال الخطوات المتبقية وإرساله للمراجعة.',
+    uploadFailed: 'تعذر رفع هذا المستند. أعد المحاولة.',
+    resubmit: 'إرسال التعديلات للمراجعة',
     retry: 'أعد المحاولة',
-    offline: 'أنت غير متصل. سنعيد المحاولة عند عودة الاتصال.',
+    offline: 'أنت غير متصل. أعد الاتصال لمتابعة التوثيق.',
     documentsHeading: 'مستنداتك',
     requirementsHeading: 'ما نحتاجه',
     noDocuments: 'لم يتم إرسال أي شيء بعد.',
