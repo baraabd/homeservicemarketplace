@@ -1,16 +1,18 @@
-# CR-001 — G3 prerequisites and migration-free rollback instructions
+# CR-001 — Current G3 handoff and migration-free rollback instructions
 
 Status: **REQUESTED; NOT APPLIED**. Requester: R36 preflight session
-`r36-d86d02f90f5c`. Shared files remain coordinator-owned. No interface,
-migration, dependency or launcher behavior changes in this PR.
+`r36-eb22d30bac36`, inspected source
+`c9de08d07b12871db8801fb9662b14de83a2c391`.
+All shared files below remain coordinator-owned. This follow-up changes no
+runtime interface, schema, migration, dependency or launcher behavior.
 
-## Exact minimal shared documentation patch
+## 1. Exact minimal shared runbook corrections
+
+Reason: `infra/production/staging.cjs` runs the `migrations` phase
+unconditionally inside `applyRelease`, before API/web replacement. The
+current launcher cannot perform an application-only rollback.
 
 Path: `docs/production-readiness/r18/ROLLBACK_RUNBOOK.md`.
-Reason: its instruction to rerun the old launcher contradicts the requirement
-not to run the old migrator. In the inspected source,
-`infra/production/staging.cjs` executes the `migrations` phase unconditionally
-inside `applyRelease`, before API/web replacement.
 
 ```diff
 @@
@@ -27,46 +29,80 @@ inside `applyRelease`, before API/web replacement.
 +   the migrator digest as lineage without running the previous migrator.
 ```
 
-Tests/verification: inspect the actual launcher call graph and existing
-`infra/production/staging.test.cjs`; verify the corrected document does not
-advertise an unimplemented flag or claim a rehearsal. A future executable
-rollback change must test zero migrator invocation, no volume/database reset,
-no automatic retry after partial failure, unchanged digest validation and
-forward-schema compatibility against real images. Keep R36 scripts separate
-from `infra/production/staging.cjs`. Any later launcher integration needs a
-new exact serialized patch and lease. Schema/dependency consequences: none
-for this documentation patch.
+Path: `docs/production-readiness/r28/ROLLBACK.md`.
 
-## Gate handoff
+```diff
+@@
+-there is no automatic stale-lock expiry. Use an explicitly reviewed rollback through
+-the existing launcher and approved immutable artifacts. Do not restore a database
++there is no automatic stale-lock expiry. Use a separately reviewed migration-free
++application rollback procedure and approved immutable artifacts. The current staging
++launcher always invokes api-migrate; do not run an old release manifest with --apply
++as an application-only rollback. Do not restore a database
+```
 
-The separate G3 writer owns
-`docs/production-readiness/post-r18/gates/g3/SOURCE_MANIFEST.json`,
-`docs/production-readiness/post-r18/waves/wave-04.plan.json` and shared status
-registries. R36 does not modify them. Required actions before runtime work:
+Verification: compare the actual launcher call graph and unchanged
+`infra/production/staging.test.cjs`; check the corrected prose advertises no
+unimplemented switch or successful rehearsal. Schema/dependency consequences:
+**none**. No launcher edit is needed for these documentation corrections.
 
-1. Integrate and demonstrate real R29 Stripe sandbox collection/webhook/refund
-   behavior and the effective R32 policy/confirmation participants. Preserve
-   registered R30/R31/R33 authority and live-money-off defaults.
-2. Run all seven unchanged G3 evidence categories on one combined source,
-   including the R27 comparable-performance acceptance and official CodeQL.
-   Bind full source/tree, run/artifact IDs and hashes; retain actual failures.
-3. Obtain owner review/merge of the acceptance publication and verify it.
-   Only then fill the Wave 4 frozen base and exact session assignment.
-4. Approve R36's target identities, recovery set, retention/hold/deletion and
-   key references, schedule, RPO/RTO, incident owner and independent cutover
-   authorization. Proposed numbers do not constitute approval.
+A later executable rollback must remain in R36's approved files and prove
+zero migrator calls, no DB/volume reset, no automatic retry after partial
+failure, immutable image/provenance validation and useful-service compatibility
+against the real forward schema. The G3 migration replaces
+`money_reconciliation_exception_guard`; test old executable behavior for
+legacy exceptions and cases requiring matching decision provenance.
+Any launcher integration requires a separate exact serialized patch and lease.
 
-PR #188's original Zod upgrade broke equal-lock comparison. Another active
-session has deferred that upgrade at
-`482a368b6417215354a325b66d372bb25d4f68e1`; R36 neither overwrites that work nor
-removes the comparison assertion. Fresh CI remains required. A future Zod 4
-upgrade needs its separately reviewed dependency-comparable experiment.
+## 2. Correct stale central prose without changing the gate
 
-## R36-owned work after release of the gate
+These are exact coordinator-owned paths, not R36 edits:
 
-Use the exact files already enumerated by the Wave 4 plan. Extend recovery
-verification around R20 inventory rather than creating another storage
-authority. Test required historical versions and loss of decrypt capability;
-latest-live-object equality alone is insufficient. Add explicit physical
-isolation and outbound-denial evidence before restoring a representative
-dataset, then measure RPO from known writes and RTO through useful service.
+- `docs/production-readiness/post-r18/waves/WAVE_04.md`: replace the paragraph
+  saying R29 and effective refund wiring are missing with a current-source
+  observation that #198 merged those components at the inspection SHA;
+  independent policy/sandbox acceptance and verified publication remain absent.
+- `docs/production-readiness/post-r18/gates/g3/SOURCE_MANIFEST.json`: update only
+  the stale `G3-INTEGRATION-CANDIDATE-REVIEW.reason` wording about a draft
+  candidate after the merge. Preserve `decision: BLOCKED`, all null candidate
+  and frozen identities, `NOT_RUN` mandatory evidence, publication state and
+  restrictions until actual accepted evidence supports a separate gate update.
+
+Tests: existing G3 record and wave validators; `--check` must remain consistent
+and `--ready R36` must continue refusing execution. Do not copy green PR checks
+into accepted G3 evidence or fill a frozen SHA merely to clear the refusal.
+
+## 3. Gate and owner-input handoff
+
+R29 Stripe runtime/purchase/webhook composition and approved refund participant
+implementations are already merged. Verify them on the chosen combined source;
+do not rebuild them in R36. Existing test fixtures are not approved commercial
+or recovery policy.
+
+| Required input/action                   | Responsible owner                              | Reviewable completion                                                                                                                                                                       |
+| --------------------------------------- | ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| G3 exact-source acceptance              | G3 coordinator and authorized sandbox operator | All seven unchanged categories, genuine Stripe test execution/authentic forwarding, approved immutable plan/refund inputs and matching artifacts; retain failures/skips.                    |
+| G3 publication and R36 assignment       | Owner and coordinator                          | Separately reviewed/merged/verified acceptance publication, full frozen source/tree and active exact R36 writer/files in `post-r18/waves/wave-04.plan.json`.                                |
+| Source and independent restore topology | Infrastructure/network/database/storage owners | Reviewed R28 plan with exact physical DB/users, Redis, storage, queues, network, images, restricted evidence references and explicit isolated drill authority.                              |
+| Recovery policy                         | Data/privacy owner                             | Schedule, encrypted retention, legal holds, deletion reconciliation, approved RPO/RTO, artifact/key retirement and incident/cutover ownership. Proposed numbers are not approval.           |
+| Protected key recovery                  | Secret/KMS and mail operators                  | Object and mail-envelope key-version references, including JWT parent version if derivation was used; grant scope and expiry checked without copying secrets into Git.                      |
+| External-effect isolation               | Money/mail/network operators                   | Outbox and mail schedulers disabled before boot, independent real-egress denial, isolated SMTP sink, no live credentials and separate webhook routing. Include direct/immediate mail paths. |
+| Ambiguous external outcomes             | Money/mail operators                           | Original payment/refund/message identities and independent observations; explicit stop/repair policy before real-user replay or cutover.                                                    |
+
+Names and approved secret-store references are sufficient for the handoff;
+secret values must not be pasted into a public PR, source, logs or chat.
+
+## 4. Bounded R36 implementation after gate release
+
+Author only the exact scripts/tests and three conditionally leased infrastructure
+files enumerated in the Wave 4 plan. Reuse R20 inventory and existing financial,
+mail, private-media and authorization authority. Add complete version/deletion
+verification, protected key lineage and current G3 policy/reconciliation data
+coverage without changing shared v1 report semantics.
+
+Implement and execute the fourteen groups in R36's [ACCEPTANCE.md](../ACCEPTANCE.md)
+on the approved isolated target. Bind actual source/tree/image/config/schema
+identities, exact counts and known-write recovery measurements. The coordinator
+then integrates any separately approved shared changes and recertifies the
+combined candidate. Production cutover, spending, live funds and deployment
+remain separately authorized actions.
