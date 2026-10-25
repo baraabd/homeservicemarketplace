@@ -1,65 +1,75 @@
-# R34 — Preflight acceptance and executed checks
+# R34 — Executed preflight evidence, 2026-10-25
 
-**Runtime implementation NOT_STARTED. No functional SOURCE_VERIFIED,
-SANDBOX_ACCEPTED, HOSTED_ACCEPTED or RELEASE_ACCEPTED claim.**
+**Runtime implementation NOT_STARTED; G3 start authorization BLOCKED.**
 
-Inspection parent: `73a4a64a77844db7815466f47d8afdefb0b35c2f`;
-tree: `04fbecf5ff028f95136cdddca5aeb7bb7451e09f`.
-The G3 frozen base is absent. Final documentation SHA/tree and remote run IDs
-are recorded in the PR, avoiding a self-referential hash in this tree.
+Inspection base: `c9de08d07b12871db8801fb9662b14de83a2c391`.
+Inspection tree: `67136183b8a81de9773c2c6a3831441c320729c0`.
+The approved frozen G3 source/tree remain null. Final documentation source/tree,
+hook/security results and final-PR CI references are recorded in the PR body,
+avoiding a self-referential hash in this tree.
 
-## Actual commands and findings
+## Checks executed in this session
 
-The following existing, unmodified commands ran on the observed source with
-task-local Node 24.21.0. The one common governance run is referenced by both
-R34 and R35; it is not two independent executions or product acceptance.
+The repository-pinned Node 24.21.0 and pnpm 10.32.1 were installed in a task-local
+directory. The Node archive checksum and pinned pnpm SHA-512 were verified;
+no machine-wide version or package pin changed. This worktree has its own
+node_modules and package store.
 
-| Command                                          | Exit | Result                                                   |
-| ------------------------------------------------ | ---- | -------------------------------------------------------- |
-| `node --test .github/scripts/*.test.mjs`         | 0    | 500 passed, 0 failed/cancelled/skipped/todo              |
-| `node .github/scripts/g2-record.mjs --check`     | 0    | Consistent G2 ACCEPTED record; not remote authentication |
-| `node .github/scripts/g3-record.mjs --check`     | 0    | Consistent G3 BLOCKED; Wave 4 and final G4 blocked       |
-| `node .github/scripts/g3-record.mjs --ready R34` | 1    | R34 is not authorized to start                           |
-| `node .github/scripts/g3-record.mjs --ready R35` | 1    | R35 is not authorized to start                           |
-| `node .github/scripts/sprint-registry.mjs`       | 0    | Registry consistent, not sprint acceptance               |
-| `node .github/scripts/production-governance.mjs` | 0    | Repository governance files valid, not branch protection |
+| Command                                                                                                            | Exit | Actual result                                                                                                                        |
+| ------------------------------------------------------------------------------------------------------------------ | ---- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| `node scripts/runtime/toolchain.cjs`                                                                               | 0    | Exact executing Node and repository runtime declarations verified.                                                                   |
+| `pnpm install --frozen-lockfile --store-dir /workspace/scratch/d7bae9e98d6c/r34-pnpm-store --reporter=append-only` | 0    | Normal preinstall, Husky preparation and contracts build completed; lockfile unchanged.                                              |
+| `node --test .github/scripts/*.test.mjs`                                                                           | 0    | 500 passed; 0 failed/cancelled/skipped/todo.                                                                                         |
+| `node --test scripts/production/stripe-sandbox/verify-external.test.cjs`                                           | 0    | 49 passed; 0 failed/cancelled/skipped/todo. These validate the runner with synthetic inputs; they are not 49 real Stripe operations. |
+| `node .github/scripts/g2-record.mjs --check`                                                                       | 0    | G2 record consistency; no independent remote authentication claim.                                                                   |
+| `node .github/scripts/g3-record.mjs --check`                                                                       | 0    | Consistent BLOCKED G3, Wave 4 and final G4 join.                                                                                     |
+| `node .github/scripts/g3-record.mjs --ready R34`                                                                   | 1    | **FAIL: R34 is not authorized to start.** This is an actual start blocker.                                                           |
+| `node .github/scripts/sprint-registry.mjs`                                                                         | 0    | Registry consistency only.                                                                                                           |
+| `node .github/scripts/production-governance.mjs`                                                                   | 0    | Governance-file validation only; not branch protection or acceptance.                                                                |
 
-Both readiness failures are actual blockers, not successful start checks.
-All five R29–R33 PRs were independently re-read as merged and each merge was
-checked with `git merge-base --is-ancestor <merge-SHA> <observed-SHA>`,
-exit 0. Those facts do not close G3's external/policy/integration categories.
+The commands, exit codes, counts and SHA-256 log digests are preserved in
+[preflight.json](evidence/preflight.json). The 549 passing tests are two distinct
+existing tooling suites; there are zero executed R34 product scenarios.
 
-Separate worktrees use Node 24.21.0 / pnpm 10.32.1 and independent node_modules.
-Only immutable package downloads are cached together. Both frozen installations
-completed with exit 0 and unchanged lockfile; normal preinstall, Husky preparation
-and contracts build passed. Existing ignored build-script warnings for
-`@parcel/watcher@2.6.0` and `unrs-resolver@1.12.2` remain; no build approval
-setting changed. Document formatting, normal hooks, exact-tree secret scans
-and final documentation checks are reported in the PR metadata.
-The executed installation command is:
+The first restricted execution could not launch child processes (`spawnSync
+EPERM`). It reported 13 test-file wrappers with 9 passing and 4 failing; those
+wrapper counts are not individual test coverage. Direct diagnostic runs exposed
+the subprocess failure. The unchanged original commands were rerun with approved
+subprocess permission, yielding the complete 500 and 49 case inventories above.
+Initial failures are retained separately and no test, assertion, timeout, hook
+or gate was changed. Installation retains the existing ignored-build-script
+warnings for `@parcel/watcher@2.6.0` and `unrs-resolver@1.12.2`.
 
-```sh
-pnpm install --frozen-lockfile --store-dir /workspace/scratch/b5653dea7992/wave4-pnpm-store --reporter=append-only
-```
+## Current merged-source GitHub observations
 
-Tooling is task-local; no machine-wide NVM/package-manager version is changed.
-Package/lock/schema/contract digests in the preflight record are actual
-observed bytes. No .env, credentials, production DB or user session is read.
+On inspection source `c9de08d07b12871db8801fb9662b14de83a2c391`, the complete
+returned inventory contains **32/32 successful emitted check runs** and
+**8/8 successful Actions workflow runs**. Main CI is run `40146699753`; the
+CodeQL analysis workflow is run `40146699702`. These are observations of the
+merged prerequisite source, not of the later documentation PR head.
 
-## Evidence not executed
+There is no separately emitted `github-advanced-security` CodeQL result check
+on this merge source in the observed inventory. Do not reuse the older #198
+head's zero-annotation result as merge-source evidence. A Vercel check suite
+(`108815569875`) is queued with no emitted check run; deployment is not verified.
+The stored inventory includes annotation counts and does not assert zero
+repository-wide security findings. No remote checks were rerun by this audit.
 
-Application lint/typecheck/unit/build beyond normal installation scripts, real
-PostgreSQL/Redis/storage/ClamAV, independent Stripe/manual sandbox operations,
-new browser journeys, AR/EN/RTL/keyboard/engine tests, screenshots and hosted
-bundle/API parity: **NOT RUN in this preflight**. There is no implemented
-runtime change to certify and G3 forbids starting the lane.
+The G3 canonical record still has seven mandatory categories NOT_RUN. Existing
+workflow success, prior synthetic/manual runs and artifact metadata do not
+replace missing independent Stripe operations, approved policy or inspected
+browser evidence. The earlier #196 preflight is historical and not counted as
+an execution in this session.
 
-Final-PR CI and official CodeQL are independently required. They must reference
-the exact final documentation head. A green documentation PR cannot certify
-R34, create a frozen G3 source, or authorize merge/deployment/live activation.
-Missing/pending/failed/cancelled/skipped checks are not counted as successful.
+## Evidence not executed or accepted
 
-No mandatory test was removed, weakened or replaced. No test was added merely
-to mirror the new documentation. Failures, exit codes, null acceptance counts
-and non-secret configuration fingerprints are retained in
-[evidence/preflight.json](evidence/preflight.json).
+No R34 runtime changes are authorized, so application lint/typecheck/unit/build
+beyond the install's contracts build, real PostgreSQL/Redis/storage/ClamAV,
+independent payment/refund/statement operations, actual Admin actions,
+AR/EN/RTL/mobile/zoom/keyboard browser journeys, screenshots and hosted checks
+are **NOT_RUN in this session**. No credentials or private .env were read.
+
+The final documentation PR stays Draft. Its own configured CI and official
+CodeQL must be checked on its exact final head; prerequisites' green checks
+cannot certify a new head. No functional SOURCE_VERIFIED, SANDBOX_ACCEPTED,
+HOSTED_ACCEPTED, RELEASE_ACCEPTED, merge or deployment is asserted.

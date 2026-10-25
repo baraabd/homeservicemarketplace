@@ -1,11 +1,12 @@
-# R34 — Preflight documentation ownership
+# R34 — Documentation ownership after G3 source integration
 
 Status: **PREFLIGHT ONLY. PRODUCT IMPLEMENTATION HAS NOT STARTED.**
 
-The current user request authorizes repository inspection and these sprint
-evidence deliverables. Session `wave4-b5653dea7992` is the single writer of
-this finite documentation scope. This is not coordinator approval of a runtime
-allowlist, an active Wave 4 assignment, or permission to bypass G3.
+The user's 2026-10-25 R34 request authorizes inspection and the sprint evidence
+deliverables. Session `r34-d7bae9e98d6c` is the single writer for exactly these
+seven documentation files. The earlier documentation session ended when PR
+#196 was merged; this record replaces that expired documentation assignment.
+It grants no runtime ownership, G3 acceptance or Wave 4 start authorization.
 
 - `docs/production-readiness/r34/OWNERSHIP.md`
 - `docs/production-readiness/r34/IMPLEMENTATION.md`
@@ -15,23 +16,35 @@ allowlist, an active Wave 4 assignment, or permission to bypass G3.
 - `docs/production-readiness/r34/evidence/preflight.json`
 - `docs/production-readiness/r34/shared-change-requests/CR-001-integration.md`
 
-- Worktree: `/workspace/scratch/b5653dea7992/r34`.
-- Branch: `feat/r34-reconciliation-settlement`.
-- Observed documentation parent: `73a4a64a77844db7815466f47d8afdefb0b35c2f`.
-- Observed tree: `04fbecf5ff028f95136cdddca5aeb7bb7451e09f`.
-- Approved G3 execution base: **absent**. The observation is not a replacement.
-- Before edits: correct dedicated branch, clean worktree, no stashes.
-- Delivery mode: A, bounded inspection and documentation.
+## Observed checkout
 
-The conditional source/test paths remain in
-`../post-r18/waves/wave-04.plan.json`; its
+- Worktree: `/workspace/scratch/d7bae9e98d6c/homeservicemarketplace`.
+- Assigned branch: `feat/r34-reconciliation-settlement`.
+- Existing remote branch head: `d634bfe66408c0f990e33713b7b0a83a983da51f`.
+- Documentation inspection base: `c9de08d07b12871db8801fb9662b14de83a2c391`.
+- Inspection tree: `67136183b8a81de9773c2c6a3831441c320729c0`.
+- Approved G3 execution base: **absent**. The inspection base is not a substitute.
+- Delivery mode: A, bounded source inspection and documentation correction.
+
+The fresh isolated assigned branch was fast-forwarded to the already merged
+`develop` source. No merge commit, rebase, unmerged peer import, stash change,
+merge to `develop`, or deployment was performed. The worktree was clean and
+the stash list empty before these seven documentation edits.
+
+## Effective boundary
+
+The 24-file conditional R34 implementation plan remains in
+`../post-r18/waves/wave-04.plan.json`. Its
 `CONDITIONAL_AFTER_VERIFIED_G3_PUBLICATION_AND_SESSION_ASSIGNMENT` condition
-is unsatisfied. No runtime, shared schema/migration, package/lockfile,
-contracts, route, CI, central registry or gate record is edited. The sibling
-sprint has a different branch/worktree and disjoint documentation files.
+is unsatisfied: G3 is BLOCKED, frozen source is null and R34 has no active
+session or runtime lease. The new documentation session does not activate it.
 
-No implementation lease is claimed. The documentation assignment ends on PR
-closure or explicit reassignment. Proposed shared changes are requests only;
-the coordinator must approve/apply them in a serialized stage. No merge,
-deployment, live rail, external spend, account grant or independent sandbox
-operation is performed or authorized by this record.
+No runtime, test source, schema/migration, dependency/lockfile, shared contract,
+route, workflow, central registry or gate record is changed. Read-only review
+agents have no write assignment. The remaining exact shared-file requests are
+in CR-001 and require serialized coordinator ownership after G3 publication.
+
+This documentation assignment ends on this PR's closure or explicit reassignment.
+The PR remains Draft while the R34 start gate and functional evidence are missing.
+No external sandbox operation, financial policy, live rail, resource spending,
+account grant, merge or deployment is authorized by this record.
