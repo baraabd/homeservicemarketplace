@@ -1,16 +1,28 @@
 {
   "schemaVersion": 1,
   "kind": "PREFLIGHT_OBSERVATION_NOT_ACCEPTANCE",
-  "recordedDate": "2026-10-24",
+  "recordedDate": "2026-10-25",
   "repository": "baraabd/homeservicemarketplace",
   "sprint": "R34",
   "branch": "feat/r34-reconciliation-settlement",
   "source": {
-    "observedSha": "73a4a64a77844db7815466f47d8afdefb0b35c2f",
-    "observedTreeSha": "04fbecf5ff028f95136cdddca5aeb7bb7451e09f",
+    "observedSha": "c9de08d07b12871db8801fb9662b14de83a2c391",
+    "observedTreeSha": "67136183b8a81de9773c2c6a3831441c320729c0",
     "approvedG3BaseSha": null,
     "approvedG3TreeSha": null,
-    "finalDocumentationIdentity": "PR metadata after publication; no self-referential hash"
+    "finalDocumentationIdentity": "PR metadata after publication; no self-referential hash",
+    "previousObservation": {
+      "sourceSha": "73a4a64a77844db7815466f47d8afdefb0b35c2f",
+      "treeSha": "04fbecf5ff028f95136cdddca5aeb7bb7451e09f",
+      "recordCommitSha": "d634bfe66408c0f990e33713b7b0a83a983da51f",
+      "path": "docs/production-readiness/r34/evidence/preflight.json",
+      "supersededClaims": [
+        "Stripe runtime/purchase absent",
+        "refund implementations unavailable",
+        "durable reconciliation schema missing",
+        "resolve/reopen action vocabulary missing"
+      ]
+    }
   },
   "state": {
     "implementation": "NOT_STARTED",
@@ -21,6 +33,54 @@
     "sandboxAccepted": false,
     "hostedAccepted": false,
     "releaseAccepted": false
+  },
+  "gateObservation": {
+    "decision": "BLOCKED",
+    "candidateSourceSha": null,
+    "candidateTreeSha": null,
+    "mandatoryEvidence": [
+      {
+        "id": "combined-wave3-checks",
+        "status": "NOT_RUN"
+      },
+      {
+        "id": "r29-real-stripe-sandbox",
+        "status": "NOT_RUN"
+      },
+      {
+        "id": "r30-real-manual-review",
+        "status": "NOT_RUN"
+      },
+      {
+        "id": "r31-atomic-subscription-entitlements",
+        "status": "NOT_RUN"
+      },
+      {
+        "id": "r32-refund-ambiguity-recovery",
+        "status": "NOT_RUN"
+      },
+      {
+        "id": "r33-financial-operations",
+        "status": "NOT_RUN"
+      },
+      {
+        "id": "integrated-confirmation-activation-refund-outbox",
+        "status": "NOT_RUN"
+      }
+    ],
+    "publication": {
+      "branch": "coord/g3-wave4-start-gate",
+      "state": "NOT_PREPARED",
+      "acceptanceRecordCommitSha": null,
+      "verifiedMerge": false
+    },
+    "waveStatus": "BLOCKED",
+    "waveBaseSha": null,
+    "startableLanes": [],
+    "r34Status": "BLOCKED",
+    "r34FrozenBaseSha": null,
+    "r34SessionAssignment": null,
+    "r34Leases": []
   },
   "ownership": {
     "documentationFiles": [
@@ -60,26 +120,35 @@
       "docs/production-readiness/r34/OWNERSHIP.md",
       "docs/production-readiness/r34/shared-change-requests/CR-001-integration.md"
     ],
-    "sharedWrites": []
+    "sharedWrites": [],
+    "sessionId": "r34-d7bae9e98d6c",
+    "worktree": "/workspace/scratch/d7bae9e98d6c/homeservicemarketplace"
   },
   "contracts": {
     "money": "hsm.money.v1",
     "finance": "hsm.finance-operations.v1",
     "changed": false,
     "schemaChanged": false,
-    "migrationAdded": false
+    "migrationAdded": false,
+    "reconciliation": "hsm.reconciliation.v2",
+    "observedMigration": "20261024120000_g3_financial_integration"
   },
   "fingerprints": {
     "package.json": "5b1918cfd23189939190a6ded41c41d4f445750c79617f8c8515ca8b2fe3dafe",
-    "apps/api/package.json": "a79871592a5a072c092c88f17306fe91beccee3300b09023254cbb0d9ba10043",
-    "pnpm-lock.yaml": "bb7d02ac93f0b53fc4433779c179b6e533efe09a3faa0565a2f525c8f23a695a",
-    "packages/database/prisma/schema.prisma": "8d408b8219f8aa8c1ededc1d50cd8261adddc07f716261c2ce8432b52e946515",
+    "apps/api/package.json": "4fc9a4b11f880245b341ffef8087db5daff48393e331a2f8e7a7d72f635949a1",
+    "pnpm-lock.yaml": "0fbc9017b26168e7b3b150d16f9721cd5f044e900e22285954d93050ac83074e",
+    "packages/database/prisma/schema.prisma": "dcd2dd31d00deb79066e69770cd6b347c9ad670813267a8ee968edb6fba3897a",
     "packages/contracts/src/money/index.ts": "42ceba1440bafe23a2f5be29275c5fe220808698ce5b9c1ad2ce47bb62728d0a",
-    "packages/contracts/src/money/financial-operations.ts": "7d5db17246bd794ed73b2127988fde119f25c997b484362c96ed41b49f4cef69",
-    "apps/api/src/modules/money/money.module.ts": "48af19edc09ce2e0526750ab7706b9b0deabc9ee5d8173f815739b7986b9e696",
+    "packages/contracts/src/money/financial-operations.ts": "cdd76661bc085b35151ad122a3fd892a00b9e5b35ea96f79fd6fc972e7175c71",
+    "apps/api/src/modules/money/money.module.ts": "46aabdc446a65fb2fb98efab7631c2f766fec08afe6a2dd3b5c414ac3f62e5e0",
     "apps/api/src/modules/money/reporting/financial-reporting.module.ts": "3b5c8aea938950ad7ec0c8a378fd714b0e1cf56898b63b03d20c62d202e21229",
-    "docs/production-readiness/post-r18/gates/g3/SOURCE_MANIFEST.json": "1a6b9ff7c3f25166a12698a922b36cb8698ac5d08df8ecf0df9fe8473fedc642",
-    "docs/production-readiness/post-r18/waves/wave-04.plan.json": "4ec343c977988fff06c6f32fcf3a022cb13e10c1766565fb4712c46eba04f9b7"
+    "docs/production-readiness/post-r18/gates/g3/SOURCE_MANIFEST.json": "97e03bff749d09f7d9a186db058cfc57835469a1041ff4100e086c1221ab110d",
+    "docs/production-readiness/post-r18/waves/wave-04.plan.json": "4ec343c977988fff06c6f32fcf3a022cb13e10c1766565fb4712c46eba04f9b7",
+    "apps/web/package.json": "d7cc575b382eaabfb1cf07a2eec80eb246872498ca716fd2be95a0562e53860b",
+    "apps/api/src/modules/money/adapters/stripe/stripe-sdk.ts": "9edf5e29663da0596dbf648ee5d83708b3ba423f3ca47820f4c8b4e6849a0547",
+    "apps/api/src/modules/money/runtime/approved-refund-policy.source.ts": "3b1a8bf2dde34f3c95b226a04d0a77bff35d2f5367ca9f71e551bd6881843568",
+    "apps/api/src/modules/money/runtime/approved-refund.participant.ts": "39e72e20696e4198a9fc4d50f9376e5367d649b22e3cdb575535d782bbefd551",
+    "packages/database/prisma/migrations/20261024120000_g3_financial_integration/migration.sql": "cabcfa53f0f52fc3b71cf24ac03eee7f8a186c62531f76c178468a1329a33675"
   },
   "nonSecretConfiguration": {
     "node": "24.21.0",
@@ -99,6 +168,15 @@
   "configurationSha256": "d4d8c3cc455b2d72e59a515d5d981a9b01382624856ae7dc0ca9f9552a66d9e6",
   "commands": [
     {
+      "name": "runtime-pin",
+      "argv": ["node", "scripts/runtime/toolchain.cjs"],
+      "exitCode": 0,
+      "durationSeconds": 0.041,
+      "logSha256": "c8e7121a4a9ba38c434278ad1f04a825ad2bfa92d783cdb849c07c3565713416",
+      "summary": "PASS exact Node 24.21.0 and runtime declarations"
+    },
+    {
+      "name": "governance-tests",
       "argv": [
         "node",
         "--test",
@@ -117,61 +195,137 @@
         ".github/scripts/wave-gate.test.mjs"
       ],
       "exitCode": 0,
-      "summary": "\u2714 malformed G3 nested records fail closed without throwing (1.000522ms)\n\u2139 tests 500\n\u2139 suites 0\n\u2139 pass 500\n\u2139 fail 0\n\u2139 cancelled 0\n\u2139 skipped 0\n\u2139 todo 0\n\u2139 duration_ms 3532.670914",
-      "logSha256": "d06903ccbae30fc9f85c7ba2a65e8af09c1568fee62421dcb2f6061101204cc3"
+      "durationSeconds": 2.962,
+      "logSha256": "fe725948939075b3fbdda1c46413c58015d29ced5f47dc13af647ec4e0b10859",
+      "summary": "✔ G3 refuses dropped R16/R18 hold (1.888068ms)\n✔ G3 refuses premature R38 final acceptance (1.512644ms)\n✔ G3 refuses missing R38 peer join (1.60346ms)\n✔ malformed G3 nested records fail closed without throwing (1.372894ms)\nℹ tests 500\nℹ suites 0\nℹ pass 500\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 2907.764932"
     },
     {
+      "name": "g2-check",
       "argv": ["node", ".github/scripts/g2-record.mjs", "--check"],
       "exitCode": 0,
-      "summary": "PASS G2 record consistency; this does not authenticate remote evidence or grant approval.\nRecorded G2: ACCEPTED; Wave 3: READY_TO_START",
-      "logSha256": "a51c84216cc443f486bfcc5be1936a1458bd60bdcbefc361dbb1ed90d6999426"
+      "durationSeconds": 0.05,
+      "logSha256": "a51c84216cc443f486bfcc5be1936a1458bd60bdcbefc361dbb1ed90d6999426",
+      "summary": "PASS G2 record consistency; this does not authenticate remote evidence or grant approval.\nRecorded G2: ACCEPTED; Wave 3: READY_TO_START"
     },
     {
+      "name": "g3-check",
       "argv": ["node", ".github/scripts/g3-record.mjs", "--check"],
       "exitCode": 0,
-      "summary": "PASS G3 record consistency; this does not authenticate evidence or grant approval.\nRecorded G3: BLOCKED; Wave 4: BLOCKED; R38 final G4 join: BLOCKED",
-      "logSha256": "e41517f403d8c38df98e9d80166b9b5fc41bc9d892f65e866e393c8c90da6530"
+      "durationSeconds": 0.058,
+      "logSha256": "e41517f403d8c38df98e9d80166b9b5fc41bc9d892f65e866e393c8c90da6530",
+      "summary": "PASS G3 record consistency; this does not authenticate evidence or grant approval.\nRecorded G3: BLOCKED; Wave 4: BLOCKED; R38 final G4 join: BLOCKED"
     },
     {
+      "name": "r34-ready",
       "argv": ["node", ".github/scripts/g3-record.mjs", "--ready", "R34"],
       "exitCode": 1,
-      "summary": "FAIL R34 is not authorized to start",
-      "logSha256": "ae06afa70850adbe67bf4f81aaba08df6acb505b67e0b1e241e8aaa2d8ba38a1"
+      "durationSeconds": 0.06,
+      "logSha256": "ae06afa70850adbe67bf4f81aaba08df6acb505b67e0b1e241e8aaa2d8ba38a1",
+      "summary": "FAIL R34 is not authorized to start"
     },
     {
-      "argv": ["node", ".github/scripts/g3-record.mjs", "--ready", "R35"],
-      "exitCode": 1,
-      "summary": "FAIL R35 is not authorized to start",
-      "logSha256": "56119f674a902c078114665b49a110738b8524af66a1d899b7b981eb17bb248d"
-    },
-    {
+      "name": "registry",
       "argv": ["node", ".github/scripts/sprint-registry.mjs"],
       "exitCode": 0,
-      "summary": "PASS post-R18 sprint registry; this is not sprint acceptance",
-      "logSha256": "64d45f1bcdbfb312a9402ccf548d04c3c9ff88cbd6e176301a67eb2ec076f07c"
+      "durationSeconds": 0.068,
+      "logSha256": "64d45f1bcdbfb312a9402ccf548d04c3c9ff88cbd6e176301a67eb2ec076f07c",
+      "summary": "PASS post-R18 sprint registry; this is not sprint acceptance"
     },
     {
+      "name": "production-governance",
       "argv": ["node", ".github/scripts/production-governance.mjs"],
       "exitCode": 0,
-      "summary": "PASS repository governance files\nGitHub protection is NOT verified by this local check.",
-      "logSha256": "7da89fb67eeee2bd4af5d93cc785de5265ada0712c9fed580cc20a44a8095b21"
+      "durationSeconds": 0.029,
+      "logSha256": "7da89fb67eeee2bd4af5d93cc785de5265ada0712c9fed580cc20a44a8095b21",
+      "summary": "PASS repository governance files\nGitHub protection is NOT verified by this local check."
+    },
+    {
+      "name": "external-evidence-runner-tests",
+      "argv": ["node", "--test", "scripts/production/stripe-sandbox/verify-external.test.cjs"],
+      "exitCode": 0,
+      "durationSeconds": 0.179,
+      "logSha256": "bd7d583d088adf62e34a300bcb524a90b95af85ad799825934cb174c88f3e903",
+      "summary": "✔ refuses an outside pathname whose parent resolves inside the source (2.0823ms)\n✔ writes through the reserved descriptor when its pathname is replaced by a symlink (2.247529ms)\n✔ closes the reserved descriptor after blocked preflight (2.722162ms)\n✔ closes the reserved descriptor after a report write failure (1.571142ms)\nℹ tests 49\nℹ suites 0\nℹ pass 49\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 147.846662"
     }
   ],
   "testCounts": {
-    "scope": "one existing governance run shared by both preflight references",
-    "passed": 500,
-    "failed": 0,
-    "cancelled": 0,
-    "skipped": 0,
-    "todo": 0,
+    "scope": "Existing governance and external-runner unit suites; no R34 runtime evidence",
+    "governance": {
+      "passed": 500,
+      "failed": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    "externalRunnerUnit": {
+      "passed": 49,
+      "failed": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0
+    },
     "productScenarioCounts": null
   },
+  "initialRestrictedRun": {
+    "status": "SUPERSEDED_BY_UNCHANGED_COMMANDS_WITH_APPROVED_SUBPROCESS_PERMISSION",
+    "cause": "spawnSync EPERM in restricted execution environment",
+    "commands": [
+      {
+        "name": "governance-tests",
+        "argv": [
+          "node",
+          "--test",
+          ".github/scripts/g1-runtime-evidence.test.mjs",
+          ".github/scripts/g2-current-record.test.mjs",
+          ".github/scripts/g2-record.test.mjs",
+          ".github/scripts/g3-record.test.mjs",
+          ".github/scripts/merge-integrity.test.mjs",
+          ".github/scripts/pr-acceptance.test.mjs",
+          ".github/scripts/production-governance.test.mjs",
+          ".github/scripts/r27-acceptance.test.mjs",
+          ".github/scripts/r27-dependency-controls.test.mjs",
+          ".github/scripts/r27-workflow.test.mjs",
+          ".github/scripts/release-baseline.test.mjs",
+          ".github/scripts/sprint-registry.test.mjs",
+          ".github/scripts/wave-gate.test.mjs"
+        ],
+        "exitCode": 1,
+        "durationSeconds": 2.305,
+        "logSha256": "9fa9a38f9c5f49dd01c8d69f56105f47cba7c8cad79edd47418e7afb05435bb7",
+        "summary": "\ntest at .github/scripts/g3-record.test.mjs:1:1\n✖ .github/scripts/g3-record.test.mjs (2235.018023ms)\n  'test failed'\n\ntest at .github/scripts/merge-integrity.test.mjs:1:1\n✖ .github/scripts/merge-integrity.test.mjs (305.381994ms)\n  'test failed'\n\ntest at .github/scripts/production-governance.test.mjs:1:1\n✖ .github/scripts/production-governance.test.mjs (286.743277ms)\n  'test failed'"
+      },
+      {
+        "name": "external-evidence-runner-tests",
+        "argv": ["node", "--test", "scripts/production/stripe-sandbox/verify-external.test.cjs"],
+        "exitCode": 0,
+        "durationSeconds": 0.164,
+        "logSha256": "304ad8f82a705f35035c5bf294981036083c827d9510ccede2eb9c2d03128dd6",
+        "summary": "✔ scripts/production/stripe-sandbox/verify-external.test.cjs (125.935745ms)\nℹ tests 1\nℹ suites 0\nℹ pass 1\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 134.233903"
+      }
+    ],
+    "diagnosticRuns": [
+      {
+        "command": "node .github/scripts/g3-record.test.mjs",
+        "exitCode": 1,
+        "passed": 34,
+        "failed": 1,
+        "cause": "spawnSync node EPERM"
+      },
+      {
+        "command": "node --test --test-reporter=tap --test-isolation=none .github/scripts/merge-integrity.test.mjs",
+        "exitCode": 1,
+        "passed": 15,
+        "failed": 2,
+        "cause": "spawnSync bash EPERM"
+      }
+    ]
+  },
   "frozenInstall": {
-    "command": "pnpm install --frozen-lockfile --store-dir /workspace/scratch/b5653dea7992/wave4-pnpm-store --reporter=append-only",
+    "command": "pnpm install --frozen-lockfile --store-dir /workspace/scratch/d7bae9e98d6c/r34-pnpm-store --reporter=append-only",
     "exitCode": 0,
     "independentNodeModules": true,
     "lockfileUnchanged": true,
-    "logSha256": "246eb6ab101422e77063e652b9260fb3ed01bd9ab4b8845a3c64eaa231d83763",
+    "logSha256": "0989097fd007e76e19bac7f41f0d65cdf71964850ac699043dc52f77e725988f",
     "warnings": [
       "Existing ignored build scripts: @parcel/watcher@2.6.0 and unrs-resolver@1.12.2; no approval setting changed"
     ]
@@ -238,14 +392,23 @@
       "ancestryExitCode": 0
     }
   ],
+  "mergedIntegration": {
+    "pr": 198,
+    "url": "https://github.com/baraabd/homeservicemarketplace/pull/198",
+    "headSha": "07dec92cb62f591234542ae1dff909c2c9f3763a",
+    "mergeCommitSha": "c9de08d07b12871db8801fb9662b14de83a2c391",
+    "mergedAt": "2026-10-25T00:26:28Z",
+    "sourceIntegrated": true,
+    "gateAccepted": false
+  },
   "findings": [
-    "G3 BLOCKED with null frozen source/tree and no active lane assignment",
-    "R29 source is now merged; historical all-paths-absent wording is stale",
-    "Stripe SDK dependency/parser/ingress/router/scheduler and purchase surface remain unintegrated",
-    "Refund policy and confirmation consequences remain unavailable",
-    "Independent sandbox and combined G3 evidence are absent from the canonical gate",
-    "Frozen exception schema lacks durable run/cursor/evidence/resolution history",
-    "R33 action vocabulary is ACKNOWLEDGE/REQUEST_RECHECK only; status provider is unavailable"
+    "G3 remains BLOCKED with null frozen source/tree and no active R34 assignment",
+    "PR #198 is merged; Stripe runtime/purchase, concrete refund participants, durable reconciliation schema and V2 action/provenance types exist",
+    "Approved immutable commercial/refund inputs and independent sandbox acceptance are still required",
+    "Reconciliation module, durable worker and independent statement reader remain absent",
+    "R33 still binds unavailable run status; current detail response has no V2 provenance and allowedActions is empty",
+    "Reporting controller and web client remain read-only; no executable resolve/reopen flow",
+    "Existing Stripe SDK boundary requires an approved read-only independent statement extension"
   ],
   "acceptanceArtifacts": {
     "runIds": [],
@@ -261,5 +424,478 @@
     "liveMoney": false,
     "externalSpend": false,
     "accountGrants": false
+  },
+  "remotePrerequisiteEvidence": {
+    "sourceSha": "c9de08d07b12871db8801fb9662b14de83a2c391",
+    "observedDate": "2026-10-25",
+    "scope": "MERGED_PREREQUISITE_SOURCE_NOT_FINAL_DOCUMENTATION_HEAD_OR_SANDBOX_ACCEPTANCE",
+    "checkRuns": {
+      "total": 32,
+      "success": 32,
+      "inventory": [
+        {
+          "id": 121033480042,
+          "name": "CI gate",
+          "headSha": "c9de08d07b12871db8801fb9662b14de83a2c391",
+          "status": "completed",
+          "conclusion": "success",
+          "app": "github-actions",
+          "annotationsCount": 1,
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/40146699753/job/121033480042"
+        },
+        {
+          "id": 121033463543,
+          "name": "R18 functional completion acceptance",
+          "headSha": "c9de08d07b12871db8801fb9662b14de83a2c391",
+          "status": "completed",
+          "conclusion": "success",
+          "app": "github-actions",
+          "annotationsCount": 2,
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/40146699753/job/121033463543"
+        },
+        {
+          "id": 121031162719,
+          "name": "Phase 5 real-route and persistence evidence",
+          "headSha": "c9de08d07b12871db8801fb9662b14de83a2c391",
+          "status": "completed",
+          "conclusion": "success",
+          "app": "github-actions",
+          "annotationsCount": 18,
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/40146699753/job/121031162719"
+        },
+        {
+          "id": 121030458760,
+          "name": "Docker cold build + production boot",
+          "headSha": "c9de08d07b12871db8801fb9662b14de83a2c391",
+          "status": "completed",
+          "conclusion": "success",
+          "app": "github-actions",
+          "annotationsCount": 1,
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/40146699753/job/121030458760"
+        },
+        {
+          "id": 121030458661,
+          "name": "Dispute journey / real HTTP, browser, Postgres and ClamAV",
+          "headSha": "c9de08d07b12871db8801fb9662b14de83a2c391",
+          "status": "completed",
+          "conclusion": "success",
+          "app": "github-actions",
+          "annotationsCount": 1,
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/40146699753/job/121030458661"
+        },
+        {
+          "id": 121030458655,
+          "name": "R30 manual payments / real services and browser",
+          "headSha": "c9de08d07b12871db8801fb9662b14de83a2c391",
+          "status": "completed",
+          "conclusion": "success",
+          "app": "github-actions",
+          "annotationsCount": 1,
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/40146699753/job/121030458655"
+        },
+        {
+          "id": 121030458633,
+          "name": "R25 real replicas and recovery",
+          "headSha": "c9de08d07b12871db8801fb9662b14de83a2c391",
+          "status": "completed",
+          "conclusion": "success",
+          "app": "github-actions",
+          "annotationsCount": 1,
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/40146699753/job/121030458633"
+        },
+        {
+          "id": 121030458626,
+          "name": "Admin review real-route and persistence evidence",
+          "headSha": "c9de08d07b12871db8801fb9662b14de83a2c391",
+          "status": "completed",
+          "conclusion": "success",
+          "app": "github-actions",
+          "annotationsCount": 2,
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/40146699753/job/121030458626"
+        },
+        {
+          "id": 121030458621,
+          "name": "Dependency, secret, and container scans",
+          "headSha": "c9de08d07b12871db8801fb9662b14de83a2c391",
+          "status": "completed",
+          "conclusion": "success",
+          "app": "github-actions",
+          "annotationsCount": 2,
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/40146699753/job/121030458621"
+        },
+        {
+          "id": 121030458608,
+          "name": "Compose stack smoke (migrate / boot / readiness / media / OTP)",
+          "headSha": "c9de08d07b12871db8801fb9662b14de83a2c391",
+          "status": "completed",
+          "conclusion": "success",
+          "app": "github-actions",
+          "annotationsCount": 1,
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/40146699753/job/121030458608"
+        },
+        {
+          "id": 121030458596,
+          "name": "Evidence retention / real Postgres, S3 versions and ClamAV",
+          "headSha": "c9de08d07b12871db8801fb9662b14de83a2c391",
+          "status": "completed",
+          "conclusion": "success",
+          "app": "github-actions",
+          "annotationsCount": 1,
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/40146699753/job/121030458596"
+        },
+        {
+          "id": 121030458589,
+          "name": "R31 subscriptions real API and browser",
+          "headSha": "c9de08d07b12871db8801fb9662b14de83a2c391",
+          "status": "completed",
+          "conclusion": "success",
+          "app": "github-actions",
+          "annotationsCount": 1,
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/40146699753/job/121030458589"
+        },
+        {
+          "id": 121030458584,
+          "name": "Auth cookie contract (real browser + real API)",
+          "headSha": "c9de08d07b12871db8801fb9662b14de83a2c391",
+          "status": "completed",
+          "conclusion": "success",
+          "app": "github-actions",
+          "annotationsCount": 2,
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/40146699753/job/121030458584"
+        },
+        {
+          "id": 121030458561,
+          "name": "Phase 5 visual, responsive and accessibility gate",
+          "headSha": "c9de08d07b12871db8801fb9662b14de83a2c391",
+          "status": "completed",
+          "conclusion": "success",
+          "app": "github-actions",
+          "annotationsCount": 2,
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/40146699753/job/121030458561"
+        },
+        {
+          "id": 121030458548,
+          "name": "Browser E2E (Playwright / Chromium)",
+          "headSha": "c9de08d07b12871db8801fb9662b14de83a2c391",
+          "status": "completed",
+          "conclusion": "success",
+          "app": "github-actions",
+          "annotationsCount": 2,
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/40146699753/job/121030458548"
+        },
+        {
+          "id": 121030458530,
+          "name": "Integration & E2E (real Postgres / Redis)",
+          "headSha": "c9de08d07b12871db8801fb9662b14de83a2c391",
+          "status": "completed",
+          "conclusion": "success",
+          "app": "github-actions",
+          "annotationsCount": 1,
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/40146699753/job/121030458530"
+        },
+        {
+          "id": 121030037676,
+          "name": "Staging boundary gate",
+          "headSha": "c9de08d07b12871db8801fb9662b14de83a2c391",
+          "status": "completed",
+          "conclusion": "success",
+          "app": "github-actions",
+          "annotationsCount": 1,
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/40146699770/job/121030037676"
+        },
+        {
+          "id": 121029793449,
+          "name": "Verify / Verify API (lint / typecheck / unit / build)",
+          "headSha": "c9de08d07b12871db8801fb9662b14de83a2c391",
+          "status": "completed",
+          "conclusion": "success",
+          "app": "github-actions",
+          "annotationsCount": 1,
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/40146699753/job/121029793449"
+        },
+        {
+          "id": 121029650699,
+          "name": "Verify / Verify Database",
+          "headSha": "c9de08d07b12871db8801fb9662b14de83a2c391",
+          "status": "completed",
+          "conclusion": "success",
+          "app": "github-actions",
+          "annotationsCount": 1,
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/40146699753/job/121029650699"
+        },
+        {
+          "id": 121029650643,
+          "name": "Verify / Verify Web (lint / typecheck / unit / build)",
+          "headSha": "c9de08d07b12871db8801fb9662b14de83a2c391",
+          "status": "completed",
+          "conclusion": "success",
+          "app": "github-actions",
+          "annotationsCount": 11,
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/40146699753/job/121029650643"
+        },
+        {
+          "id": 121029562107,
+          "name": "Verify / Verify Contracts",
+          "headSha": "c9de08d07b12871db8801fb9662b14de83a2c391",
+          "status": "completed",
+          "conclusion": "success",
+          "app": "github-actions",
+          "annotationsCount": 1,
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/40146699753/job/121029562107"
+        },
+        {
+          "id": 121029472018,
+          "name": "Staging image boundaries",
+          "headSha": "c9de08d07b12871db8801fb9662b14de83a2c391",
+          "status": "completed",
+          "conclusion": "success",
+          "app": "github-actions",
+          "annotationsCount": 2,
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/40146699770/job/121029472018"
+        },
+        {
+          "id": 121029472006,
+          "name": "Verify / Install & lockfile integrity",
+          "headSha": "c9de08d07b12871db8801fb9662b14de83a2c391",
+          "status": "completed",
+          "conclusion": "success",
+          "app": "github-actions",
+          "annotationsCount": 1,
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/40146699753/job/121029472006"
+        },
+        {
+          "id": 121029471781,
+          "name": "Real Seeker Provider Admin startup",
+          "headSha": "c9de08d07b12871db8801fb9662b14de83a2c391",
+          "status": "completed",
+          "conclusion": "success",
+          "app": "github-actions",
+          "annotationsCount": 1,
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/40146699754/job/121029471781"
+        },
+        {
+          "id": 121029471727,
+          "name": "Staging release controls (windows-latest)",
+          "headSha": "c9de08d07b12871db8801fb9662b14de83a2c391",
+          "status": "completed",
+          "conclusion": "success",
+          "app": "github-actions",
+          "annotationsCount": 1,
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/40146699770/job/121029471727"
+        },
+        {
+          "id": 121029471718,
+          "name": "R04 real browser, SMTP and Postgres",
+          "headSha": "c9de08d07b12871db8801fb9662b14de83a2c391",
+          "status": "completed",
+          "conclusion": "success",
+          "app": "github-actions",
+          "annotationsCount": 2,
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/40146699743/job/121029471718"
+        },
+        {
+          "id": 121029471708,
+          "name": "Staging release controls (ubuntu-latest)",
+          "headSha": "c9de08d07b12871db8801fb9662b14de83a2c391",
+          "status": "completed",
+          "conclusion": "success",
+          "app": "github-actions",
+          "annotationsCount": 2,
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/40146699770/job/121029471708"
+        },
+        {
+          "id": 121029471647,
+          "name": "Analyze JavaScript/TypeScript",
+          "headSha": "c9de08d07b12871db8801fb9662b14de83a2c391",
+          "status": "completed",
+          "conclusion": "success",
+          "app": "github-actions",
+          "annotationsCount": 1,
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/40146699702/job/121029471647"
+        },
+        {
+          "id": 121029471627,
+          "name": "Dev browser startup (windows-latest)",
+          "headSha": "c9de08d07b12871db8801fb9662b14de83a2c391",
+          "status": "completed",
+          "conclusion": "success",
+          "app": "github-actions",
+          "annotationsCount": 0,
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/40146699723/job/121029471627"
+        },
+        {
+          "id": 121029471512,
+          "name": "R26 cookies, authorization and enforced CSP",
+          "headSha": "c9de08d07b12871db8801fb9662b14de83a2c391",
+          "status": "completed",
+          "conclusion": "success",
+          "app": "github-actions",
+          "annotationsCount": 1,
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/40146699730/job/121029471512"
+        },
+        {
+          "id": 121029471488,
+          "name": "Dev browser startup (ubuntu-latest)",
+          "headSha": "c9de08d07b12871db8801fb9662b14de83a2c391",
+          "status": "completed",
+          "conclusion": "success",
+          "app": "github-actions",
+          "annotationsCount": 1,
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/40146699723/job/121029471488"
+        },
+        {
+          "id": 121029471452,
+          "name": "Production governance",
+          "headSha": "c9de08d07b12871db8801fb9662b14de83a2c391",
+          "status": "completed",
+          "conclusion": "success",
+          "app": "github-actions",
+          "annotationsCount": 2,
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/40146699701/job/121029471452"
+        }
+      ]
+    },
+    "workflowRuns": {
+      "total": 8,
+      "success": 8,
+      "inventory": [
+        {
+          "id": 40146699754,
+          "name": "Real application startup performance",
+          "headSha": "c9de08d07b12871db8801fb9662b14de83a2c391",
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/40146699754"
+        },
+        {
+          "id": 40146699723,
+          "name": "Web development startup",
+          "headSha": "c9de08d07b12871db8801fb9662b14de83a2c391",
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/40146699723"
+        },
+        {
+          "id": 40146699701,
+          "name": "Production governance",
+          "headSha": "c9de08d07b12871db8801fb9662b14de83a2c391",
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/40146699701"
+        },
+        {
+          "id": 40146699743,
+          "name": "Authentication lifecycle acceptance",
+          "headSha": "c9de08d07b12871db8801fb9662b14de83a2c391",
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/40146699743"
+        },
+        {
+          "id": 40146699730,
+          "name": "R26 application security acceptance",
+          "headSha": "c9de08d07b12871db8801fb9662b14de83a2c391",
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/40146699730"
+        },
+        {
+          "id": 40146699770,
+          "name": "Staging release boundary",
+          "headSha": "c9de08d07b12871db8801fb9662b14de83a2c391",
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/40146699770"
+        },
+        {
+          "id": 40146699702,
+          "name": "CodeQL",
+          "headSha": "c9de08d07b12871db8801fb9662b14de83a2c391",
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/40146699702"
+        },
+        {
+          "id": 40146699753,
+          "name": "CI",
+          "headSha": "c9de08d07b12871db8801fb9662b14de83a2c391",
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/baraabd/homeservicemarketplace/actions/runs/40146699753"
+        }
+      ]
+    },
+    "checkSuites": [
+      {
+        "id": 108815569875,
+        "headSha": "c9de08d07b12871db8801fb9662b14de83a2c391",
+        "status": "queued",
+        "conclusion": null,
+        "app": "vercel"
+      },
+      {
+        "id": 108815571999,
+        "headSha": "c9de08d07b12871db8801fb9662b14de83a2c391",
+        "status": "completed",
+        "conclusion": "success",
+        "app": "github-actions"
+      },
+      {
+        "id": 108815572003,
+        "headSha": "c9de08d07b12871db8801fb9662b14de83a2c391",
+        "status": "completed",
+        "conclusion": "success",
+        "app": "github-actions"
+      },
+      {
+        "id": 108815572040,
+        "headSha": "c9de08d07b12871db8801fb9662b14de83a2c391",
+        "status": "completed",
+        "conclusion": "success",
+        "app": "github-actions"
+      },
+      {
+        "id": 108815572058,
+        "headSha": "c9de08d07b12871db8801fb9662b14de83a2c391",
+        "status": "completed",
+        "conclusion": "success",
+        "app": "github-actions"
+      },
+      {
+        "id": 108815572096,
+        "headSha": "c9de08d07b12871db8801fb9662b14de83a2c391",
+        "status": "completed",
+        "conclusion": "success",
+        "app": "github-actions"
+      },
+      {
+        "id": 108815572124,
+        "headSha": "c9de08d07b12871db8801fb9662b14de83a2c391",
+        "status": "completed",
+        "conclusion": "success",
+        "app": "github-actions"
+      },
+      {
+        "id": 108815572125,
+        "headSha": "c9de08d07b12871db8801fb9662b14de83a2c391",
+        "status": "completed",
+        "conclusion": "success",
+        "app": "github-actions"
+      },
+      {
+        "id": 108815572159,
+        "headSha": "c9de08d07b12871db8801fb9662b14de83a2c391",
+        "status": "completed",
+        "conclusion": "success",
+        "app": "github-actions"
+      }
+    ],
+    "officialCodeQLSecurityResultCheck": {
+      "present": false,
+      "annotationsVerified": false
+    },
+    "artifactContentsInspected": false,
+    "screenshotsInspected": 0,
+    "deploymentVerified": false
   }
 }
