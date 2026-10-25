@@ -1,0 +1,420 @@
+{
+  "schemaVersion": 1,
+  "sprint": "R37",
+  "scope": "PREFLIGHT_DOCUMENTATION_ONLY",
+  "runtimeImplementation": "NOT_STARTED",
+  "states": ["INTEGRATION_PENDING", "POLICY_BLOCKED", "EXTERNAL_BLOCKED"],
+  "observedAt": "2026-10-25T01:21:34.567317+00:00",
+  "source": {
+    "observedDocumentationParentSha": "c9de08d07b12871db8801fb9662b14de83a2c391",
+    "observedTreeSha": "67136183b8a81de9773c2c6a3831441c320729c0",
+    "approvedG3FrozenBaseSha": null,
+    "approvedG3FrozenTreeSha": null,
+    "finalDocumentationIdentityRecord": "Published PR metadata; not self-referential source content"
+  },
+  "checkout": {
+    "path": "/workspace/scratch/b53a92fe1d51/hsm-r37",
+    "branch": "test/r37-hosted-load-security",
+    "sessionId": "r37-b53a92fe1d51",
+    "cleanBeforeEdits": true,
+    "stashesBeforeEdits": 0,
+    "activeImplementationLease": false
+  },
+  "changedPaths": [
+    "docs/production-readiness/r37/ACCEPTANCE.md",
+    "docs/production-readiness/r37/IMPLEMENTATION.md",
+    "docs/production-readiness/r37/OWNERSHIP.md",
+    "docs/production-readiness/r37/RISKS.md",
+    "docs/production-readiness/r37/ROLLBACK.md",
+    "docs/production-readiness/r37/evidence/preflight.json",
+    "docs/production-readiness/r37/shared-change-requests/CR-001-integration.md"
+  ],
+  "gate": {
+    "decision": "BLOCKED",
+    "candidateSourceSha": null,
+    "frozenBaseSha": null,
+    "frozenTreeSha": null,
+    "publication": {
+      "branch": "coord/g3-wave4-start-gate",
+      "state": "NOT_PREPARED",
+      "acceptanceRecordCommitSha": null,
+      "verifiedMerge": false
+    },
+    "mandatoryEvidenceStatuses": {
+      "combined-wave3-checks": "NOT_RUN",
+      "r29-real-stripe-sandbox": "NOT_RUN",
+      "r30-real-manual-review": "NOT_RUN",
+      "r31-atomic-subscription-entitlements": "NOT_RUN",
+      "r32-refund-ambiguity-recovery": "NOT_RUN",
+      "r33-financial-operations": "NOT_RUN",
+      "integrated-confirmation-activation-refund-outbox": "NOT_RUN"
+    },
+    "blockers": [
+      {
+        "id": "G3-INTEGRATION-CANDIDATE-REVIEW",
+        "owner": "G3 coordinator",
+        "reason": "Stripe runtime/purchase integration, durable approved refund policy composition and reconciliation foundation are implemented in the draft integration candidate. Final candidate CI, real database, browser and independent sandbox evidence must pass before acceptance."
+      },
+      {
+        "id": "G3-APPROVED-POLICY-INPUT-MISSING",
+        "owner": "Product/policy owner and authorized sandbox operator",
+        "reason": "A real immutable sandbox refund policy and explicit whole-subscription consequence must be supplied. The implementation supports explicitly approved SUSPEND_SUBSCRIPTION or CANCEL_SUBSCRIPTION; neither is selected by migration or module boot. Synthetic test policy records are not approval."
+      },
+      {
+        "id": "G3-COMBINED-REAL-SANDBOX-EVIDENCE-MISSING",
+        "owner": "G3 coordinator and authorized sandbox operator",
+        "reason": "Authorized Stripe test credentials, authentic provider webhook forwarding and explicit sandbox financial policy/operator inputs are absent from this execution. The external runner and concrete integration regressions do not replace an executed, artifact-backed combined sandbox acceptance run. No frozen G3 SHA or Wave 4 start authorization is issued. Hosted acceptance belongs to its separate in-scope release gate."
+      }
+    ]
+  },
+  "wave": {
+    "status": "BLOCKED",
+    "baseSha": null,
+    "startableLanes": [],
+    "r37": {
+      "id": "R37",
+      "title": "Hosted security, load and operational failure acceptance",
+      "wave": 4,
+      "lane": 4,
+      "branch": "test/r37-hosted-load-security",
+      "owner": {
+        "lane": "R37 future lane session; coordinator assigns the writer only after verified G3 publication",
+        "coordinator": "Owner-delegated engineering coordinator for baraabd"
+      },
+      "status": "BLOCKED",
+      "frozenBaseSha": null,
+      "dependencies": ["R23", "R25", "R26", "R27", "R28", "R29", "R30", "R31", "R32", "R33"],
+      "exactFiles": [
+        "scripts/production/hosted-acceptance/authorize-target.cjs",
+        "scripts/production/hosted-acceptance/authorize-target.test.cjs",
+        "scripts/production/hosted-acceptance/run-security.cjs",
+        "scripts/production/hosted-acceptance/run-security.test.cjs",
+        "scripts/production/hosted-acceptance/run-load.cjs",
+        "scripts/production/hosted-acceptance/run-load.test.cjs",
+        "scripts/production/hosted-acceptance/run-failures.cjs",
+        "scripts/production/hosted-acceptance/run-failures.test.cjs",
+        "scripts/production/hosted-acceptance/verify-evidence.cjs",
+        "scripts/production/hosted-acceptance/verify-evidence.test.cjs",
+        "docs/production-readiness/r37/IMPLEMENTATION.md",
+        "docs/production-readiness/r37/ACCEPTANCE.md",
+        "docs/production-readiness/r37/RISKS.md",
+        "docs/production-readiness/r37/ROLLBACK.md",
+        "docs/production-readiness/r37/OWNERSHIP.md",
+        "docs/production-readiness/r37/shared-change-requests/CR-001-integration.md"
+      ],
+      "leases": [
+        {
+          "paths": [
+            "infra/production/hosted-acceptance/README.md",
+            "infra/production/hosted-acceptance/target-authorization.schema.json",
+            "infra/production/hosted-acceptance/workload.template.json"
+          ],
+          "kind": "CONDITIONAL_EXACT_INFRASTRUCTURE_FILES",
+          "grantedBy": "Owner-delegated G2 successor coordinator; conditional file preparation recorded 2026-10-22 in waves/OWNERSHIP_R29_R38.md",
+          "scope": "R37 checked file authoring only after separately accepted and verified merged G3 publication and session assignment. No hosted target, resource, account, spending, network-test or deploy authority.",
+          "expires": "Earliest of the R38/G4 decision, lane PR closure, or coordinator revocation",
+          "handoff": "The assigned lane is the exclusive writer for these exact files; publish source and evidence, return the lease explicitly before reassignment. Effective only after the recorded G3 start condition.",
+          "sourcePrompt": "docs/production-readiness/post-r18/gates/g2/prompts/R37.md",
+          "startPrerequisite": {
+            "gate": "G3",
+            "requiredDecision": "ACCEPTED",
+            "requiredPublication": "MERGED_AND_VERIFIED",
+            "requiresSessionAssignment": true
+          }
+        }
+      ],
+      "requiredEvidence": [
+        "docs/production-readiness/r37/IMPLEMENTATION.md",
+        "docs/production-readiness/r37/ACCEPTANCE.md",
+        "docs/production-readiness/r37/RISKS.md",
+        "docs/production-readiness/r37/ROLLBACK.md",
+        "All behavioral, negative and integration tests in gates/g2/prompts/R37.md",
+        "Exact source/base/tree and contract/schema versions; checked command exit codes and test counts; source-bound artifacts; final-PR CI and official CodeQL; explicit skipped, blocked, sandbox and hosted states"
+      ],
+      "ownershipApproval": "CONDITIONAL_AFTER_VERIFIED_G3_PUBLICATION_AND_SESSION_ASSIGNMENT",
+      "blockedBy": ["G3_ACCEPTANCE_AND_VERIFIED_PUBLICATION", "EXACT_SESSION_ASSIGNMENT"],
+      "isolatedRuntime": {
+        "allocationStatus": "PLANNED_NOT_PROVISIONED",
+        "composeProject": "hsm-r37-<session>",
+        "database": "hsm_r37_<session>",
+        "databaseUser": "hsm_r37_<session>",
+        "redis": "Separate disposable instance or demonstrated lane/session namespace; no shared flush",
+        "storage": "r37/<session>/ with separate public, restricted and staging namespaces",
+        "queues": "r37:<session>:<queue>",
+        "apiPort": 4337,
+        "webPort": 4437,
+        "postgresPort": 5537,
+        "redisPort": 6437,
+        "browserOrigin": "http://r37.<session>.localhost:4437",
+        "browserContexts": "Independent Seeker, Provider and Admin contexts with host-only cookies; different ports alone do not isolate cookies",
+        "effectiveConfiguration": "Inspect resolved container names, explicit volume names, bucket/directory prefixes and ports before allocating; a Compose project name alone is insufficient",
+        "secrets": "Task-issued disposable values only; never copy an unreviewed .env or use the user working database"
+      },
+      "sourcePrompt": "docs/production-readiness/post-r18/gates/g2/prompts/R37.md"
+    }
+  },
+  "implementationPathObservation": {
+    "atSource": "c9de08d07b12871db8801fb9662b14de83a2c391",
+    "allConditionalImplementationPathsAbsent": true,
+    "note": "All 19 planned source/test/evidence/infra files were absent before preflight documentation. This record authorizes no executable writes."
+  },
+  "contracts": {
+    "money": "hsm.money.v1",
+    "financeOperations": "hsm.finance-operations.v1",
+    "reconciliation": "hsm.reconciliation.v2",
+    "realtimeEnvelopeVersion": 1,
+    "contractsPackage": "0.1.0",
+    "databasePackage": "0.1.0",
+    "prisma": "6.12.0",
+    "lastFinancialFoundationMigration": "20261024120000_g3_financial_integration",
+    "changes": []
+  },
+  "toolchain": {
+    "node": "24.21.0",
+    "nodeArchiveSha256": "fd8e59d5a511510f6a298afb548f18c7d2b1be404d8b4a27d94fbe49f56cb2d6",
+    "pnpm": "10.32.1",
+    "pnpmIntegrity": "sha512-pwaTjw6JrBRWtlY+q07fHR+vM2jRGR/FxZeQ6W3JGORFarLmfWE94QQ9LoyB+HMD5rQNT/7KnfFe8a1Wc0jyvg=="
+  },
+  "configuration": {
+    "kind": "CHECKED_IN_DECLARATIONS_ONLY",
+    "effectiveHostedConfigurationFingerprint": null,
+    "applicationEnvFilesRead": false,
+    "hostedTargetAuthorization": null,
+    "hostedStatus": "HOSTED_ENVIRONMENT_BLOCKED",
+    "apiReplicasDeclared": 1,
+    "runtimeResourcesProvisioned": false
+  },
+  "fingerprints": {
+    "package.json": {
+      "sha256": "5b1918cfd23189939190a6ded41c41d4f445750c79617f8c8515ca8b2fe3dafe",
+      "gitBlobSha": "aa8310c0fcd2872964eed3f51a6054d4fedfeb9c"
+    },
+    "pnpm-lock.yaml": {
+      "sha256": "0fbc9017b26168e7b3b150d16f9721cd5f044e900e22285954d93050ac83074e",
+      "gitBlobSha": "d2c1e3711570377e47ce0f9b5c8909a5751c180b"
+    },
+    "packages/contracts/package.json": {
+      "sha256": "89202eabd12de5a1e553c814a1af5c1f2e620e9d9bc2c8c0fd3ff8a2e4a3c148",
+      "gitBlobSha": "02df5fe0fcdd09d7d63a83c8ecab4f00ab04525a"
+    },
+    "packages/database/package.json": {
+      "sha256": "9e95d6dc0ddd17f2f8baf8464d8dff6b0651b1bea32bb120d89be5480a66e117",
+      "gitBlobSha": "0dccd8d69b947e6a35fa7a863de811b934634e7b"
+    },
+    "packages/database/prisma/schema.prisma": {
+      "sha256": "dcd2dd31d00deb79066e69770cd6b347c9ad670813267a8ee968edb6fba3897a",
+      "gitBlobSha": "3bc98c7dc959432017d8a7068d2b4936563b936d"
+    },
+    "packages/database/prisma/migrations/20261024120000_g3_financial_integration/migration.sql": {
+      "sha256": "cabcfa53f0f52fc3b71cf24ac03eee7f8a186c62531f76c178468a1329a33675",
+      "gitBlobSha": "e41d51d50c8b5a2fff4891b173adcfe27a0f12f0"
+    },
+    "packages/contracts/src/money/wire.ts": {
+      "sha256": "9d3de6c1fcfced28d3c539fc366a80476ef20fffb38a05a37dc7a652b74776f5",
+      "gitBlobSha": "ad6c8f0d99ab601155dc9d3321f47c0bd00f44d9"
+    },
+    "packages/contracts/src/money/financial-operations.ts": {
+      "sha256": "cdd76661bc085b35151ad122a3fd892a00b9e5b35ea96f79fd6fc972e7175c71",
+      "gitBlobSha": "5a738dd147f32fdca85bb4c4be6e46353668e1df"
+    },
+    "packages/contracts/src/money/subscription-contracts.ts": {
+      "sha256": "f5fdfbd2f5dad86c2909d424586cffa04b13a5d402c1e3abc87aa50ef8e50c1f",
+      "gitBlobSha": "99cd2b976bef6de336fdcc486f7f630c6ea637eb"
+    },
+    "packages/contracts/src/money/manual-payment-contracts.ts": {
+      "sha256": "0896c50ba23ea11141824ab51333f3f89a3bfbb4c794dca0eba0cb7991c6f403",
+      "gitBlobSha": "49d9a22a9cdfdcc8805035b01279186f1231aeb0"
+    },
+    "packages/contracts/src/realtime/index.ts": {
+      "sha256": "8506c4b393af6a586fd76d14a1dceff966e9670e75ba4e008999856803861354",
+      "gitBlobSha": "10bbc5fd97eb4bdc15e1c32f44e145d756f6714c"
+    },
+    "infra/production/platform/topology.json": {
+      "sha256": "ac1a647a1275b809a4395468260ae7eb6fdbac43a27f46bed25329c417011d90",
+      "gitBlobSha": "0f04e04be8c15d379ddfc2f4235da785830fd37e"
+    },
+    "infra/production/edge/edge-policy.json": {
+      "sha256": "575531fa4318fa5b54b42e3b531083530ec660fe834209c2eaa5470e033c9b32",
+      "gitBlobSha": "e1a7d128dd5bfc3381fcc500230ebc732cdf40e1"
+    },
+    "scripts/perf/post-r18/budgets.proposed.json": {
+      "sha256": "f88e7225cba5daece30877a4d98580b004e9684a2fdf8c11108819013e13afb8",
+      "gitBlobSha": "003035cccb7e4c32de6bf41b0532825caebf0b1b"
+    },
+    "docs/production-readiness/post-r18/gates/g3/SOURCE_MANIFEST.json": {
+      "sha256": "97e03bff749d09f7d9a186db058cfc57835469a1041ff4100e086c1221ab110d",
+      "gitBlobSha": "1233bf36b4180355fdc6caa3312e0568f76db0bf"
+    },
+    "docs/production-readiness/post-r18/waves/wave-04.plan.json": {
+      "sha256": "4ec343c977988fff06c6f32fcf3a022cb13e10c1766565fb4712c46eba04f9b7",
+      "gitBlobSha": "04a4952b9fa546b32c51ce9bd0d3777d4e623e07"
+    }
+  },
+  "executedChecks": [
+    {
+      "command": "node scripts/runtime/toolchain.cjs",
+      "exitCode": 0,
+      "stdout": "PASS exact Node 24.21.0 and runtime declarations",
+      "stderr": ""
+    },
+    {
+      "command": "node .github/scripts/g2-record.mjs --check",
+      "exitCode": 0,
+      "stdout": "PASS G2 record consistency; this does not authenticate remote evidence or grant approval.\nRecorded G2: ACCEPTED; Wave 3: READY_TO_START",
+      "stderr": ""
+    },
+    {
+      "command": "node .github/scripts/g3-record.mjs --check",
+      "exitCode": 0,
+      "stdout": "PASS G3 record consistency; this does not authenticate evidence or grant approval.\nRecorded G3: BLOCKED; Wave 4: BLOCKED; R38 final G4 join: BLOCKED",
+      "stderr": ""
+    },
+    {
+      "command": "node .github/scripts/g3-record.mjs --ready R37",
+      "exitCode": 1,
+      "stdout": "",
+      "stderr": "FAIL R37 is not authorized to start"
+    },
+    {
+      "command": "node .github/scripts/sprint-registry.mjs",
+      "exitCode": 0,
+      "stdout": "PASS post-R18 sprint registry; this is not sprint acceptance",
+      "stderr": ""
+    },
+    {
+      "command": "node .github/scripts/production-governance.mjs",
+      "exitCode": 0,
+      "stdout": "PASS repository governance files\nGitHub protection is NOT verified by this local check.",
+      "stderr": ""
+    },
+    {
+      "command": "node .github/scripts/release-baseline.mjs",
+      "exitCode": 0,
+      "stdout": "PASS source-backed baseline registry; sprint completion is not implied",
+      "stderr": ""
+    },
+    {
+      "command": "node scripts/production/platform/validate-plan.cjs --check",
+      "exitCode": 0,
+      "stdout": "{\n  \"sprint\": \"R28\",\n  \"status\": \"CONFIGURATION_ONLY\",\n  \"hostedStatus\": \"HOSTED_ENVIRONMENT_BLOCKED\",\n  \"deploymentStarted\": false,\n  \"authorizationVerified\": false,\n  \"targetInputsComplete\": false,\n  \"planSha256\": \"d2b75052c99e89d4699c53fd93e74920b710ee092dad856c541b730943a2dbf2\",\n  \"blockers\": [\n    {\n      \"id\": \"HOSTED_TARGET_AUTHORITY_REQUIRED\",\n      \"owner\": \"Infrastructure and spending owner\",\n      \"fields\": [\n        \"target.accountId\",\n        \"target.dnsZoneId\",\n        \"target.hostId\",\n        \"target.monthlyCostCeiling.amount\",\n        \"target.monthlyCostCeiling.currency\",\n        \"target.operatorApprovalRef\",\n        \"target.provider\",\n        \"target.region\",\n        \"target.registryHost\",\n        \"target.registryRepositories.api\",\n        \"target.registryRepositories.migrator\",\n        \"target.registryRepositories.web\",\n        \"target.secretStoreId\",\n        \"target.spendApprovalRef\"\n      ]\n    },\n    {\n      \"id\": \"HOSTED_SERVICE_INPUTS_REQUIRED\",\n      \"owner\": \"Database, storage, mail and security owners\",\n      \"fields\": [\n        \"services.clamav.host\",\n        \"services.clamav.resourceId\",\n        \"services.clamav.verdictEvidenceRef\",\n        \"services.postgres.apiRole\",\n        \"services.postgres.database\",\n        \"services.postgres.host\",\n        \"services.postgres.migratorRole\",\n        \"services.postgres.privilegeEvidenceRef\",\n        \"services.postgres.resourceId\",\n        \"services.redis.aclEvidenceRef\",\n        \"services.redis.host\",\n        \"services.redis.resourceId\",\n        \"services.smtp.deliveryEvidenceRef\",\n        \"services.smtp.host\",\n        \"services.smtp.provider\",\n        \"services.smtp.senderDomain\",\n        \"services.storage.accessEvidenceRef\",\n        \"services.storage.portfolioStagingBucket\",\n        \"services.storage.publicBucket\",\n        \"services.storage.restrictedBucket\"\n      ]\n    },\n    {\n      \"id\": \"HOSTED_RELEASE_INPUTS_REQUIRED\",\n      \"owner\": \"Release owner\",\n      \"fields\": [\n        \"release\"\n      ]\n    },\n    {\n      \"id\": \"HOSTED_NETWORK_EVIDENCE_REQUIRED\",\n      \"owner\": \"Network owner\",\n      \"fields\": [\n        \"network.boundaryEvidenceRef\",\n        \"network.externalNetwork\"\n      ]\n    },\n    {\n      \"id\": \"HOSTED_SECRET_DELIVERY_REQUIRED\",\n      \"owner\": \"Secret rotation operator\",\n      \"fields\": [\n        \"secrets.apiSnapshotId\",\n        \"secrets.migrationSnapshotId\",\n        \"secrets.rotationLockEvidenceRef\"\n      ]\n    },\n    {\n      \"id\": \"REGISTRY_PROVENANCE_REQUIRED\",\n      \"owner\": \"Release and registry owner\",\n      \"fields\": [\n        \"provenance.apiAttestationRef\",\n        \"provenance.migratorAttestationRef\",\n        \"provenance.registryEvidenceRef\",\n        \"provenance.webAttestationRef\"\n      ]\n    },\n    {\n      \"id\": \"ISOLATED_TARGETS_REQUIRED\",\n      \"owner\": \"Infrastructure owner and R35/R36/R37 coordinator\",\n      \"fields\": [\n        \"isolation.hostedTests.approvalRef\",\n        \"isolation.hostedTests.targetRef\",\n        \"isolation.production.databaseResourceId\",\n        \"isolation.production.redisResourceId\",\n        \"isolation.production.storageBuckets\",\n        \"isolation.restore.approvalRef\",\n        \"isolation.restore.databaseResourceId\",\n        \"isolation.restore.networkId\",\n        \"isolation.restore.redisResourceId\",\n        \"isolation.restore.storageBuckets\",\n        \"isolation.restore.targetRef\"\n      ]\n    },\n    {\n      \"id\": \"RECOVERY_ACCEPTANCE_REQUIRED\",\n      \"owner\": \"Data owner and R36 coordinator\",\n      \"fields\": [\n        \"recovery.ownerApprovalRef\",\n        \"recovery.restoreEvidenceRef\"\n      ]\n    },\n    {\n      \"id\": \"EDGE_INTEGRATION_EVIDENCE_REQUIRED\",\n      \"owner\": \"Edge owner and R25/R26 coordinator\",\n      \"fields\": [\n        \"edge.applicationEvidenceRef\",\n        \"edge.csp.integrationEvidenceRef\",\n        \"edge.origin\",\n        \"edge.tls.certificateRef\"\n      ]\n    }\n  ],\n  \"remainingHostedChecks\": [\n    \"Owner authorization for exact account, resources, region, cost and plan hash\",\n    \"Effective database grants, storage ACLs, Redis isolation and public ingress denial\",\n    \"Verified registry provenance and deployed immutable image/source identity\",\n    \"Applied edge CSP/CORS/cookies/TLS and both realtime transports\",\n    \"External email, scanner verdicts, private-media denial and durable worker delivery\",\n    \"Approved recovery objectives, isolated restore and representative hosted browser journeys\"\n  ]\n}",
+      "stderr": ""
+    },
+    {
+      "command": "pnpm install --frozen-lockfile --store-dir /workspace/scratch/b53a92fe1d51/r37-pnpm-store --reporter=append-only",
+      "exitCode": 0,
+      "node": "24.21.0",
+      "pnpm": "10.32.1",
+      "scope": "All 6 workspace projects; normal hooks and contracts build",
+      "lockfileChanged": false,
+      "warnings": ["Ignored build scripts: @parcel/watcher@2.6.0, unrs-resolver@1.12.2"]
+    },
+    {
+      "command": "node --test .github/scripts/*.test.mjs",
+      "exitCode": 0,
+      "node": "24.21.0",
+      "counts": {
+        "tests": 500,
+        "pass": 500,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "scope": "Unchanged existing governance regressions; no R37 runtime test",
+      "execution": "Approved subprocess-capable execution"
+    },
+    {
+      "command": "pnpm security:audit",
+      "exitCode": 0,
+      "scope": "Full dependency tree",
+      "counts": {
+        "info": 0,
+        "low": 0,
+        "moderate": 0,
+        "high": 0,
+        "critical": 0
+      },
+      "fullReportSha256": "8299b9c566946044775caaf85d083325fb41d7fee967e48424edebb0bbd0cddb"
+    }
+  ],
+  "failedAttempts": [
+    {
+      "command": "pnpm install --frozen-lockfile --store-dir /workspace/scratch/b53a92fe1d51/r37-pnpm-store --reporter=append-only",
+      "exitCode": 1,
+      "reason": "Host Node 24.22.1 selected because verified task-local Node binary was not executable; unchanged preinstall rejected wrong runtime",
+      "resolution": "Set executable bit on task-local downloaded binary, verified 24.21.0, reran complete frozen install with hooks"
+    },
+    {
+      "command": "node --test .github/scripts/*.test.mjs",
+      "attempts": 2,
+      "exitCode": 1,
+      "counts": {
+        "fileWrappers": 13,
+        "passedFileWrappers": 9,
+        "failedFileWrappers": 4
+      },
+      "reason": "Sandbox denied child CLI processes with EPERM; first attempt also used host Node",
+      "resolution": "Same unmodified full command passed through permitted execution escalation under pinned Node"
+    },
+    {
+      "command": "node .github/scripts/g3-record.test.mjs",
+      "exitCode": 1,
+      "counts": {
+        "tests": 35,
+        "pass": 34,
+        "fail": 1,
+        "skipped": 0
+      },
+      "reason": "Diagnostic confirmed spawnSync EPERM in CLI regression"
+    }
+  ],
+  "logDigests": {
+    "dependency-audit.log": "ac02d1f7bfdb44cc3f02a9e32b0455d57f5f7ef5bf53e4dc4afa870d20051341",
+    "frozen-install-pinned.log": "a27ecb70a4cbea5042e01917293a51975db2da8dfddd3eccb7b3574f37977028",
+    "frozen-install.log": "5064c233411b75c88689ceac89a577aa74b6f39baa7ba572af1fc14754a390a0",
+    "g3-diagnostic.log": "95e2f522623553b1e9a6a898b5bc300fbda8cadd43d1992256eaa252aaa7d892",
+    "governance-tests-authorized.log": "403bd27bc23d3a352e3781cd5a1f6b465cf601a8e2386738eb90d85d598a60de",
+    "governance-tests-pinned.log": "f7deac486b158aafed1424e080f9680d60f40f1af3d053264bf2cf7186515e82",
+    "governance-tests.log": "8629e8ab7cdea5f14b24a4312ca5a7531270a830d428fae6506582bdb13ea1a8"
+  },
+  "runtimeEvidence": {
+    "hostedProbeCount": 0,
+    "r37RuntimeTestCounts": null,
+    "security": "NOT_RUN",
+    "load": "NOT_RUN",
+    "failures": "NOT_RUN",
+    "twoHostedReplicas": "NOT_RUN",
+    "browserAndPrivatePreviews": "NOT_RUN",
+    "screenshotsInspected": 0,
+    "onCallDelivery": "NOT_RUN",
+    "sourceImageMatching": "NOT_RUN",
+    "postgresRedisStorageAcceptance": "NOT_RUN",
+    "stripeSandboxAcceptance": "NOT_RUN"
+  },
+  "securityInventory": {
+    "repositoryOpenFindings": "EXTERNAL_BLOCKED",
+    "deployedImageInventory": "NOT_RUN",
+    "preExistingScanScope": "CI Trivy ignore-unfixed=true; green CI is not an all-open/unfixed High/Critical inventory",
+    "suppressionsChanged": false
+  },
+  "finalPublicationChecks": {
+    "location": "PR metadata with final documentation head/tree and actual run/check/artifact IDs",
+    "required": [
+      "CI gate",
+      "Analyze JavaScript/TypeScript",
+      "Official GitHub Advanced Security result",
+      "Production governance"
+    ],
+    "earlierPRChecksReusedAsFinalEvidence": false
+  },
+  "restrictions": {
+    "merge": false,
+    "deploy": false,
+    "liveMoney": false,
+    "spend": false,
+    "accountGrants": false,
+    "hostedNetworkTests": false,
+    "gateMutations": false,
+    "preserveR16R18Holds": true
+  }
+}
