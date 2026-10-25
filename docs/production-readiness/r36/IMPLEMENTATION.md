@@ -1,91 +1,137 @@
-# R36 — Recovery preflight, implementation blocked
+# R36 — Recovery preflight after the G3 integration merge
 
-Status: **INTEGRATION_PENDING / EXTERNAL_BLOCKED**. No R36 recovery program
-has been implemented or executed. This PR records the current-source findings
-and a concrete coordinator change request; it does not close P50-recovery.
+Status: **INTEGRATION_PENDING / POLICY_BLOCKED / EXTERNAL_BLOCKED**.
+R36 recovery implementation is **NOT_STARTED**. This follow-up corrects stale
+source findings and makes the recovery handoff reviewable. It does not close
+P50-recovery or claim an executed backup, restore or image rollback.
 
-## Source and scope
+## Source, branch and scope
 
-- Delivery mode A; scope is inspection and preflight documentation only.
+- Delivery mode A; documentation preflight only.
 - Branch: `test/r36-backup-restore-recovery`.
-- Observed base/source: `5ff2b7e6a46b4e42114184fac89928372f4c8d4c`.
-- Observed source tree: `54e00d4e9eaa7bd81146f01b69dfa9b396eab45c`.
-- Approved G3 execution base: **absent**, not the observation above.
-- Final documentation commit/tree: recorded in the PR's final-head metadata;
-  do not put a self-referential final SHA into this commit.
-- Changed paths and the narrow documentation lease: [OWNERSHIP.md](OWNERSHIP.md).
-- Machine-readable source/configuration fingerprints and checked commands:
-  [evidence/preflight.json](evidence/preflight.json).
+- Observed owner-merged develop source: `c9de08d07b12871db8801fb9662b14de83a2c391`.
+- Observed source tree: `67136183b8a81de9773c2c6a3831441c320729c0`.
+- Approved frozen G3 execution base: **absent**.
+- Final documentation commit/tree: the PR's exact Final SHA and Source tree
+  fields, avoiding a self-referential SHA inside this commit.
+- Exact fresh documentation assignment: [OWNERSHIP.md](OWNERSHIP.md).
+- New command results and source/configuration fingerprints:
+  [evidence/preflight-2026-10-25.json](evidence/preflight-2026-10-25.json).
 
-The detailed owner prompt is R36; its closing sentence also names R34. This
-preflight follows the detailed R36 scope, and checks both start barriers. Both
-refuse execution, so no ambiguous product implementation is started.
+PR #190 was merged on 2026-10-24. Its historical evidence remains unchanged.
+PR #198 was merged by the owner on 2026-10-25 at the inspected source above.
+Neither observed merge was performed by this follow-up. The old R36 head was
+fast-forwarded to that existing develop commit; no unmerged peer was imported.
 
-## Findings from the current tree
+## Current gate result
 
-1. G2 is recorded ACCEPTED and published. G3 is BLOCKED, with null candidate
-   and frozen identities. The existing `--ready R36` and `--ready R34`
-   validators both exit 1. A green dependency PR cannot change that result.
-2. R30, R31, R32 and R33 were merged through #184, #186, #187 and #185.
-   Each actual merge commit is an ancestor of the observed source. This proves
-   source inclusion, not combined Wave 3 acceptance. No R29 Stripe adapter,
-   webhook controller, sprint evidence directory or merged R29 delivery was
-   found. `MoneyModule` registers manual collection/refund adapters and the
-   real subscription activation participant, but still registers
-   `UnavailableRefundPolicySource` and
-   `UnavailableMoneyRefundConfirmationParticipant`.
-3. R28's topology is `CONFIGURATION_ONLY`. Its strict target probe reports
-   nine blocker categories. Provider/account/host, release digests, protected
-   key/secret references, restore database/storage/network and approval are
-   unassigned. The proposed 300-second RPO, 14,400-second RTO and seven-day
-   database retention are **not approved targets or measured results**.
-4. Reuse R20's `storage-inventory.cjs` and
-   `apps/api/src/infrastructure/storage/storage-inventory.ts`. The current
-   `verifyRestore` checks latest live objects only; it reports unexpected
-   objects but does not include them in `ok`. It cannot certify restoration
-   of every required historical version, delete marker or lost KMS key.
-   R36 must add the stronger recovery-set check in its owned verifier, with
-   explicit source-to-restored-version mapping, not silently broaden R20's
-   existing report semantics or duplicate its inventory implementation.
-5. R18's rollback runbook says to rerun the previous release launcher and then
-   says not to run the previous migrator. Current `staging.cjs --apply` always
-   runs `api-migrate` before replacing API/web. This is a concrete unsafe
-   instruction conflict; the proposed documentation patch is in
-   [CR-001-integration.md](shared-change-requests/CR-001-integration.md).
+`g3-record.mjs --check` exits 0 because the **BLOCKED** record is consistent;
+`g3-record.mjs --ready R36` exits 1 with `R36 is not authorized to start`.
+The canonical G3 manifest has null candidate/frozen source and tree values,
+no accepted sprints and publication `NOT_PREPARED`, `verifiedMerge: false`.
+Wave 4 has `baseSha: null`, no startable lanes and no active R36 assignment.
+The conditional ten script/test files and three infrastructure files therefore
+remain unauthored. The owner's prompt explicitly requires that start barrier.
 
-## Recovery set to bind after the gate
+The seven canonical G3 evidence categories are still recorded `NOT_RUN`.
+G3's acceptance document separately records executed component/assembled
+checks, but its fourteen external Stripe scenarios remain `NOT_RUN`. Those
+historical results are not new executions here and are not an accepted G3
+publication. The coordinator must reconcile current exact-source evidence,
+approved policy inputs and authentic sandbox runs before releasing Wave 4.
 
-One authorized consistency boundary must bind PostgreSQL snapshot/WAL lineage,
-the exact migration set, object versions/deletion state, non-secret key-version
-references, immutable API/migrator/web digests and accepted application source,
-and a non-secret configuration fingerprint. R20 contracts remain
-`hsm.storage-inventory/v1` and `hsm.storage-restore-report/v1`; platform inputs
-remain `hsm.platform-inputs/v1`. Prisma is pinned to 6.12.0. This PR changes
-no contract or schema version and adds no migration.
+## Corrected implementation findings
 
-The database inventory must include the current `LedgerAccount`,
-`LedgerTransaction`, `LedgerEntry`, `MoneyPaymentIntent`, `MoneyPaymentAttempt`,
-`MoneyPaymentConfirmation`, `SubscriptionPlanVersion`, `SubscriptionPeriod`,
-`MoneyCouponRedemption`, `MoneyEntitlementUsage`, `MoneyCommand`,
-`MoneyIntentBinding`, `MoneyExternalEvent`, `MoneyRefundRequest`, `MoneyRefund`,
-`MoneyDispatch`, manual receipt/review/settlement/refund records, `OutboxEvent`,
-`OutboxHandlerRun`, `EmailDelivery`, suppression/feedback, authorization,
-audit, verification and `MediaAsset` state. Preserve unique keys and linked
-history; subscription revenue never becomes provider withdrawable earnings.
+1. **R29 is present.** The earlier R36 statement that Stripe/webhook source
+   was absent is superseded. `apps/api/src/modules/money/money.module.ts`
+   now registers the Stripe runtime, collection/refund routers,
+   `ApprovedRefundPolicySource` and `ApprovedRefundParticipant`.
+   `apps/api/src/app.module.ts` mounts the signed webhook and inbox scheduler.
+   Purchase-session source and the web purchase component are also present.
+   Existing composition must be verified, not recreated by R36.
+2. **Approved policy is still an external input.** A real policy version and
+   explicit whole-subscription consequence must be supplied by its owner.
+   The presence of the policy implementation or synthetic test records is not
+   approval. Live rails stay off and R16/R18 decisions remain unchanged.
+3. **Hosted topology is a checked proposal.** R28's strict target validator
+   exits 2 with `CONFIGURATION_ONLY`, `HOSTED_ENVIRONMENT_BLOCKED` and nine
+   blocker categories. Source/restore physical resources, image provenance,
+   protected key references and authorizations are unassigned in that plan.
+   RPO 300 seconds, RTO 14,400 seconds and seven-day database retention are
+   proposed values, neither approved objectives nor measured results.
+4. **R20 inventory can be reused but is not complete recovery proof.**
+   `storage-inventory.ts` inventories versions/delete markers and optionally
+   hashes them deeply. Its `verifyRestore` compares latest live objects only;
+   unexpected objects are reported but do not make `ok` false. R36 must wrap
+   those existing contracts with required historical-version/deletion checks,
+   explicit source-to-target version mapping and an unexplained-extra-object
+   stop condition. Do not silently redefine the existing v1 verdict.
+5. **Mail has independent and immediate send paths.**
+   `MAIL_DISPATCHER_ENABLED` is separate from `OUTBOX_WORKER_ENABLED`.
+   Even with both background workers disabled, `DurableMailService.send()`
+   and immediate post-commit dispatch can reach the transport. Restored boot
+   needs independently enforced egress denial and isolated SMTP credentials
+   and sink. Stable Message-ID does not prove zero duplicate delivery after
+   relay acceptance followed by a lost database acknowledgement.
+6. **Key recovery covers queued mail as well as objects.**
+   `MailEnvelopeCipher` needs the original dedicated key, or the corresponding
+   parent `JWT_ACCESS_SECRET` version when the production derivation fallback
+   was used. The envelope format has no historical key identifier. Bind
+   protected key-version references and prove decryptability; do not use a
+   new ephemeral key or treat `undecryptable` work as recovered.
+7. **Application rollback instructions are contradictory.**
+   `staging.cjs` always invokes `api-migrate` during `--apply`. R18 says to
+   rerun the previous release but not its migrator, and R28 repeats use of
+   the existing launcher. CR-001 now provides exact corrections for both
+   documents. No shared launcher or runbook was changed here.
 
-Outbound isolation must be established before any restored application boot:
-deny real SMTP/payment/refund destinations, isolate webhook ingress and queues,
-and use independently provisioned DB/users/Redis/storage/network. Disabling
-`OUTBOX_WORKER_ENABLED` stops the inspected manual/refund schedulers, but
-does not prove all direct routes or synchronous mail cannot send. The drill
-needs network denial, disposable credentials and observed sink counters too.
+## Consistent recovery-set inventory
 
-## Required next execution
+Use one approved whole-database consistency boundary, with snapshot/WAL
+lineage and complete schema/migration history. The following is an invariant
+inventory, not a selective table-dump recipe:
 
-The coordinator must finish the real R29 and refund participants, run all seven
-G3 categories on one combined source, obtain the owner's publication merge,
-verify it, then assign the exact R36 files and full frozen source. The data and
-infrastructure owners must supply the approved restore target, retention/hold
-rules, key references and recovery objectives. Only then implement the already
-listed R36 modules and execute the real isolated restore and image rollback.
-No hosted resource was contacted, provisioned, restored or disrupted here.
+| Authority                   | State and invariant to preserve                                                                                                                                                                                                                                                                                                     |
+| --------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Ledger                      | Accounts, posted transactions/entries, linked reversals, exact minor-unit/currency balance, immutable triggers and audit history.                                                                                                                                                                                                   |
+| Collection and subscription | Intent, attempt, confirmation, command/digest, binding, external inbox identity, immutable plan/version, period-to-confirmation uniqueness, coupon/entitlement usage.                                                                                                                                                               |
+| Refund and manual rails     | Request/refund/dispatch, reservation and compensation links, original provider idempotency/operation identities, receipt/review/settlement/decision state.                                                                                                                                                                          |
+| New G3 foundation           | `MoneyApprovedRefundPolicy`, `MoneyReconciliationWindow`, `MoneyReconciliationRun`, `MoneyReconciliationObservation`, `MoneyReconciliationCase`, `MoneyReconciliationDecision`, and existing exception links. Preserve policy immutability, cursors/fences, observation scope, decision revisions and original-resolution evidence. |
+| Jobs and mail               | `OutboxEvent`, `OutboxHandlerRun` composite identities, leases, pending/terminal `EmailDelivery`, message keys, encrypted envelopes, suppression/feedback and per-handler outcomes.                                                                                                                                                 |
+| Privacy and authority       | Users, roles/permissions, account status, session revocations, verification/work access, audit, media metadata, holds, deletion/tombstones and restricted evidence.                                                                                                                                                                 |
+
+Bind required object versions and deletion state, content hashes, protected
+key-version references, immutable API/migrator/web image digests, accepted
+source SHA and a non-secret configuration fingerprint to that same set.
+Historical encrypted copies must not resurrect erased evidence or revoked
+access. Reconcile approved post-snapshot deletion/revocation facts before
+opening any recovered service to users.
+
+Current versions are Prisma `6.12.0`, Stripe SDK `23.0.1`,
+`hsm.storage-inventory/v1`, `hsm.storage-restore-report/v1` and
+`hsm.platform-inputs/v1`. The merged migration is
+`20261024120000_g3_financial_integration`. It also replaces a reconciliation
+transition trigger, so describing it as additive does not prove old-image
+compatibility. Verify constraints/triggers and real legacy/provenance-backed
+exception flows against the forward schema. This follow-up changes no
+schema, migration, dependency or published contract.
+
+## Execution boundary and handoff
+
+Before restored processes boot, independently verify DB/user, Redis,
+container/volume, queue, storage, network and browser-cookie isolation.
+Disable both background dispatchers; preserve refund authorization off and
+empty Stripe configuration; separately deny payment/refund/SMTP egress and
+route webhook ingress away from the restored target. These are requirements,
+not configuration changes made here. Only a separately approved isolated
+replay phase may enable disposable adapters/sinks.
+
+An older database cannot prove what an external provider accepted after its
+snapshot. Preserve original operation keys and query/reconcile independent
+outcomes. Unknown money outcome, incomplete provider evidence or ambiguous
+mail acceptance stops replay/cutover; no autonomous retry or financial reset.
+
+The [acceptance matrix](ACCEPTANCE.md) specifies measurable evidence for all
+required scenarios. The [shared change request](shared-change-requests/CR-001-integration.md)
+identifies exact coordinator paths and owner inputs. No hosted resource was
+contacted, provisioned, restored or disrupted by this preflight.

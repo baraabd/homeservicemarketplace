@@ -1,25 +1,29 @@
-# R36 — Blockers and residual risks
+# R36 — Current blockers and residual risks
 
-| ID             | Finding and consequence                                                                                                | Owner / closure                                                                                                                                     |
-| -------------- | ---------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
-| R36-G3         | G3 has no accepted, published frozen source; R29 real Stripe and combined financial acceptance are missing             | G3 coordinator and R29/R32 owners; accepted exact-source integration and verified owner-merged publication                                          |
-| R36-TARGET     | R28 contains proposed topology, no authorized independent restore destination or accepted image set                    | Infrastructure/release owner; exact resource identities and separate restore authorization                                                          |
-| R36-OBJECTIVES | RPO 300 s, RTO 14,400 s and retention seven days are proposals only                                                    | Data owner; approve explicit objectives and schedule, then measure achieved results                                                                 |
-| R36-KEYS       | No approved decrypt/recovery credential or key-version references are supplied                                         | Secret/KMS operator; protected references and lost-key drill; never commit secrets                                                                  |
-| R36-VERSIONS   | R20 `verifyRestore` compares latest live objects and does not reject unexpected objects in `ok`                        | R36 owned verifier after G3; require the complete recovery-set versions/delete state and explicit rejection policy                                  |
-| R36-REPLAY     | Restored pending deliveries can refer to effects already executed outside the restored DB point                        | Money/mail operators; keep egress and ingress isolated, query known external identities before any replay; unknown money outcome stops automation   |
-| R36-ROLLBACK   | R18 recommends the old launcher but the current launcher always runs the migrator                                      | Coordinator; apply the proposed runbook correction and review a separate migration-free application rollback path                                   |
-| R36-RETENTION  | Historical ADR 0012 says restricted objects should not be versioned; R20 now plans versioning with all-version erasure | Privacy/data/storage owners; reconcile the current backup expiry, hold, deletion/tombstone and key-retirement policy before restoring private media |
-| R36-CI         | Source inclusion and individual PR successes do not establish combined-source or hosted acceptance                     | Coordinator; retain full final-source check inventory, failures/skips and authenticated artifacts                                                   |
+Inspected source: `c9de08d07b12871db8801fb9662b14de83a2c391`.
+These findings replace stale implementation-absence claims, not the retained
+historical evidence. No runtime mitigation or recovery rehearsal is claimed.
 
-R16's payout/funding and R18's unresolved policy decisions remain unchanged.
-No market, currency, price, fee/tax, escrow, payout, identity/work-access or
-permission decision is made. Live money remains disabled. A successful restore
-must not resurrect erased private evidence or undo a later access revocation.
-The approved replay/cutover procedure must reconcile those post-backup facts.
+| ID             | Finding and consequence                                                                                                                                                              | Owner and closure                                                                                                                                                |
+| -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| R36-G3         | #198 source is merged, but G3 remains BLOCKED with no accepted frozen source or verified acceptance publication.                                                                     | G3 coordinator: current-source integrated evidence, approved policy, authentic sandbox runs, owner-reviewed publication and exact R36 assignment.                |
+| R36-TARGET     | R28 has proposed topology, no authorized independent restore destination or accepted image set.                                                                                      | Infrastructure/release owner: physical resource identities, provenance and isolated restore approval.                                                            |
+| R36-OBJECTIVES | RPO 300 s, RTO 14,400 s and seven-day retention are proposals only.                                                                                                                  | Data owner: explicit schedule, encrypted retention, deletion/hold/key-retirement rules and objectives; then measure actual loss/time.                            |
+| R36-KEYS       | Object decrypt references are unassigned; queued mail may depend on a historical dedicated key or JWT parent-secret version.                                                         | Secret/KMS and mail owners: protected version references and missing/wrong-key drills without plaintext disclosure.                                              |
+| R36-VERSIONS   | R20 v1 restore verdict checks latest live objects and does not reject unexpected objects.                                                                                            | R36 verifier after G3: complete required version/deletion mapping, deep checksums, namespace identity and extra-object rejection.                                |
+| R36-REPLAY     | Restored pending money work may represent an already executed external operation.                                                                                                    | Money operator: preserve original keys and independently reconcile outcomes; unknown outcome stops automation and cutover.                                       |
+| R36-MAIL       | Separate mail dispatcher and synchronous/immediate delivery remain possible with Outbox disabled; stable Message-ID is not exactly-once delivery.                                    | Mail/network owners: disable both schedulers, deny real egress, use controlled sink counters and resolve ambiguous external acceptance before real-user routing. |
+| R36-SCHEMA     | G3 adds policy/reconciliation records and replaces a transition trigger; restored row counts alone miss authority loss or incompatibility.                                           | Database/release owners: verify triggers/constraints, immutable history and actual prior-image operations on the forward schema.                                 |
+| R36-ROLLBACK   | R18 and R28 suggest the old launcher; its apply always runs the migrator.                                                                                                            | Coordinator: apply CR-001's two runbook corrections; review a separate migration-free application rollback path.                                                 |
+| R36-RETENTION  | Historical ADR 0012 requires restricted storage without object versioning; R20 plans versioning with all-version erasure. Old backups can resurrect deleted bytes or revoked access. | Privacy/data/storage owners: approve current retention/hold/deletion policy and reconcile post-snapshot erasures/revocations before access.                      |
+| R36-EVIDENCE   | Existing validator fixtures, prior CI and source inclusion do not establish a real R36 restore or zero external effects.                                                             | Coordinator: exact-source current artifacts and useful-service measurements, with unrun/failed/blocked checks explicitly retained.                               |
 
-Distinct names alone do not prove isolation: independently verify physical
-resource IDs, effective volumes/container names, bucket prefixes, network
-routes, cookie domains and DB roles before booting restored processes. No
-production rollback, database reset, volume deletion or public media exposure
-is authorized by this preflight.
+R16 payout/funding and unresolved R18 decisions remain unchanged. No market,
+currency, price, fee/tax, escrow, payout, identity/work-access or permission
+decision is made. Subscription revenue is not provider withdrawable earnings.
+
+Distinct names alone do not prove isolation: check effective physical resource
+IDs, volumes/container names, bucket namespaces, routes, cookie domains and
+DB roles before boot. No production rollback, database reset, shared Redis
+flush, volume deletion, account grant or public private-media exposure is
+part of this documentation preflight.

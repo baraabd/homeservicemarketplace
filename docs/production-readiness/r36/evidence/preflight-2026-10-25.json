@@ -1,0 +1,569 @@
+{
+  "schemaVersion": 1,
+  "sprint": "R36",
+  "capturedAt": "2026-10-25T01:17:36.619507+00:00",
+  "session": "r36-eb22d30bac36",
+  "deliveryMode": "A_DOCUMENTATION_PREFLIGHT_ONLY",
+  "repository": "baraabd/homeservicemarketplace",
+  "branch": "test/r36-backup-restore-recovery",
+  "inspectionSourceSha": "c9de08d07b12871db8801fb9662b14de83a2c391",
+  "inspectionTreeSha": "67136183b8a81de9773c2c6a3831441c320729c0",
+  "frozenG3BaseSha": null,
+  "frozenG3TreeSha": null,
+  "publicationIdentity": "Final documentation SHA/tree and final-head CI/CodeQL/secret-scan evidence are recorded in the PR metadata without a self-referential commit.",
+  "branchPreparation": {
+    "initialRemoteHead": "77076f0f6e8ee0054bb323fd784346780218164d",
+    "initialWorktreeClean": true,
+    "stashEmpty": true,
+    "method": "fast-forward to already owner-merged develop; no merge commit/rebase/force push",
+    "priorPreflightPr": 190,
+    "priorPreflightMergedAt": "2026-10-24T07:08:55Z",
+    "g3ImplementationPr": 198,
+    "g3ImplementationMergeSha": "c9de08d07b12871db8801fb9662b14de83a2c391",
+    "g3ImplementationMergedAt": "2026-10-25T00:26:28Z",
+    "mergesObservedNotPerformed": true
+  },
+  "gate": {
+    "decision": "BLOCKED",
+    "candidateSourceSha": null,
+    "candidateTreeSha": null,
+    "frozenBaseSha": null,
+    "frozenTreeSha": null,
+    "acceptedSprints": [],
+    "mandatoryEvidence": [
+      {
+        "id": "combined-wave3-checks",
+        "status": "NOT_RUN",
+        "sourceSha": null,
+        "treeSha": null,
+        "reference": "docs/production-readiness/post-r18/gates/g3/REQUIREMENTS.md"
+      },
+      {
+        "id": "r29-real-stripe-sandbox",
+        "status": "NOT_RUN",
+        "sourceSha": null,
+        "treeSha": null,
+        "reference": "docs/production-readiness/post-r18/gates/g3/REQUIREMENTS.md"
+      },
+      {
+        "id": "r30-real-manual-review",
+        "status": "NOT_RUN",
+        "sourceSha": null,
+        "treeSha": null,
+        "reference": "docs/production-readiness/post-r18/gates/g3/REQUIREMENTS.md"
+      },
+      {
+        "id": "r31-atomic-subscription-entitlements",
+        "status": "NOT_RUN",
+        "sourceSha": null,
+        "treeSha": null,
+        "reference": "docs/production-readiness/post-r18/gates/g3/REQUIREMENTS.md"
+      },
+      {
+        "id": "r32-refund-ambiguity-recovery",
+        "status": "NOT_RUN",
+        "sourceSha": null,
+        "treeSha": null,
+        "reference": "docs/production-readiness/post-r18/gates/g3/REQUIREMENTS.md"
+      },
+      {
+        "id": "r33-financial-operations",
+        "status": "NOT_RUN",
+        "sourceSha": null,
+        "treeSha": null,
+        "reference": "docs/production-readiness/post-r18/gates/g3/REQUIREMENTS.md"
+      },
+      {
+        "id": "integrated-confirmation-activation-refund-outbox",
+        "status": "NOT_RUN",
+        "sourceSha": null,
+        "treeSha": null,
+        "reference": "docs/production-readiness/post-r18/gates/g3/REQUIREMENTS.md"
+      }
+    ],
+    "publication": {
+      "branch": "coord/g3-wave4-start-gate",
+      "state": "NOT_PREPARED",
+      "acceptanceRecordCommitSha": null,
+      "verifiedMerge": false
+    },
+    "blockerIds": [
+      "G3-INTEGRATION-CANDIDATE-REVIEW",
+      "G3-APPROVED-POLICY-INPUT-MISSING",
+      "G3-COMBINED-REAL-SANDBOX-EVIDENCE-MISSING"
+    ]
+  },
+  "wave": {
+    "status": "BLOCKED",
+    "baseSha": null,
+    "startableLanes": [],
+    "r36Status": "BLOCKED",
+    "ownershipApproval": "CONDITIONAL_AFTER_VERIFIED_G3_PUBLICATION_AND_SESSION_ASSIGNMENT",
+    "r36FrozenBaseSha": null,
+    "reservedScriptTestFiles": 10,
+    "conditionallyLeasedInfrastructureFiles": 3,
+    "runtimeAssignmentActive": false
+  },
+  "ownership": {
+    "record": "docs/production-readiness/r36/OWNERSHIP.md",
+    "singleWriter": "r36-eb22d30bac36",
+    "exactFiles": [
+      "docs/production-readiness/r36/OWNERSHIP.md",
+      "docs/production-readiness/r36/IMPLEMENTATION.md",
+      "docs/production-readiness/r36/ACCEPTANCE.md",
+      "docs/production-readiness/r36/RISKS.md",
+      "docs/production-readiness/r36/ROLLBACK.md",
+      "docs/production-readiness/r36/evidence/preflight-2026-10-25.json",
+      "docs/production-readiness/r36/shared-change-requests/CR-001-integration.md"
+    ],
+    "sharedFilesChanged": [],
+    "priorLeaseExpired": true,
+    "runtimeLeaseActivated": false
+  },
+  "versions": {
+    "node": "24.21.0",
+    "pnpm": "10.32.1",
+    "prisma": "6.12.0",
+    "stripeSdk": "23.0.1",
+    "storageInventory": "hsm.storage-inventory/v1",
+    "storageRestoreReport": "hsm.storage-restore-report/v1",
+    "platformInputs": "hsm.platform-inputs/v1",
+    "latestInspectedG3Migration": "20261024120000_g3_financial_integration",
+    "schemaOrContractChange": false
+  },
+  "configurationFingerprint": {
+    "kind": "non-secret tracked preflight inputs and tool versions; not a hosted runtime fingerprint",
+    "sha256": "d182e018b25970859fba66466a2b84da0cd47359bf2a0f8d5c5d01ebb4ce5e84",
+    "platformPlanSha256": "d2b75052c99e89d4699c53fd93e74920b710ee092dad856c541b730943a2dbf2",
+    "files": [
+      {
+        "path": "CLAUDE.md",
+        "sha256": "e721f2e0c541176dd6250d8ae3b95d196e15de579b345acfa289cd7982a74915"
+      },
+      {
+        "path": ".claude/rules/ux-ui-design-policy.md",
+        "sha256": "a905afbe0bf2def7d8797e183e748f3a91d36532eea739dc577d35c03bc571eb"
+      },
+      {
+        "path": "package.json",
+        "sha256": "5b1918cfd23189939190a6ded41c41d4f445750c79617f8c8515ca8b2fe3dafe"
+      },
+      {
+        "path": "pnpm-lock.yaml",
+        "sha256": "0fbc9017b26168e7b3b150d16f9721cd5f044e900e22285954d93050ac83074e"
+      },
+      {
+        "path": "packages/database/package.json",
+        "sha256": "9e95d6dc0ddd17f2f8baf8464d8dff6b0651b1bea32bb120d89be5480a66e117"
+      },
+      {
+        "path": "packages/database/prisma/schema.prisma",
+        "sha256": "dcd2dd31d00deb79066e69770cd6b347c9ad670813267a8ee968edb6fba3897a"
+      },
+      {
+        "path": "packages/database/prisma/migrations/20261024120000_g3_financial_integration/migration.sql",
+        "sha256": "cabcfa53f0f52fc3b71cf24ac03eee7f8a186c62531f76c178468a1329a33675"
+      },
+      {
+        "path": "packages/contracts/src/money/financial-operations.ts",
+        "sha256": "cdd76661bc085b35151ad122a3fd892a00b9e5b35ea96f79fd6fc972e7175c71"
+      },
+      {
+        "path": "docs/production-readiness/post-r18/gates/g3/SOURCE_MANIFEST.json",
+        "sha256": "97e03bff749d09f7d9a186db058cfc57835469a1041ff4100e086c1221ab110d"
+      },
+      {
+        "path": "docs/production-readiness/post-r18/gates/g3/ACCEPTANCE.md",
+        "sha256": "97c278142e6202fa26c76f4e2f9c34473896dba57d8438d68ddba28211059d4a"
+      },
+      {
+        "path": "docs/production-readiness/post-r18/waves/wave-04.plan.json",
+        "sha256": "4ec343c977988fff06c6f32fcf3a022cb13e10c1766565fb4712c46eba04f9b7"
+      },
+      {
+        "path": "docs/production-readiness/post-r18/waves/OWNERSHIP_R29_R38.md",
+        "sha256": "bad36be61cf0638c2b807ab195e6e6fd2223b65f138b68ec227cff2bbf15c7bd"
+      },
+      {
+        "path": "docs/production-readiness/r36/evidence/preflight.json",
+        "sha256": "d504c699fad144ab2e05fc3c7e375f9bb06d8783daa047150756efe2461dd3a7"
+      },
+      {
+        "path": "docs/production-readiness/r36/PR_REPAIR_2026-10-24.md",
+        "sha256": "3d315aa6a0c707a7d5db10be48dcb2227c3e371184ade40107e7f567815577c7"
+      },
+      {
+        "path": "infra/production/platform/topology.json",
+        "sha256": "ac1a647a1275b809a4395468260ae7eb6fdbac43a27f46bed25329c417011d90"
+      },
+      {
+        "path": "infra/production/platform/inputs.schema.json",
+        "sha256": "2a8f9cfd1604a3dd3a9b2a12764f645f4051636d7123b7c84f66096fa2383cb9"
+      },
+      {
+        "path": "infra/production/storage/storage-plan.json",
+        "sha256": "4caf8778baa93a9186b64608ff9d8a807aa9704dac2e85625930099298cb8916"
+      },
+      {
+        "path": "infra/production/edge/edge-policy.json",
+        "sha256": "575531fa4318fa5b54b42e3b531083530ec660fe834209c2eaa5470e033c9b32"
+      },
+      {
+        "path": "infra/production/staging.cjs",
+        "sha256": "b270729391e8799b1c84784a6704392a1e32495a18c1149a1ea1b963f3b5431d"
+      },
+      {
+        "path": "infra/production/STAGING.md",
+        "sha256": "00abab149603b557436fac5573ed4af2cebfc4b9f23a5a660321c2c86c0659bd"
+      },
+      {
+        "path": "docs/production-readiness/r18/BACKUP_RESTORE_EVIDENCE.md",
+        "sha256": "585d4bf543b3f7b4eb309541d3235193d12ebe6ca4cf749ff72c42e1cffc688c"
+      },
+      {
+        "path": "docs/production-readiness/r18/ROLLBACK_RUNBOOK.md",
+        "sha256": "bc77020eb5023125f79e6326f82f0b499a2146931024cc4975807090721911ea"
+      },
+      {
+        "path": "docs/production-readiness/r28/ROLLBACK.md",
+        "sha256": "14c19491da22bd5a6cf0541bae773ae94d98a434a1de465154c87776efb4d803"
+      },
+      {
+        "path": "apps/api/src/infrastructure/storage/storage-inventory.ts",
+        "sha256": "d5dbebc237afc3773b69417713b92b06a0323ce45b81b58780425d037515d630"
+      },
+      {
+        "path": "apps/api/src/infrastructure/mail/mail.dispatcher.ts",
+        "sha256": "1325c34aed4c6d90f5a32f8b9d904692dee8cef1ad872136bef639c7c3039551"
+      },
+      {
+        "path": "apps/api/src/infrastructure/mail/durable-mail.service.ts",
+        "sha256": "1e9b5c3c535970b67a19551a25fcae859c08e889a82a82ef2c085829ee514272"
+      },
+      {
+        "path": "apps/api/src/infrastructure/mail/mail-envelope.cipher.ts",
+        "sha256": "cd923a591843fe546af16d49e5f90085cce3e9993c104e57f18c647e73cd2720"
+      },
+      {
+        "path": "apps/api/src/infrastructure/mail/mail.module.ts",
+        "sha256": "b5c2aeb88df71891669a5c88aa832b59737852d194a7feeab58f8774b7b41f27"
+      },
+      {
+        "path": "apps/api/src/modules/money/money.module.ts",
+        "sha256": "46aabdc446a65fb2fb98efab7631c2f766fec08afe6a2dd3b5c414ac3f62e5e0"
+      },
+      {
+        "path": "apps/api/src/modules/money/runtime/stripe-inbox.scheduler.ts",
+        "sha256": "b8bd5ad8d7c0351d24f679069a791139de130bbc2e43463b065ecb348a1ac3a3"
+      },
+      {
+        "path": "apps/api/src/modules/money/adapters/stripe/stripe-refund.adapter.ts",
+        "sha256": "16196eba50fe1dcf74650ae9a5807b1295fe876aa63389698479486c33703b5d"
+      },
+      {
+        "path": "apps/api/src/config/env.schema.ts",
+        "sha256": "63aac3598937dd28c8b98e58c6db42cd25524bd6e86cbe76fac42542b5463df8"
+      }
+    ]
+  },
+  "checkedCommands": [
+    {
+      "command": "node scripts/runtime/toolchain.cjs",
+      "exitCode": 0,
+      "startedAt": "2026-10-25T01:12:41.376723+00:00",
+      "logSha256": "c8e7121a4a9ba38c434278ad1f04a825ad2bfa92d783cdb849c07c3565713416",
+      "output": "PASS exact Node 24.21.0 and runtime declarations"
+    },
+    {
+      "command": "node .github/scripts/g2-record.mjs --check",
+      "exitCode": 0,
+      "startedAt": "2026-10-25T01:12:41.415385+00:00",
+      "logSha256": "a51c84216cc443f486bfcc5be1936a1458bd60bdcbefc361dbb1ed90d6999426",
+      "output": "PASS G2 record consistency; this does not authenticate remote evidence or grant approval.\nRecorded G2: ACCEPTED; Wave 3: READY_TO_START"
+    },
+    {
+      "command": "node .github/scripts/g3-record.mjs --check",
+      "exitCode": 0,
+      "startedAt": "2026-10-25T01:12:41.479304+00:00",
+      "logSha256": "e41517f403d8c38df98e9d80166b9b5fc41bc9d892f65e866e393c8c90da6530",
+      "output": "PASS G3 record consistency; this does not authenticate evidence or grant approval.\nRecorded G3: BLOCKED; Wave 4: BLOCKED; R38 final G4 join: BLOCKED"
+    },
+    {
+      "command": "node .github/scripts/g3-record.mjs --ready R36",
+      "exitCode": 1,
+      "startedAt": "2026-10-25T01:12:41.548724+00:00",
+      "logSha256": "a0a185c8734b03cf7f46e5b1a7db96a30d3e5814056faea1353598e4435bc43d",
+      "output": "FAIL R36 is not authorized to start"
+    },
+    {
+      "command": "node scripts/production/platform/validate-plan.cjs --check --require-target",
+      "exitCode": 2,
+      "startedAt": "2026-10-25T01:12:41.629809+00:00",
+      "logSha256": "64555511d609ed30ae01a35db1adcfda5796d192b845ab42345c4e912e58a492",
+      "result": {
+        "status": "CONFIGURATION_ONLY",
+        "hostedStatus": "HOSTED_ENVIRONMENT_BLOCKED",
+        "authorizationVerified": false,
+        "planSha256": "d2b75052c99e89d4699c53fd93e74920b710ee092dad856c541b730943a2dbf2",
+        "blockers": [
+          {
+            "id": "HOSTED_TARGET_AUTHORITY_REQUIRED",
+            "owner": "Infrastructure and spending owner",
+            "fields": [
+              "target.accountId",
+              "target.dnsZoneId",
+              "target.hostId",
+              "target.monthlyCostCeiling.amount",
+              "target.monthlyCostCeiling.currency",
+              "target.operatorApprovalRef",
+              "target.provider",
+              "target.region",
+              "target.registryHost",
+              "target.registryRepositories.api",
+              "target.registryRepositories.migrator",
+              "target.registryRepositories.web",
+              "target.secretStoreId",
+              "target.spendApprovalRef"
+            ]
+          },
+          {
+            "id": "HOSTED_SERVICE_INPUTS_REQUIRED",
+            "owner": "Database, storage, mail and security owners",
+            "fields": [
+              "services.clamav.host",
+              "services.clamav.resourceId",
+              "services.clamav.verdictEvidenceRef",
+              "services.postgres.apiRole",
+              "services.postgres.database",
+              "services.postgres.host",
+              "services.postgres.migratorRole",
+              "services.postgres.privilegeEvidenceRef",
+              "services.postgres.resourceId",
+              "services.redis.aclEvidenceRef",
+              "services.redis.host",
+              "services.redis.resourceId",
+              "services.smtp.deliveryEvidenceRef",
+              "services.smtp.host",
+              "services.smtp.provider",
+              "services.smtp.senderDomain",
+              "services.storage.accessEvidenceRef",
+              "services.storage.portfolioStagingBucket",
+              "services.storage.publicBucket",
+              "services.storage.restrictedBucket"
+            ]
+          },
+          {
+            "id": "HOSTED_RELEASE_INPUTS_REQUIRED",
+            "owner": "Release owner",
+            "fields": ["release"]
+          },
+          {
+            "id": "HOSTED_NETWORK_EVIDENCE_REQUIRED",
+            "owner": "Network owner",
+            "fields": ["network.boundaryEvidenceRef", "network.externalNetwork"]
+          },
+          {
+            "id": "HOSTED_SECRET_DELIVERY_REQUIRED",
+            "owner": "Secret rotation operator",
+            "fields": [
+              "secrets.apiSnapshotId",
+              "secrets.migrationSnapshotId",
+              "secrets.rotationLockEvidenceRef"
+            ]
+          },
+          {
+            "id": "REGISTRY_PROVENANCE_REQUIRED",
+            "owner": "Release and registry owner",
+            "fields": [
+              "provenance.apiAttestationRef",
+              "provenance.migratorAttestationRef",
+              "provenance.registryEvidenceRef",
+              "provenance.webAttestationRef"
+            ]
+          },
+          {
+            "id": "ISOLATED_TARGETS_REQUIRED",
+            "owner": "Infrastructure owner and R35/R36/R37 coordinator",
+            "fields": [
+              "isolation.hostedTests.approvalRef",
+              "isolation.hostedTests.targetRef",
+              "isolation.production.databaseResourceId",
+              "isolation.production.redisResourceId",
+              "isolation.production.storageBuckets",
+              "isolation.restore.approvalRef",
+              "isolation.restore.databaseResourceId",
+              "isolation.restore.networkId",
+              "isolation.restore.redisResourceId",
+              "isolation.restore.storageBuckets",
+              "isolation.restore.targetRef"
+            ]
+          },
+          {
+            "id": "RECOVERY_ACCEPTANCE_REQUIRED",
+            "owner": "Data owner and R36 coordinator",
+            "fields": ["recovery.ownerApprovalRef", "recovery.restoreEvidenceRef"]
+          },
+          {
+            "id": "EDGE_INTEGRATION_EVIDENCE_REQUIRED",
+            "owner": "Edge owner and R25/R26 coordinator",
+            "fields": [
+              "edge.applicationEvidenceRef",
+              "edge.csp.integrationEvidenceRef",
+              "edge.origin",
+              "edge.tls.certificateRef"
+            ]
+          }
+        ]
+      }
+    }
+  ],
+  "frozenInstall": {
+    "command": "pnpm install --frozen-lockfile --store-dir /workspace/scratch/eb22d30bac36/r36-pnpm-store --reporter=append-only",
+    "exitCode": 0,
+    "logSha256": "75eb8a06e2d8aaef52bf736afa1be23aeed87aed3f6ea08650892e1fb62d23df",
+    "normalLifecycleHooksExecuted": true,
+    "lockfileUnchanged": true,
+    "warnings": ["Ignored build scripts: @parcel/watcher@2.6.0, unrs-resolver@1.12.2"]
+  },
+  "existingTestRuns": [
+    {
+      "command": "node --test .github/scripts/*.test.mjs infra/production/check-runtime.test.cjs infra/production/staging.test.cjs scripts/production/platform/validate-plan.test.cjs scripts/production/storage/storage-plan.test.cjs scripts/production/storage/storage-cli.test.cjs",
+      "execution": "restricted executor",
+      "exitCode": 1,
+      "reportLevel": "file-only",
+      "passedFiles": 12,
+      "failedFiles": 6,
+      "logSha256": "1c6cf398403d21e545a008bd3a187d9a3efeb9d7a3f8dd4f7639a6f1b182e066"
+    },
+    {
+      "command": "node .github/scripts/production-governance.test.mjs",
+      "execution": "restricted executor diagnostic",
+      "exitCode": 1,
+      "passed": 8,
+      "failed": 2,
+      "finding": "CLI child-process stdout/stderr were empty; assertion failures retained in session output."
+    },
+    {
+      "command": "node --test .github/scripts/*.test.mjs infra/production/check-runtime.test.cjs infra/production/staging.test.cjs scripts/production/platform/validate-plan.test.cjs scripts/production/storage/storage-plan.test.cjs scripts/production/storage/storage-cli.test.cjs",
+      "execution": "approved normal child-process execution",
+      "exitCode": 0,
+      "tests": 966,
+      "pass": 966,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0,
+      "logSha256": "8ec4179c0e29848b3863b91e2748647cc63e404ffd9b9e37c83aa9112f97d79c"
+    },
+    {
+      "command": "node --test .github/scripts/*.test.mjs infra/production/check-runtime.test.cjs infra/production/staging.test.cjs scripts/production/platform/validate-plan.test.cjs scripts/production/storage/storage-plan.test.cjs scripts/production/storage/storage-cli.test.cjs",
+      "execution": "approved normal child-process execution on completed documentation diff",
+      "exitCode": 0,
+      "tests": 966,
+      "pass": 966,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0,
+      "logSha256": "e52ffdd3ac411b8cd7e62534d204321593093289ef74ea5e00dbcc378d5d2230"
+    }
+  ],
+  "newTestsAdded": 0,
+  "testScope": "Unchanged configuration/governance/storage/launcher fixture tests. No R36 runtime or real-service recovery tests executed.",
+  "dependencyAudit": {
+    "command": "pnpm run security:audit",
+    "exitCode": 0,
+    "vulnerabilities": {
+      "info": 0,
+      "low": 0,
+      "moderate": 0,
+      "high": 0,
+      "critical": 0
+    },
+    "totalDependencies": 1323,
+    "reportSha256": "8299b9c566946044775caaf85d083325fb41d7fee967e48424edebb0bbd0cddb",
+    "logSha256": "3a0a612f1145a6a8cd4c2eca41eeb1ab28cc84ab3064db85915bd3b3f62e7c6b"
+  },
+  "recoveryPolicy": {
+    "approvalRef": null,
+    "proposedRpoSeconds": 300,
+    "proposedRtoSeconds": 14400,
+    "proposedDatabaseRetentionDays": 7,
+    "approvedTargets": false
+  },
+  "measurements": {
+    "achievedRpoSeconds": null,
+    "achievedRtoSeconds": null,
+    "lostCommittedWrites": null,
+    "unintendedMoneyEffects": null,
+    "unintendedMailEffects": null
+  },
+  "status": {
+    "implemented": false,
+    "functionalSourceVerified": false,
+    "integrationPending": true,
+    "policyBlocked": true,
+    "externalBlocked": true,
+    "sandboxAccepted": false,
+    "hostedAccepted": false,
+    "releaseAccepted": false
+  },
+  "notExecuted": [
+    "R36 recovery runtime implementation",
+    "real backup and PostgreSQL/Redis/storage restore",
+    "historical-version and lost-object/mail-key drills",
+    "restored cross-role login/private preview/browser screenshots",
+    "pending-job replay and external-effect measurements",
+    "prior immutable-image rollback against forward schema",
+    "partial deployment/migration failure and expired-credential drills",
+    "hosted RPO/RTO and production cutover"
+  ],
+  "restrictions": {
+    "merge": false,
+    "deploy": false,
+    "liveMoney": false,
+    "grants": false,
+    "spend": false,
+    "productionRestore": false
+  },
+  "testCountNote": "The successful runs repeat the same 966 cases; do not add them as unique tests. Initial file-level results are not comparable individual-case counts.",
+  "documentValidation": [
+    {
+      "command": "node .github/scripts/production-governance.mjs",
+      "exitCode": 0,
+      "logSha256": "7da89fb67eeee2bd4af5d93cc785de5265ada0712c9fed580cc20a44a8095b21"
+    },
+    {
+      "command": "node .github/scripts/release-baseline.mjs",
+      "exitCode": 0,
+      "logSha256": "7b7d3015e557dce0cf3702853173ae2975f04da54357f59a39af5fd542f344d6"
+    },
+    {
+      "command": "git diff --check",
+      "exitCode": 0,
+      "logSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "command": "pnpm exec prettier --check docs/production-readiness/r36/ACCEPTANCE.md docs/production-readiness/r36/IMPLEMENTATION.md docs/production-readiness/r36/OWNERSHIP.md docs/production-readiness/r36/RISKS.md docs/production-readiness/r36/ROLLBACK.md docs/production-readiness/r36/evidence/preflight-2026-10-25.json docs/production-readiness/r36/shared-change-requests/CR-001-integration.md",
+      "exitCode": 0,
+      "logSha256": "17aa973d3f004560237d9a95171210b0671deff23d61628eecf7322ff5938f20"
+    }
+  ],
+  "exactScopeValidation": {
+    "changedFiles": 7,
+    "unchangedInspectedFiles": 32,
+    "relativeLinksResolved": true,
+    "runtimeDirectoriesAbsent": true,
+    "historicalR36EvidenceUnchanged": true,
+    "review": "Two independent read-only reviews; ADR versioning wording corrected before publication."
+  },
+  "documentationSecretScan": {
+    "command": "gitleaks dir docs/production-readiness/r36 --redact --no-banner --report-format json --report-path <task-log>/docs-secret-scan.json",
+    "version": "8.24.3",
+    "exitCode": 0,
+    "findings": 0,
+    "scannedBytes": 135259,
+    "reportSha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+    "scope": "R36 documentation before final metadata; exact final tracked-tree scan belongs in PR metadata."
+  }
+}

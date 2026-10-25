@@ -1,38 +1,54 @@
 # R36 preflight evidence ownership
 
-Status: **PREFLIGHT ONLY; R36 IMPLEMENTATION NOT AUTHORIZED TO START.**
+Status: **DOCUMENTATION PREFLIGHT ONLY; R36 IMPLEMENTATION NOT AUTHORIZED TO START.**
 
-The owner's request authorizes inspection and preparation of the G3 blockers
-before R36. Delivery mode A applies. Session `r36-d86d02f90f5c` is the sole
-writer of the following documentation, under that narrow coordinator scope:
+## Current assignment — 2026-10-25
+
+The current owner request is to implement R36 for later review and merge. Its
+G3 start barrier is still closed. Under the continuing coordinator authority
+to prepare reviewable blockers, this session records a new, bounded
+documentation assignment before editing the files below. It does not reuse
+the expired assignment from merged PR #190.
+
+Delivery mode A applies. Session `r36-eb22d30bac36` is the sole writer of:
 
 - `docs/production-readiness/r36/OWNERSHIP.md`
 - `docs/production-readiness/r36/IMPLEMENTATION.md`
 - `docs/production-readiness/r36/ACCEPTANCE.md`
 - `docs/production-readiness/r36/RISKS.md`
 - `docs/production-readiness/r36/ROLLBACK.md`
-- `docs/production-readiness/r36/evidence/preflight.json`
+- `docs/production-readiness/r36/evidence/preflight-2026-10-25.json`
 - `docs/production-readiness/r36/shared-change-requests/CR-001-integration.md`
 
-This exact documentation allowlist is recorded before the other edits. It
-does not activate the conditional runtime/infrastructure lease in
-`../post-r18/waves/wave-04.plan.json`, assign a frozen Wave 4 base, or accept G3.
-It expires on closure of this preflight PR or explicit reassignment.
+Independent gate and recovery reviewers have read-only assignments. All seven
+files remain under one writer. This exact assignment expires when this
+follow-up PR closes or the coordinator explicitly reassigns it.
 
-The task-owned clone is `/workspace/scratch/d86d02f90f5c/hsm-r36`, branch
-`test/r36-backup-restore-recovery`. Before edits, its tracked worktree and
-stash were empty and its observed source was
-`5ff2b7e6a46b4e42114184fac89928372f4c8d4c`, tree
-`54e00d4e9eaa7bd81146f01b69dfa9b396eab45c`. This is an inspection base,
-**not an approved G3 execution base**.
+The task-owned checkout is `/workspace/scratch/eb22d30bac36/hsm-r36`, branch
+`test/r36-backup-restore-recovery`. It was clean with an empty stash at existing
+remote head `77076f0f6e8ee0054bb323fd784346780218164d`. That head is an ancestor
+of the observed owner-merged develop source, so the same isolated branch was
+fast-forwarded without a merge commit or rebase to:
 
-An existing, separate coordinator session owns the G3 record and shared
-wave-status documentation. This session reads those files but does not edit
-them or import that session's unmerged source. PR #188 also received a
-concurrent corrective commit during inspection; this session does not overwrite
-its branch or claim authorship of that correction.
+- inspection base/source: `c9de08d07b12871db8801fb9662b14de83a2c391`;
+- inspection tree: `67136183b8a81de9773c2c6a3831441c320729c0`.
 
-No CI, schema/migration, package manifest/lockfile, runtime module, staging
-launcher, registry, peer lane, external account, deployment or live-money
-write lease is granted here. The request in `shared-change-requests/` is for
-the coordinator's later serialized integration, not an applied runtime patch.
+This is **not an approved frozen G3 execution base**. No other session's
+worktree, stash, branch or unmerged product source was used.
+
+## Preserved boundaries
+
+The previous documentation assignment to `r36-d86d02f90f5c` expired when PR
+#190 merged on 2026-10-24. Its historical `evidence/preflight.json` and
+`PR_REPAIR_2026-10-24.md` remain unchanged. New observations are recorded
+separately and do not relabel old test results as current execution.
+
+This assignment does not activate the conditional runtime/infrastructure
+lease in `../post-r18/waves/wave-04.plan.json`, accept G3, assign a Wave 4
+runtime writer or provide a frozen base. G3 acceptance/publication records and
+central wave/status registries remain with their existing coordinator owner.
+
+No CI, schema/migration, manifest/lockfile, runtime module, staging launcher,
+peer lane, external account, resource, deployment or live-money write lease
+is granted here. The exact shared change request is review material for the
+coordinator's serialized integration, not an applied shared-file patch.
