@@ -462,6 +462,7 @@ function ProviderAppRoutes({ checksWorkspaceAccess }: { checksWorkspaceAccess: b
           ) : (
             <ProviderStatusState
               workAccessDenied={!hasMarketplace}
+              canManageVerification={allowed.includes('MANAGE_VERIFICATION')}
               status={incomplete && isActive ? 'DRAFT' : (profile?.status ?? 'DRAFT')}
               onContinueOnboarding={
                 mayOnboard

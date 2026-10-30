@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router';
 import MockAdapter from 'axios-mock-adapter';
 import type { ProviderProfileStatus } from '@homeservicemarketplace/contracts';
@@ -9,6 +9,7 @@ import { AuthProvider, createAuthQueryClient } from '../../../lib/auth-provider'
 import { LanguageProvider } from '../../i18n/LanguageContext';
 import { EcosystemProvider } from '../../context/EcosystemContext';
 import { ProviderApp } from './ProviderApp';
+import { ProviderStatusState } from './ProviderStatusState';
 import {
   APPLYING_CAPABILITIES,
   SUBMITTED_CAPABILITIES,
@@ -100,10 +101,62 @@ beforeEach(() => {
 });
 afterEach(() => {
   mock.restore();
+  qc.clear();
+  window.localStorage.removeItem('hsm.lang');
   document.cookie.split(';').forEach((c) => {
     const name = c.split('=')[0]?.trim();
     if (name) document.cookie = `${name}=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/`;
   });
+});
+
+describe('ProviderStatusState — identity documents entry', () => {
+  function renderStatus(canManageVerification?: boolean) {
+    mock.onGet('/v1/auth/me').reply(200, MOCK_ME);
+    return render(
+      <MemoryRouter initialEntries={['/provider/status']}>
+        <AuthProvider client={qc}>
+          <LanguageProvider>
+            <Routes>
+              <Route
+                path="/provider/status"
+                element={
+                  <ProviderStatusState
+                    status="PENDING_REVIEW"
+                    canManageVerification={canManageVerification}
+                  />
+                }
+              />
+              <Route
+                path="/provider/verification"
+                element={<h1>Identity verification destination</h1>}
+              />
+            </Routes>
+          </LanguageProvider>
+        </AuthProvider>
+      </MemoryRouter>,
+    );
+  }
+
+  it.each([
+    ['en', 'Identity documents', 'ltr'],
+    ['ar', 'وثائق الهوية', 'rtl'],
+  ])('opens the existing verification route in %s', async (lang, label, dir) => {
+    window.localStorage.setItem('hsm.lang', lang);
+    renderStatus(true);
+    expect(screen.getByTestId('provider-status-pending_review')).toHaveAttribute('dir', dir);
+    fireEvent.click(screen.getByRole('button', { name: label, exact: true }));
+    expect(
+      await screen.findByRole('heading', { name: 'Identity verification destination' }),
+    ).toBeInTheDocument();
+  });
+
+  it.each([undefined, false])(
+    'does not offer document access without an explicit capability (%s)',
+    (canManageVerification) => {
+      renderStatus(canManageVerification);
+      expect(screen.queryByTestId('provider-status-verification')).toBeNull();
+    },
+  );
 });
 
 describe('ProviderApp — status gate', () => {

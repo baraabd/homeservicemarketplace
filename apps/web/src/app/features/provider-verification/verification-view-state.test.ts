@@ -86,7 +86,7 @@ describe('the account outranks everything', () => {
     ).toBe('SUSPENDED');
   });
 
-  it('onboarding outranks verification, because it is the task they are on', () => {
+  it('keeps onboarding blocked when the server has not allowed verification', () => {
     expect(
       stateOf({
         capabilities: CAPS({ primaryReason: 'ONBOARDING_INCOMPLETE' }),
@@ -94,6 +94,28 @@ describe('the account outranks everything', () => {
       }),
     ).toBe('ONBOARDING_INCOMPLETE');
   });
+
+  it.each([
+    [null, 'NOT_STARTED'],
+    [kase({ state: 'DRAFT' }), 'EVIDENCE_REQUIRED'],
+    [kase({ state: 'ACTION_REQUIRED' }), 'CHANGES_REQUESTED'],
+  ])(
+    'honors verification permission while onboarding is incomplete: %s',
+    (verificationCase, state) => {
+      const view = deriveVerificationView({
+        capabilities: CAPS({
+          primaryReason: 'ONBOARDING_INCOMPLETE',
+          allowed: ['COMPLETE_ONBOARDING', 'MANAGE_VERIFICATION'],
+        }),
+        verificationCase,
+        profile: PROFILE,
+      });
+      expect(view.state).toBe(state);
+      expect(view.canManageVerification).toBe(true);
+      expect(view.axes.onboardingComplete).toBe(false);
+      expect(view.axes.workAccessActive).toBe(false);
+    },
+  );
 });
 
 describe('before there is a case', () => {
@@ -160,7 +182,49 @@ describe('while the provider still has to act', () => {
           documents: [doc({ scanState: 'PENDING' })],
         }),
       }),
-    ).toBe('EVIDENCE_REQUIRED');
+    ).toBe('SCANNING');
+  });
+
+  it('asks for the missing requirement while another document is scanning', () => {
+    const view = deriveVerificationView({
+      capabilities: CAPS(),
+      profile: PROFILE,
+      verificationCase: kase({
+        requirements: [req(), req({ kind: 'CATEGORY_LICENSE', serviceCategoryId: 'electrical' })],
+        documents: [doc({ scanState: 'PENDING' })],
+      }),
+    });
+    expect(view.state).toBe('EVIDENCE_REQUIRED');
+    expect(view.uploadTarget).toEqual({
+      kind: 'CATEGORY_LICENSE',
+      serviceCategoryId: 'electrical',
+    });
+  });
+
+  it('waits for the replacement scan in a returned verification case', () => {
+    expect(
+      stateOf({
+        verificationCase: kase({
+          state: 'ACTION_REQUIRED',
+          documents: [doc({ superseded: true }), doc({ id: 'replacement', scanState: 'PENDING' })],
+        }),
+      }),
+    ).toBe('SCANNING');
+  });
+
+  it('retains the correction instruction and offers the correct business document target', () => {
+    const view = deriveVerificationView({
+      capabilities: CAPS(),
+      profile: PROFILE,
+      verificationCase: kase({
+        state: 'ACTION_REQUIRED',
+        requirements: [req({ kind: 'BUSINESS_REGISTRATION' })],
+        documents: [doc({ kind: 'BUSINESS_REGISTRATION' })],
+      }),
+    });
+    expect(view.state).toBe('CHANGES_REQUESTED');
+    expect(view.uploadTarget?.kind).toBe('BUSINESS_REGISTRATION');
+    expect(view.outstanding).toEqual([]);
   });
 
   it('a superseded bad document does not block a good replacement', () => {

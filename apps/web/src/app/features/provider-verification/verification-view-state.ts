@@ -15,16 +15,15 @@ import type {
 //
 // WHY A DERIVATION AND NOT A CHAIN OF TERNARIES IN THE COMPONENT
 //
-// There are twelve states and they are NOT mutually exclusive in the raw data:
+// The presentation states are not mutually exclusive in the raw data:
 // a suspended provider can also have a case in review and a quarantined file.
-// Rendering from the raw fields means every branch re-decides precedence, and
-// two branches eventually disagree — which is how a suspended provider gets
-// shown an upload button. The order below IS the policy, written once.
+// Centralizing their presentation prevents different branches from describing
+// the same response differently. Authorization remains exclusively owned by
+// the server's capabilities and available case actions.
 //
-// It deliberately mirrors the SERVER's precedence (ADR 0006 ranks): account
-// first, then standing, then onboarding, then evidence, then work access. A UI
-// that ordered these differently from the capability service would show
-// someone a screen the API will refuse.
+// Account and standing restrictions take precedence (ADR 0006). Workflow
+// actions then use their own server capability: an onboarding or work-access
+// blocker must not hide evidence management when the server permits it.
 
 /** The five axes the UI must keep visibly separate (ADR 0005). Conflating any
  *  two of these is the confusion this whole surface exists to remove. */
@@ -67,8 +66,12 @@ export type VerificationViewState =
 export interface VerificationView {
   state: VerificationViewState;
   axes: VerificationAxes;
+  /** The server's permission for this workflow, independent of permission to work. */
+  canManageVerification: boolean;
   /** Requirements with no usable document yet. */
   outstanding: ProviderVerificationRequirement[];
+  /** The next document the provider can add or replace, excluding an active scan. */
+  uploadTarget: ProviderVerificationRequirement | null;
   /** Documents whose scan verdict blocks them, with the verdict kept so the
    *  UI can say WHICH problem rather than "something went wrong". */
   unusable: ProviderVerificationDocument[];
@@ -153,6 +156,15 @@ export function deriveVerificationView(input: VerificationInput): VerificationVi
   const outstanding = requirements.filter((r) => !satisfies(r, documents));
   const unusable = documents.filter(isUnusable);
   const scanning = documents.filter((d) => !d.superseded && d.scanState === 'PENDING');
+  const missing = outstanding.filter(
+    (requirement) =>
+      !scanning.some(
+        (document) =>
+          document.kind === requirement.kind &&
+          document.serviceCategoryId === requirement.serviceCategoryId,
+      ),
+  );
+  const canManageVerification = allowed.has('MANAGE_VERIFICATION');
 
   const axes: VerificationAxes = {
     onboardingComplete: reason !== 'ONBOARDING_INCOMPLETE',
@@ -172,7 +184,9 @@ export function deriveVerificationView(input: VerificationInput): VerificationVi
   const availableActions = Array.isArray(kase?.availableActions) ? kase.availableActions : [];
   const base = {
     axes,
+    canManageVerification,
     outstanding,
+    uploadTarget: unusable[0] ?? missing[0] ?? requirements[0] ?? null,
     unusable,
     scanning,
     reasonCode,
@@ -192,9 +206,10 @@ export function deriveVerificationView(input: VerificationInput): VerificationVi
   if (reason === 'PROVIDER_SUSPENDED') {
     return { ...base, state: 'SUSPENDED' };
   }
-  // Rank 5 — still filling in the form. Verification is a later problem, and
-  // putting it in front of them now competes with the task they are on.
-  if (reason === 'ONBOARDING_INCOMPLETE') {
+  // The primary reason explains work access, not every individual operation.
+  // Returned applications retain MANAGE_VERIFICATION on the server so that
+  // providers can supply the identity evidence requested by their reviewer.
+  if (reason === 'ONBOARDING_INCOMPLETE' && !canManageVerification) {
     return { ...base, state: 'ONBOARDING_INCOMPLETE' };
   }
 
@@ -238,11 +253,19 @@ export function deriveVerificationView(input: VerificationInput): VerificationVi
   // must replace, and burying it under "3 documents required" hides the only
   // actionable fact on the screen.
   if (unusable.length > 0) return { ...base, state: 'EVIDENCE_UNUSABLE' };
-  if (kase.state === 'ACTION_REQUIRED') return { ...base, state: 'CHANGES_REQUESTED' };
-  if (outstanding.length > 0) return { ...base, state: 'EVIDENCE_REQUIRED' };
+  if (missing.length > 0) {
+    return {
+      ...base,
+      state: kase.state === 'ACTION_REQUIRED' ? 'CHANGES_REQUESTED' : 'EVIDENCE_REQUIRED',
+    };
+  }
   // Everything supplied, but something is still being checked. "Wait" is a
   // different instruction from "act", and the difference matters to someone
   // refreshing the page.
   if (scanning.length > 0) return { ...base, state: 'SCANNING' };
+  // Keep the reviewer's instruction and replacement controls visible. Clean
+  // scanning alone does not mean a legibility correction has been made; the
+  // screen also offers the server-authorized resubmission action here.
+  if (kase.state === 'ACTION_REQUIRED') return { ...base, state: 'CHANGES_REQUESTED' };
   return { ...base, state: 'READY_TO_SUBMIT' };
 }
