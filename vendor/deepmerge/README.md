@@ -23,26 +23,41 @@ dependency graph through the root `pnpm.overrides` entry
 
 ## What changed
 
-The only behavior change applies the upstream PR #286 fix to the published
-4.3.1 CommonJS build (`dist/cjs.js` → `index.cjs`):
+`index.cjs` is the published 4.3.1 CommonJS build (`dist/cjs.js`) with the
+upstream PR #286 fix as the only behavior change:
 
 ```diff
  function getKeys(target) {
--	return Object.keys(target).concat(getEnumerableOwnPropertySymbols(target))
-+	return Object.keys(target).filter(function(key) {
-+		return key !== '__proto__'
-+	}).concat(getEnumerableOwnPropertySymbols(target))
+-  return Object.keys(target).concat(getEnumerableOwnPropertySymbols(target));
++  return Object.keys(target)
++    .filter(function (key) {
++      return key !== '__proto__';
++    })
++    .concat(getEnumerableOwnPropertySymbols(target));
  }
 ```
 
-`index.d.ts` and `license.txt` are byte-for-byte copies of 4.3.1. SHA-256
-values of the upstream files this fork started from:
+The files are formatted with the repository Prettier config, and
+`catch (_)` is written as `catch {}` (an unused binding the lint rules
+reject). This keeps the commit hooks and the R27 dependency controls
+byte-stable. Neither change alters behavior. `index.d.ts` is upstream
+formatted the same way, and `license.txt` is byte-for-byte.
 
-| Upstream file | SHA-256                                                            |
-| ------------- | ------------------------------------------------------------------ |
-| `dist/cjs.js` | `2e5160f84a1141bd927264afe4d15766f1e6cf07daef182b37ff53fea121de7d` |
-| `index.d.ts`  | `146ba4b99c5feb82663e17a671bf9f53bb39c704cd76345d6c5a801c26372f44` |
-| `license.txt` | `6cfc4687cb2f2d86f4a77e6b526290d3878e5e512f3fec2f4cb36a9cb36f798b` |
+| Upstream 4.3.1 file | SHA-256 (as published)                                             |
+| ------------------- | ------------------------------------------------------------------ |
+| `dist/cjs.js`       | `2e5160f84a1141bd927264afe4d15766f1e6cf07daef182b37ff53fea121de7d` |
+| `index.d.ts`        | `146ba4b99c5feb82663e17a671bf9f53bb39c704cd76345d6c5a801c26372f44` |
+| `license.txt`       | `6cfc4687cb2f2d86f4a77e6b526290d3878e5e512f3fec2f4cb36a9cb36f798b` |
+
+Reproduce the comparison. The only output should be the header comment and
+the hunk above; the second `diff` prints nothing:
+
+```sh
+U=<path to the deepmerge-4.3.1 registry tarball contents>
+npx prettier --stdin-filepath x.cjs < "$U/dist/cjs.js" \
+  | sed 's/} catch (_) {/} catch {/' | diff - vendor/deepmerge/index.cjs
+npx prettier --stdin-filepath x.d.ts < "$U/index.d.ts" | diff - vendor/deepmerge/index.d.ts
+```
 
 The entry point is `index.cjs`, not `dist/`, because `.dockerignore`
 excludes `**/dist` from image build contexts.
