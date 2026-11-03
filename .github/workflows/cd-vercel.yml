@@ -1,0 +1,225 @@
+name: Vercel continuous delivery
+
+# One deployment owner: apps/web/vercel.json disables only native Git builds.
+# This workflow cannot provision an API, restore data or bypass CI.
+# See docs/deployment/VERCEL_CD.md for the existing-host prerequisites.
+on:
+  push:
+    branches: ['develop', 'main']
+  workflow_dispatch:
+    inputs:
+      target:
+        description: 'staging uses develop; production uses main'
+        type: choice
+        options: [staging, production]
+        required: true
+      source_sha:
+        description: 'Full current branch SHA; all push verification must be successful'
+        type: string
+        required: true
+
+permissions:
+  contents: read
+  actions: read
+  checks: read
+
+# Never kill a deployment midway through promotion. A queued stale source is
+# rejected by the evidence gate instead of moving the domain backwards.
+concurrency:
+  group: vercel-cd-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  select:
+    name: Select trusted release source
+    if: >-
+      github.repository == 'baraabd/homeservicemarketplace' &&
+      ((github.event_name == 'push' &&
+        (github.ref == 'refs/heads/develop' || github.ref == 'refs/heads/main')) ||
+       (github.event_name == 'workflow_dispatch' &&
+        (github.ref == 'refs/heads/develop' || github.ref == 'refs/heads/main')))
+    runs-on: ubuntu-latest
+    outputs:
+      sha: ${{ steps.source.outputs.sha }}
+      branch: ${{ steps.source.outputs.branch }}
+      target: ${{ steps.source.outputs.target }}
+    steps:
+      - id: source
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          node <<'NODE'
+          const fs = require('node:fs');
+          const event = JSON.parse(fs.readFileSync(process.env.GITHUB_EVENT_PATH, 'utf8'));
+          const manual = process.env.EVENT_NAME === 'workflow_dispatch';
+          const branch = manual
+            ? ({ staging: 'develop', production: 'main' })[event.inputs?.target]
+            : process.env.GITHUB_REF?.replace('refs/heads/', '');
+          const sha = manual ? event.inputs?.source_sha : process.env.GITHUB_SHA;
+          if (!['develop', 'main'].includes(branch) || !/^[a-f0-9]{40}$/.test(sha ?? '')) {
+            throw new Error('Trusted branch and full source SHA required');
+          }
+          if (process.env.GITHUB_REF !== 'refs/heads/' + branch) {
+            throw new Error('Run the workflow from the selected environment branch');
+          }
+          const target = branch === 'main' ? 'production' : 'staging';
+          fs.appendFileSync(process.env.GITHUB_OUTPUT,
+            'sha=' + sha + '\nbranch=' + branch + '\ntarget=' + target + '\n');
+          NODE
+
+  verified:
+    name: Require current source and all release checks
+    needs: select
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ needs.select.outputs.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '24.21.0'
+          package-manager-cache: false
+      - name: Wait for all gates on this exact push
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          DEPLOY_BRANCH: ${{ needs.select.outputs.branch }}
+          DEPLOY_SHA: ${{ needs.select.outputs.sha }}
+        run: node .github/scripts/cd-evidence.mjs --branch "$DEPLOY_BRANCH" --sha "$DEPLOY_SHA" --wait-seconds 1800
+
+  deploy:
+    name: Build, stage, check and promote web
+    needs: [select, verified]
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    environment:
+      name: ${{ needs.select.outputs.target }}
+      url: ${{ vars.HSM_WEB_ORIGIN }}
+    # Also protects the target if another dispatch path is added later.
+    concurrency:
+      group: vercel-release-${{ needs.select.outputs.target }}
+      cancel-in-progress: false
+    env:
+      DEPLOY_SHA: ${{ needs.select.outputs.sha }}
+      DEPLOY_BRANCH: ${{ needs.select.outputs.branch }}
+      DEPLOY_TARGET: ${{ needs.select.outputs.target }}
+      VERCEL_ORG_ID: ${{ vars.VERCEL_ORG_ID }}
+      VERCEL_PROJECT_ID: ${{ vars.VERCEL_PROJECT_ID }}
+      HSM_WEB_ORIGIN: ${{ vars.HSM_WEB_ORIGIN }}
+      HSM_API_ORIGIN: ${{ vars.HSM_API_ORIGIN }}
+      HSM_COOKIE_DOMAIN: ${{ vars.HSM_COOKIE_DOMAIN }}
+      VERCEL_TELEMETRY_DISABLED: '1'
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ needs.select.outputs.sha }}
+          persist-credentials: false
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '24.21.0'
+          cache: pnpm
+      - name: Verify source again after the environment/concurrency wait
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          node scripts/runtime/toolchain.cjs
+          node .github/scripts/cd-evidence.mjs --branch "$DEPLOY_BRANCH" --sha "$DEPLOY_SHA"
+      - name: Validate environment binding before contacting Vercel
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: |
+          node --input-type=module <<'NODE'
+          import { releaseConfig } from './scripts/deploy/vercel-release.mjs';
+          releaseConfig(process.env);
+          for (const key of ['VERCEL_ORG_ID', 'VERCEL_PROJECT_ID', 'VERCEL_TOKEN']) {
+            if (!process.env[key]) throw new Error(key + ' is missing in this GitHub environment');
+          }
+          NODE
+      - name: Install pinned deployment CLI outside the workspace
+        run: |
+          npm install --prefix "$RUNNER_TEMP/hsm-vercel-cli" --no-package-lock --no-audit --no-fund vercel@65.10.0
+          echo "$RUNNER_TEMP/hsm-vercel-cli/node_modules/.bin" >> "$GITHUB_PATH"
+      - name: Pull existing Vercel project settings and target variables
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: |
+          if [ "$DEPLOY_TARGET" = production ]; then
+            vercel pull --yes --environment=production --token="$VERCEL_TOKEN"
+          else
+            vercel pull --yes --environment=preview --git-branch="$DEPLOY_BRANCH" --token="$VERCEL_TOKEN"
+          fi
+          node scripts/deploy/vercel-release.mjs validate
+          node scripts/deploy/vercel-release.mjs verify-domain
+      - name: Require the matching API release before building the web
+        run: node scripts/deploy/vercel-release.mjs probe-api
+      - name: Build once with exact Node and the selected public configuration
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: |
+          node scripts/deploy/vercel-release.mjs stamp
+          if [ "$DEPLOY_TARGET" = production ]; then
+            vercel build --prod --token="$VERCEL_TOKEN"
+          else
+            vercel build --token="$VERCEL_TOKEN"
+          fi
+          git diff --exit-code -- pnpm-lock.yaml
+      - name: Recheck source and API before uploading
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          node .github/scripts/cd-evidence.mjs --branch "$DEPLOY_BRANCH" --sha "$DEPLOY_SHA"
+          node scripts/deploy/vercel-release.mjs probe-api
+      - name: Upload the built artifact without promoting production
+        id: uploaded
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: |
+          # Preview may move its branch alias during upload. Only Production
+          # has --skip-domain, so its stable domain stays unchanged until smoke.
+          args=(deploy --prebuilt --yes --meta "githubDeployment=1" --meta "githubCommitSha=$DEPLOY_SHA" --meta "githubCommitRef=$DEPLOY_BRANCH")
+          if [ "$DEPLOY_TARGET" = production ]; then args+=(--prod --skip-domain); fi
+          vercel "${args[@]}" --token="$VERCEL_TOKEN" > "$RUNNER_TEMP/vercel-deployment-url.txt"
+          node scripts/deploy/vercel-release.mjs capture-url "$RUNNER_TEMP/vercel-deployment-url.txt"
+      - name: Check the exact uploaded artifact
+        env:
+          DEPLOYMENT_URL: ${{ steps.uploaded.outputs.url }}
+          VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
+        run: node scripts/deploy/vercel-release.mjs probe-web "$DEPLOYMENT_URL"
+      - name: Recheck source and API immediately before moving the domain
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          node .github/scripts/cd-evidence.mjs --branch "$DEPLOY_BRANCH" --sha "$DEPLOY_SHA"
+          node scripts/deploy/vercel-release.mjs probe-api
+      - name: Promote the verified artifact to the selected stable domain
+        env:
+          DEPLOYMENT_URL: ${{ steps.uploaded.outputs.url }}
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: |
+          node scripts/deploy/vercel-release.mjs verify-domain
+          if [ "$DEPLOY_TARGET" = production ]; then
+            vercel promote "$DEPLOYMENT_URL" --yes --timeout=5m --scope="$VERCEL_ORG_ID" --token="$VERCEL_TOKEN"
+          else
+            domain="$(node scripts/deploy/vercel-release.mjs hostname)"
+            vercel alias set "$DEPLOYMENT_URL" "$domain" --scope="$VERCEL_ORG_ID" --token="$VERCEL_TOKEN"
+          fi
+      - name: Verify the actual stable domain and record the result
+        env:
+          DEPLOYMENT_URL: ${{ steps.uploaded.outputs.url }}
+          VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
+        run: |
+          node scripts/deploy/vercel-release.mjs probe-web "$HSM_WEB_ORIGIN"
+          node scripts/deploy/vercel-release.mjs probe-api
+          {
+            echo "### Vercel release verified"
+            echo "- Target: $DEPLOY_TARGET"
+            echo "- Source: $DEPLOY_SHA"
+            echo "- Stable URL: $HSM_WEB_ORIGIN"
+            echo "- Immutable artifact: $DEPLOYMENT_URL"
+            echo "- HTTP smoke passed. Authenticated browser journeys are separate acceptance."
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Remove pulled credentials and generated local release metadata
+        if: always()
+        run: rm -rf -- .vercel apps/web/.vercel apps/web/public/deployment.json
