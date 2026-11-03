@@ -2,8 +2,18 @@
 const assert = require('node:assert/strict');
 const { execFileSync } = require('node:child_process');
 const { setTimeout: delay } = require('node:timers/promises');
+const {
+  documentCsp,
+  verifyWebBuildInfo,
+} = require('../../scripts/production/security-app/web-build-identity.cjs');
 async function main() {
-  const root = 'http://127.0.0.1:18080';
+  // Loopback only: this smoke drives a disposable local container.
+  const port = Number(process.env.WEB_SMOKE_PORT || 18080);
+  assert.ok(Number.isInteger(port) && port >= 1024 && port <= 65535);
+  const root = `http://127.0.0.1:${port}`;
+  const expectedStripe = process.env.EXPECTED_STRIPE_SANDBOX;
+  assert.ok(['true', 'false'].includes(expectedStripe), 'Declare EXPECTED_STRIPE_SANDBOX');
+  assert.match(process.env.EXPECTED_WEB_CONFIG_FINGERPRINT ?? '', /^[a-f0-9]{64}$/u);
   let healthy = false;
   for (let attempt = 0; attempt < 30; attempt += 1) {
     try {
@@ -54,13 +64,22 @@ async function main() {
   const info = await fetch(`${root}/build-info.json`);
   assert.equal(info.headers.get('cache-control'), 'no-store');
   const sourceSha = execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
-  assert.deepEqual(await info.json(), {
-    sourceSha,
-    apiUrl: process.env.EXPECTED_API_URL,
-    onboardingV2: false,
-  });
+  const build = await info.json();
+  // K03: re-derive the identity; then bind it to the served document's CSP.
+  const { fingerprint, policy } = verifyWebBuildInfo(build);
+  assert.equal(build.sourceSha, sourceSha);
+  assert.equal(build.apiUrl, process.env.EXPECTED_API_URL);
+  assert.equal(build.onboardingV2, false);
+  assert.equal(build.stripeSandbox, expectedStripe === 'true');
+  assert.equal(fingerprint, process.env.EXPECTED_WEB_CONFIG_FINGERPRINT);
+  assert.equal(documentCsp(html), policy, 'The served document must carry the declared CSP');
+  assert.equal(
+    /https:\/\/js\.stripe\.com/u.test(policy),
+    expectedStripe === 'true',
+    'Stripe.js is admitted only by an explicit sandbox build',
+  );
   console.log(
-    'PASS real non-root Nginx image routes and source/flag identity (CI, not staging acceptance)',
+    `PASS real non-root Nginx image routes, served CSP and source/flag identity stripeSandbox=${expectedStripe} (CI, not staging acceptance)`,
   );
 }
 main().catch((error) => {
