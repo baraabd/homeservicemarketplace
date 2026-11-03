@@ -56,6 +56,13 @@ async function newPage(width = 390, language = 'en') {
   page.on('pageerror', () => errors.push('browser-page-error'));
   return { context, page };
 }
+// K02 — every signup names the exact Terms/Privacy versions the server
+// publishes; read them from the server rather than hard-coding them.
+async function legalAcceptance(locale = 'en') {
+  const docs = await (await fetch(`${API}/v1/legal/documents`)).json();
+  const v = (kind) => docs.documents.find((d) => d.kind === kind).version;
+  return { termsVersion: v('TERMS_OF_SERVICE'), privacyVersion: v('PRIVACY_NOTICE'), locale };
+}
 async function call(page, endpoint, body, csrf = true) {
   return page.evaluate(
     async ({ api, endpoint, body, csrf }) => {
@@ -327,6 +334,7 @@ try {
       password: pwd,
       firstName: 'R04',
       lastName: 'Recovery',
+      legalAcceptance: await legalAcceptance('ar'),
     });
     assert.equal(result.status, 202);
     await ownUser(address);
@@ -367,6 +375,7 @@ try {
         password: pwd,
         firstName: 'R04',
         lastName: role,
+        legalAcceptance: await legalAcceptance(),
       });
       assert.equal(response.status, 202);
       const user = await ownUser(address);
