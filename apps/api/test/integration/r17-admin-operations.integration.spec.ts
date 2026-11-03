@@ -261,6 +261,62 @@ const enabled = process.env.RUN_DB_INTEGRATION === '1';
     expect((await otherAdmin.request('/v1/admin/settings')).status).toBe(200);
   });
 
+  // K06 — "No administrator may approve their own provider application." The
+  // review workspace refuses SELF_REVIEW, but the legacy provider actions did
+  // not check the actor at all, and their approve is live while verification
+  // and work-access enforcement are off (the env defaults). An administrator
+  // who is also a provider must not approve, reject, suspend or reactivate
+  // their own profile; a stale admin claim must not reach these actions either.
+  it('K06 an administrator cannot decide their own provider profile through the legacy actions', async () => {
+    const { db, users, prefix } = h.fixture;
+    const profileId = `${prefix}k06-self-profile`;
+    await db.providerProfile.deleteMany({ where: { id: profileId } });
+    await db.providerProfile.create({
+      data: {
+        id: profileId,
+        userId: users.independent,
+        displayName: 'K06 Self Review',
+        initials: 'KS',
+        status: 'PENDING_REVIEW',
+      },
+    });
+    const since = new Date();
+    try {
+      for (const action of ['approve', 'reject', 'suspend', 'reactivate'] as const) {
+        const res = await otherAdmin.request(`/v1/admin/providers/${profileId}/${action}`, {
+          method: 'POST',
+          body: action === 'approve' ? {} : { reason: 'self' },
+        });
+        expect({ action, status: res.status }).toEqual({ action, status: 403 });
+      }
+      const row = await db.providerProfile.findUniqueOrThrow({ where: { id: profileId } });
+      expect(row.status).toBe('PENDING_REVIEW');
+      expect(row.reviewedByUserId).toBeNull();
+      expect(
+        await db.auditEvent.count({
+          where: {
+            createdAt: { gte: since },
+            type: {
+              in: [
+                'ADMIN_PROVIDER_APPROVED',
+                'ADMIN_PROVIDER_REJECTED',
+                'ADMIN_PROVIDER_SUSPENDED',
+              ],
+            },
+            metadata: { path: ['providerProfileId'], equals: profileId },
+          },
+        }),
+      ).toBe(0);
+      expect(
+        await db.notification.count({
+          where: { userId: users.independent, createdAt: { gte: since } },
+        }),
+      ).toBe(0);
+    } finally {
+      await db.providerProfile.deleteMany({ where: { id: profileId } });
+    }
+  });
+
   it('D-3 hostile property names select nothing, write nothing and pollute nothing', async () => {
     const { db } = h.fixture;
     const hostile = ['__proto__', 'constructor', 'prototype', 'toString', 'hasOwnProperty'];

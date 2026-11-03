@@ -23,6 +23,7 @@ import { CsrfGuard } from '../../iam/authentication/guards/csrf.guard';
 import { JwtAuthGuard } from '../../iam/authentication/guards/jwt-auth.guard';
 import type { AuthenticatedUser } from '../../iam/authentication/types/authenticated-user';
 import { Roles } from '../../iam/authorization/decorators/roles.decorator';
+import { CurrentAdminGuard } from '../../iam/authorization/guards/current-admin.guard';
 import { RolesGuard } from '../../iam/authorization/guards/roles.guard';
 import { Permissions } from '../../iam/authorization/decorators/permissions.decorator';
 import { PermissionsGuard } from '../../iam/authorization/guards/permissions.guard';
@@ -37,7 +38,7 @@ import { UpdateReviewNotesDto } from './dto/update-review-notes.dto';
 import { AdminVerificationService } from './admin-verification.service';
 import { AdminVerificationCaseService } from './admin-verification-case.service';
 
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, RolesGuard, CurrentAdminGuard)
 @Roles('admin')
 @Controller({ path: 'admin/providers', version: '1' })
 export class AdminVerificationController {
