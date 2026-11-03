@@ -80,6 +80,14 @@ Web, at `c715e81b` (no web file changed after it; verified with `git diff c715e8
 | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---- | -------------------------------------------------------------------- |
 | `E2E_REAL_API=http://127.0.0.1:4061 E2E_MAILPIT=http://127.0.0.1:8035 E2E_BASE_URL=http://127.0.0.1:4181 playwright test e2e/k06-support-operations.real-api.spec.ts --project=chromium-desktop --workers=1` | 0    | **3 passed** (EN provider, AR provider, EN customer); 44 screenshots |
 
+## Hosted CI findings on the first push (`d14d62b9`) and their disposition
+
+| Check                                  | Cause                                                                                                  | Disposition                                                                                                  |
+| -------------------------------------- | ------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------ |
+| R27 comparable measurements            | `admin disputes` read rose to 4 statements (limit 3) because of `CurrentAdminGuard`                    | Guard scoped to the dispute desk decisions; read residual recorded as B-11. No budget changed                |
+| Dispute journey › R17-D step           | Fail-closed gate expects exactly 14 R17-D cases; K06 added 3                                           | `ci.yml` expected count raised to 17 (16 service + 1 browser, verified locally); nothing skipped or weakened |
+| Dependency, secret and container scans | Zero-finding dependency audit fails on develop `92770ea6` itself and on K02; K06 changes no dependency | Pre-existing; owned by the K01 dependency lane                                                               |
+
 ## Not run, and why
 
 | Suite / check                                                | Reason                                                                                                 |

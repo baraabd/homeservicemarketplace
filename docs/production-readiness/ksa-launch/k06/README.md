@@ -63,7 +63,7 @@ token:
 - wrote platform settings, including the dispute-intake pilot policy.
 
 The same claim-only authority covered catalog, service-area policy and the
-legacy dispute desk. All are now refused on the next request. Fresh-permission
+legacy dispute desk. All are now refused on the next request, except reads of the legacy dispute desk, which stay claim-only to keep the R27 statement budget (owner decision B-11). Fresh-permission
 surfaces (users, provider review, evidence, support, portfolio, reviews,
 dispute workspace, money) were already correct and are unchanged.
 
