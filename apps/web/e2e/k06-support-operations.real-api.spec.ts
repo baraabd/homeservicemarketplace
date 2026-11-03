@@ -46,6 +46,20 @@ async function noHorizontalOverflow(page: Page): Promise<void> {
   expect(overflow, 'page-level horizontal overflow').toBeLessThanOrEqual(0);
 }
 
+/** Project usability floor: every visible button is at least 44x44 CSS px. */
+async function touchTargetsAtLeast44(page: Page, width: number): Promise<void> {
+  const small = await page.$$eval('button', (buttons) =>
+    buttons
+      .map((button) => {
+        const box = button.getBoundingClientRect();
+        const label = button.getAttribute('aria-label') ?? button.textContent?.trim() ?? '';
+        return { label, w: Math.round(box.width), h: Math.round(box.height) };
+      })
+      .filter((b) => b.w > 0 && b.h > 0 && (b.w < 44 || b.h < 44)),
+  );
+  expect(small, `buttons under 44x44 at ${width}px`).toEqual([]);
+}
+
 /** Capture one screen across the required widths in one language. */
 async function captureMatrix(page: Page, name: string, lang: 'en' | 'ar'): Promise<void> {
   mkdirSync(SHOTS, { recursive: true });
@@ -53,6 +67,7 @@ async function captureMatrix(page: Page, name: string, lang: 'en' | 'ar'): Promi
     await page.setViewportSize({ width, height: width < 768 ? 844 : 900 });
     await expect(page.locator('html')).toHaveAttribute('dir', lang === 'ar' ? 'rtl' : 'ltr');
     await noHorizontalOverflow(page);
+    await touchTargetsAtLeast44(page, width);
     await page.screenshot({ path: join(SHOTS, `${name}-${lang}-${width}.png`), fullPage: true });
   }
   await page.setViewportSize({ width: 390, height: 844 });

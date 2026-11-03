@@ -204,11 +204,11 @@ export function HelpSupportPage({ onBack, experience, initialTicketId }: HelpSup
           type="button"
           onClick={selected ? () => setSelected(null) : onBack}
           aria-label={copy.back}
-          className="flex size-11 items-center justify-center rounded-xl bg-slate-100 dark:bg-slate-700"
+          className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-slate-100 dark:bg-slate-700"
         >
           {dir === 'rtl' ? <ChevronRight size={20} /> : <ChevronLeft size={20} />}
         </button>
-        <div className="flex size-10 items-center justify-center rounded-2xl bg-amber-500 text-white">
+        <div className="flex size-10 shrink-0 items-center justify-center rounded-2xl bg-amber-500 text-white">
           <HelpCircle size={20} />
         </div>
         <div>
