@@ -300,7 +300,12 @@ const enabled = process.env.RUN_PROVIDER_BROWSER === '1';
               await openRequest(requestId, cat.a, `R17E booking ${seq}`);
               const bid = await elsewhere.request<{ bid: { id: string } }>('/v1/provider/bids', {
                 method: 'POST',
-                body: { requestId, amount: 90 + seq, pricingType: 'FIXED' },
+                body: {
+                  requestId,
+                  amountDecimal: String(90 + seq),
+                  currency: 'SAR',
+                  pricingType: 'FIXED',
+                },
               });
               if (bid.status !== 201) throw new Error(`bid ${bid.status}`);
               const res = await seeker.request<{ booking: { id: string } }>(

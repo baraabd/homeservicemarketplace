@@ -13,6 +13,7 @@ export {};
 import { randomUUID } from 'node:crypto';
 import { withAdvisoryLock } from '../support/db-isolation';
 import { makeTestSecret } from '../support/test-secrets';
+import { currentLegalAcceptance, legalAcceptanceServiceFor } from '../support/legal-acceptance';
 
 const suite = process.env.RUN_DB_INTEGRATION === '1' ? describe : describe.skip;
 const SMTP_PORT = Number(process.env.R21_MAILPIT_SMTP_PORT ?? 0);
@@ -183,6 +184,7 @@ suite('R21 durable mail (real Postgres)', () => {
       cfg,
       securityEvents,
       mail,
+      legalAcceptanceServiceFor(cfg),
     );
     const dispatcher = (svc = mail) =>
       new MailDispatcher(repo, svc, config({ MAIL_DISPATCH_POLL_INTERVAL_MS: 1000 }), metrics);
@@ -231,7 +233,13 @@ suite('R21 durable mail (real Postgres)', () => {
 
   async function register(address = email()) {
     const challenge = await s.auth.register(
-      { email: address, password, firstName: 'Synthetic', lastName: 'R21' },
+      {
+        email: address,
+        password,
+        firstName: 'Synthetic',
+        lastName: 'R21',
+        legalAcceptance: currentLegalAcceptance(),
+      },
       ctx,
     );
     const user = await prisma.user.findUniqueOrThrow({ where: { email: address } });

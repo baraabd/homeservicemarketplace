@@ -404,6 +404,9 @@ const enabled = process.env.RUN_DB_INTEGRATION === '1';
       updatedAt: string,
     ) => {
       const id = `${prefix}r17d-${tag}`;
+      // K02 — only SAR can be a verified unit (DB CHECK); any other currency
+      // is a pre-K02 legacy row with an unverified unit (scale NULL).
+      const amountScale = currency === 'SAR' ? 2 : null;
       await db.serviceRequest.create({
         data: {
           id: `${id}-request`,
@@ -419,6 +422,8 @@ const enabled = process.env.RUN_DB_INTEGRATION === '1';
           requestId: `${id}-request`,
           providerId: profile.id,
           amount: priceAmount,
+          currency,
+          amountScale,
           pricingType: 'FIXED',
           status: 'ACCEPTED',
         },
@@ -432,6 +437,7 @@ const enabled = process.env.RUN_DB_INTEGRATION === '1';
           providerId: profile.id,
           priceAmount,
           currency,
+          amountScale,
           status,
         },
       });
@@ -454,16 +460,16 @@ const enabled = process.env.RUN_DB_INTEGRATION === '1';
     };
     const changed = (at: string) => ({ type: 'BOOKING_STATUS_CHANGED' as const, at });
     await make(
-      'xts-a',
-      'XTS',
+      'sar-a',
+      'SAR',
       1000,
       'COMPLETED',
       changed('2026-01-10T23:30:00Z'),
       '2026-02-01T00:00:00Z',
     );
     await make(
-      'xts-b',
-      'XTS',
+      'sar-b',
+      'SAR',
       500,
       'COMPLETED',
       changed('2026-01-11T00:10:00Z'),
@@ -477,10 +483,10 @@ const enabled = process.env.RUN_DB_INTEGRATION === '1';
       changed('2026-01-10T12:00:00Z'),
       '2026-02-01T00:00:00Z',
     );
-    await make('xts-undated', 'XTS', 300, 'COMPLETED', null, '2026-01-10T12:00:00Z');
+    await make('sar-undated', 'SAR', 300, 'COMPLETED', null, '2026-01-10T12:00:00Z');
     await make(
-      'xts-cancelled',
-      'XTS',
+      'sar-cancelled',
+      'SAR',
       900,
       'CANCELLED',
       { type: 'BOOKING_CANCELLED', at: '2026-01-10T08:00:00Z' },
@@ -489,6 +495,15 @@ const enabled = process.env.RUN_DB_INTEGRATION === '1';
   }
 
   it('D-6 analytics separate currencies, date completions by their real event and never invent fees', async () => {
+    // K02 — SAR lifetime is shared with other suites' verified bookings, so
+    // the lifetime assertion is a delta around this fixture.
+    const lifetimeSar = async () => {
+      const r = await admin.request<{
+        revenueByCurrency: { currency: string; bookedValueLifetime: number }[];
+      }>('/v1/admin/analytics/overview?from=2026-01-10&to=2026-01-11');
+      return r.body.revenueByCurrency.find((x) => x.currency === 'SAR')?.bookedValueLifetime ?? 0;
+    };
+    const lifetimeBefore = await lifetimeSar();
     await analyticsFixture();
     type Overview = {
       revenue: {
@@ -499,10 +514,12 @@ const enabled = process.env.RUN_DB_INTEGRATION === '1';
       };
       revenueByCurrency: {
         currency: string;
+        amountScale: number;
         bookedValueWithinRange: number;
         completedWithinRange: number;
         bookedValueLifetime: number;
       }[];
+      excludedAmounts: { currency: string; reason: string; completedCount: number }[];
       currency: string | null;
       platformFeeRateBps: number | null;
       feeStatus: string;
@@ -512,18 +529,31 @@ const enabled = process.env.RUN_DB_INTEGRATION === '1';
     );
     expect(res.status).toBe(200);
     const o = res.body;
-    const xts = o.revenueByCurrency.find((r) => r.currency === 'XTS');
-    const xxx = o.revenueByCurrency.find((r) => r.currency === 'XXX');
+    const sar = o.revenueByCurrency.find((r) => r.currency === 'SAR');
     // Completed by the BOOKING_STATUS_CHANGED → COMPLETED event, inside the
     // inclusive UTC range; `updatedAt` (February) is irrelevant.
-    expect(xts).toMatchObject({ bookedValueWithinRange: 1500, completedWithinRange: 2 });
-    expect(xxx).toMatchObject({ bookedValueWithinRange: 700, completedWithinRange: 1 });
+    expect(sar).toMatchObject({
+      amountScale: 2,
+      bookedValueWithinRange: 1500,
+      completedWithinRange: 2,
+    });
     // Lifetime includes the completion that has no dated event.
-    expect(xts!.bookedValueLifetime).toBe(1800);
-    // Two currencies in range: there is no honest single total.
-    expect(o.revenue.grossWithinRange).toBeNull();
-    expect(o.revenue.grossLifetime).toBeNull();
-    expect(o.currency).toBeNull();
+    expect(sar!.bookedValueLifetime - lifetimeBefore).toBe(1800);
+    // K02 — the legacy XXX row (unverified unit) is never money: it is not a
+    // currency entry and is reported as an exclusion instead. (Two VERIFIED
+    // currencies cannot coexist while only SAR is approved; the "no single
+    // total across currencies" rule is pinned in admin-analytics.service.spec.)
+    expect(o.revenueByCurrency.find((r) => r.currency === 'XXX')).toBeUndefined();
+    expect(o.excludedAmounts).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          currency: 'XXX',
+          reason: 'LEGACY_UNVERIFIED',
+          completedCount: 1,
+        }),
+      ]),
+    );
+    expect(o.currency).toBe(o.revenueByCurrency.length === 1 ? 'SAR' : null);
     // No fee is approved or charged (R16 P10): not computed, not zero.
     expect(o.revenue.platformFeesWithinRange).toBeNull();
     expect(o.revenue.netProviderEarningsWithinRange).toBeNull();
@@ -541,16 +571,14 @@ const enabled = process.env.RUN_DB_INTEGRATION === '1';
       '/v1/admin/analytics/revenue?from=2026-01-10&to=2026-01-11',
     );
     expect(daily.status).toBe(200);
-    const xtsDays = daily.body.series.find((s) => s.currency === 'XTS')!.buckets;
+    const sarDays = daily.body.series.find((s) => s.currency === 'SAR')!.buckets;
     // 23:30Z on the 10th stays on the 10th; 00:10Z on the 11th is the 11th.
-    expect(xtsDays).toEqual([
+    expect(sarDays).toEqual([
       { date: '2026-01-10', bookedValue: 1000, completedBookings: 1 },
       { date: '2026-01-11', bookedValue: 500, completedBookings: 1 },
     ]);
-    expect(daily.body.series.find((s) => s.currency === 'XXX')!.buckets).toEqual([
-      { date: '2026-01-10', bookedValue: 700, completedBookings: 1 },
-      { date: '2026-01-11', bookedValue: 0, completedBookings: 0 },
-    ]);
+    // The legacy row has no money series.
+    expect(daily.body.series.find((s) => s.currency === 'XXX')).toBeUndefined();
     for (const b of daily.body.buckets) {
       expect(b.platformFees).toBeNull();
       expect(b.netProviderEarnings).toBeNull();

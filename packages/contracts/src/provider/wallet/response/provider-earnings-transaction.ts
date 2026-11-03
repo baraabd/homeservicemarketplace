@@ -10,6 +10,8 @@ export interface ProviderEarningsTransaction {
   status: BookingStatus;
   amount: number;
   currency: string;
+  // K02 — minor-unit scale (2 = SAR halalas); null = LEGACY_UNVERIFIED pre-K02 amount.
+  amountScale: number | null;
   // ISO-8601 timestamp. For COMPLETED bookings this is the most
   // recent updatedAt (the moment the provider marked it done); for
   // SCHEDULED / IN_PROGRESS rows it's the booking's createdAt.

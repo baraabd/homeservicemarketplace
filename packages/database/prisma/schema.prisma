@@ -70,6 +70,8 @@ model User {
   supportTicketsClosed       SupportTicket[]                @relation("SupportTicketCloser")
   supportMessages            SupportMessage[]
   ledgerAccounts             LedgerAccount[]                @relation("LedgerAccountOwner")
+  /// K02 — exact public-policy versions this user accepted, append-only.
+  legalAcceptances           UserLegalAcceptance[]
 
   // R19 — subscription money foundation (back-relations only; no column change).
   moneyConfirmationsReviewed MoneyPaymentConfirmation[]     @relation("MoneyConfirmationReviewer")
@@ -274,8 +276,14 @@ model Bid {
   id                  String          @id @default(cuid())
   requestId           String
   providerId          String
+  /// K02 — integer amount in the unit named by `amountScale`.
   amount              Int
-  currency            String          @default("USD")
+  /// K02 — no default: the server assigns the approved currency (SAR).
+  /// Pre-K02 rows keep their original value (provenance).
+  currency            String
+  /// K02 — minor-unit scale. 2 = SAR halalas. NULL = LEGACY_UNVERIFIED
+  /// (pre-K02 unit unknown; quarantined, never converted or summed).
+  amountScale         Int?            @db.SmallInt
   pricingType         PricingType
   note                String?
   status              BidStatus       @default(PENDING)
@@ -318,8 +326,11 @@ model Booking {
   providerId         String
   status             BookingStatus       @default(SCHEDULED)
   scheduledAt        DateTime?
+  /// K02 — copied from the accepted bid with its currency and scale.
   priceAmount        Int
-  currency           String              @default("USD")
+  currency           String
+  /// K02 — see Bid.amountScale. NULL = LEGACY_UNVERIFIED.
+  amountScale        Int?                @db.SmallInt
   createdAt          DateTime            @default(now())
   updatedAt          DateTime            @updatedAt
   deletedAt          DateTime?
@@ -1032,6 +1043,38 @@ enum AccountStatus {
   LOCKED
   SUSPENDED
   DELETED
+}
+
+/// K02 — public account-level policy documents. Provider onboarding consent
+/// (ProviderProfile.acceptedConsentVersion) is a separate agreement and is
+/// deliberately not represented here.
+enum LegalDocumentKind {
+  TERMS_OF_SERVICE
+  PRIVACY_NOTICE
+}
+
+enum LegalAcceptanceSource {
+  SIGNUP
+}
+
+/// K02 — one row per (user, document, exact version) the user accepted.
+///
+/// Append-only. `acceptedAt` is the SERVER time of the accepting request,
+/// never a client value. A pre-K02 account has no row: absence means "no
+/// recorded acceptance" and is never inferred or backfilled. Re-acceptance
+/// of a newer version adds a row; the older row stays as history.
+model UserLegalAcceptance {
+  id           String                @id @default(cuid())
+  userId       String
+  documentKind LegalDocumentKind
+  version      String                @db.VarChar(64)
+  locale       String                @db.VarChar(8)
+  source       LegalAcceptanceSource
+  acceptedAt   DateTime              @default(now())
+  user         User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, documentKind, version])
+  @@index([documentKind, version])
 }
 
 enum ClientKind {

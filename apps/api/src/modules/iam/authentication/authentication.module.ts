@@ -6,6 +6,8 @@ import { AppConfigService } from '../../../config/app-config.service';
 import { ConfigModule } from '../../../config/config.module';
 import { AuditModule } from '../audit/audit.module';
 import { AuthenticationController } from './controllers/authentication.controller';
+import { LegalAcceptanceService } from '../legal/legal-acceptance.service';
+import { LegalController } from '../legal/legal.controller';
 import { AuthenticationService } from './services/authentication.service';
 import { LoginAttemptService } from './services/login-attempt.service';
 import { OtpService } from './services/otp.service';
@@ -40,9 +42,10 @@ import { JwtStrategy } from './strategies/jwt.strategy';
     }),
     AuditModule,
   ],
-  controllers: [AuthenticationController],
+  controllers: [AuthenticationController, LegalController],
   providers: [
     AuthenticationService,
+    LegalAcceptanceService,
     PasswordService,
     TokenService,
     SessionService,

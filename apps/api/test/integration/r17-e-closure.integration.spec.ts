@@ -203,6 +203,8 @@ const enabled = process.env.RUN_DB_INTEGRATION === '1';
         requestId: `${tag}-req`,
         providerId: prov[who].profile,
         amount: 100 + i,
+        currency: 'SAR',
+        amountScale: 2,
         pricingType: 'FIXED' as const,
         status: 'ACCEPTED' as const,
       });
@@ -215,6 +217,8 @@ const enabled = process.env.RUN_DB_INTEGRATION === '1';
         status: i < scheduled ? ('SCHEDULED' as const) : ('COMPLETED' as const),
         scheduledAt,
         priceAmount: 100 + i,
+        currency: 'SAR',
+        amountScale: 2,
         createdAt,
       });
     }
@@ -609,7 +613,7 @@ const enabled = process.env.RUN_DB_INTEGRATION === '1';
     // ok found the job in the feed and bid before the slice ran.
     const bid = await s('ok').request('/v1/provider/bids', {
       method: 'POST',
-      body: { requestId, amount: 140, pricingType: 'FIXED' },
+      body: { requestId, amountDecimal: '140', currency: 'SAR', pricingType: 'FIXED' },
     });
     expect(bid.status).toBe(201);
     expect((await detail('ok', requestId)).status).toBe(404);

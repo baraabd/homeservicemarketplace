@@ -156,7 +156,8 @@ d('Phase 3 Journey B — pending moderation denies work access (real Postgres)',
       // it — the request cannot fail validation or lookup first.
       .send({
         requestId: REQUEST,
-        amount: 25_000,
+        amountDecimal: '250',
+        currency: 'SAR',
         pricingType: 'FIXED',
         note: 'I can help today.',
       });

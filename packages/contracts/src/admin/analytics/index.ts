@@ -1,3 +1,5 @@
+import type { ExcludedAmountGroup } from '../../money/amount-unit';
+
 // Admin analytics (Sprint 6.4 refined — read-only).
 //
 //   GET /v1/admin/analytics/summary                    (existing — KPI cards)
@@ -9,6 +11,9 @@
 //   • Amounts are booked values (Booking.priceAmount), not payments. R15/R16
 //     classify them as a BOOKING_DERIVED_ESTIMATE: nothing here is captured,
 //     held, settled or paid.
+//   • K02 — money figures sum only verified (amountScale non-null)
+//     FIXED-price amounts. Legacy-unit amounts and hourly rates are counted
+//     in `excludedAmounts`; booking COUNTS still include every booking.
 //   • Amounts in different currencies are never added together. Every money
 //     figure is reported per currency. A single "total" field is null when the
 //     data spans more than one currency, because no conversion authority exists.
@@ -25,6 +30,8 @@ export type AdminAnalyticsFeeStatus = 'NOT_APPROVED';
 /** Booked value of COMPLETED bookings in one currency. */
 export interface AdminAnalyticsCurrencyTotals {
   currency: string;
+  /** K02 — the verified minor-unit scale of the amounts (2 for SAR). */
+  amountScale: number;
   /** Lifetime booked value of COMPLETED bookings, dated or not. */
   bookedValueLifetime: number;
   /** COMPLETED bookings in this currency, lifetime. */
@@ -68,6 +75,12 @@ export interface AdminAnalyticsSummary {
     bookedValueByCurrency: (AdminAnalyticsCurrencyTotals & { bookedValueLast30Days: number })[];
     /** COMPLETED bookings with no completion event; they cannot be dated. */
     undatedCompletions: number;
+    /**
+     * K02 — bookings left out of every money figure: pre-K02 amounts whose
+     * unit is unverified, and hourly rates (not payable totals). Counted
+     * per currency; never converted.
+     */
+    excludedAmounts: ExcludedAmountGroup[];
   };
   disputes: {
     open: number;
@@ -127,6 +140,8 @@ export interface AdminAnalyticsOverview {
   };
   /** R17-D — the honest per-currency breakdown, sorted by currency code. */
   revenueByCurrency: AdminAnalyticsRangeCurrencyTotals[];
+  /** K02 — legacy-unit and hourly-rate bookings excluded from every figure. */
+  excludedAmounts: ExcludedAmountGroup[];
   /** The single currency of the totals above, or null. */
   currency: string | null;
   /** Always null: no fee rate is approved. */
@@ -155,6 +170,7 @@ export interface AdminAnalyticsCurrencyBucket {
 
 export interface AdminAnalyticsCurrencySeries {
   currency: string;
+  amountScale: number;
   /** One zero-filled bucket per UTC day in the range. */
   buckets: AdminAnalyticsCurrencyBucket[];
 }

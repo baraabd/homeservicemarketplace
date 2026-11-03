@@ -101,6 +101,7 @@ export interface LedgerEntryContract {
 // app must not import runtime values from contracts (CJS/Rollup boundary);
 // it may import the types.
 export * from './wire';
+export * from './amount-unit';
 export * from './financial-contracts';
 export * from './api-contracts';
 export * from './manual-payment-contracts';

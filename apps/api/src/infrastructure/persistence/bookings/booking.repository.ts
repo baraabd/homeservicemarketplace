@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { toSafeNumber, type BookedValueGroupRow } from './booked-value';
 import { Prisma } from '@homeservicemarketplace/database';
 import type {
   Bid,
@@ -20,6 +21,8 @@ export interface CreateBookingInput {
   providerId: string;
   priceAmount: number;
   currency: string;
+  /** K02 — copied from the bid unchanged; null keeps a legacy bid quarantined. */
+  amountScale: number | null;
   scheduledAt?: Date | null;
   status?: BookingStatus;
 }
@@ -54,6 +57,7 @@ export type ProviderBookingListRow = Pick<
   | 'scheduledAt'
   | 'priceAmount'
   | 'currency'
+  | 'amountScale'
   | 'createdAt'
   | 'updatedAt'
 > & {
@@ -64,9 +68,10 @@ export type ProviderBookingListRow = Pick<
 
 export type AdminFinancialBookingListRow = Pick<
   Booking,
-  'id' | 'priceAmount' | 'currency' | 'updatedAt'
+  'id' | 'priceAmount' | 'currency' | 'amountScale' | 'updatedAt'
 > & {
   request: BookingListRequest;
+  bid: Pick<Bid, 'pricingType'>;
   provider: Pick<ProviderProfile, 'id' | 'displayName'> & {
     user: Pick<User, 'id' | 'email'> | null;
   };
@@ -106,6 +111,7 @@ export class BookingRepository {
         provider: { connect: { id: input.providerId } },
         priceAmount: input.priceAmount,
         currency: input.currency,
+        amountScale: input.amountScale,
         scheduledAt: input.scheduledAt ?? null,
         ...(input.status ? { status: input.status } : {}),
       },
@@ -224,7 +230,7 @@ export class BookingRepository {
       .$queryRaw<ProviderBookingListProjection[]>(
         Prisma.sql`
         SELECT page.id, page."requestId", page."bidId", page.status::text AS status,
-          page."scheduledAt", page."priceAmount", page.currency, page."createdAt", page."updatedAt",
+          page."scheduledAt", page."priceAmount", page.currency, page."amountScale", page."createdAt", page."updatedAt",
           request."addressSnapshot", request."customServiceText",
           category.id AS "categoryId", category.slug AS "categorySlug", category."labelEn" AS "categoryLabelEn",
           category."labelAr" AS "categoryLabelAr", bid."pricingType"::text AS "pricingType", bid.note AS "bidNote",
@@ -254,6 +260,7 @@ export class BookingRepository {
           scheduledAt: row.scheduledAt,
           priceAmount: row.priceAmount,
           currency: row.currency,
+          amountScale: row.amountScale,
           createdAt: row.createdAt,
           updatedAt: row.updatedAt,
           request: listRequest(row),
@@ -356,201 +363,108 @@ export class BookingRepository {
     `;
   }
 
-  // Aggregate earnings query used by the wallet read model
-  // (Sprint 5 slice 5.6). Single round-trip — three groupBys
-  // executed in parallel inside the same Prisma client. All amounts
-  // come back as the SUM of `priceAmount`; null SUMs (no rows)
-  // collapse to 0 in the application layer.
-  async aggregateEarningsForProvider(
-    providerId: string,
-    monthStart: Date,
+  // K02 — booked-value groups for the wallet, legacy earnings and admin
+  // financials read models. One row per (currency, amountScale,
+  // pricingType); summarizeBookedValue applies the hsm.amount-unit.v1
+  // rules (per currency, verified FIXED only, exclusions counted).
+  // `providerId` omitted = marketplace-wide. Cancelled bookings are not
+  // booked value and are excluded.
+  async bookedValueGroups(
+    args: { providerId?: string; monthStart: Date },
     tx?: PrismaTx,
-  ): Promise<{
-    totalGross: number;
-    currentMonthGross: number;
-    pendingAmount: number;
-    completedJobsCount: number;
-    dominantCurrency: string | null;
-  }> {
-    const db = this.db(tx);
-    const [completedAgg, monthAgg, pendingAgg, currencyByCount] = await Promise.all([
-      db.booking.aggregate({
-        where: { providerId, deletedAt: null, status: 'COMPLETED' },
-        _sum: { priceAmount: true },
-        _count: { _all: true },
-      }),
-      db.booking.aggregate({
-        where: {
-          providerId,
-          deletedAt: null,
-          status: 'COMPLETED',
-          updatedAt: { gte: monthStart },
-        },
-        _sum: { priceAmount: true },
-      }),
-      db.booking.aggregate({
-        where: {
-          providerId,
-          deletedAt: null,
-          status: { in: ['SCHEDULED', 'IN_PROGRESS'] },
-        },
-        _sum: { priceAmount: true },
-      }),
-      db.booking.groupBy({
-        by: ['currency'],
-        where: { providerId, deletedAt: null, status: 'COMPLETED' },
-        _count: { currency: true },
-        orderBy: { _count: { currency: 'desc' } },
-        take: 1,
-      }),
-    ]);
-    return {
-      totalGross: completedAgg._sum.priceAmount ?? 0,
-      currentMonthGross: monthAgg._sum.priceAmount ?? 0,
-      pendingAmount: pendingAgg._sum.priceAmount ?? 0,
-      completedJobsCount: completedAgg._count._all,
-      dominantCurrency: currencyByCount[0]?.currency ?? null,
-    };
+  ): Promise<BookedValueGroupRow[]> {
+    const providerFilter = args.providerId
+      ? Prisma.sql`AND b."providerId" = ${args.providerId}`
+      : Prisma.empty;
+    const rows = await this.db(tx).$queryRaw<
+      Array<{
+        currency: string;
+        amountScale: number | null;
+        pricingType: 'FIXED' | 'HOURLY';
+        completed_count: bigint;
+        completed_value: bigint | null;
+        month_value: bigint | null;
+        in_flight_count: bigint;
+        in_flight_value: bigint | null;
+      }>
+    >(Prisma.sql`
+      SELECT
+        b."currency",
+        b."amountScale",
+        bid."pricingType"::text AS "pricingType",
+        COUNT(*) FILTER (WHERE b."status" = 'COMPLETED') AS completed_count,
+        SUM(b."priceAmount") FILTER (WHERE b."status" = 'COMPLETED') AS completed_value,
+        SUM(b."priceAmount") FILTER (
+          WHERE b."status" = 'COMPLETED' AND b."updatedAt" >= ${args.monthStart}
+        ) AS month_value,
+        COUNT(*) FILTER (WHERE b."status" IN ('SCHEDULED', 'IN_PROGRESS')) AS in_flight_count,
+        SUM(b."priceAmount") FILTER (
+          WHERE b."status" IN ('SCHEDULED', 'IN_PROGRESS')
+        ) AS in_flight_value
+      FROM "Booking" b
+      JOIN "Bid" bid ON bid."id" = b."bidId"
+      WHERE b."deletedAt" IS NULL
+        AND b."status" IN ('COMPLETED', 'SCHEDULED', 'IN_PROGRESS')
+        ${providerFilter}
+      GROUP BY 1, 2, 3
+      ORDER BY 1, 2, 3
+    `);
+    return rows.map((row) => ({
+      currency: row.currency,
+      amountScale: row.amountScale,
+      pricingType: row.pricingType,
+      completedCount: toSafeNumber(row.completed_count),
+      completedValue: toSafeNumber(row.completed_value),
+      currentMonthValue: toSafeNumber(row.month_value),
+      inFlightCount: toSafeNumber(row.in_flight_count),
+      inFlightValue: toSafeNumber(row.in_flight_value),
+    }));
   }
 
-  // Daily-bucketed earnings aggregation for the canonical chart endpoint
-  // (Sprint 5.6 refined). Returns one row per UTC calendar day in the
-  // [windowStart, windowEnd) range that has at least one COMPLETED
-  // booking. The application layer zero-fills missing days so the
-  // client never has to recompute the calendar.
-  //
-  // Window semantics:
-  //   windowStart — inclusive, midnight UTC of the first day in range
-  //   windowEnd   — exclusive, midnight UTC of the day AFTER the last day
-  //
-  // Bucketing uses booking.updatedAt (the moment the provider marked the
-  // job COMPLETED — booking rows never update again afterwards). The
-  // existing month aggregate uses the same field; the chart stays
-  // consistent with the summary by reusing it.
+  // Daily-bucketed booked value for the provider wallet chart. One UTC
+  // day per row in [windowStart, windowEnd) that has at least one
+  // COMPLETED booking. K02 — ONE currency and scale per chart, verified
+  // FIXED-price bookings only: a chart never adds currencies, legacy-unit
+  // amounts or hourly rates. Bucketed by booking.updatedAt (the moment the
+  // provider marked it COMPLETED), consistent with the month figure.
   async aggregateEarningsByDayForProvider(
     providerId: string,
     windowStart: Date,
     windowEnd: Date,
+    unit: { currency: string; amountScale: number },
     tx?: PrismaTx,
   ): Promise<Array<{ day: Date; gross: number; completedCount: number }>> {
-    const db = this.db(tx);
-    const rows = await db.$queryRaw<
+    const rows = await this.db(tx).$queryRaw<
       Array<{ day: Date; gross: bigint | number | null; completed_count: bigint | number }>
     >(Prisma.sql`
       SELECT
-        DATE_TRUNC('day', "updatedAt" AT TIME ZONE 'UTC') AS day,
-        COALESCE(SUM("priceAmount"), 0) AS gross,
+        DATE_TRUNC('day', b."updatedAt" AT TIME ZONE 'UTC') AS day,
+        COALESCE(SUM(b."priceAmount"), 0) AS gross,
         COUNT(*) AS completed_count
-      FROM "Booking"
-      WHERE "providerId" = ${providerId}
-        AND "deletedAt" IS NULL
-        AND status = 'COMPLETED'
-        AND "updatedAt" >= ${windowStart}
-        AND "updatedAt" < ${windowEnd}
+      FROM "Booking" b
+      JOIN "Bid" bid ON bid."id" = b."bidId"
+      WHERE b."providerId" = ${providerId}
+        AND b."deletedAt" IS NULL
+        AND b.status = 'COMPLETED'
+        AND b."currency" = ${unit.currency}
+        AND b."amountScale" = ${unit.amountScale}
+        AND bid."pricingType" = 'FIXED'
+        AND b."updatedAt" >= ${windowStart}
+        AND b."updatedAt" < ${windowEnd}
       GROUP BY 1
       ORDER BY 1 ASC
     `);
     return rows.map((row) => ({
       day: row.day instanceof Date ? row.day : new Date(row.day as unknown as string),
-      gross: typeof row.gross === 'bigint' ? Number(row.gross) : (row.gross ?? 0),
-      completedCount:
-        typeof row.completed_count === 'bigint'
-          ? Number(row.completed_count)
-          : Number(row.completed_count),
-    }));
-  }
-
-  // ─── Sprint 6.4 — marketplace-wide aggregates ──────────────────
-  //
-  // Same shape as the per-provider aggregates above but without the
-  // providerId filter. Used by the admin analytics + financials
-  // surfaces to roll up the entire marketplace's revenue.
-
-  async aggregateGrossRevenueForMarketplace(
-    args: { from?: Date; to?: Date } = {},
-    tx?: PrismaTx,
-  ): Promise<{
-    grossLifetime: number;
-    grossWithinRange: number;
-    completedLifetime: number;
-    completedWithinRange: number;
-    cancelledWithinRange: number;
-    pendingAmount: number;
-    dominantCurrency: string | null;
-  }> {
-    const db = this.db(tx);
-    const rangeWhere = args.from && args.to ? { updatedAt: { gte: args.from, lt: args.to } } : {};
-    const [lifetime, inRange, cancelledInRange, pending, currencyByCount] = await Promise.all([
-      db.booking.aggregate({
-        where: { deletedAt: null, status: 'COMPLETED' },
-        _sum: { priceAmount: true },
-        _count: { _all: true },
-      }),
-      db.booking.aggregate({
-        where: { deletedAt: null, status: 'COMPLETED', ...rangeWhere },
-        _sum: { priceAmount: true },
-        _count: { _all: true },
-      }),
-      db.booking.count({
-        where: { deletedAt: null, status: 'CANCELLED', ...rangeWhere },
-      }),
-      db.booking.aggregate({
-        where: { deletedAt: null, status: { in: ['SCHEDULED', 'IN_PROGRESS'] } },
-        _sum: { priceAmount: true },
-      }),
-      db.booking.groupBy({
-        by: ['currency'],
-        where: { deletedAt: null, status: 'COMPLETED' },
-        _count: { currency: true },
-        orderBy: { _count: { currency: 'desc' } },
-        take: 1,
-      }),
-    ]);
-    return {
-      grossLifetime: lifetime._sum.priceAmount ?? 0,
-      grossWithinRange: inRange._sum.priceAmount ?? 0,
-      completedLifetime: lifetime._count._all,
-      completedWithinRange: inRange._count._all,
-      cancelledWithinRange: cancelledInRange,
-      pendingAmount: pending._sum.priceAmount ?? 0,
-      dominantCurrency: currencyByCount[0]?.currency ?? null,
-    };
-  }
-
-  async aggregateEarningsByDayForMarketplace(
-    windowStart: Date,
-    windowEnd: Date,
-    tx?: PrismaTx,
-  ): Promise<Array<{ day: Date; gross: number; completedCount: number }>> {
-    const db = this.db(tx);
-    const rows = await db.$queryRaw<
-      Array<{ day: Date; gross: bigint | number | null; completed_count: bigint | number }>
-    >(Prisma.sql`
-      SELECT
-        DATE_TRUNC('day', "updatedAt" AT TIME ZONE 'UTC') AS day,
-        COALESCE(SUM("priceAmount"), 0) AS gross,
-        COUNT(*) AS completed_count
-      FROM "Booking"
-      WHERE "deletedAt" IS NULL
-        AND status = 'COMPLETED'
-        AND "updatedAt" >= ${windowStart}
-        AND "updatedAt" < ${windowEnd}
-      GROUP BY 1
-      ORDER BY 1 ASC
-    `);
-    return rows.map((row) => ({
-      day: row.day instanceof Date ? row.day : new Date(row.day as unknown as string),
-      gross: typeof row.gross === 'bigint' ? Number(row.gross) : (row.gross ?? 0),
-      completedCount:
-        typeof row.completed_count === 'bigint'
-          ? Number(row.completed_count)
-          : Number(row.completed_count),
+      gross: toSafeNumber(row.gross),
+      completedCount: toSafeNumber(row.completed_count),
     }));
   }
 
   // The completed-booking page is bounded before relation joins. The exact
   // existing updatedAt/id cursor and monetary values are retained; this does
-  // not turn a mutable sort key into a snapshot or read the unused Bid row.
+  // not turn a mutable sort key into a snapshot. K02 joins the page's Bid rows (after
+  // LIMIT, so at most `take` lookups by primary key) for pricingType.
   async listCompletedBookingsForAdmin(
     args: { take: number; cursor?: string },
     tx?: PrismaTx,
@@ -563,10 +477,10 @@ export class BookingRepository {
     // Infer the constant status literal from the column's enum, including when
     // a schema-local table reuses an enum defined in a different schema.
     const rows = await this.db(tx).$queryRaw<AdminFinancialBookingProjection[]>(Prisma.sql`
-      SELECT page.id, page."priceAmount", page.currency, page."updatedAt",
+      SELECT page.id, page."priceAmount", page.currency, page."amountScale", page."updatedAt",
         request."addressSnapshot", request."customServiceText",
         category.id AS "categoryId", category.slug AS "categorySlug", category."labelEn" AS "categoryLabelEn",
-        category."labelAr" AS "categoryLabelAr",
+        category."labelAr" AS "categoryLabelAr", bid."pricingType"::text AS "pricingType",
         provider.id AS "providerId", provider."displayName" AS "providerDisplayName",
         provider_user.id AS "providerUserId", provider_user.email AS "providerEmail",
         seeker.id AS "seekerId", seeker."firstName" AS "seekerFirstName"
@@ -580,6 +494,7 @@ export class BookingRepository {
       ) page
       ${BOOKING_REQUEST_LIST_JOIN}
       LEFT JOIN "ServiceCategory" category ON category.id = request."categoryId"
+      JOIN "Bid" bid ON bid.id = page."bidId"
       JOIN "ProviderProfile" provider ON provider.id = page."providerId"
       LEFT JOIN "User" provider_user ON provider_user.id = provider."userId"
       JOIN "User" seeker ON seeker.id = page."seekerUserId"
@@ -589,8 +504,10 @@ export class BookingRepository {
       id: row.id,
       priceAmount: row.priceAmount,
       currency: row.currency,
+      amountScale: row.amountScale,
       updatedAt: row.updatedAt,
       request: listRequest(row),
+      bid: { pricingType: row.pricingType },
       provider: {
         id: row.providerId,
         displayName: row.providerDisplayName,
@@ -601,30 +518,51 @@ export class BookingRepository {
     }));
   }
 
-  // Per-provider rollup. SUM + COUNT grouped by providerId, sorted
-  // gross-descending so the marketplace's biggest earners surface
-  // first. Prisma's `groupBy` does not support cursor pagination, so
-  // the controller treats `cursor` as a numeric string offset (skip).
-  // The admin UI's typical use case is "top N" anyway — deep paging
-  // would be unusual. Currency is the booking's recorded currency.
+  // Per-provider rollup, K02 — one row per (provider, currency) over
+  // verified FIXED-price COMPLETED bookings, value-descending. A provider
+  // with SAR and another currency gets two rows; nothing is added across
+  // currencies. Legacy-unit and hourly bookings are excluded here and
+  // counted on the summary. `skip` is a numeric offset (Prisma-style
+  // top-N paging, unchanged).
   async groupCompletedBookingsByProvider(
     args: { take: number; skip?: number },
     tx?: PrismaTx,
-  ): Promise<Array<{ providerId: string; gross: number; completedCount: number }>> {
-    const db = this.db(tx);
-    const rows = await db.booking.groupBy({
-      by: ['providerId'],
-      where: { deletedAt: null, status: 'COMPLETED' },
-      _sum: { priceAmount: true },
-      _count: { _all: true },
-      orderBy: { _sum: { priceAmount: 'desc' } },
-      take: args.take,
-      ...(args.skip ? { skip: args.skip } : {}),
-    });
+  ): Promise<
+    Array<{
+      providerId: string;
+      currency: string;
+      amountScale: number;
+      gross: number;
+      completedCount: number;
+    }>
+  > {
+    const rows = await this.db(tx).$queryRaw<
+      Array<{
+        providerId: string;
+        currency: string;
+        amountScale: number;
+        gross: bigint;
+        completed_count: bigint;
+      }>
+    >(Prisma.sql`
+      SELECT b."providerId", b."currency", b."amountScale",
+             SUM(b."priceAmount") AS gross, COUNT(*) AS completed_count
+      FROM "Booking" b
+      JOIN "Bid" bid ON bid."id" = b."bidId"
+      WHERE b."deletedAt" IS NULL
+        AND b."status" = 'COMPLETED'
+        AND b."amountScale" IS NOT NULL
+        AND bid."pricingType" = 'FIXED'
+      GROUP BY 1, 2, 3
+      ORDER BY gross DESC, 1 ASC, 2 ASC
+      LIMIT ${args.take} OFFSET ${args.skip ?? 0}
+    `);
     return rows.map((r) => ({
       providerId: r.providerId,
-      gross: r._sum.priceAmount ?? 0,
-      completedCount: r._count._all,
+      currency: r.currency,
+      amountScale: r.amountScale,
+      gross: toSafeNumber(r.gross),
+      completedCount: toSafeNumber(r.completed_count),
     }));
   }
 }
@@ -661,9 +599,10 @@ type ProviderBookingListProjection = Omit<ProviderBookingListRow, 'request' | 'b
 
 type AdminFinancialBookingProjection = Pick<
   Booking,
-  'id' | 'priceAmount' | 'currency' | 'updatedAt'
+  'id' | 'priceAmount' | 'currency' | 'amountScale' | 'updatedAt'
 > &
   BookingListRequestProjection & {
+    pricingType: Bid['pricingType'];
     providerId: ProviderProfile['id'];
     providerDisplayName: ProviderProfile['displayName'];
     providerUserId: User['id'] | null;
@@ -686,19 +625,6 @@ function listRequest(row: BookingListRequestProjection): BookingListRequest {
             labelAr: row.categoryLabelAr,
           },
   };
-}
-
-// Aggregate result for the earnings-summary endpoint. All amounts are
-// integers in the marketplace's currency unit (cents-equivalent).
-export interface ProviderEarningsAggregate {
-  totalGross: number;
-  currentMonthGross: number;
-  pendingAmount: number;
-  completedJobsCount: number;
-  // Most-common currency code across the provider's COMPLETED
-  // bookings, or null when no bookings exist. The application layer
-  // falls back to the marketplace default ('USD') when null.
-  dominantCurrency: string | null;
 }
 
 declare module './booking.repository' {

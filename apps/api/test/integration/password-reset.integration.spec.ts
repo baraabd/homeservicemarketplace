@@ -20,6 +20,7 @@ export {}; // module marker — see migration-bootstrap.spec.ts.
 
 import { withAdvisoryLock } from '../support/db-isolation';
 import { makeTestSecret } from '../support/test-secrets';
+import { legalAcceptanceServiceFor } from '../support/legal-acceptance';
 
 const shouldRun = process.env.RUN_DB_INTEGRATION === '1';
 const d = shouldRun ? describe : describe.skip;
@@ -207,6 +208,7 @@ d('Password reset flow (real Postgres)', () => {
       config,
       securityEvents,
       mail,
+      legalAcceptanceServiceFor(config),
     );
 
     s = {

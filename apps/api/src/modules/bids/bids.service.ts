@@ -201,6 +201,9 @@ export class BidsService {
           providerId: bid.providerId,
           priceAmount: bid.amount,
           currency: bid.currency,
+          // K02 — the unit travels with the amount. A legacy bid (null)
+          // yields a legacy booking; it is never upgraded by guesswork.
+          amountScale: bid.amountScale,
           scheduledAt: request.scheduledAt,
         },
         tx,
@@ -376,6 +379,7 @@ function toSummary(row: BidWithProvider): BidSummary {
     requestId: row.requestId,
     amount: row.amount,
     currency: row.currency,
+    amountScale: row.amountScale,
     pricingType: row.pricingType,
     note: row.note,
     status: row.status,
@@ -413,6 +417,7 @@ function toBookingSummary(row: Booking): BookingSummary {
     scheduledAt: row.scheduledAt ? row.scheduledAt.toISOString() : null,
     priceAmount: row.priceAmount,
     currency: row.currency,
+    amountScale: row.amountScale,
     createdAt: row.createdAt.toISOString(),
   };
 }
