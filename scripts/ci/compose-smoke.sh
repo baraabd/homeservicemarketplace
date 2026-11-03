@@ -261,9 +261,18 @@ STAMP="$(date +%s)-$RANDOM"
 EMAIL="smoke-$STAMP@example.test"
 PASSWORD="SmokeTest-Passw0rd!"
 
+# K02 — signup names the exact Terms/Privacy versions; read them from the
+# server (the authority) instead of hard-coding them here.
+LEGAL="$(curl -fsS "$API/v1/legal/documents")"
+LEGAL_ACCEPTANCE="$(printf '%s' "$LEGAL" | node -e '
+  let raw = ""; process.stdin.on("data", (c) => (raw += c)).on("end", () => {
+    const d = JSON.parse(raw); const v = (k) => d.documents.find((x) => x.kind === k).version;
+    if (!d.acceptanceOpen) { console.error("legal acceptance is closed"); process.exit(2); }
+    process.stdout.write(JSON.stringify({ termsVersion: v("TERMS_OF_SERVICE"), privacyVersion: v("PRIVACY_NOTICE"), locale: "en" }));
+  });')" || fail "could not read the current legal versions: $LEGAL"
 REG="$(curl -fsS -X POST "$API/v1/auth/register" \
   -H 'content-type: application/json' \
-  -d "{\"email\":\"$EMAIL\",\"password\":\"$PASSWORD\",\"firstName\":\"Smoke\",\"lastName\":\"Test\"}")"
+  -d "{\"email\":\"$EMAIL\",\"password\":\"$PASSWORD\",\"firstName\":\"Smoke\",\"lastName\":\"Test\",\"legalAcceptance\":$LEGAL_ACCEPTANCE}")"
 CHALLENGE_ID="$(printf '%s' "$REG" | jget challengeId)"
 [ -n "$CHALLENGE_ID" ] || fail "register returned no challengeId: $REG"
 ok "register issued an OTP challenge"

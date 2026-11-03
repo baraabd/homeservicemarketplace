@@ -59,16 +59,16 @@ export async function assertClonedFinancialValues(db) {
       ON original.id = regexp_replace(clone.id, '^r27c[1-9][0-9]*_', '')
     WHERE clone.id ~ '^r27c[1-9][0-9]*_' AND (
       original.id IS NULL OR
-      ROW(clone."priceAmount", clone.currency, clone."seekerUserId", clone."providerId")
+      ROW(clone."priceAmount", clone.currency, clone."amountScale", clone."seekerUserId", clone."providerId")
         IS DISTINCT FROM
-      ROW(original."priceAmount", original.currency, original."seekerUserId", original."providerId"))`);
+      ROW(original."priceAmount", original.currency, original."amountScale", original."seekerUserId", original."providerId"))`);
   assert.equal(rows[0].mismatches, 0, 'amplified booking changed financial or ownership values');
 }
 
 async function eligibleRows(db) {
   // Prisma treats its timestamp-without-time-zone columns as UTC. pg's
   // default parser otherwise interprets them in the harness host's timezone.
-  const { rows } = await db.query(`SELECT id, "priceAmount", currency,
+  const { rows } = await db.query(`SELECT id, "priceAmount", currency, "amountScale",
       "updatedAt" AT TIME ZONE 'UTC' AS "updatedAt", "providerId", "seekerUserId"
       FROM "Booking" WHERE status = 'COMPLETED' AND "deletedAt" IS NULL
       ORDER BY "updatedAt" DESC, id DESC`);
@@ -93,11 +93,13 @@ export function assertFinancialPage(response, expected, offset, limit) {
     assert.equal(item.currency, row.currency, 'financial currency mismatch');
     assert.equal(item.provider?.id, row.providerId, 'financial provider mismatch');
     assert.equal(item.seeker?.id, row.seekerUserId, 'financial seeker mismatch');
-    assert.ok(Number.isSafeInteger(item.platformFee) && item.platformFee >= 0, 'invalid fee');
-    assert.ok(Number.isSafeInteger(item.netAmount) && item.netAmount >= 0, 'invalid net amount');
-    // apiEnv() passes no fee override; the accepted runtime default is 1000 bps.
-    assert.equal(item.platformFee, Math.round(row.priceAmount / 10), 'financial fee mismatch');
-    assert.equal(item.platformFee + item.netAmount, row.priceAmount, 'financial split mismatch');
+    // K02 (hsm.amount-unit.v1): each row carries its own unit; no fee or
+    // net figure exists because no platform fee is approved.
+    assert.equal(item.amountScale, row.amountScale, 'financial amount unit mismatch');
+    assert.ok(
+      !('platformFee' in item) && !('netAmount' in item),
+      'unapproved fee figures returned',
+    );
     assert.equal(
       item.occurredAt,
       new Date(row.updatedAt).toISOString(),

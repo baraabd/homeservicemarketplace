@@ -318,7 +318,10 @@ async function main() {
     token: PROVIDER_TOKEN,
     body: {
       requestId: captured.requestId,
-      priceQuote: { amount: 4500, currency: 'USD', pricingType: 'FIXED' },
+      // K02 — decimal major units in the approved currency (stored as halalas).
+      amountDecimal: '45.00',
+      currency: 'SAR',
+      pricingType: 'FIXED',
       note: `${RUN_ID} bid`,
     },
     expect: [200, 201],

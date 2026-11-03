@@ -11,6 +11,20 @@ import { api, expectStatus, newJar, otpFor } from './http.mjs';
 
 const tag = () => `${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
 
+// K02 — the exact current Terms/Privacy versions, read once from the server.
+let legalAcceptance;
+async function currentLegalAcceptance(jar) {
+  if (legalAcceptance) return legalAcceptance;
+  const docs = expectStatus(await api(jar, '/v1/legal/documents'), [200]).body;
+  const v = (kind) => docs.documents.find((d) => d.kind === kind).version;
+  legalAcceptance = {
+    termsVersion: v('TERMS_OF_SERVICE'),
+    privacyVersion: v('PRIVACY_NOTICE'),
+    locale: 'en',
+  };
+  return legalAcceptance;
+}
+
 async function verifiedAccount(role) {
   const jar = newJar();
   const email = `r27-${role}-${tag()}@perf.local`;
@@ -18,7 +32,13 @@ async function verifiedAccount(role) {
   const registered = expectStatus(
     await api(jar, '/v1/auth/register', {
       method: 'POST',
-      body: { email, password, firstName: 'Perf', lastName: role },
+      body: {
+        email,
+        password,
+        firstName: 'Perf',
+        lastName: role,
+        legalAcceptance: await currentLegalAcceptance(jar),
+      },
     }),
     [200, 201, 202],
     `${role} register`,
@@ -122,11 +142,13 @@ export async function postRequest(seeker, categoryId) {
   return created.body.id;
 }
 
+// K02 — `amount` is a whole number of SAR; the API takes the decimal string
+// and stores halalas (e.g. 105 → "105" → 10500 at scale 2).
 export async function submitBid(provider, requestId, amount) {
   const bid = expectStatus(
     await api(provider.jar, '/v1/provider/bids', {
       method: 'POST',
-      body: { requestId, amount, pricingType: 'FIXED' },
+      body: { requestId, amountDecimal: String(amount), currency: 'SAR', pricingType: 'FIXED' },
     }),
     201,
     'submit bid',
