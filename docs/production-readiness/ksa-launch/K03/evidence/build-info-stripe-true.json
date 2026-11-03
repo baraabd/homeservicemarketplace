@@ -1,0 +1,19 @@
+{
+  "sourceSha": "e4458df34bceebccf0dd8126477bb90cdade4b48",
+  "apiUrl": "https://api.example.test",
+  "onboardingV2": false,
+  "stripeSandbox": true,
+  "publicConfig": {
+    "schema": "hsm.web-public-config/v1",
+    "apiUrl": "https://api.example.test",
+    "onboardingV2": false,
+    "stripeSandbox": true,
+    "disputeIntakeV1": false,
+    "realtimeSocketIo": false,
+    "realtimeTransports": "websocket",
+    "cspMediaOrigins": [],
+    "cspUploadOrigins": []
+  },
+  "configFingerprint": "01dd38d457aa41dafa9a3aa8b10c34107b8b0839bb7707c903e8b4e9dbf2f9e5",
+  "documentCspSha256": "0247b1e3726558f0b4adf2465c31bded996bc9d4aa557f372e4914529111609e"
+}
