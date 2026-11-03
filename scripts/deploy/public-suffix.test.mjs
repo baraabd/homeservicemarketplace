@@ -94,15 +94,13 @@ test('accepts registered Saudi domains and narrower staging cookie scope', () =>
 });
 
 test('accepts Unicode and ASCII forms of the same registrable IDNA domain', () => {
-  assert.deepEqual(
-    validateSameSiteHosts('WEB.食狮.公司.cn', 'api.xn--85x722f.xn--55qx5d.cn', '.食狮.公司.cn'),
-    {
-      webHostname: 'web.xn--85x722f.xn--55qx5d.cn',
-      apiHostname: 'api.xn--85x722f.xn--55qx5d.cn',
-      cookieParent: 'xn--85x722f.xn--55qx5d.cn',
-      registrableDomain: 'xn--85x722f.xn--55qx5d.cn',
-    },
-  );
+  const asciiHostname = 'api.xn--85x722f.xn--55qx5d.cn';
+  assert.deepEqual(validateSameSiteHosts('WEB.食狮.公司.cn', asciiHostname, '.食狮.公司.cn'), {
+    webHostname: 'web.xn--85x722f.xn--55qx5d.cn',
+    apiHostname: asciiHostname,
+    cookieParent: 'xn--85x722f.xn--55qx5d.cn',
+    registrableDomain: 'xn--85x722f.xn--55qx5d.cn',
+  });
 });
 
 const invalidSites = [
