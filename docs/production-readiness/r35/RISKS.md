@@ -12,3 +12,9 @@ Preserve R16/R18 holds. Subscription revenue is not withdrawable earnings.
 No price, currency scale, fee/tax, payout, verification or work-access policy is
 inferred. Validator/installation/CI success does not prove external money or
 hosted acceptance. Scenario counts, screenshot inspection and deployment parity are NOT RUN.
+
+> K01 correction (2026-11-03, develop `92770ea6`): the "Stripe runtime
+> unintegrated" row is historical. The SDK dependency, ingress and runtime
+> modules are now in source, failing closed without sandbox configuration; see
+> the correction in [IMPLEMENTATION.md](IMPLEMENTATION.md). Independent sandbox
+> evidence and refund-policy approval remain open.
