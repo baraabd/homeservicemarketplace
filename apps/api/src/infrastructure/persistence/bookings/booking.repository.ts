@@ -463,8 +463,9 @@ export class BookingRepository {
 
   // The completed-booking page is bounded before relation joins. The exact
   // existing updatedAt/id cursor and monetary values are retained; this does
-  // not turn a mutable sort key into a snapshot. K02 joins the page's Bid rows (after
-  // LIMIT, so at most `take` lookups by primary key) for pricingType.
+  // not turn a mutable sort key into a snapshot. K02 reads each page row's
+  // pricingType with a correlated primary-key lookup on "Bid" (a plain join
+  // let the planner hash-join with a sequential scan; R27 forbids that).
   async listCompletedBookingsForAdmin(
     args: { take: number; cursor?: string },
     tx?: PrismaTx,
@@ -480,7 +481,9 @@ export class BookingRepository {
       SELECT page.id, page."priceAmount", page.currency, page."amountScale", page."updatedAt",
         request."addressSnapshot", request."customServiceText",
         category.id AS "categoryId", category.slug AS "categorySlug", category."labelEn" AS "categoryLabelEn",
-        category."labelAr" AS "categoryLabelAr", bid."pricingType"::text AS "pricingType",
+        category."labelAr" AS "categoryLabelAr",
+        -- K02: one primary-key lookup per page row (never a scan of "Bid").
+        (SELECT bid."pricingType"::text FROM "Bid" bid WHERE bid.id = page."bidId") AS "pricingType",
         provider.id AS "providerId", provider."displayName" AS "providerDisplayName",
         provider_user.id AS "providerUserId", provider_user.email AS "providerEmail",
         seeker.id AS "seekerId", seeker."firstName" AS "seekerFirstName"
@@ -494,7 +497,6 @@ export class BookingRepository {
       ) page
       ${BOOKING_REQUEST_LIST_JOIN}
       LEFT JOIN "ServiceCategory" category ON category.id = request."categoryId"
-      JOIN "Bid" bid ON bid.id = page."bidId"
       JOIN "ProviderProfile" provider ON provider.id = page."providerId"
       LEFT JOIN "User" provider_user ON provider_user.id = provider."userId"
       JOIN "User" seeker ON seeker.id = page."seekerUserId"

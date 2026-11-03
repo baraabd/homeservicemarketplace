@@ -107,14 +107,20 @@ describe('bounded booking list projections', () => {
     expect(actual.updatedAt).toBe(time);
     expect(client.$queryRaw).toHaveBeenCalledTimes(1);
     const query = client.$queryRaw.mock.calls[0][0] as Prisma.Sql;
-    // K02 — pricingType (fixed price vs hourly rate) is joined from Bid, but
-    // only AFTER the LIMITed page subquery: at most `take` primary-key
-    // lookups (the R27 bound), and never a ledger read.
+    // K02 — pricingType (fixed price vs hourly rate) comes from Bid through a
+    // correlated primary-key lookup per page row: never a join the planner
+    // could hash with a sequential scan (R27), never inside the LIMITed page
+    // subquery, and never a ledger read.
     expect(query.text).not.toMatch(/Ledger/);
+    expect(query.text).not.toMatch(/JOIN "Bid"/);
+    expect(query.text).toContain(
+      '(SELECT bid."pricingType"::text FROM "Bid" bid WHERE bid.id = page."bidId") AS "pricingType"',
+    );
+    const pageStart = query.text.indexOf('FROM (');
     const pageEnd = query.text.indexOf(') page');
-    expect(pageEnd).toBeGreaterThan(0);
-    expect(query.text.slice(0, pageEnd)).not.toMatch(/"Bid"/);
-    expect(query.text.slice(pageEnd)).toContain('JOIN "Bid" bid ON bid.id = page."bidId"');
+    expect(pageStart).toBeGreaterThan(0);
+    expect(pageEnd).toBeGreaterThan(pageStart);
+    expect(query.text.slice(pageStart, pageEnd)).not.toMatch(/"Bid"/);
     expect(query.text).toContain("booking.status = 'COMPLETED'");
     expect(query.text).toContain('booking."deletedAt" IS NULL');
     expect(query.values).toEqual([31, 0]);
