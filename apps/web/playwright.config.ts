@@ -166,6 +166,8 @@ export default defineConfig({
           '**/phase3-activation-chain.real-api.spec.ts',
           '**/phase3-v2-journey.real-api.spec.ts',
           '**/phase3-v1-flag-off.real-api.spec.ts',
+          // K06 — support operations: real accounts, mail catcher and admin UI.
+          '**/k06-support-operations.real-api.spec.ts',
         ]),
   ],
   // Sprint 09B.29 — one stable snapshot location, shared by the spec that

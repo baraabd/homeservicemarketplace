@@ -4,6 +4,7 @@ import type {
   CreateSupportTicketResponse,
   ListSupportTicketsResponse,
   SupportTicketDetailView,
+  SupportTicketExperience,
   SupportTicketSummaryView,
 } from '@homeservicemarketplace/contracts';
 
@@ -33,11 +34,26 @@ export const HELP_FAQS = [
   },
 ];
 
+/** K06 — timestamps follow the active language instead of the browser default. */
+function formatMessageTime(value: string, lang: 'ar' | 'en'): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.valueOf())) return '';
+  return new Intl.DateTimeFormat(lang, { dateStyle: 'medium', timeStyle: 'short' }).format(date);
+}
+
 function submissionKey() {
   return crypto.randomUUID().replace(/-/g, '');
 }
 
-export function HelpSupportPage({ onBack }: { onBack: () => void }) {
+export interface HelpSupportPageProps {
+  onBack: () => void;
+  /** K06 — recorded on new tickets so support notifications link back to this app. */
+  experience?: SupportTicketExperience;
+  /** K06 — a notification deep link opens this ticket first. Ownership stays server-side. */
+  initialTicketId?: string | null;
+}
+
+export function HelpSupportPage({ onBack, experience, initialTicketId }: HelpSupportPageProps) {
   const { lang, dir } = useLang();
   const ar = lang === 'ar';
   const [tickets, setTickets] = useState<SupportTicketSummaryView[]>([]);
@@ -99,6 +115,22 @@ export function HelpSupportPage({ onBack }: { onBack: () => void }) {
   }, [copy.loadFail]);
 
   useEffect(() => {
+    if (!initialTicketId) return;
+    let alive = true;
+    void api
+      .get<SupportTicketDetailView>(`/v1/me/support/tickets/${encodeURIComponent(initialTicketId)}`)
+      .then(({ data }) => {
+        if (alive) setSelected(data);
+      })
+      .catch(() => {
+        if (alive) setError(copy.loadFail);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [initialTicketId, copy.loadFail]);
+
+  useEffect(() => {
     if (!selected || selected.status !== 'OPEN') return;
     const id = selected.id;
     const timer = window.setInterval(() => {
@@ -122,6 +154,7 @@ export function HelpSupportPage({ onBack }: { onBack: () => void }) {
         subject: s,
         message: m,
         idempotencyKey: createAttempt.current.key,
+        ...(experience ? { experience } : {}),
       });
       createAttempt.current = null;
       setSubject('');
@@ -214,11 +247,15 @@ export function HelpSupportPage({ onBack }: { onBack: () => void }) {
                       ? 'ms-auto bg-amber-500 text-white'
                       : 'me-auto border border-slate-200 bg-white text-slate-800 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100'
                   }`}
-                  dir="auto"
                 >
-                  <p className="whitespace-pre-wrap break-words">{msg.body}</p>
-                  <time className="mt-1 block text-[10px] opacity-70">
-                    {new Date(msg.createdAt).toLocaleString()}
+                  {/* Only the message text takes its own direction. The bubble and
+                      its timestamp follow the page, so alignment and the localized
+                      date stay consistent in a mixed-language conversation. */}
+                  <p dir="auto" className="whitespace-pre-wrap break-words">
+                    {msg.body}
+                  </p>
+                  <time dateTime={msg.createdAt} className="mt-1 block text-[10px] opacity-70">
+                    {formatMessageTime(msg.createdAt, ar ? 'ar' : 'en')}
                   </time>
                 </div>
               ))}

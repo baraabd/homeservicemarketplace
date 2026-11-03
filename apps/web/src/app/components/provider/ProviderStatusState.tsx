@@ -88,12 +88,12 @@ function copyFor(status: ProviderProfileStatus, lang: 'en' | 'ar'): CopyBlock {
         lang === 'ar'
           ? ar({
               title: 'الحساب موقوف',
-              body: 'تم إيقاف حسابك مؤقتاً. للاستفسار، تواصل مع الدعم عبر القنوات الرسمية.',
+              body: 'تم إيقاف حسابك مؤقتاً. تواصل مع الدعم لمعرفة التفاصيل.',
               ctaLabel: 'العودة إلى التطبيقات',
             })
           : en({
               title: 'Account suspended',
-              body: 'Your provider account has been temporarily suspended. Please contact support through the official channels for details.',
+              body: 'Your provider account has been temporarily suspended. Contact support for details.',
               ctaLabel: 'Back to apps',
             });
       return {
@@ -243,6 +243,17 @@ export function ProviderStatusState({
         >
           {copy.ctaLabel}
         </button>
+        {/* K06 — every state here tells the provider to contact support, so offer
+            it. /provider/support is outside the workspace status gate. */}
+        <ProviderButton
+          tone="secondary"
+          shape="onboarding"
+          size="block"
+          data-testid="provider-status-support"
+          onClick={() => navigate('/provider/support')}
+        >
+          {lang === 'ar' ? 'تواصل مع الدعم' : 'Contact support'}
+        </ProviderButton>
         {canManageVerification && (
           <ProviderButton
             tone="secondary"

@@ -406,6 +406,10 @@ model SupportTicket {
   creationKey     String
   closedAt        DateTime?
   closedByUserId  String?
+  /// K06 — the app the requester opened the ticket from. Steers only where the
+  /// requester's own support notifications deep-link; it grants nothing. Null
+  /// for tickets created before K06 and for clients that do not send it.
+  experience      SupportTicketExperience?
   createdAt       DateTime            @default(now())
   updatedAt       DateTime            @updatedAt
 
@@ -1229,6 +1233,11 @@ enum BookingStatus {
 enum SupportTicketStatus {
   OPEN
   CLOSED
+}
+
+enum SupportTicketExperience {
+  SEEKER
+  PROVIDER
 }
 
 enum SupportMessageAuthorRole {

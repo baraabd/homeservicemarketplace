@@ -73,6 +73,13 @@ const ProviderOnboardingLayout = lazyPage(() =>
     default: module.ProviderOnboardingLayout,
   })),
 );
+// K06 — routed support for both apps; see pages/SupportPage.tsx.
+const CustomerSupportPage = lazyPage(() =>
+  import('./pages/SupportPage').then((module) => ({ default: module.CustomerSupportPage })),
+);
+const ProviderSupportPage = lazyPage(() =>
+  import('./pages/SupportPage').then((module) => ({ default: module.ProviderSupportPage })),
+);
 const ProviderVerificationPage = lazyPage(() =>
   import('./pages/ProviderOnboardingPage').then((module) => ({
     default: module.ProviderVerificationPage,
@@ -144,6 +151,10 @@ export const router = createBrowserRouter([
           { path: 'home/bookings', Component: HomePage },
           { path: 'home/messages', Component: HomePage },
           { path: 'home/profile', Component: HomePage },
+          { path: 'home/support', Component: CustomerSupportPage },
+          // K06 — outside the workspace splat and its status gate, like onboarding:
+          // a provider denied work access must still be able to reach support.
+          { path: 'provider/support', Component: ProviderSupportPage },
           // Applicants must be able to provide identity evidence before the
           // workspace becomes active. The API owns eligibility and actions.
           { path: 'provider/verification', Component: ProviderVerificationPage },
