@@ -97,14 +97,15 @@ export class ProviderJobsService {
     }
 
     const take = Math.min(Math.max(query.limit ?? DEFAULT_PAGE_SIZE, 1), 100);
-    const rows = await this.requests.listAvailableForProvider({
+    // K05 — the repository owns the continuation: only it knows how far it
+    // scanned, and a short page is not necessarily the end of the feed.
+    const { rows: page, nextCursor } = await this.requests.listAvailableForProvider({
       excludeSeekerUserId: profile.userId ?? null,
       categoryIds,
       serviceArea,
-      take: take + 1,
+      take,
       cursor: query.cursor,
     });
-    const page = rows.slice(0, take);
     const requestIds = page.map((r) => r.id);
 
     // Two parallel ID-batched queries to avoid N+1.
@@ -119,7 +120,6 @@ export class ProviderJobsService {
         hasOwnBid: hasOwnBidSet.has(row.id),
       }),
     );
-    const nextCursor = rows.length > take ? items[items.length - 1].id : null;
     return { items, nextCursor };
   }
 }

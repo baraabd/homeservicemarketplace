@@ -98,6 +98,16 @@ function makeRequest(
   } as unknown as ServiceRequestForProvider;
 }
 
+/** Emulates the repository's page contract: at most `take` rows, and a
+ *  continuation cursor whenever more matching rows exist. The repository owns
+ *  the cursor because only it knows how far it scanned (K05). */
+function repoPage<T extends { id: string }>(rows: T[], take: number) {
+  return {
+    rows: rows.slice(0, take),
+    nextCursor: rows.length > take ? rows[take - 1].id : null,
+  };
+}
+
 function makeMocks(
   args: {
     profile?: ProviderMarketplaceProfile | null;
@@ -115,7 +125,9 @@ function makeMocks(
       findByUserIdWithCategories: jest.fn(),
     } as unknown as ProviderProfileRepository,
     requests: {
-      listAvailableForProvider: jest.fn().mockResolvedValue(args.rows ?? []),
+      listAvailableForProvider: jest
+        .fn()
+        .mockImplementation(async ({ take }: { take: number }) => repoPage(args.rows ?? [], take)),
       findAvailableForProvider: jest
         .fn()
         .mockResolvedValue(args.detailRow === undefined ? null : args.detailRow),
@@ -221,12 +233,12 @@ describe('AvailableRequestsService.list', () => {
     ).rejects.toMatchObject({ status: 400, code: 'VALIDATION_ERROR' });
   });
 
-  it('clamps an out-of-bounds limit and asks the repo for take + 1', async () => {
+  it('clamps an out-of-bounds limit and asks the repo for exactly that page', async () => {
     const cat = makeCategory();
     const m = makeMocks({ profile: makeProfile([cat]), catalog: [cat] });
     await makeService(m).list('user-provider-1', { limit: 9999 });
     expect(m.requests.listAvailableForProvider).toHaveBeenCalledWith(
-      expect.objectContaining({ take: 101 }),
+      expect.objectContaining({ take: 100 }),
     );
   });
 
@@ -310,7 +322,7 @@ describe('AvailableRequestsService.list', () => {
     (m.requests.listAvailableForProvider as jest.Mock).mockImplementation(
       async (args: { serviceArea: { cityKey: string | null } }) => {
         calls.push(args.serviceArea.cityKey);
-        return [];
+        return { rows: [], nextCursor: null };
       },
     );
 
