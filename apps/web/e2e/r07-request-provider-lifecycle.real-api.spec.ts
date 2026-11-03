@@ -243,7 +243,7 @@ test.describe('R07 request-to-provider lifecycle — real browsers, API and Post
       await card.click();
       await providerPage.getByTestId('job-detail-place-bid').click();
 
-      await providerPage.locator('input[type="number"]').last().fill('125');
+      await providerPage.locator('#bid-price-input').fill('125');
       await providerPage.getByRole('button', { name: '30 min', exact: true }).click();
       await providerPage.locator('textarea').last().fill('R07 real-browser lifecycle offer');
 

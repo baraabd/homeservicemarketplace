@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { hash as hashPassword } from 'argon2';
 import {
   CURRENT_LEGAL_DOCUMENTS,
@@ -465,6 +466,7 @@ const enabled = process.env.RUN_DB_INTEGRATION === '1';
     );
 
     const email = `${X}signup-${Date.now()}@example.test`;
+    const signupPassword = `K02-${randomUUID()}-Aa1!`;
     // Loopback registration budget is shared by every suite on this host; no
     // assertion here is about the throttle (registration-throttle.integration
     // drives that from synthetic IPs).
@@ -474,7 +476,7 @@ const enabled = process.env.RUN_DB_INTEGRATION === '1';
         method: 'POST',
         body: {
           email,
-          password: 'k02-Correct-Horse-9',
+          password: signupPassword,
           firstName: 'Noura',
           lastName: 'K02',
           ...body,

@@ -358,7 +358,9 @@ export function signedInAdmin(): Record<string, unknown> {
 
 /** The visible control a user would actually click. Never a direct state poke. */
 export function langToggle(page: Page): Locator {
-  return page.getByRole('button', { name: 'Switch language' });
+  // K02 — the toggle's accessible name is localised and states the current
+  // language, so tests address it by its stable test id.
+  return page.getByTestId('lang-toggle');
 }
 
 export async function htmlLangDir(page: Page): Promise<{ lang: string; dir: string }> {

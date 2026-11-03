@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
@@ -23,7 +24,8 @@ const EVIDENCE = join(process.cwd(), 'test-results', 'k02-evidence');
 mkdirSync(EVIDENCE, { recursive: true });
 const WIDTHS = [320, 390, 430, 768, 1024, 1440] as const;
 const LANGS = ['en', 'ar'] as const;
-const PASSWORD = 'k02-Correct-Horse-9';
+// Generated per run: no credential-shaped literal in source.
+const PASSWORD = `K02-${randomUUID()}-Aa1!`;
 
 async function db<T>(sql: string, params: unknown[] = []): Promise<T[]> {
   const client = new Client({ connectionString: DB });

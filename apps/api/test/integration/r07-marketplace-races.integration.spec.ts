@@ -73,9 +73,11 @@ d('R07 — marketplace races and delivery recovery (real Postgres, real outbox w
     manualAddress: { line1: '1 Test Street', city: 'Aleppo', country: 'SY' },
     ...extra,
   });
-  const bid = (requestId: string, amount = 10_000) => ({
+  // K02 — decimal SAR; the server stores halalas (100.00 → 10000).
+  const bid = (requestId: string, amountDecimal = '100.00') => ({
     requestId,
-    amount,
+    amountDecimal,
+    currency: 'SAR',
     pricingType: 'FIXED',
   });
 
@@ -620,7 +622,7 @@ d('R07 — marketplace races and delivery recovery (real Postgres, real outbox w
 
         const [accepted, late] = await Promise.allSettled([
           seekerBids.accept(SEEKER, created.id, first.bid.id),
-          providerBids.submit(ELIGIBLE_2.user, bid(created.id, 9_000)),
+          providerBids.submit(ELIGIBLE_2.user, bid(created.id, '90.00')),
         ]);
         expect(accepted.status).toBe('fulfilled');
 
@@ -646,7 +648,7 @@ d('R07 — marketplace races and delivery recovery (real Postgres, real outbox w
     it('two acceptances of two bids produce one booking', async () => {
       const created = await requests.create(SEEKER, body());
       const a = await providerBids.submit(ELIGIBLE.user, bid(created.id));
-      const b = await providerBids.submit(ELIGIBLE_2.user, bid(created.id, 9_000));
+      const b = await providerBids.submit(ELIGIBLE_2.user, bid(created.id, '90.00'));
 
       const outcomes = await Promise.allSettled([
         seekerBids.accept(SEEKER, created.id, a.bid.id),
@@ -747,8 +749,8 @@ d('R07 — marketplace races and delivery recovery (real Postgres, real outbox w
       expect(await announcements(ELIGIBLE.user, created.id)).toBe(1);
       expect((await feed.detail(ELIGIBLE.user, created.id)).media).toEqual(media);
 
-      const offer = await providerBids.submit(ELIGIBLE.user, bid(created.id, 12_500));
-      const rival = await providerBids.submit(ELIGIBLE_2.user, bid(created.id, 15_000));
+      const offer = await providerBids.submit(ELIGIBLE.user, bid(created.id, '125.00'));
+      const rival = await providerBids.submit(ELIGIBLE_2.user, bid(created.id, '150.00'));
 
       const accepted = await seekerBids.accept(SEEKER, created.id, offer.bid.id);
       const bookingId = accepted.booking.id;

@@ -126,7 +126,8 @@ async function run(data) {
     await expect(card).toBeVisible();
     await card.click();
     await page.getByTestId('job-detail-place-bid').click();
-    await page.locator('input[type="number"]').last().fill(String(price));
+    // K02 — the price is a labelled decimal SAR field (fixed price by default).
+    await page.locator('#bid-price-input').fill(String(price));
     await page.getByRole('button', { name: '30 min', exact: true }).click();
     const posted = responseTo('/v1/provider/bids', 'POST');
     await page.getByRole('button', { name: 'Send Offer', exact: true }).click();
@@ -192,7 +193,8 @@ async function run(data) {
     );
     const foreignBid = await probe('/v1/provider/bids', 'POST', {
       requestId: data.requests.foreign,
-      amount: 50,
+      amountDecimal: '50.00',
+      currency: 'SAR',
       pricingType: 'HOURLY',
     });
     expect(foreignBid.status).toBe(404);
@@ -203,7 +205,7 @@ async function run(data) {
     await page.goto(`${data.web}/provider/bids`);
     await page.reload();
     await expect(page.getByTestId(`provider-bid-status-${firstBid}`)).toHaveText('Pending');
-    await expect(page.getByTestId(`provider-bid-price-${firstBid}`)).toContainText('120 USD');
+    await expect(page.getByTestId(`provider-bid-price-${firstBid}`)).toContainText(/SARs120.00/);
     await expect(page.getByTestId(`provider-bid-price-${firstBid}`)).toContainText('per hour');
     expect(await rpc('bidStatus', { id: firstBid })).toBe('PENDING');
     check('bid submitted through the form persists across reload, priced as stored');

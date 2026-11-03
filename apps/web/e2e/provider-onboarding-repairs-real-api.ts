@@ -77,9 +77,9 @@ export async function chooseDarkTheme(page: Page, lang: 'en' | 'ar') {
   await settings.click();
   const label = page.getByText(lang === 'ar' ? 'الوضع الليلي' : 'Dark Mode', { exact: true });
   await expect(label).toBeVisible();
-  // This older settings button has no accessible name. Locate its actual
-  // labeled row; do not modify the out-of-scope Settings UI for this test.
-  await label.locator('..').locator('..').getByRole('button').click();
+  // K02 gave the Settings toggle real switch semantics and its visible label
+  // as its accessible name.
+  await page.getByRole('switch', { name: lang === 'ar' ? 'الوضع الليلي' : 'Dark Mode' }).click();
 }
 
 export async function recordRepairEvidence(

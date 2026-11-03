@@ -149,7 +149,12 @@ export async function scheduledBooking(
   expect(request.status, JSON.stringify(request.body)).toBe(201);
   const bid = await api<{ bid: { id: string } }>(provider.jar, '/v1/provider/bids', {
     method: 'POST',
-    body: { requestId: request.body.id, amount: 120, pricingType: 'FIXED' },
+    body: {
+      requestId: request.body.id,
+      amountDecimal: '120',
+      currency: 'SAR',
+      pricingType: 'FIXED',
+    },
   });
   expect(bid.status, JSON.stringify(bid.body)).toBe(201);
   const accepted = await api<{ booking: { id: string } }>(

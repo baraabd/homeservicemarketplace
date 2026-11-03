@@ -49,6 +49,8 @@ dbDescribe('G2 bounded query projections (real PostgreSQL)', () => {
     scheduledAt: true,
     priceAmount: true,
     currency: true,
+    // K02 — the projections carry the amount unit.
+    amountScale: true,
     createdAt: true,
     updatedAt: true,
     request: {
@@ -66,8 +68,10 @@ dbDescribe('G2 bounded query projections (real PostgreSQL)', () => {
     id: true,
     priceAmount: true,
     currency: true,
+    amountScale: true,
     updatedAt: true,
     request: providerSelect.request,
+    bid: { select: { pricingType: true } },
     provider: {
       select: { id: true, displayName: true, user: { select: { id: true, email: true } } },
     },

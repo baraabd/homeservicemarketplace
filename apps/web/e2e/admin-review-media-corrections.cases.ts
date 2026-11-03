@@ -58,7 +58,7 @@ for (const scenario of [
     if (!scenario.evidence) expect(original.verification).toBeNull();
     await page.setViewportSize({ width: scenario.width, height: 900 });
     if (scenario.lang === 'ar') {
-      await page.getByRole('button', { name: 'Switch language', exact: true }).click();
+      await page.getByTestId('lang-toggle').click();
     }
     await openReviewTask(page, scenario.kind === 'identity' ? 'BASICS_IDENTITY' : 'PORTFOLIO');
     let itemId: string | undefined;
