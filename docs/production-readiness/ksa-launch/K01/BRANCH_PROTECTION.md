@@ -61,7 +61,10 @@ Deliberately **not** required:
 - PR-only measurement lane with no push trigger: R27 (r27-performance.yml).
 - Individual ci.yml jobs. `CI gate` already fails if any one of them fails.
 - `CodeQL` (app 57789) is the code-scanning result rather than a workflow job.
-  It reported `success` on PRs #201, #202, #203 and #210.
+  It reported `success` on PRs #201, #202, #203 and #210. It is published for
+  pull-request heads, which are what required checks evaluate, but not for
+  pushes to develop: the develop push `92770ea6` has no `CodeQL` result check.
+  It is required for PR merges only.
 
 Validation performed:
 
