@@ -163,10 +163,6 @@ export function deploymentReadinessProblems(env: AppEnv): string[] {
   }
   if (!env.OUTBOX_WORKER_ENABLED)
     issues.push('OUTBOX_WORKER_ENABLED: deployment requires event delivery');
-  // Queued OTP/reset mail is retried only by the R21 dispatcher, never by the
-  // outbox worker; one enabled control does not imply the other.
-  if (!env.MAIL_DISPATCHER_ENABLED)
-    issues.push('MAIL_DISPATCHER_ENABLED: deployment requires queued mail retry and delivery');
   if (env.STORAGE_DRIVER !== 's3')
     issues.push('STORAGE_DRIVER: the production topology requires durable S3-compatible storage');
   if (
@@ -176,6 +172,23 @@ export function deploymentReadinessProblems(env: AppEnv): string[] {
   ) {
     issues.push(
       'JWT_ACCESS_SECRET: replace placeholder or low-diversity secrets with a secret-manager generated value',
+    );
+  }
+  return issues;
+}
+
+/**
+ * K03: stricter preflight for a RELEASE (the staging launcher's networkless
+ * api-preflight), not for every boot. Queued OTP/reset mail is retried only by
+ * the R21 dispatcher, never by the outbox worker, so the effective
+ * MAIL_DISPATCHER_ENABLED is required on its own. Ordinary boot keeps the R21
+ * incident switch (MAIL_DISPATCHER_ENABLED=false, see r21/ROLLBACK.md) usable.
+ */
+export function releaseReadinessProblems(env: AppEnv): string[] {
+  const issues = deploymentReadinessProblems(env);
+  if (!env.MAIL_DISPATCHER_ENABLED) {
+    issues.push(
+      'MAIL_DISPATCHER_ENABLED: a release requires queued mail retry; the R21 incident switch is not a release state',
     );
   }
   return issues;

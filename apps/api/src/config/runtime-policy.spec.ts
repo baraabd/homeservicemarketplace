@@ -1,6 +1,6 @@
 import { randomBytes } from 'node:crypto';
 import { validateEnv } from './env.validation';
-import { deploymentReadinessProblems } from './runtime-policy';
+import { deploymentReadinessProblems, releaseReadinessProblems } from './runtime-policy';
 
 const base = {
   NODE_ENV: 'test',
@@ -175,14 +175,34 @@ describe('S03 deployment preflight', () => {
     ).toBeGreaterThan(0);
   });
   // K03: the R21 mail dispatcher is the only retry path for queued OTP/reset
-  // mail. An enabled outbox worker does not deliver it, so each control is
-  // checked on its own and the other cannot stand in for it.
+  // mail. An enabled outbox worker does not deliver it, so a RELEASE checks
+  // each control on its own and the other cannot stand in for it.
   it.each([
     [{ OUTBOX_WORKER_ENABLED: true, MAIL_DISPATCHER_ENABLED: false }, 'MAIL_DISPATCHER_ENABLED'],
     [{ OUTBOX_WORKER_ENABLED: false, MAIL_DISPATCHER_ENABLED: true }, 'OUTBOX_WORKER_ENABLED'],
-  ])('validates effective mail dispatch independently of the outbox worker %p', (override, key) => {
-    const problems = deploymentReadinessProblems(validateEnv({ ...readyToDeploy, ...override }));
-    expect(problems).toHaveLength(1);
-    expect(problems[0]).toMatch(new RegExp(`^${key}:`));
+  ])(
+    'a release validates effective mail dispatch independently of the outbox worker %p',
+    (override, key) => {
+      const problems = releaseReadinessProblems(validateEnv({ ...readyToDeploy, ...override }));
+      expect(problems).toHaveLength(1);
+      expect(problems[0]).toMatch(new RegExp(`^${key}:`));
+    },
+  );
+  it('a release includes every boot-time deployment problem', () => {
+    const env = validateEnv({ ...readyToDeploy, REDIS_TLS: false });
+    expect(releaseReadinessProblems(env)).toEqual(deploymentReadinessProblems(env));
+    expect(releaseReadinessProblems(validateEnv(readyToDeploy))).toEqual([]);
   });
+  it.each(['false', 'off', '0', 'no'])(
+    'keeps the R21 incident switch MAIL_DISPATCHER_ENABLED=%s bootable outside a release',
+    (value) => {
+      // docs/production-readiness/r21/ROLLBACK.md: stop background retries
+      // without redeploying code. Boot must not refuse that documented state.
+      expect(
+        deploymentReadinessProblems(
+          validateEnv({ ...readyToDeploy, MAIL_DISPATCHER_ENABLED: value }),
+        ),
+      ).toEqual([]);
+    },
+  );
 });
