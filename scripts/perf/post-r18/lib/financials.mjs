@@ -52,23 +52,32 @@ export function assertFinancialIntegrity(before, after) {
 }
 
 /** A clone must retain the original financial and ownership values exactly. */
+// K02 — the baseline schema (pre-K02) has no "amountScale" column.
+async function hasAmountScale(db) {
+  const { rows } = await db.query(`SELECT 1 FROM information_schema.columns
+    WHERE table_name = 'Booking' AND column_name = 'amountScale'`);
+  return rows.length > 0;
+}
+
 export async function assertClonedFinancialValues(db) {
+  const unit = (await hasAmountScale(db)) ? '"amountScale"' : 'NULL::smallint';
   const { rows } = await db.query(`SELECT count(*)::int AS mismatches
     FROM "Booking" clone
     LEFT JOIN "Booking" original
       ON original.id = regexp_replace(clone.id, '^r27c[1-9][0-9]*_', '')
     WHERE clone.id ~ '^r27c[1-9][0-9]*_' AND (
       original.id IS NULL OR
-      ROW(clone."priceAmount", clone.currency, clone."amountScale", clone."seekerUserId", clone."providerId")
+      ROW(clone."priceAmount", clone.currency, ${unit.replace('"amountScale"', 'clone."amountScale"')}, clone."seekerUserId", clone."providerId")
         IS DISTINCT FROM
-      ROW(original."priceAmount", original.currency, original."amountScale", original."seekerUserId", original."providerId"))`);
+      ROW(original."priceAmount", original.currency, ${unit.replace('"amountScale"', 'original."amountScale"')}, original."seekerUserId", original."providerId"))`);
   assert.equal(rows[0].mismatches, 0, 'amplified booking changed financial or ownership values');
 }
 
 async function eligibleRows(db) {
   // Prisma treats its timestamp-without-time-zone columns as UTC. pg's
   // default parser otherwise interprets them in the harness host's timezone.
-  const { rows } = await db.query(`SELECT id, "priceAmount", currency, "amountScale",
+  const unit = (await hasAmountScale(db)) ? '"amountScale"' : 'NULL::smallint AS "amountScale"';
+  const { rows } = await db.query(`SELECT id, "priceAmount", currency, ${unit},
       "updatedAt" AT TIME ZONE 'UTC' AS "updatedAt", "providerId", "seekerUserId"
       FROM "Booking" WHERE status = 'COMPLETED' AND "deletedAt" IS NULL
       ORDER BY "updatedAt" DESC, id DESC`);
@@ -93,13 +102,22 @@ export function assertFinancialPage(response, expected, offset, limit) {
     assert.equal(item.currency, row.currency, 'financial currency mismatch');
     assert.equal(item.provider?.id, row.providerId, 'financial provider mismatch');
     assert.equal(item.seeker?.id, row.seekerUserId, 'financial seeker mismatch');
-    // K02 (hsm.amount-unit.v1): each row carries its own unit; no fee or
-    // net figure exists because no platform fee is approved.
-    assert.equal(item.amountScale, row.amountScale, 'financial amount unit mismatch');
-    assert.ok(
-      !('platformFee' in item) && !('netAmount' in item),
-      'unapproved fee figures returned',
-    );
+    if ('amountScale' in item) {
+      // K02 (hsm.amount-unit.v1): each row carries its own unit; no fee or
+      // net figure exists because no platform fee is approved.
+      assert.equal(item.amountScale, row.amountScale, 'financial amount unit mismatch');
+      assert.ok(
+        !('platformFee' in item) && !('netAmount' in item),
+        'unapproved fee figures returned',
+      );
+    } else {
+      // Pre-K02 baseline API (R27 compares against it): the historical
+      // contract, asserted exactly as before K02.
+      assert.ok(Number.isSafeInteger(item.platformFee) && item.platformFee >= 0, 'invalid fee');
+      assert.ok(Number.isSafeInteger(item.netAmount) && item.netAmount >= 0, 'invalid net amount');
+      assert.equal(item.platformFee, Math.round(row.priceAmount / 10), 'financial fee mismatch');
+      assert.equal(item.platformFee + item.netAmount, row.priceAmount, 'financial split mismatch');
+    }
     assert.equal(
       item.occurredAt,
       new Date(row.updatedAt).toISOString(),

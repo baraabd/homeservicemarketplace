@@ -79,7 +79,9 @@ export function WalletScreen() {
         .filter((e) => e.reason === 'HOURLY_RATE')
         .reduce((n, e) => n + e.completedCount + e.inFlightCount, 0)
     : 0;
-  const chartScale = chartQuery.data?.amountScale ?? 2;
+  // A chart without a scale (older API) is NOT assumed to be halalas:
+  // assuming 2 would re-introduce the "/ 100" defect K02 removed.
+  const chartScale: number | null = chartQuery.data?.amountScale ?? null;
   const chartCurrency = chartQuery.data?.currency ?? LAUNCH_CURRENCY;
 
   // Build the AreaChart data from the canonical /chart buckets. Every
@@ -98,7 +100,10 @@ export function WalletScreen() {
       // stored minor units in the tooltip.
       return {
         tick,
-        gross: Number(minorToDecimal(b.grossEarnings, chartScale)),
+        gross:
+          chartScale === null
+            ? b.grossEarnings
+            : Number(minorToDecimal(b.grossEarnings, chartScale)),
         grossMinor: b.grossEarnings,
       };
     });

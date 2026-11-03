@@ -11,18 +11,31 @@ import { api, expectStatus, newJar, otpFor } from './http.mjs';
 
 const tag = () => `${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
 
-// K02 — the exact current Terms/Privacy versions, read once from the server.
-let legalAcceptance;
-async function currentLegalAcceptance(jar) {
-  if (legalAcceptance) return legalAcceptance;
-  const docs = expectStatus(await api(jar, '/v1/legal/documents'), [200]).body;
+// K02 — R27 measures a baseline build (develop before K02) and the
+// candidate with the SAME harness, so the API generation is detected, not
+// assumed: a K02 API publishes GET /v1/legal/documents (signup must name the
+// exact versions; bids are decimal SAR), a pre-K02 API answers 404 (signup
+// has no consent field; bids are the integer `amount`). Any other answer
+// fails loudly.
+let generation;
+async function apiGeneration(jar) {
+  if (generation) return generation;
+  const result = await api(jar, '/v1/legal/documents');
+  if (result.status === 404) {
+    generation = { k02: false, legalAcceptance: null };
+    return generation;
+  }
+  const docs = expectStatus(result, [200], 'legal documents').body;
   const v = (kind) => docs.documents.find((d) => d.kind === kind).version;
-  legalAcceptance = {
-    termsVersion: v('TERMS_OF_SERVICE'),
-    privacyVersion: v('PRIVACY_NOTICE'),
-    locale: 'en',
+  generation = {
+    k02: true,
+    legalAcceptance: {
+      termsVersion: v('TERMS_OF_SERVICE'),
+      privacyVersion: v('PRIVACY_NOTICE'),
+      locale: 'en',
+    },
   };
-  return legalAcceptance;
+  return generation;
 }
 
 async function verifiedAccount(role) {
@@ -37,7 +50,9 @@ async function verifiedAccount(role) {
         password,
         firstName: 'Perf',
         lastName: role,
-        legalAcceptance: await currentLegalAcceptance(jar),
+        ...((await apiGeneration(jar)).legalAcceptance
+          ? { legalAcceptance: generation.legalAcceptance }
+          : {}),
       },
     }),
     [200, 201, 202],
@@ -148,7 +163,9 @@ export async function submitBid(provider, requestId, amount) {
   const bid = expectStatus(
     await api(provider.jar, '/v1/provider/bids', {
       method: 'POST',
-      body: { requestId, amountDecimal: String(amount), currency: 'SAR', pricingType: 'FIXED' },
+      body: (await apiGeneration(provider.jar)).k02
+        ? { requestId, amountDecimal: String(amount), currency: 'SAR', pricingType: 'FIXED' }
+        : { requestId, amount, pricingType: 'FIXED' },
     }),
     201,
     'submit bid',

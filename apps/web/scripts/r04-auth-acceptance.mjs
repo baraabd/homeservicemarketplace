@@ -17,7 +17,11 @@ const ROOT = fileURLToPath(new URL('../../../', import.meta.url));
 const OUT = path.join(ROOT, 'r04-auth-evidence');
 const identity = new URL(process.env.DATABASE_URL || 'postgresql://missing/missing');
 assert.equal(process.env.GITHUB_ACTIONS, 'true', 'Run only in the isolated CI job');
-assert.equal(process.env.RUNNER_ENVIRONMENT, 'github-hosted', 'Do not run against a developer host');
+assert.equal(
+  process.env.RUNNER_ENVIRONMENT,
+  'github-hosted',
+  'Do not run against a developer host',
+);
 assert.equal(process.env.R04_ACCEPTANCE_SCOPE, 'isolated-ci');
 assert.ok(['localhost', '127.0.0.1'].includes(identity.hostname));
 assert.equal(identity.pathname, '/r04_auth_ci');
@@ -40,7 +44,11 @@ async function phase(name, fn) {
   console.log(`PASS ${name}`);
 }
 async function newPage(width = 390, language = 'en') {
-  const context = await browser.newContext({ viewport: { width, height: 900 }, locale: 'en-US', serviceWorkers: 'block' });
+  const context = await browser.newContext({
+    viewport: { width, height: 900 },
+    locale: 'en-US',
+    serviceWorkers: 'block',
+  });
   contexts.push(context);
   await context.addInitScript((lang) => localStorage.setItem('hsm.lang', lang), language);
   const page = await context.newPage();
@@ -49,46 +57,74 @@ async function newPage(width = 390, language = 'en') {
   return { context, page };
 }
 async function call(page, endpoint, body, csrf = true) {
-  return page.evaluate(async ({ api, endpoint, body, csrf }) => {
-    const token = globalThis.document.cookie.match(/(?:^|;\s*)hsm_csrf=([^;]*)/)?.[1];
-    const response = await fetch(`${api}${endpoint}`, {
-      method: body === undefined ? 'GET' : 'POST', credentials: 'include',
-      headers: { 'X-Client-Kind': 'web', ...(body === undefined ? {} : { 'Content-Type': 'application/json' }), ...(csrf && token ? { 'X-CSRF-Token': token } : {}) },
-      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
-    });
-    const text = await response.text();
-    return { status: response.status, body: text ? JSON.parse(text) : null };
-  }, { api: API, endpoint, body, csrf });
+  return page.evaluate(
+    async ({ api, endpoint, body, csrf }) => {
+      const token = globalThis.document.cookie.match(/(?:^|;\s*)hsm_csrf=([^;]*)/)?.[1];
+      const response = await fetch(`${api}${endpoint}`, {
+        method: body === undefined ? 'GET' : 'POST',
+        credentials: 'include',
+        headers: {
+          'X-Client-Kind': 'web',
+          ...(body === undefined ? {} : { 'Content-Type': 'application/json' }),
+          ...(csrf && token ? { 'X-CSRF-Token': token } : {}),
+        },
+        ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+      });
+      const text = await response.text();
+      return { status: response.status, body: text ? JSON.parse(text) : null };
+    },
+    { api: API, endpoint, body, csrf },
+  );
 }
 async function message(address, kind = 'code') {
   let text;
-  await expect.poll(async () => {
-    const response = await fetch(`${MAIL}/api/v1/messages?limit=100`);
-    if (!response.ok) return false;
-    const { messages } = await response.json();
-    for (const mail of messages ?? []) {
-      if (mailIds.has(mail.ID) || !mail.To?.some((entry) => entry.Address === address)) continue;
-      const detail = await (await fetch(`${MAIL}/api/v1/message/${encodeURIComponent(mail.ID)}`)).json();
-      const candidate = detail.Text ?? '';
-      if (kind === 'code' ? /code is \d{6}/u.test(candidate) : candidate.includes(`/${kind}?token=`)) {
-        mailIds.add(mail.ID); text = candidate; return true;
-      }
-    }
-    return false;
-  }, { timeout: 30000, intervals: [200, 500, 1000], message: 'The real SMTP message must arrive' }).toBe(true);
+  await expect
+    .poll(
+      async () => {
+        const response = await fetch(`${MAIL}/api/v1/messages?limit=100`);
+        if (!response.ok) return false;
+        const { messages } = await response.json();
+        for (const mail of messages ?? []) {
+          if (mailIds.has(mail.ID) || !mail.To?.some((entry) => entry.Address === address))
+            continue;
+          const detail = await (
+            await fetch(`${MAIL}/api/v1/message/${encodeURIComponent(mail.ID)}`)
+          ).json();
+          const candidate = detail.Text ?? '';
+          if (
+            kind === 'code'
+              ? /code is \d{6}/u.test(candidate)
+              : candidate.includes(`/${kind}?token=`)
+          ) {
+            mailIds.add(mail.ID);
+            text = candidate;
+            return true;
+          }
+        }
+        return false;
+      },
+      { timeout: 30000, intervals: [200, 500, 1000], message: 'The real SMTP message must arrive' },
+    )
+    .toBe(true);
   return text;
 }
 async function code(address) {
   const value = /code is (\d{6})/u.exec(await message(address))?.[1];
-  assert.ok(value, 'Expected SMTP code'); return value;
+  assert.ok(value, 'Expected SMTP code');
+  return value;
 }
 async function link(address, kind) {
-  const value = new RegExp(`http://127\\.0\\.0\\.1:4173/${kind}\\?token=[A-Za-z0-9_-]+`, 'u').exec(await message(address, kind))?.[0];
-  assert.ok(value, 'Expected local SMTP link'); return value;
+  const value = new RegExp(`http://127\\.0\\.0\\.1:4173/${kind}\\?token=[A-Za-z0-9_-]+`, 'u').exec(
+    await message(address, kind),
+  )?.[0];
+  assert.ok(value, 'Expected local SMTP link');
+  return value;
 }
 async function submitOtp(page, value, expected = 200) {
   await page.getByTestId('otp-input').fill(value);
-  const response = page.waitForResponse((r) => r.url() === `${API}/v1/auth/verify-otp` && r.request().method() === 'POST');
+  const response = page.waitForResponse(
+    (r) => r.url() === `${API}/v1/auth/verify-otp` && r.request().method() === 'POST',
+  );
   await page.getByTestId('otp-input').press('Enter');
   assert.equal((await response).status(), expected, 'OTP HTTP status');
 }
@@ -96,7 +132,9 @@ async function signIn(page, address, password = pwd) {
   await page.goto(`${WEB}/login`);
   await page.getByLabel('Email Address', { exact: true }).fill(address);
   await page.getByLabel('Password', { exact: true }).fill(password);
-  const response = page.waitForResponse((r) => r.url() === `${API}/v1/auth/login` && r.request().method() === 'POST');
+  const response = page.waitForResponse(
+    (r) => r.url() === `${API}/v1/auth/login` && r.request().method() === 'POST',
+  );
   await page.getByRole('button', { name: 'Log In', exact: true }).click();
   assert.equal((await response).status(), 200, 'Login challenge status');
   await submitOtp(page, await code(address));
@@ -108,7 +146,10 @@ async function prepareLogout(page) {
   await page.getByRole('button', { name: 'Sign Out', exact: true }).first().click();
 }
 async function ownUser(address) {
-  const result = await db.query('SELECT "id", "status", "emailVerifiedAt" FROM "User" WHERE "email" = $1', [address]);
+  const result = await db.query(
+    'SELECT "id", "status", "emailVerifiedAt" FROM "User" WHERE "email" = $1',
+    [address],
+  );
   assert.equal(result.rows.length, 1, 'Fixture account exists');
   const user = result.rows[0];
   if (!users.includes(user.id)) users.push(user.id);
@@ -132,32 +173,77 @@ try {
     await a.page.getByRole('button', { name: 'Next', exact: true }).click();
     await a.page.getByLabel('Email Address', { exact: true }).fill(addressA);
     await a.page.getByLabel('Password', { exact: true }).fill(pwd);
-    await a.page.getByRole('button', { name: /I agree to the/u }).click();
-    const response = a.page.waitForResponse((r) => r.url() === `${API}/v1/auth/register` && r.request().method() === 'POST');
+    // K02 — a real consent checkbox, enabled once the server's current
+    // policy versions load; the policy links beside it never toggle it.
+    const consent = a.page.getByRole('checkbox', {
+      name: /Terms of Service and the Privacy Notice/u,
+    });
+    await expect(consent).toBeEnabled();
+    await consent.check();
+    const response = a.page.waitForResponse(
+      (r) => r.url() === `${API}/v1/auth/register` && r.request().method() === 'POST',
+    );
     await a.page.getByRole('button', { name: 'Create Account', exact: true }).click();
     const result = await response;
-    assert.equal(result.status(), 202); challenge = (await result.json()).challengeId;
+    assert.equal(result.status(), 202);
+    challenge = (await result.json()).challengeId;
+    // K02 — the real UI sent the exact versions the server says are current.
+    const legal = await (await fetch(`${API}/v1/legal/documents`)).json();
+    const sent = result.request().postDataJSON().legalAcceptance;
+    assert.equal(
+      sent.termsVersion,
+      legal.documents.find((d) => d.kind === 'TERMS_OF_SERVICE').version,
+    );
+    assert.equal(
+      sent.privacyVersion,
+      legal.documents.find((d) => d.kind === 'PRIVACY_NOTICE').version,
+    );
     originalCode = await code(addressA);
     userA = await ownUser(addressA);
     assert.equal(userA.status, 'PENDING_VERIFICATION');
     assert.equal((await call(a.page, '/v1/auth/me')).status, 401);
-    assert.equal((await db.query('SELECT count(*)::int AS n FROM "Session" WHERE "userId"=$1', [userA.id])).rows[0].n, 0);
+    assert.equal(
+      (await db.query('SELECT count(*)::int AS n FROM "Session" WHERE "userId"=$1', [userA.id]))
+        .rows[0].n,
+      0,
+    );
   });
-  await phase('wrong-code-is-durable-resend-rotates-and-confirm-preserves-return-target', async () => {
-    await submitOtp(a.page, originalCode === '000000' ? '111111' : '000000', 400);
-    await expect(a.page.getByRole('alert')).toContainText('Incorrect code');
-    assert.equal((await db.query('SELECT "attemptCount" FROM "VerificationToken" WHERE "challengeId"=$1', [challenge])).rows[0].attemptCount, 1);
-    const resend = a.page.waitForResponse((r) => r.url() === `${API}/v1/auth/resend-otp` && r.request().method() === 'POST');
-    await a.page.getByRole('button', { name: 'Resend code', exact: true }).click();
-    assert.equal((await resend).status(), 202);
-    const rotated = await code(addressA); assert.notEqual(rotated, originalCode);
-    await submitOtp(a.page, rotated);
-    await expect(a.page).toHaveURL(`${WEB}/home/profile?from=r04#details`);
-    assert.equal((await call(a.page, '/v1/auth/verify-otp', { challengeId: challenge, code: rotated })).status, 400);
-    const me = (await call(a.page, '/v1/auth/me')).body;
-    assert.equal(me.id, userA.id); assert.deepEqual(me.roles, ['customer']);
-    await a.page.screenshot({ path: path.join(OUT, 'customer-after-verification.png'), fullPage: true });
-  });
+  await phase(
+    'wrong-code-is-durable-resend-rotates-and-confirm-preserves-return-target',
+    async () => {
+      await submitOtp(a.page, originalCode === '000000' ? '111111' : '000000', 400);
+      await expect(a.page.getByRole('alert')).toContainText('Incorrect code');
+      assert.equal(
+        (
+          await db.query('SELECT "attemptCount" FROM "VerificationToken" WHERE "challengeId"=$1', [
+            challenge,
+          ])
+        ).rows[0].attemptCount,
+        1,
+      );
+      const resend = a.page.waitForResponse(
+        (r) => r.url() === `${API}/v1/auth/resend-otp` && r.request().method() === 'POST',
+      );
+      await a.page.getByRole('button', { name: 'Resend code', exact: true }).click();
+      assert.equal((await resend).status(), 202);
+      const rotated = await code(addressA);
+      assert.notEqual(rotated, originalCode);
+      await submitOtp(a.page, rotated);
+      await expect(a.page).toHaveURL(`${WEB}/home/profile?from=r04#details`);
+      assert.equal(
+        (await call(a.page, '/v1/auth/verify-otp', { challengeId: challenge, code: rotated }))
+          .status,
+        400,
+      );
+      const me = (await call(a.page, '/v1/auth/me')).body;
+      assert.equal(me.id, userA.id);
+      assert.deepEqual(me.roles, ['customer']);
+      await a.page.screenshot({
+        path: path.join(OUT, 'customer-after-verification.png'),
+        fullPage: true,
+      });
+    },
+  );
   await phase('browser-cookie-csrf-and-server-refresh-rotation', async () => {
     const cookies = await a.context.cookies();
     const access = cookies.find((c) => c.name === 'hsm_at');
@@ -174,42 +260,83 @@ try {
   });
   const peer = await a.context.newPage();
   await phase('offline-local-logout-clears-two-tabs-and-does-not-auto-restore', () =>
-    acceptOfflineLogout({ ...a, peer, web: WEB, api: API, prepareLogout }));
-  await phase('recovery-through-real-mail-revokes-pending-codes-and-every-previous-session', async () => {
-    await signIn(a.page, addressA);
-    const oldChallenge = await call(a.page, '/v1/auth/login', { email: addressA, password: pwd });
-    assert.equal(oldChallenge.status, 200);
-    const pendingCode = await code(addressA);
-    const resetContext = await newPage();
-    await resetContext.page.goto(`${WEB}/forgot-password`);
-    await resetContext.page.getByLabel('Email Address', { exact: true }).fill(addressA);
-    await resetContext.page.getByRole('button', { name: 'Send Reset Link', exact: true }).click();
-    await expect(resetContext.page.getByText(/Request received/u)).toBeVisible();
-    const resetLink = await link(addressA, 'reset-password');
-    await resetContext.page.goto(resetLink);
-    await resetContext.page.getByLabel('New password', { exact: true }).fill(nextPwd);
-    await resetContext.page.getByLabel('Confirm password', { exact: true }).fill(nextPwd);
-    const response = resetContext.page.waitForResponse((r) => r.url() === `${API}/v1/auth/reset-password` && r.request().method() === 'POST');
-    await resetContext.page.getByRole('button', { name: 'Update password', exact: true }).click();
-    assert.equal((await response).status(), 200);
-    await expect(resetContext.page.getByRole('heading', { name: 'Password updated' })).toBeVisible();
-    assert.equal((await call(a.page, '/v1/auth/verify-otp', { challengeId: oldChallenge.body.challengeId, code: pendingCode })).status, 400);
-    assert.equal((await call(a.page, '/v1/auth/reset-password', { token: new URL(resetLink).searchParams.get('token'), newPassword: pwd })).status, 400);
-    assert.equal((await db.query('SELECT count(*)::int AS n FROM "Session" WHERE "userId"=$1 AND "revokedAt" IS NULL', [userA.id])).rows[0].n, 0);
-    await a.page.reload();
-    await expect(a.page).toHaveURL(/\/login$/u);
-    await signIn(a.page, addressA, nextPwd);
-  });
+    acceptOfflineLogout({ ...a, peer, web: WEB, api: API, prepareLogout }),
+  );
+  await phase(
+    'recovery-through-real-mail-revokes-pending-codes-and-every-previous-session',
+    async () => {
+      await signIn(a.page, addressA);
+      const oldChallenge = await call(a.page, '/v1/auth/login', { email: addressA, password: pwd });
+      assert.equal(oldChallenge.status, 200);
+      const pendingCode = await code(addressA);
+      const resetContext = await newPage();
+      await resetContext.page.goto(`${WEB}/forgot-password`);
+      await resetContext.page.getByLabel('Email Address', { exact: true }).fill(addressA);
+      await resetContext.page.getByRole('button', { name: 'Send Reset Link', exact: true }).click();
+      await expect(resetContext.page.getByText(/Request received/u)).toBeVisible();
+      const resetLink = await link(addressA, 'reset-password');
+      await resetContext.page.goto(resetLink);
+      await resetContext.page.getByLabel('New password', { exact: true }).fill(nextPwd);
+      await resetContext.page.getByLabel('Confirm password', { exact: true }).fill(nextPwd);
+      const response = resetContext.page.waitForResponse(
+        (r) => r.url() === `${API}/v1/auth/reset-password` && r.request().method() === 'POST',
+      );
+      await resetContext.page.getByRole('button', { name: 'Update password', exact: true }).click();
+      assert.equal((await response).status(), 200);
+      await expect(
+        resetContext.page.getByRole('heading', { name: 'Password updated' }),
+      ).toBeVisible();
+      assert.equal(
+        (
+          await call(a.page, '/v1/auth/verify-otp', {
+            challengeId: oldChallenge.body.challengeId,
+            code: pendingCode,
+          })
+        ).status,
+        400,
+      );
+      assert.equal(
+        (
+          await call(a.page, '/v1/auth/reset-password', {
+            token: new URL(resetLink).searchParams.get('token'),
+            newPassword: pwd,
+          })
+        ).status,
+        400,
+      );
+      assert.equal(
+        (
+          await db.query(
+            'SELECT count(*)::int AS n FROM "Session" WHERE "userId"=$1 AND "revokedAt" IS NULL',
+            [userA.id],
+          )
+        ).rows[0].n,
+        0,
+      );
+      await a.page.reload();
+      await expect(a.page).toHaveURL(/\/login$/u);
+      await signIn(a.page, addressA, nextPwd);
+    },
+  );
   await phase('cold-verification-recovery-and-arabic-narrow-viewport', async () => {
     const b = await newPage(320, 'ar');
     const address = `r04-${randomUUID()}@example.test`;
     await b.page.goto(`${WEB}/signup`);
-    const result = await call(b.page, '/v1/auth/register', { email: address, password: pwd, firstName: 'R04', lastName: 'Recovery' });
-    assert.equal(result.status, 202); await ownUser(address); await code(address);
+    const result = await call(b.page, '/v1/auth/register', {
+      email: address,
+      password: pwd,
+      firstName: 'R04',
+      lastName: 'Recovery',
+    });
+    assert.equal(result.status, 202);
+    await ownUser(address);
+    await code(address);
     await b.page.goto(`${WEB}/check-email`);
     await expect(b.page.getByTestId('auth-logout-notice')).toHaveCount(0);
     await b.page.getByLabel('البريد الإلكتروني', { exact: true }).fill(address);
-    const resend = b.page.waitForResponse((r) => r.url() === `${API}/v1/auth/resend-verification` && r.request().method() === 'POST');
+    const resend = b.page.waitForResponse(
+      (r) => r.url() === `${API}/v1/auth/resend-verification` && r.request().method() === 'POST',
+    );
     await b.page.getByRole('button', { name: 'طلب رابط تحقق', exact: true }).click();
     assert.equal((await resend).status(), 202, 'Verification request HTTP status');
     await expect(b.page.getByRole('status')).toHaveCount(1);
@@ -218,9 +345,15 @@ try {
     await b.page.goto(target);
     await expect(b.page.getByRole('heading', { name: 'Email verified' })).toBeVisible();
     assert.equal((await call(b.page, '/v1/auth/me')).status, 401);
-    const size = await b.page.evaluate(() => ({ width: globalThis.document.documentElement.clientWidth, content: globalThis.document.documentElement.scrollWidth }));
+    const size = await b.page.evaluate(() => ({
+      width: globalThis.document.documentElement.clientWidth,
+      content: globalThis.document.documentElement.scrollWidth,
+    }));
     assert.ok(size.content <= size.width + 1, 'No horizontal overflow at 320px');
-    await b.page.screenshot({ path: path.join(OUT, 'arabic-link-recovery-320.png'), fullPage: true });
+    await b.page.screenshot({
+      path: path.join(OUT, 'arabic-link-recovery-320.png'),
+      fullPage: true,
+    });
   });
   await phase('roles-are-server-provisioned-and-all-three-roles-use-real-otp-login', async () => {
     // Only fixture accounts in this isolated database are provisioned; the public
@@ -229,11 +362,27 @@ try {
       const c = await newPage(1280);
       const address = `r04-${randomUUID()}@example.test`;
       await c.page.goto(`${WEB}/login`);
-      const response = await call(c.page, '/v1/auth/register', { email: address, password: pwd, firstName: 'R04', lastName: role });
+      const response = await call(c.page, '/v1/auth/register', {
+        email: address,
+        password: pwd,
+        firstName: 'R04',
+        lastName: role,
+      });
       assert.equal(response.status, 202);
       const user = await ownUser(address);
-      assert.equal((await call(c.page, '/v1/auth/verify-otp', { challengeId: response.body.challengeId, code: await code(address) })).status, 200);
-      await db.query('INSERT INTO "UserRole" ("userId","roleId") SELECT $1,"id" FROM "Role" WHERE "name"=$2 ON CONFLICT DO NOTHING', [user.id, role]);
+      assert.equal(
+        (
+          await call(c.page, '/v1/auth/verify-otp', {
+            challengeId: response.body.challengeId,
+            code: await code(address),
+          })
+        ).status,
+        200,
+      );
+      await db.query(
+        'INSERT INTO "UserRole" ("userId","roleId") SELECT $1,"id" FROM "Role" WHERE "name"=$2 ON CONFLICT DO NOTHING',
+        [user.id, role],
+      );
       assert.equal((await call(c.page, '/v1/auth/logout', {})).status, 204);
       await signIn(c.page, address);
       const me = (await call(c.page, '/v1/auth/me')).body;
@@ -247,11 +396,34 @@ try {
   });
   assert.equal(errors.length, 0, 'No browser page errors');
   const sha = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: ROOT, encoding: 'utf8' }).trim();
-  await writeFile(path.join(OUT, 'report.json'), JSON.stringify({ sourceSha: sha, result: 'PASS', environment: 'isolated-ci-real-http-smtp-postgres-chromium', phases, noApiResponseMocks: true, liveStagingAccepted: false }, null, 2));
+  await writeFile(
+    path.join(OUT, 'report.json'),
+    JSON.stringify(
+      {
+        sourceSha: sha,
+        result: 'PASS',
+        environment: 'isolated-ci-real-http-smtp-postgres-chromium',
+        phases,
+        noApiResponseMocks: true,
+        liveStagingAccepted: false,
+      },
+      null,
+      2,
+    ),
+  );
 } catch (error) {
   // Never upload mailbox content, cookie jars, passwords, OTPs, traces or raw API logs.
   console.error(`FAIL R04 stage: ${stage}; ${error?.name ?? 'Error'}`);
-  await writeFile(path.join(OUT, 'failure.json'), JSON.stringify({ result: 'FAIL', stage, completed: phases.map((p) => p.name), logoutCheckpoint: offlineLogoutCheckpoint(), codeLocation: /r04-[a-z-]+\.mjs:\d+:\d+/u.exec(error?.stack ?? '')?.[0] ?? null })).catch(() => undefined);
+  await writeFile(
+    path.join(OUT, 'failure.json'),
+    JSON.stringify({
+      result: 'FAIL',
+      stage,
+      completed: phases.map((p) => p.name),
+      logoutCheckpoint: offlineLogoutCheckpoint(),
+      codeLocation: /r04-[a-z-]+\.mjs:\d+:\d+/u.exec(error?.stack ?? '')?.[0] ?? null,
+    }),
+  ).catch(() => undefined);
   process.exitCode = 1;
 } finally {
   for (const context of contexts) await context.close().catch(() => undefined);
@@ -259,9 +431,15 @@ try {
   // Only identities created by this process are eligible for cleanup. Never TRUNCATE.
   if (users.length) {
     for (const table of ['AuditEvent', 'Session', 'VerificationToken', 'UserRole']) {
-      await db.query(`DELETE FROM "${table}" WHERE "userId" = ANY($1::text[])`, [users]).catch(() => { process.exitCode = 1; });
+      await db
+        .query(`DELETE FROM "${table}" WHERE "userId" = ANY($1::text[])`, [users])
+        .catch(() => {
+          process.exitCode = 1;
+        });
     }
-    await db.query('DELETE FROM "User" WHERE "id" = ANY($1::text[])', [users]).catch(() => { process.exitCode = 1; });
+    await db.query('DELETE FROM "User" WHERE "id" = ANY($1::text[])', [users]).catch(() => {
+      process.exitCode = 1;
+    });
   }
   await db.end();
 }

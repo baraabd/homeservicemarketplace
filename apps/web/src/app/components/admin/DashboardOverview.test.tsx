@@ -277,6 +277,25 @@ describe('AdminDashboard — K02 exclusions', () => {
 });
 
 describe('AdminDashboard — DashboardOverview resilience (R17-D)', () => {
+  it('K02: a payload without amountScale renders as unverified instead of crashing', async () => {
+    mock.onGet('/v1/auth/me').reply(200, ADMIN_ME);
+    const legacyRows = OVERVIEW.revenueByCurrency.map(({ amountScale: _s, ...row }) => row);
+    mock
+      .onGet('/v1/admin/analytics/overview')
+      .reply(200, { ...OVERVIEW, revenueByCurrency: legacyRows });
+    mock.onGet('/v1/admin/analytics/revenue').reply(200, {
+      ...REVENUE,
+      series: REVENUE.series.map(({ amountScale: _s, ...row }) => row),
+    });
+    renderAdmin();
+    await waitFor(() =>
+      expect(
+        kpi('Completed booking value (lifetime)').getByText(/unverified legacy amount/),
+      ).toBeInTheDocument(),
+    );
+    expect(kpi('Users').getByText('142')).toBeInTheDocument();
+  });
+
   it('shows a dash, not a crash, when the per-currency breakdown is missing', async () => {
     mock.onGet('/v1/auth/me').reply(200, ADMIN_ME);
     const { revenueByCurrency: _omit, ...legacy } = OVERVIEW;

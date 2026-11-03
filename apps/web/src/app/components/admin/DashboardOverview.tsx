@@ -91,7 +91,8 @@ export function DashboardOverview({ lang }: { lang: string }) {
   };
 
   // K02 — exact, in the figure's own currency and verified unit.
-  const money = (amount: number, currency: string, amountScale: number) =>
+  // A missing scale (older API payload) is shown as unverified, never thrown.
+  const money = (amount: number, currency: string, amountScale: number | null | undefined) =>
     formatAmount(amount, currency, amountScale, isAr ? 'ar' : 'en');
   // One figure per currency; never a sum across currencies.
   const perCurrency = (pick: 'bookedValueWithinRange' | 'bookedValueLifetime') => {
@@ -127,7 +128,10 @@ export function DashboardOverview({ lang }: { lang: string }) {
   const chartData = (activeSeries?.buckets ?? []).map((b) => ({
     date: b.date.slice(5), // 'MM-DD'
     // Axis number only; the tooltip formats the exact stored minor units.
-    value: Number(minorToDecimal(b.bookedValue, activeSeries!.amountScale)),
+    value:
+      typeof activeSeries?.amountScale === 'number'
+        ? Number(minorToDecimal(b.bookedValue, activeSeries.amountScale))
+        : b.bookedValue,
     valueMinor: b.bookedValue,
   }));
 

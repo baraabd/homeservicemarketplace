@@ -462,3 +462,36 @@ for (const [name, mutate] of Object.entries(explainChanges)) {
     assert.throws(() => assertFinancialPlanEvidence(evidence.generic, evidence.bound), /financial/);
   });
 }
+
+// K02 — R27 also measures a pre-K02 baseline API with this harness. Its rows
+// have no amountScale and carry the historical fee split, asserted as before.
+function baselinePage(expected, offset = 0, limit = 5) {
+  const response = page(expected, offset, limit);
+  for (const item of response.body.items) {
+    delete item.amountScale;
+    delete item.pricingType;
+    item.platformFee = Math.round(item.amount / 10);
+    item.netAmount = item.amount - item.platformFee;
+  }
+  return response;
+}
+
+test('pre-K02 baseline rows are accepted with their historical fee split', () => {
+  const expected = rows();
+  assert.equal(assertFinancialPage(baselinePage(expected), expected, 0, 5).length, 5);
+});
+
+test('pre-K02 baseline rows still refuse a wrong fee split', () => {
+  const expected = rows();
+  const response = baselinePage(expected);
+  response.body.items[0].platformFee++;
+  assert.throws(() => assertFinancialPage(response, expected, 0, 5));
+});
+
+test('a K02 row with a fee figure is refused even though fees are a baseline shape', () => {
+  const expected = rows();
+  const response = page(expected);
+  response.body.items[0].platformFee = 10;
+  response.body.items[0].netAmount = 95;
+  assert.throws(() => assertFinancialPage(response, expected, 0, 5), /unapproved fee/);
+});
