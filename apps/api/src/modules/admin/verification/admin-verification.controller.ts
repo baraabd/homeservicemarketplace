@@ -38,7 +38,7 @@ import { UpdateReviewNotesDto } from './dto/update-review-notes.dto';
 import { AdminVerificationService } from './admin-verification.service';
 import { AdminVerificationCaseService } from './admin-verification-case.service';
 
-@UseGuards(JwtAuthGuard, RolesGuard, CurrentAdminGuard)
+@UseGuards(JwtAuthGuard, RolesGuard)
 @Roles('admin')
 @Controller({ path: 'admin/providers', version: '1' })
 export class AdminVerificationController {
@@ -66,7 +66,8 @@ export class AdminVerificationController {
     return this.verification.detail(providerProfileId);
   }
 
-  @UseGuards(CsrfGuard)
+  // K06 — no fresh permission on these actions; require live admin membership.
+  @UseGuards(CsrfGuard, CurrentAdminGuard)
   @Post(':providerProfileId/approve')
   @HttpCode(HttpStatus.OK)
   approve(
@@ -77,7 +78,8 @@ export class AdminVerificationController {
     return this.verification.approve(admin.id, providerProfileId, body.note ?? null);
   }
 
-  @UseGuards(CsrfGuard)
+  // K06 — no fresh permission on these actions; require live admin membership.
+  @UseGuards(CsrfGuard, CurrentAdminGuard)
   @Post(':providerProfileId/reject')
   @HttpCode(HttpStatus.OK)
   reject(
@@ -88,7 +90,8 @@ export class AdminVerificationController {
     return this.verification.reject(admin.id, providerProfileId, body.reason);
   }
 
-  @UseGuards(CsrfGuard)
+  // K06 — no fresh permission on these actions; require live admin membership.
+  @UseGuards(CsrfGuard, CurrentAdminGuard)
   @Post(':providerProfileId/suspend')
   @HttpCode(HttpStatus.OK)
   suspend(
@@ -101,7 +104,8 @@ export class AdminVerificationController {
 
   // Sprint 5.1.4: lift a suspension. Body-less; conditional on
   // status === SUSPENDED, anything else returns 409.
-  @UseGuards(CsrfGuard)
+  // K06 — no fresh permission on these actions; require live admin membership.
+  @UseGuards(CsrfGuard, CurrentAdminGuard)
   @Post(':providerProfileId/reactivate')
   @HttpCode(HttpStatus.OK)
   reactivate(
@@ -114,7 +118,8 @@ export class AdminVerificationController {
   // Sprint 6.2: persist admin-facing review notes. Audited via
   // ADMIN_PROVIDER_NOTES_UPDATED. Does NOT fan out a notification —
   // these are an admin-private surface.
-  @UseGuards(CsrfGuard)
+  // K06 — no fresh permission on these actions; require live admin membership.
+  @UseGuards(CsrfGuard, CurrentAdminGuard)
   @Patch(':providerProfileId/review-notes')
   @HttpCode(HttpStatus.OK)
   updateReviewNotes(
