@@ -81,15 +81,26 @@ wired in through `"deepmerge@>=4.2.0 <=4.3.1": "file:./vendor/deepmerge"`.
 - Both run in `pnpm security:audit:test`, which CI already executes.
 - The R27 dependency-control protocol counts the fork's four installed files
   as dependency identity (`.github/scripts/r27-dependency-controls.mjs`).
-  Fresh dependency-only controls are registered: baseline `8dd452ba` (prior
-  runtime `46241888` + the K01 dependency files) and repair `5485c9df` (PR base
-  `92770ea6` + the same files). Both install with `--frozen-lockfile`, and the
+  Fresh dependency-only controls are registered: baseline `2a1b53bb` (prior
+  runtime `46241888` + the K01 dependency files) and repair `5739cdf7` (PR base
+  `92770ea6` + the same files). They supersede v1 controls `8dd452ba` and
+  `5485c9df`, which were made before the happy-dom range fix. Both install with `--frozen-lockfile`, and the
   real selector passes on the candidate (`EXPLICIT_DEPENDENCY_CONTROL`).
 
 **Review requested:** this is a reviewed dependency change, not an upstream
 release. The exploit path requires attacker-controlled objects merged into
 Jest configuration, so the residual risk is negligible. The fork still adds
 a small maintenance duty until the exit criterion is met.
+
+## Dependabot alert #11 (happy-dom)
+
+Dependabot kept GHSA-834v-8h66-3h79 (high, development) open on develop. The
+existing override already installs the patched `happy-dom@21.0.4`, so
+`pnpm audit` was correct. `apps/web` still declared `"happy-dom": "^20.9.0"`,
+which Dependabot evaluates. The manifest now declares `^21.0.4`; the lockfile
+changes only the importer specifier, and the resolved version is identical.
+The alert should close once this reaches the default branch. It has not been
+observed closing, because that requires the merge.
 
 ## Result
 

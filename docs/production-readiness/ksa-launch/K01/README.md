@@ -38,6 +38,7 @@ Repository stashes from other branches were left untouched. The user's
 | 5   | R27 would reject any dependency change, and its controls could not install the fork                       | Protocol counted only four files                                                                                                 | The fork's four installed files are dependency paths; new immutable controls registered                           | `r27-dependency-controls.test.mjs` 20/20, including an unregistered fork edit; real control installs                             |
 | 6   | R35 says the Stripe SDK, ingress and purchase surface are unintegrated                                    | Written at parent `73a4a64a`, before G3                                                                                          | Dated, append-only correction; history kept                                                                       | Source inspection: `app.module.ts`, `money/` adapters, `StripePlanPurchase`                                                      |
 | 7   | develop unprotected; no rulesets                                                                          | Never configured                                                                                                                 | Exact request prepared and verified; **not applied**                                                              | MERGE_POLICY verifier passes on the read-back shape; inventory proves no required check is path-filtered                         |
+| 8   | Dependabot alert #11 (happy-dom, high) open while `pnpm audit` is clean                                   | Manifest declared `^20.9.0`; the override installs 21.0.4                                                                        | Manifest declares `^21.0.4`; lockfile specifier only                                                              | Frozen install, both audits 0; the alert closes only after merge (not yet observed)                                              |
 
 ## Environment inventory
 
@@ -108,7 +109,8 @@ reintroduces the advisories and restores the old R27 record mismatch. The R27
 control commits and their record must be reverted together. There is no
 schema, data, contract or flag impact. Forward repair for a future advisory:
 rerun `pnpm security:audit`, then register fresh R27 controls
-(`release/ksa-k01-r27-*-control` shows the procedure).
+(`release/ksa-k01-r27-*-control-2` shows the procedure; the v1 `-control`
+branches are superseded and kept unchanged).
 
 ## Next-sprint baseline
 
