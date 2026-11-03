@@ -22,6 +22,8 @@ function rows(count = 23) {
     id: `booking-${String(count - index).padStart(3, '0')}`,
     priceAmount: 105 + index,
     currency: index % 2 ? 'USD' : 'EUR',
+    // K02 — mixed pre-K02 currencies are LEGACY_UNVERIFIED (no proven unit).
+    amountScale: null,
     providerId: 'provider-1',
     seekerUserId: 'seeker-1',
     // Deliberate equal timestamps make an id-order regression observable.
@@ -34,9 +36,9 @@ function page(expected, offset = 0, limit = 5) {
     id: row.id,
     bookingId: row.id,
     amount: row.priceAmount,
-    platformFee: Math.round(row.priceAmount / 10),
-    netAmount: row.priceAmount - Math.round(row.priceAmount / 10),
+    pricingType: 'FIXED',
     currency: row.currency,
+    amountScale: row.amountScale,
     occurredAt: row.updatedAt.toISOString(),
     provider: { id: row.providerId },
     seeker: { id: row.seekerUserId },
@@ -92,18 +94,15 @@ const changes = {
   'wrong seeker': (response) => {
     response.body.items[0].seeker.id = 'foreign';
   },
-  'fractional fee': (response) => {
-    response.body.items[0].platformFee = 1.5;
+  // K02 — each row carries its own unit and no fee/net figure exists.
+  'changed amount unit': (response) => {
+    response.body.items[0].amountScale = 2;
   },
-  'negative net amount': (response) => {
-    response.body.items[0].netAmount = -1;
+  'unapproved fee figure': (response) => {
+    response.body.items[0].platformFee = 10;
   },
-  'changed fee with matching gross': (response) => {
-    response.body.items[0].platformFee++;
-    response.body.items[0].netAmount--;
-  },
-  'changed net amount': (response) => {
-    response.body.items[0].netAmount++;
+  'unapproved net figure': (response) => {
+    response.body.items[0].netAmount = 95;
   },
   'changed occurrence time': (response) => {
     response.body.items[0].occurredAt = '2026-10-18T12:00:00.000Z';
