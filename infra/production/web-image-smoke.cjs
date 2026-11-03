@@ -3,6 +3,7 @@ const assert = require('node:assert/strict');
 const { execFileSync } = require('node:child_process');
 const { setTimeout: delay } = require('node:timers/promises');
 const {
+  DOCUMENT_HEADER_CSP,
   documentCsp,
   verifyWebBuildInfo,
 } = require('../../scripts/production/security-app/web-build-identity.cjs');
@@ -33,6 +34,7 @@ async function main() {
   assert.equal(index.headers.get('cache-control'), 'no-store');
   const html = await index.text();
   assert.equal(index.headers.get('x-content-type-options'), 'nosniff');
+  assert.equal(index.headers.get('content-security-policy'), DOCUMENT_HEADER_CSP);
   const deepLink = await fetch(`${root}/seeker/profile`);
   assert.equal(deepLink.status, 200);
   assert.equal(

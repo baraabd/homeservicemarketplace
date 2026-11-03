@@ -17,6 +17,7 @@ const {
 } = require('./staging.cjs');
 const { buildWebCsp, injectWebCsp } = require('../../scripts/production/security-app/web-csp.cjs');
 const {
+  DOCUMENT_HEADER_CSP,
   configFingerprint,
   publicWebConfig,
   webBuildInfo,
@@ -570,12 +571,17 @@ function probe(manifest, change = () => {}, { compiled = webEnv(manifest), docum
         env: compiled,
         html: servedDocument(compiled),
       }),
-      '/': { html },
+      '/': { html, headerCsp: DOCUMENT_HEADER_CSP },
       '/v1/auth/me': { error: 'Unauthorized' },
     }[route];
     assert.ok(reply);
     change(route, reply);
-    if (route === '/') return new Response(reply.html, { status: 200 });
+    if (route === '/') {
+      const headers = new Headers();
+      if (reply.headerCsp !== undefined) headers.append('content-security-policy', reply.headerCsp);
+      if (reply.edgeCsp !== undefined) headers.append('content-security-policy', reply.edgeCsp);
+      return new Response(reply.html, { status: 200, headers });
+    }
     return new Response(JSON.stringify(reply), {
       status: route === '/v1/auth/me' ? 401 : 200,
       headers: {
@@ -643,6 +649,24 @@ for (const [name, change] of [
         delete value.publicConfig;
         delete value.configFingerprint;
       }
+    },
+  ],
+  [
+    'an edge-added stricter document CSP header (intersects and blocks Stripe.js)',
+    (route, value) => {
+      if (route === '/') value.edgeCsp = "default-src 'self'; script-src 'self'";
+    },
+  ],
+  [
+    'an edge that replaced the image document header CSP',
+    (route, value) => {
+      if (route === '/') value.headerCsp = "script-src 'self'";
+    },
+  ],
+  [
+    'an edge that stripped the frame-ancestors document header',
+    (route, value) => {
+      if (route === '/') delete value.headerCsp;
     },
   ],
   [

@@ -5,6 +5,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { buildWebCsp, injectWebCsp } = require('./web-csp.cjs');
 const {
+  DOCUMENT_HEADER_CSP,
   PUBLIC_WEB_INPUTS,
   configFingerprint,
   documentCsp,
@@ -44,6 +45,16 @@ test('K03 reported defect: the web Dockerfile propagates every public build inpu
   const runtime = dockerfile.split(/^FROM /mu)[2];
   for (const label of ['io.hsm.web.config-fingerprint', 'io.hsm.web.stripe-sandbox'])
     assert.match(runtime, new RegExp(label.replaceAll('.', '\\.'), 'u'));
+});
+
+test('the image document header CSP is exactly the nginx frame/object/base policy', () => {
+  const nginx = fs.readFileSync(path.join(ROOT, 'apps/web/nginx.conf'), 'utf8');
+  const headers = [...nginx.matchAll(/add_header Content-Security-Policy "([^"]+)" always;/gu)];
+  assert.ok(headers.length >= 3);
+  for (const [, value] of headers) assert.equal(value, DOCUMENT_HEADER_CSP);
+  // A header policy is intersected with the document policy by browsers: it
+  // must never restrict the script/frame/connect sources the build declared.
+  assert.doesNotMatch(DOCUMENT_HEADER_CSP, /script-src|frame-src|connect-src|default-src/u);
 });
 
 test('explicit inputs fail closed instead of compiling a default product', () => {

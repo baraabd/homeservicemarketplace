@@ -11,6 +11,15 @@ const SCHEMA = 'hsm.web-public-config/v1';
 const SHA = /^[a-f0-9]{40}$/u;
 const FINGERPRINT = /^[a-f0-9]{64}$/u;
 const TRANSPORTS = ['websocket', 'polling,websocket'];
+/**
+ * The only CSP *header* the web image sends on its documents (apps/web/nginx.conf).
+ * Browsers enforce every policy present, so an extra or replaced header — e.g.
+ * from an edge applying a generic web CSP — would intersect with the
+ * build-bound document policy and silently block declared origins such as
+ * Stripe.js. The document meta policy is the single web script/frame/connect
+ * authority.
+ */
+const DOCUMENT_HEADER_CSP = "frame-ancestors 'none'; object-src 'none'; base-uri 'none'";
 
 /**
  * Every Vite variable that changes the shipped bundle or its CSP. `explicit`
@@ -231,6 +240,7 @@ if (require.main === module) {
 }
 
 module.exports = {
+  DOCUMENT_HEADER_CSP,
   PUBLIC_WEB_INPUTS,
   configFingerprint,
   documentCsp,

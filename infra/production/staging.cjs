@@ -8,6 +8,7 @@ const { createHash } = require('node:crypto');
 const { parseEnv } = require('node:util');
 const { spawnSync } = require('node:child_process');
 const {
+  DOCUMENT_HEADER_CSP,
   documentCsp,
   verifyWebBuildInfo,
 } = require('../../scripts/production/security-app/web-build-identity.cjs');
@@ -372,7 +373,15 @@ async function verifyHttps(manifest, supplied, request = fetch) {
   );
   // Inspect the document actually served, not a configuration helper: its
   // CSP must be exactly the policy the declared configuration requires.
-  const page = await (await get(`${approved.webOrigin}/`)).text();
+  const documentResponse = await get(`${approved.webOrigin}/`);
+  // Browsers enforce every policy present. Only the image's own header may
+  // accompany the document policy; an edge-added or replaced header would
+  // intersect with it and silently block declared origins (e.g. Stripe.js).
+  requireCondition(
+    documentResponse.headers.get('content-security-policy') === DOCUMENT_HEADER_CSP,
+    'HTTPS: the edge added, replaced or removed the web document CSP header',
+  );
+  const page = await documentResponse.text();
   let served = null;
   try {
     served = documentCsp(page);
