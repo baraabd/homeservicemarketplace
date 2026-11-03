@@ -270,6 +270,33 @@ dbDescribe('Sprint 12A intake — real PostgreSQL transactions and privacy', () 
     });
     expect((await service.context(seeker, bookingId)).blocker).toBe('WINDOW_ELAPSED');
   });
+  // K06 — the launch scope is a bounded pilot. Enabling the policy is NOT
+  // public intake: a legitimate booking participant outside the allowlist is
+  // refused, and the refusal writes no dispute, event, notification or outbox
+  // row. Public intake needs an approved, versioned rollout model (K02).
+  it('K06: an enabled pilot still refuses a real participant outside its allowlist', async () => {
+    await prisma.platformSetting.update({
+      where: { key: settingKey },
+      data: { value: { ...policy, pilotUserIds: [provider] } },
+    });
+    const context = await service.context(seeker, bookingId);
+    expect(context).toMatchObject({ canOpen: false, blocker: 'NOT_ENABLED', role: 'SEEKER' });
+    const input = {
+      bookingId,
+      idempotencyKey: randomUUID(),
+      policyVersion: policy.version,
+      issueCode: 'SERVICE_QUALITY' as const,
+      requestedOutcome: 'REPERFORM' as const,
+      statement: 'Outside the pilot; must not be stored.',
+    };
+    await expect(service.create(seeker, input)).rejects.toMatchObject({ status: 404 });
+    expect(await prisma.dispute.count({ where: { bookingId } })).toBe(0);
+    expect(await prisma.notification.count({ where: { userId: { in: [seeker, provider] } } })).toBe(
+      0,
+    );
+    // The allowlisted participant of the same booking is unaffected.
+    expect((await service.context(provider, bookingId)).canOpen).toBe(true);
+  });
   it('the database invariant also rejects a competing legacy Admin create', async () => {
     await service.create(seeker, await command());
     await expect(
