@@ -41,9 +41,17 @@ migrations. إكمال CD للـAPI يتطلب ربط حساب الاستضاف�
 
 ## 3. استعادة مشروع Vercel الموجود
 
-افتح المشروع داخل الفريق الصحيح. اسم مشروع ظهر في الإعداد السابق هو
-`homeservicemarketplace-web` داخل `baraa-abdullatifs-projects`؛ تحقّق من
-ربطه بالمستودع قبل استعماله، ولا تنشئ مشاريع مكررة.
+تم التحقق من وجود `homeservicemarketplace-web` داخل
+`baraa-abdullatifs-projects` بتاريخ 2026-11-03. بيانات الربط الحالية:
+
+- `VERCEL_ORG_ID=team_LGL2uTTsmbGU72EMvonS1E5j`
+- `VERCEL_PROJECT_ID=prj_YPWCvQrGCiVIweinDodgBXIPFxtH`
+- دومين Production الموجود: `https://findservice.site`.
+
+هذه معرّفات وليست أسرارًا. كانت نشرة Production الموجودة من main عند
+`433165af7fa8a6a733e2d59873fcacbb0d5387c6`، وأجاب الدومين HTTP `200`.
+قُبل تحديث إعدادات البناء التالية في المشروع؛ تحقق منها بـ`vercel pull`
+قبل أول نشر جديد. راجع [سجل الحالة](./VERCEL_CD_STATUS_2026-11-03.md).
 
 1. إن كان Paused، استخدم Resume Project في Settings → General.
 2. تحقق من ربط `baraabd/homeservicemarketplace`.
