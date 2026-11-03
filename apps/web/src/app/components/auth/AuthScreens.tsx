@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router';
 import {
   ChevronLeft,
@@ -22,7 +22,14 @@ import { useSwipe } from '../../hooks/useSwipe';
 import { useQuery } from '@tanstack/react-query';
 import type { LegalAcceptanceInput } from '@homeservicemarketplace/contracts';
 import { getLegalDocuments } from '../../../lib/auth-api';
-import { PolicyDialog } from '../../features/legal/components/PolicyDialog';
+// K02 — the policy dialog (Radix Dialog + full bilingual policy text) is
+// loaded only when a policy is opened, keeping it out of the auth chunk
+// (R27 +auth budget).
+const PolicyDialog = lazy(() =>
+  import('../../features/legal/components/PolicyDialog').then((m) => ({
+    default: m.PolicyDialog,
+  })),
+);
 import {
   SIGNUP_CONSENT_COPY,
   clearSignupDraft,
@@ -1092,11 +1099,15 @@ export function SignUpScreen({
                   </p>
                 ) : null}
               </div>
-              <PolicyDialog
-                id={policyOpen}
-                lang={lang === 'ar' ? 'ar' : 'en'}
-                onClose={() => setPolicyOpen(null)}
-              />
+              {policyOpen !== null ? (
+                <Suspense fallback={null}>
+                  <PolicyDialog
+                    id={policyOpen}
+                    lang={lang === 'ar' ? 'ar' : 'en'}
+                    onClose={() => setPolicyOpen(null)}
+                  />
+                </Suspense>
+              ) : null}
             </div>
           )}
 
