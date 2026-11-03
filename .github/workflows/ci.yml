@@ -2069,7 +2069,8 @@ jobs:
           node -e "
             const runs = ['r17d-admin-browser-ci.json', 'r17d-admin-ci.json'].map((f) => require('./apps/api/' + f));
             const sum = (k) => runs.reduce((n, r) => n + r[k], 0);
-            const expected = 14;
+            // K06 added three service cases (stale admin claim x2, self-decision).
+            const expected = 17;
             console.log('R17-D passed', sum('numPassedTests'), 'failed', sum('numFailedTests'), 'pending', sum('numPendingTests'), 'todo', sum('numTodoTests'));
             if (sum('numFailedTests') || sum('numPendingTests') || sum('numTodoTests') || sum('numPassedTests') !== expected) {
               console.error('::error::R17-D acceptance did not execute all ' + expected + ' cases');

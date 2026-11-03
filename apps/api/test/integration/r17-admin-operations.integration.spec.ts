@@ -234,7 +234,7 @@ const enabled = process.env.RUN_DB_INTEGRATION === '1';
         ['/v1/admin/access-requests', 'GET', undefined],
         ['/v1/admin/catalog/categories', 'POST', { slug: 'k06-stale', labelEn: 'x', labelAr: 'x' }],
         ['/v1/admin/service-area/policies', 'POST', {}],
-        ['/v1/admin/disputes', 'GET', undefined],
+        ['/v1/admin/disputes', 'POST', {}],
         ['/v1/admin/settings', 'GET', undefined],
       ] as const;
       for (const [path, method, body] of attempts) {
