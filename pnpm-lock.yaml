@@ -470,7 +470,7 @@ importers:
         specifier: ^2.1.0
         version: 2.1.0(axios@1.20.0)
       happy-dom:
-        specifier: 21.0.4
+        specifier: ^21.0.4
         version: 21.0.4
       jsdom:
         specifier: ^29.0.2
