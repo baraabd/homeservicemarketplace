@@ -19,6 +19,7 @@ import request from 'supertest';
 
 import { AppConfigService } from '../../src/config/app-config.service';
 import { AllExceptionsFilter } from '../../src/infrastructure/http/all-exceptions.filter';
+import { PrismaService } from '../../src/infrastructure/prisma/prisma.service';
 import { AdminSettingsController } from '../../src/modules/admin/settings/admin-settings.controller';
 import { AdminSettingsService } from '../../src/modules/admin/settings/admin-settings.service';
 import { CsrfGuard } from '../../src/modules/iam/authentication/guards/csrf.guard';
@@ -45,6 +46,7 @@ const settingsService = {
 };
 
 let fakeAuthedUser: { id: string; sessionId: string; jti: string; roles: string[] } | null = null;
+let liveAdmin = true;
 
 class FakeJwtAuthGuard {
   canActivate(ctx: ExecutionContext): boolean {
@@ -70,6 +72,21 @@ async function bootApp(): Promise<INestApplication> {
     providers: [
       Reflector,
       { provide: AdminSettingsService, useValue: settingsService },
+      // K06 — CurrentAdminGuard re-reads live admin membership. Here it follows the
+      // fake user's claim unless a test removes the membership (liveAdmin = false).
+      {
+        provide: PrismaService,
+        useValue: {
+          client: {
+            userRole: {
+              findFirst: () =>
+                Promise.resolve(
+                  liveAdmin && fakeAuthedUser?.roles.includes('admin') ? { roleId: 'admin' } : null,
+                ),
+            },
+          },
+        },
+      },
       { provide: AppConfigService, useValue: config },
       { provide: APP_FILTER, useFactory: () => new AllExceptionsFilter(config) },
     ],
@@ -148,6 +165,26 @@ describe('AdminSettings (e2e) — Sprint 6.5 refined', () => {
         .patch('/v1/admin/settings')
         .send({ values: { platform_fee_bps: 1500 } });
       expect(res.status).toBe(403);
+      expect(settingsService.updateBulk).not.toHaveBeenCalled();
+    });
+  });
+
+  // K06 — a token that still claims admin after the membership was removed.
+  describe('stale admin claim', () => {
+    beforeEach(() => {
+      fakeAuthedUser = { id: 'u-a', sessionId: 's', jti: 'j', roles: ['admin'] };
+      liveAdmin = false;
+    });
+    afterEach(() => {
+      liveAdmin = true;
+    });
+    it('GET and PATCH → 403 and the service is never reached', async () => {
+      expect((await request(app.getHttpServer()).get('/v1/admin/settings')).status).toBe(403);
+      const res = await request(app.getHttpServer())
+        .patch('/v1/admin/settings')
+        .send({ values: { provider_onboarding_max_service_areas: 5 } });
+      expect(res.status).toBe(403);
+      expect(settingsService.getBulk).not.toHaveBeenCalled();
       expect(settingsService.updateBulk).not.toHaveBeenCalled();
     });
   });

@@ -141,6 +141,126 @@ const enabled = process.env.RUN_DB_INTEGRATION === '1';
     }
   });
 
+  // K06 — settings writes include the dispute-intake pilot policy and the market
+  // registry, yet were authorized only by the `admin` claim inside the access
+  // token. No API path removes the admin role, so removal is out of band (an
+  // operator or database change) and the old token kept writing settings until
+  // it expired. Writes now re-read live admin membership in their transaction.
+  it('K06 a removed admin membership cannot write settings through a still-valid token', async () => {
+    const { db, users } = h.fixture;
+    const adminRole = await db.role.findFirstOrThrow({ where: { name: 'admin', deletedAt: null } });
+    const membership = { userId_roleId: { userId: users.independent, roleId: adminRole.id } };
+    const key = 'provider_onboarding_max_service_areas';
+    const intake = 'disputes.self_service.intake';
+    const restoreKey = await preserveSetting(key);
+    const restoreIntake = await preserveSetting(intake);
+    const before = await db.platformSetting.findUnique({ where: { key } });
+    const intakeBefore = await db.platformSetting.findUnique({ where: { key: intake } });
+    const since = new Date();
+    await db.userRole.delete({ where: membership });
+    try {
+      // The session is still valid and its token still says `admin`.
+      expect((await otherAdmin.request('/v1/auth/me')).status).toBe(200);
+      const writes = [
+        [`/v1/admin/settings/${key}`, 'PUT', { value: 7 }],
+        ['/v1/admin/settings', 'PATCH', { values: { [key]: 8 } }],
+        [`/v1/admin/settings/${key}`, 'DELETE', undefined],
+        [
+          `/v1/admin/settings/${intake}`,
+          'PUT',
+          {
+            value: {
+              version: 'k06-stale-token',
+              enabled: true,
+              pilotUserIds: [users.independent],
+              allowedBookingStates: ['COMPLETED'],
+              terminalWindowHours: 24,
+            },
+          },
+        ],
+      ] as const;
+      for (const [path, method, body] of writes) {
+        const res = await otherAdmin.request(path, { method, body });
+        expect({ path, method, status: res.status }).toEqual({ path, method, status: 403 });
+      }
+      expect(await db.platformSetting.findUnique({ where: { key } })).toEqual(before);
+      expect(await db.platformSetting.findUnique({ where: { key: intake } })).toEqual(intakeBefore);
+      expect(await historyRows(key, since)).toBe(0);
+      expect(await historyRows(intake, since)).toBe(0);
+      expect(await settingAudits(key, since)).toBe(0);
+      expect(await settingAudits(intake, since)).toBe(0);
+    } finally {
+      await db.userRole.upsert({
+        where: membership,
+        create: { userId: users.independent, roleId: adminRole.id },
+        update: {},
+      });
+    }
+    try {
+      // Restored membership: the same session writes again on its next request.
+      const put = await otherAdmin.request(`/v1/admin/settings/${key}`, {
+        method: 'PUT',
+        body: { value: 9 },
+      });
+      expect(put.status).toBe(200);
+    } finally {
+      await restoreKey();
+      await restoreIntake();
+      await db.platformSettingHistory.deleteMany({
+        where: { key: { in: [key, intake] }, changedAt: { gte: since } },
+      });
+    }
+  });
+
+  // K06 — the same stale-claim gap on every other admin surface that trusted
+  // the token: catalog, service-area policy, the legacy dispute desk, and
+  // (worst) admin access approval, which mints a new administrator. Each is
+  // refused on the next request once live admin membership is gone, and none
+  // changes state.
+  it('K06 a removed admin membership cannot mint an admin or change catalog, area or disputes', async () => {
+    const { db, users } = h.fixture;
+    const adminRole = await db.role.findFirstOrThrow({ where: { name: 'admin', deletedAt: null } });
+    const membership = { userId_roleId: { userId: users.independent, roleId: adminRole.id } };
+    const request = await db.adminAccessRequest.create({
+      data: { userId: users.outsider, justification: 'K06 stale-token fixture' },
+    });
+    const categoriesBefore = await db.serviceCategory.count();
+    await db.userRole.delete({ where: membership });
+    try {
+      expect((await otherAdmin.request('/v1/auth/me')).status).toBe(200);
+      const attempts = [
+        [`/v1/admin/access-requests/${request.id}/approve`, 'POST', {}],
+        [`/v1/admin/access-requests/${request.id}/reject`, 'POST', {}],
+        ['/v1/admin/access-requests', 'GET', undefined],
+        ['/v1/admin/catalog/categories', 'POST', { slug: 'k06-stale', labelEn: 'x', labelAr: 'x' }],
+        ['/v1/admin/service-area/policies', 'POST', {}],
+        ['/v1/admin/disputes', 'GET', undefined],
+        ['/v1/admin/settings', 'GET', undefined],
+      ] as const;
+      for (const [path, method, body] of attempts) {
+        const res = await otherAdmin.request(path, { method, body });
+        expect({ path, method, status: res.status }).toEqual({ path, method, status: 403 });
+      }
+      const after = await db.adminAccessRequest.findUniqueOrThrow({ where: { id: request.id } });
+      expect(after.status).toBe('PENDING');
+      expect(after.decidedByUserId).toBeNull();
+      expect(
+        await db.userRole.count({ where: { userId: users.outsider, roleId: adminRole.id } }),
+      ).toBe(0);
+      expect(await db.serviceCategory.count()).toBe(categoriesBefore);
+    } finally {
+      await db.userRole.upsert({
+        where: membership,
+        create: { userId: users.independent, roleId: adminRole.id },
+        update: {},
+      });
+      await db.adminAccessRequest.deleteMany({ where: { id: request.id } });
+    }
+    // Restored membership: the same session reads the admin queues again.
+    expect((await otherAdmin.request('/v1/admin/access-requests')).status).toBe(200);
+    expect((await otherAdmin.request('/v1/admin/settings')).status).toBe(200);
+  });
+
   it('D-3 hostile property names select nothing, write nothing and pollute nothing', async () => {
     const { db } = h.fixture;
     const hostile = ['__proto__', 'constructor', 'prototype', 'toString', 'hasOwnProperty'];

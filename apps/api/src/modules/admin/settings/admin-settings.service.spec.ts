@@ -10,10 +10,21 @@ import type { TransactionRunner } from '../../../infrastructure/prisma/transacti
 import type { AdminAuditService } from '../admin-audit.service';
 import { AdminSettingsService } from './admin-settings.service';
 
+// K06: every write re-reads live admin membership inside its transaction.
+// Tests that are not about authority see a current administrator.
+let liveAdminMembership: { roleId: string } | null = { roleId: 'admin-role' };
+const membershipLookup = jest.fn(() => Promise.resolve(liveAdminMembership));
+
 const tx: TransactionRunner = {
   // R17-D: writers of one key are serialised with a transaction advisory lock.
-  run: <T>(fn: (t: never) => Promise<T>) => fn({ $executeRaw: jest.fn() } as never),
+  run: <T>(fn: (t: never) => Promise<T>) =>
+    fn({ $executeRaw: jest.fn(), userRole: { findFirst: membershipLookup } } as never),
 } as unknown as TransactionRunner;
+
+beforeEach(() => {
+  liveAdminMembership = { roleId: 'admin-role' };
+  membershipLookup.mockClear();
+});
 
 function makeRow(over: Partial<PlatformSettingRow> = {}): PlatformSettingRow {
   return {
@@ -116,6 +127,44 @@ describe('AdminSettingsService.getBulk', () => {
     expect(out.values.secret_internal_key).toBeUndefined();
     expect(out.values.platform_fee_bps).toBe(500);
   });
+});
+
+describe('AdminSettingsService — live admin standing (K06)', () => {
+  it.each([
+    [
+      'bulk',
+      (s: AdminSettingsService) =>
+        s.updateBulk('admin-1', { provider_onboarding_max_service_areas: 5 }),
+    ],
+    [
+      'keyed',
+      (s: AdminSettingsService) => s.upsert('admin-1', 'provider_onboarding_max_service_areas', 5),
+    ],
+    [
+      'delete',
+      (s: AdminSettingsService) => s.remove('admin-1', 'provider_onboarding_max_service_areas'),
+    ],
+  ])(
+    'refuses a %s write without a live admin membership and writes nothing',
+    async (_name, write) => {
+      liveAdminMembership = null;
+      const m = makeMocks([makeRow({ key: 'provider_onboarding_max_service_areas', value: 20 })]);
+      await expect(write(makeService(m))).rejects.toMatchObject({ status: 403 });
+      expect(membershipLookup).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            userId: 'admin-1',
+            role: { name: 'admin', deletedAt: null },
+            user: { deletedAt: null, status: 'ACTIVE', isActive: true },
+          }),
+        }),
+      );
+      expect(m.settings.upsert).not.toHaveBeenCalled();
+      expect(m.settings.delete).not.toHaveBeenCalled();
+      expect(m.history.append).not.toHaveBeenCalled();
+      expect(m.audit.record).not.toHaveBeenCalled();
+    },
+  );
 });
 
 describe('AdminSettingsService.updateBulk', () => {
