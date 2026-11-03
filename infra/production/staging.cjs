@@ -7,6 +7,10 @@ const os = require('node:os');
 const { createHash } = require('node:crypto');
 const { parseEnv } = require('node:util');
 const { spawnSync } = require('node:child_process');
+const {
+  documentCsp,
+  verifyWebBuildInfo,
+} = require('../../scripts/production/security-app/web-build-identity.cjs');
 const ROOT = path.resolve(__dirname, '../..');
 const SHA = /^[a-f0-9]{40}$/u;
 const IMAGE = /^[a-z0-9][a-z0-9./:_-]*@sha256:[a-f0-9]{64}$/u;
@@ -49,12 +53,16 @@ function validateManifest(value) {
       'webOrigin',
       'apiOrigin',
       'onboardingV2',
+      'stripeSandbox',
+      'webConfigFingerprint',
     ],
     'manifest',
   );
+  // K03 v2: version 1 could not declare the Stripe sandbox CSP state or the
+  // public web configuration, so a v1 release cannot bind its web image.
   requireCondition(
-    value.schemaVersion === 1 && typeof value.sourceSha === 'string' && SHA.test(value.sourceSha),
-    'manifest: version 1 and a full source SHA are required',
+    value.schemaVersion === 2 && typeof value.sourceSha === 'string' && SHA.test(value.sourceSha),
+    'manifest: version 2 and a full source SHA are required',
   );
   requireCondition(
     [value.dockerContext, value.externalNetwork].every(
@@ -74,6 +82,15 @@ function validateManifest(value) {
   requireCondition(
     typeof value.onboardingV2 === 'boolean',
     'manifest: onboardingV2 must be explicit',
+  );
+  requireCondition(
+    typeof value.stripeSandbox === 'boolean',
+    'manifest: stripeSandbox must be explicit',
+  );
+  requireCondition(
+    typeof value.webConfigFingerprint === 'string' &&
+      /^[a-f0-9]{64}$/u.test(value.webConfigFingerprint),
+    'manifest: the reviewed web public-configuration fingerprint is required',
   );
   keys(value.images, ['api', 'migrator', 'web'], 'images');
   requireCondition(
@@ -337,11 +354,34 @@ async function verifyHttps(manifest, supplied, request = fetch) {
     'HTTPS: live/readiness payloads are not healthy',
   );
   const build = await (await get(`${approved.webOrigin}/build-info.json`)).json();
+  // Re-derive the identity rather than trusting the fetched summary fields.
+  let derived = null;
+  try {
+    derived = verifyWebBuildInfo(build);
+  } catch {
+    /* Reported below without echoing remote content. */
+  }
   requireCondition(
-    build.sourceSha === manifest.sourceSha &&
+    derived !== null &&
+      build.sourceSha === manifest.sourceSha &&
       build.apiUrl === approved.apiOrigin &&
-      build.onboardingV2 === manifest.onboardingV2,
+      build.onboardingV2 === manifest.onboardingV2 &&
+      build.stripeSandbox === manifest.stripeSandbox &&
+      derived.fingerprint === manifest.webConfigFingerprint,
     'HTTPS: the deployed web build identity or build-time flags differ',
+  );
+  // Inspect the document actually served, not a configuration helper: its
+  // CSP must be exactly the policy the declared configuration requires.
+  const page = await (await get(`${approved.webOrigin}/`)).text();
+  let served = null;
+  try {
+    served = documentCsp(page);
+  } catch {
+    /* Missing or duplicate policy is reported below. */
+  }
+  requireCondition(
+    served === derived.policy,
+    'HTTPS: the served document CSP differs from the declared web configuration',
   );
   const unauthenticated = await get(`${approved.apiOrigin}/v1/auth/me`, 401, {
     Origin: approved.webOrigin,
@@ -418,8 +458,11 @@ async function applyRelease(
       );
       if (kind === 'web')
         requireCondition(
-          labels?.['io.hsm.web.api-url'] === manifest.apiOrigin,
-          'web API origin mismatch',
+          labels?.['io.hsm.web.api-url'] === manifest.apiOrigin &&
+            labels?.['io.hsm.web.onboarding-v2'] === String(manifest.onboardingV2) &&
+            labels?.['io.hsm.web.stripe-sandbox'] === String(manifest.stripeSandbox) &&
+            labels?.['io.hsm.web.config-fingerprint'] === manifest.webConfigFingerprint,
+          'web public configuration mismatch',
         );
     }
   });

@@ -39,7 +39,7 @@ jobs:
         run: |
           set -euo pipefail
           node scripts/runtime/toolchain.cjs
-          node --test infra/production/check-runtime.test.cjs infra/production/staging.test.cjs scripts/production/platform/validate-plan.test.cjs | tee controls.tap
+          node --test infra/production/check-runtime.test.cjs infra/production/staging.test.cjs scripts/production/platform/validate-plan.test.cjs scripts/production/security-app/web-build-identity.test.cjs | tee controls.tap
           node scripts/production/platform/validate-plan.cjs --check | tee platform-plan.json
           git rev-parse HEAD > source-sha.txt
       - uses: actions/upload-artifact@v4
@@ -71,12 +71,46 @@ jobs:
           docker build -f apps/api/Dockerfile -t hsm-api:staging-ci \
             --build-arg SOURCE_SHA="$(git rev-parse HEAD)" .
           node infra/production/image-preflight-smoke.cjs hsm-api:staging-ci | tee api-image.txt
-      - name: Build the actual web image from this checkout
+      # K03: both Stripe sandbox states are explicit build inputs whose reviewed
+      # public-configuration fingerprint must match what the image compiled.
+      - name: Build the actual web image in both explicit Stripe sandbox states
         run: |
-          docker build -f apps/web/Dockerfile -t hsm-web:ci \
+          set -euo pipefail
+          for state in false true; do
+            fingerprint="$(VITE_API_URL=https://api.example.test VITE_PROVIDER_ONBOARDING_V2=false \
+              VITE_STRIPE_SANDBOX_ENABLED=$state \
+              node scripts/production/security-app/web-build-identity.cjs --fingerprint)"
+            echo "$state $fingerprint" >> web-fingerprints.txt
+            docker build -f apps/web/Dockerfile -t hsm-web:ci-stripe-$state \
+              --build-arg SOURCE_SHA="$(git rev-parse HEAD)" \
+              --build-arg VITE_API_URL=https://api.example.test \
+              --build-arg VITE_PROVIDER_ONBOARDING_V2=false \
+              --build-arg VITE_STRIPE_SANDBOX_ENABLED=$state \
+              --build-arg WEB_CONFIG_FINGERPRINT="$fingerprint" .
+          done
+      - name: Reject an omitted Stripe flag and a mismatched configuration fingerprint
+        run: |
+          set -euo pipefail
+          read -r _ off < <(grep '^false ' web-fingerprints.txt)
+          if docker build -f apps/web/Dockerfile -t hsm-web:invalid-flag-ci \
             --build-arg SOURCE_SHA="$(git rev-parse HEAD)" \
             --build-arg VITE_API_URL=https://api.example.test \
-            --build-arg VITE_PROVIDER_ONBOARDING_V2=false .
+            --build-arg VITE_PROVIDER_ONBOARDING_V2=false \
+            --build-arg WEB_CONFIG_FINGERPRINT="$off" . > invalid-flag-build.txt 2>&1; then
+            echo 'An omitted Stripe sandbox flag must not build'
+            exit 1
+          fi
+          grep -q 'WEB_IMAGE_INPUT_REQUIRED: VITE_STRIPE_SANDBOX_ENABLED' invalid-flag-build.txt
+          if docker build -f apps/web/Dockerfile -t hsm-web:invalid-fingerprint-ci \
+            --build-arg SOURCE_SHA="$(git rev-parse HEAD)" \
+            --build-arg VITE_API_URL=https://api.example.test \
+            --build-arg VITE_PROVIDER_ONBOARDING_V2=false \
+            --build-arg VITE_STRIPE_SANDBOX_ENABLED=true \
+            --build-arg WEB_CONFIG_FINGERPRINT="$off" . > invalid-fingerprint-build.txt 2>&1; then
+            echo 'A fingerprint for a different configuration must not build'
+            exit 1
+          fi
+          grep -q WEB_IMAGE_CONFIG_FINGERPRINT_MISMATCH invalid-fingerprint-build.txt
       - name: Reject a version-prefixed web API base with the actual Axios dependency
         run: |
           set -euo pipefail
@@ -87,22 +121,36 @@ jobs:
             exit 1
           fi
           grep -q WEB_IMAGE_API_ORIGIN_REQUIRED invalid-web-build.txt
-      - name: Boot read-only with no extra capabilities
+      - name: Boot both images read-only with no extra capabilities
         run: |
-          docker run --detach --name hsm-web-ci --read-only --cap-drop=ALL \
-            --security-opt=no-new-privileges:true \
-            --tmpfs /tmp:rw,noexec,nosuid,size=32m -p 127.0.0.1:18080:8080 hsm-web:ci
-      - name: Verify real HTTP routes, missing assets and source identity
+          set -euo pipefail
+          port=18080
+          for state in false true; do
+            docker run --detach --name hsm-web-ci-$state --read-only --cap-drop=ALL \
+              --security-opt=no-new-privileges:true \
+              --tmpfs /tmp:rw,noexec,nosuid,size=32m -p 127.0.0.1:$port:8080 hsm-web:ci-stripe-$state
+            port=$((port + 1))
+          done
+      - name: Verify real HTTP routes, served CSP and source/flag identity in both states
         env:
           EXPECTED_API_URL: https://api.example.test
         run: |
           set -euo pipefail
-          node infra/production/web-image-smoke.cjs | tee web-image.txt
-          test "$(docker exec hsm-web-ci id -u)" != 0
-          if docker exec hsm-web-ci touch /usr/share/nginx/html/unexpected; then
-            echo 'The web root must not be writable'
-            exit 1
-          fi
+          port=18080
+          for state in false true; do
+            read -r _ fingerprint < <(grep "^$state " web-fingerprints.txt)
+            WEB_SMOKE_PORT=$port EXPECTED_STRIPE_SANDBOX=$state \
+              EXPECTED_WEB_CONFIG_FINGERPRINT="$fingerprint" \
+              node infra/production/web-image-smoke.cjs | tee -a web-image.txt
+            test "$(docker exec hsm-web-ci-$state id -u)" != 0
+            if docker exec hsm-web-ci-$state touch /usr/share/nginx/html/unexpected; then
+              echo 'The web root must not be writable'
+              exit 1
+            fi
+            docker image inspect hsm-web:ci-stripe-$state \
+              --format '{{.Id}} {{json .Config.Labels}}' | tee -a web-image.txt
+            port=$((port + 1))
+          done
           git rev-parse HEAD > source-sha.txt
       - uses: actions/upload-artifact@v4
         with:
@@ -110,12 +158,13 @@ jobs:
           path: |
             api-image.txt
             web-image.txt
+            web-fingerprints.txt
             source-sha.txt
           if-no-files-found: error
           retention-days: 7
-      - name: Remove only the disposable test container
+      - name: Remove only the disposable test containers
         if: always()
-        run: docker rm -f hsm-web-ci || true
+        run: docker rm -f hsm-web-ci-false hsm-web-ci-true || true
 
   gate:
     name: Staging boundary gate

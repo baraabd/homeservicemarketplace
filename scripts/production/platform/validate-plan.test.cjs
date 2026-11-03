@@ -106,7 +106,7 @@ function fullDeclarations() {
     monthlyCostCeiling: { amount: 100, currency: 'USD' },
   });
   plan.release = {
-    schemaVersion: 1,
+    schemaVersion: 2,
     sourceSha: 'a'.repeat(40),
     dockerContext: 'default',
     projectName: 'hsm-staging-r28-fixture',
@@ -124,6 +124,8 @@ function fullDeclarations() {
     webOrigin: 'https://staging.example.test',
     apiOrigin: 'https://staging.example.test',
     onboardingV2: false,
+    stripeSandbox: false,
+    webConfigFingerprint: 'e'.repeat(64),
   };
   Object.assign(plan.services.postgres, {
     resourceId: 'fixture:database:staging',
