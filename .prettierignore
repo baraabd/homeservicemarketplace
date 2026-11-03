@@ -28,3 +28,10 @@ docs/provider-experience-v2/UX_UI_DESIGN_SYSTEM.md
 # already drifted along — and invalidate the SHA-256 recorded in the
 # verification document.
 .claude/rules/
+
+# K01 — repository-owned security fork. index.cjs is upstream deepmerge 4.3.1's
+# dist/cjs.js plus one documented hunk, and index.d.ts/license.txt are
+# byte-for-byte copies whose SHA-256 values vendor/deepmerge/README.md records.
+vendor/deepmerge/index.cjs
+vendor/deepmerge/index.d.ts
+vendor/deepmerge/license.txt

@@ -1,0 +1,17 @@
+{
+  "name": "deepmerge",
+  "version": "4.3.1-hsm.1",
+  "private": true,
+  "description": "Repository-owned fork of deepmerge 4.3.1 with the GHSA-gcqx-w48m-w2h4 prototype-poisoning fix. See README.md.",
+  "license": "MIT",
+  "main": "index.cjs",
+  "types": "index.d.ts",
+  "files": [
+    "index.cjs",
+    "index.d.ts",
+    "license.txt"
+  ],
+  "engines": {
+    "node": ">=0.10.0"
+  }
+}

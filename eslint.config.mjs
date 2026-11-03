@@ -16,6 +16,8 @@ export default tseslint.config(
       '**/.next/**',
       '**/generated/**',
       '**/*.d.ts',
+      // K01 — upstream deepmerge 4.3.1 code kept as published (see vendor/deepmerge/README.md).
+      'vendor/deepmerge/index.cjs',
       // Sprint 09B.29 — build outputs that live beside `dist` rather than in
       // it, because two Playwright configurations must not share one output
       // directory. `**/dist/**` does not cover them, and without these the
