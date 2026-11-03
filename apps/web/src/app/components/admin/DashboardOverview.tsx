@@ -1,4 +1,6 @@
 import { useMemo, useState } from 'react';
+import { minorToDecimal } from '@homeservicemarketplace/contracts';
+import { formatAmount } from '../../../lib/money/format-amount';
 import { Activity, AlertTriangle, DollarSign, ShieldCheck, TrendingUp, Users } from 'lucide-react';
 import {
   Area,
@@ -78,18 +80,19 @@ export function DashboardOverview({ lang }: { lang: string }) {
     valueNote: isAr
       ? 'قيم الحجوزات وليست مدفوعات. لا توجد عمولة منصة معتمدة، ولا تُجمع العملات المختلفة معاً.'
       : 'Booking values, not payments. No platform fee is approved, and currencies are never added together.',
+    excluded: (legacy: number, hourly: number) =>
+      isAr
+        ? `مستبعد من القيم: ${legacy} حجز بمبلغ قديم غير مؤكد الوحدة، و${hourly} حجز بسعر بالساعة.`
+        : `Excluded from these values: ${legacy} booking(s) with an unverified legacy amount and ${hourly} hourly-rate booking(s).`,
     undated: (n: number) =>
       isAr
         ? `${n} حجز منجز بلا سجل إنجاز مؤرَّخ، فلا يُحتسب ضمن النطاق.`
         : `${n} completed booking(s) have no dated completion record and are not counted in a range.`,
   };
 
-  const money = (amount: number, currency: string) =>
-    new Intl.NumberFormat(isAr ? 'ar' : 'en', {
-      style: 'currency',
-      currency,
-      maximumFractionDigits: 0,
-    }).format(amount / 100);
+  // K02 — exact, in the figure's own currency and verified unit.
+  const money = (amount: number, currency: string, amountScale: number) =>
+    formatAmount(amount, currency, amountScale, isAr ? 'ar' : 'en');
   // One figure per currency; never a sum across currencies.
   const perCurrency = (pick: 'bookedValueWithinRange' | 'bookedValueLifetime') => {
     if (!overview) return overviewQuery.isError ? '—' : '…';
@@ -98,7 +101,7 @@ export function DashboardOverview({ lang }: { lang: string }) {
     if (!Array.isArray(overview.revenueByCurrency)) return '—';
     const rows = overview.revenueByCurrency.filter((r) => r[pick] > 0);
     if (rows.length === 0) return L.noCompletions;
-    if (rows.length === 1) return money(rows[0][pick], rows[0].currency);
+    if (rows.length === 1) return money(rows[0][pick], rows[0].currency, rows[0].amountScale);
     // Several currencies: one isolated line each, so nothing reads as a sum
     // and nothing overflows a narrow card.
     return (
@@ -107,7 +110,7 @@ export function DashboardOverview({ lang }: { lang: string }) {
           <li key={r.currency}>
             {/* A breakable space between code and amount: on a narrow card the
                 line may wrap there, never inside the code or the number. */}
-            <bdi>{money(r[pick], r.currency).split(NBSP).join(' ')}</bdi>
+            <bdi>{money(r[pick], r.currency, r.amountScale).split(NBSP).join(' ')}</bdi>
           </li>
         ))}
       </ul>
@@ -123,7 +126,9 @@ export function DashboardOverview({ lang }: { lang: string }) {
   const activeSeries = series.find((s) => s.currency === chartCurrency) ?? series[0] ?? null;
   const chartData = (activeSeries?.buckets ?? []).map((b) => ({
     date: b.date.slice(5), // 'MM-DD'
-    value: b.bookedValue / 100,
+    // Axis number only; the tooltip formats the exact stored minor units.
+    value: Number(minorToDecimal(b.bookedValue, activeSeries!.amountScale)),
+    valueMinor: b.bookedValue,
   }));
 
   return (
@@ -217,6 +222,26 @@ export function DashboardOverview({ lang }: { lang: string }) {
           ? ` ${L.undated(overview.counts.undatedCompletions)}`
           : ''}
       </p>
+      {/* K02 — legacy-unit and hourly bookings are counted, never summed. */}
+      {overview &&
+      Array.isArray(overview.excludedAmounts) &&
+      overview.excludedAmounts.length > 0 ? (
+        <p
+          className="text-amber-700 dark:text-amber-300"
+          style={{ fontSize: '12px' }}
+          role="note"
+          data-testid="analytics-excluded-note"
+        >
+          {L.excluded(
+            overview.excludedAmounts
+              .filter((e) => e.reason === 'LEGACY_UNVERIFIED')
+              .reduce((n, e) => n + e.completedCount + e.inFlightCount, 0),
+            overview.excludedAmounts
+              .filter((e) => e.reason === 'HOURLY_RATE')
+              .reduce((n, e) => n + e.completedCount + e.inFlightCount, 0),
+          )}
+        </p>
+      ) : null}
 
       <div className="bg-white dark:bg-slate-800 rounded-3xl border border-slate-100 dark:border-slate-700 shadow-sm p-4">
         <div className="flex items-center justify-between gap-2 mb-3">
@@ -290,7 +315,18 @@ export function DashboardOverview({ lang }: { lang: string }) {
                   boxShadow: '0 4px 20px rgba(0,0,0,0.1)',
                   fontSize: '12px',
                 }}
-                formatter={(v: number) => [money(v * 100, activeSeries.currency), L.revenueChart]}
+                formatter={(
+                  _v: number,
+                  _n: string,
+                  item: { payload?: { valueMinor?: number } },
+                ) => [
+                  money(
+                    item.payload?.valueMinor ?? 0,
+                    activeSeries.currency,
+                    activeSeries.amountScale,
+                  ),
+                  L.revenueChart,
+                ]}
               />
               <Area
                 type="monotone"

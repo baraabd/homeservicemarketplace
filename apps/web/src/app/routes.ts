@@ -55,6 +55,11 @@ const CheckEmailPage = lazyPage(() =>
 const VerifyEmailPage = lazyPage(() =>
   import('./pages/AuthPages').then((module) => ({ default: module.VerifyEmailPage })),
 );
+// K02 — public Arabic/English legal, operator, contact and subscription
+// pages. No guard: they must open signed out, on a direct link and on reload.
+const LegalPage = lazyPage(() =>
+  import('./features/legal/routes/LegalPage').then((module) => ({ default: module.LegalPage })),
+);
 const ResetPasswordPage = lazyPage(() =>
   import('./pages/AuthPages').then((module) => ({ default: module.ResetPasswordPage })),
 );
@@ -124,6 +129,7 @@ export const router = createBrowserRouter([
       // logged in or not (e.g. opening the link on a different device).
       { path: 'verify-email', Component: VerifyEmailPage },
       { path: 'reset-password', Component: ResetPasswordPage },
+      { path: 'legal/:page', Component: LegalPage },
 
       // ── Guest-only (redirect to /home if already authed) ────────────
       {

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router';
 import {
   ChevronLeft,
@@ -19,10 +19,26 @@ import {
 import { Button } from '../ds/Button';
 import { TextField } from '../ds/TextField';
 import { useSwipe } from '../../hooks/useSwipe';
+import { useQuery } from '@tanstack/react-query';
+import type { LegalAcceptanceInput } from '@homeservicemarketplace/contracts';
+import { getLegalDocuments } from '../../../lib/auth-api';
+import { PolicyDialog } from '../../features/legal/components/PolicyDialog';
+import {
+  SIGNUP_CONSENT_COPY,
+  clearSignupDraft,
+  legalRefusalReason,
+  readSignupDraft,
+  writeSignupDraft,
+} from '../../features/legal/signup-consent';
 import { useLang, LangToggle } from '../../i18n/LanguageContext';
 import { COUNTRY_DIAL_CODES, dialForCountry } from '../../../lib/country-dial-codes';
 import { useGeoBootstrap } from '../../../lib/geo-bootstrap';
-import { loginErrorMessage, otpErrorMessage, registrationErrorMessage, recoveryRequestErrorMessage } from '../../../lib/auth-errors';
+import {
+  loginErrorMessage,
+  otpErrorMessage,
+  registrationErrorMessage,
+  recoveryRequestErrorMessage,
+} from '../../../lib/auth-errors';
 import {
   type AuthExperience,
   AUTH_EXPERIENCES,
@@ -116,7 +132,9 @@ export function EmailOtpPanel({
           {lang === 'ar' ? 'تحقق من بريدك الإلكتروني' : 'Verify your email'}
         </h3>
         <p className="text-slate-400 mt-1" style={{ fontSize: '13px' }}>
-          {lang === 'ar' ? `أدخل رمز التحقق المكوّن من ${codeLength} أرقام من بريدك الإلكتروني` : `Enter the ${codeLength}-digit code from your email`}
+          {lang === 'ar'
+            ? `أدخل رمز التحقق المكوّن من ${codeLength} أرقام من بريدك الإلكتروني`
+            : `Enter the ${codeLength}-digit code from your email`}
           {email ? (
             <>
               {' '}
@@ -175,7 +193,12 @@ export function EmailOtpPanel({
         maxLength={codeLength}
         value={code}
         onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, codeLength))}
-        onKeyDown={(event) => { if (event.key === 'Enter' && canSubmit) { event.preventDefault(); void onVerify(code); } }}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter' && canSubmit) {
+            event.preventDefault();
+            void onVerify(code);
+          }
+        }}
         disabled={isVerifying || isResending}
         aria-invalid={!!verifyError}
         aria-describedby={verifyError ? 'otp-verification-error' : undefined}
@@ -185,7 +208,12 @@ export function EmailOtpPanel({
       />
 
       {verifyError && (
-        <p id="otp-verification-error" role="alert" className="text-red-500" style={{ fontSize: '13px' }}>
+        <p
+          id="otp-verification-error"
+          role="alert"
+          className="text-red-500"
+          style={{ fontSize: '13px' }}
+        >
           {verifyError}
         </p>
       )}
@@ -200,7 +228,13 @@ export function EmailOtpPanel({
         }}
         leadingIcon={<CheckCircle2 size={16} />}
       >
-        {lang === 'ar' ? (isVerifying ? 'جارٍ التحقق…' : 'تأكيد') : (isVerifying ? 'Verifying…' : 'Confirm')}
+        {lang === 'ar'
+          ? isVerifying
+            ? 'جارٍ التحقق…'
+            : 'تأكيد'
+          : isVerifying
+            ? 'Verifying…'
+            : 'Confirm'}
       </Button>
 
       <button
@@ -210,11 +244,25 @@ export function EmailOtpPanel({
         className={`${experience.classes.accentText} active:opacity-70 disabled:opacity-50`}
         style={{ fontSize: '13px', fontWeight: 600 }}
       >
-        {lang === 'ar' ? (isResending ? 'جارٍ الطلب…' : 'إعادة طلب الرمز') : (isResending ? 'Sending…' : 'Resend code')}
+        {lang === 'ar'
+          ? isResending
+            ? 'جارٍ الطلب…'
+            : 'إعادة طلب الرمز'
+          : isResending
+            ? 'Sending…'
+            : 'Resend code'}
       </button>
-      {onRestart && <button type="button" onClick={onRestart} disabled={isVerifying || isResending} className="text-slate-700 underline disabled:opacity-50" style={{ fontSize: '13px' }}>
-        {restartLabel ?? (lang === 'ar' ? 'بدء تسجيل الدخول مجدداً' : 'Start sign-in again')}
-      </button>}
+      {onRestart && (
+        <button
+          type="button"
+          onClick={onRestart}
+          disabled={isVerifying || isResending}
+          className="text-slate-700 underline disabled:opacity-50"
+          style={{ fontSize: '13px' }}
+        >
+          {restartLabel ?? (lang === 'ar' ? 'بدء تسجيل الدخول مجدداً' : 'Start sign-in again')}
+        </button>
+      )}
       {resendNotice && (
         <p role="status" className="text-slate-500" style={{ fontSize: '12px' }}>
           {resendNotice}
@@ -390,7 +438,11 @@ export function LoginScreen({
     setOtpError(undefined);
     try {
       await onOtpResend(challenge.challengeId);
-      setResendNotice(lang === 'ar' ? 'تم استلام الطلب. تحقق من بريدك واستخدم أحدث رمز يصلك.' : 'Request received. Check your inbox and use the most recent code.');
+      setResendNotice(
+        lang === 'ar'
+          ? 'تم استلام الطلب. تحقق من بريدك واستخدم أحدث رمز يصلك.'
+          : 'Request received. Check your inbox and use the most recent code.',
+      );
     } catch (err: unknown) {
       setOtpError(otpErrorMessage(err, 'resend'));
     } finally {
@@ -454,9 +506,15 @@ export function LoginScreen({
 
       {/* ── Card ── */}
       <div className="flex-1 bg-white rounded-t-3xl -mt-6 px-6 pt-8 pb-6">
-        {emailError && onRecoverVerification && <button type="button" className="text-slate-700 underline mb-3" onClick={() => onRecoverVerification(email.trim())}>
-          {lang === 'ar' ? 'طلب رابط للتحقق من البريد' : 'Request email verification'}
-        </button>}
+        {emailError && onRecoverVerification && (
+          <button
+            type="button"
+            className="text-slate-700 underline mb-3"
+            onClick={() => onRecoverVerification(email.trim())}
+          >
+            {lang === 'ar' ? 'طلب رابط للتحقق من البريد' : 'Request email verification'}
+          </button>
+        )}
         {banner && (
           <div className="mb-4 rounded-xl bg-green-50 border border-green-200 px-4 py-3">
             <p className="text-green-800" style={{ fontSize: '13px', fontWeight: 500 }}>
@@ -482,7 +540,12 @@ export function LoginScreen({
             verifyError={otpError}
             resendNotice={resendNotice}
             experience={experience}
-            onRestart={() => { setChallenge(null); setPassword(''); setOtpError(undefined); setResendNotice(undefined); }}
+            onRestart={() => {
+              setChallenge(null);
+              setPassword('');
+              setOtpError(undefined);
+              setResendNotice(undefined);
+            }}
           />
         ) : (
           <div className="flex flex-col gap-4">
@@ -500,7 +563,9 @@ export function LoginScreen({
               label={t('password')}
               type={showPw ? 'text' : 'password'}
               autoComplete="current-password"
-              onEnter={() => { void handleLogin(); }}
+              onEnter={() => {
+                void handleLogin();
+              }}
               value={password}
               onChange={setPassword}
               leadingIcon={<Lock size={16} />}
@@ -580,6 +645,7 @@ interface SignUpProps {
     name: string;
     email: string;
     password: string;
+    legalAcceptance: LegalAcceptanceInput;
   }) => Promise<LoginOtpChallenge>;
   onOtpVerify: (challengeId: string, code: string) => Promise<void>;
   onOtpResend: (challengeId: string) => Promise<void>;
@@ -600,15 +666,34 @@ export function SignUpScreen({
   const geo = useGeoBootstrap();
   const dialEntry = dialForCountry(geo.countryCode);
 
-  const [step, setStep] = useState(1); // 1 = info, 2 = credentials, 3 = OTP
-  const [name, setName] = useState('');
+  // K02 — a non-secret draft (never the password) survives a reload or a
+  // visit to a full policy page; the in-place policy dialog keeps everything
+  // in memory, so it needs no storage at all.
+  const draft = useMemo(readSignupDraft, []);
+  const [step, setStep] = useState<number>(draft?.step ?? 1); // 1 = info, 2 = credentials, 3 = OTP
+  const [name, setName] = useState(draft?.name ?? '');
   // Phone is split into a dial code the user can override + the local number.
   const [dialCode, setDialCode] = useState<string>(dialEntry.dialCode);
   const [localNumber, setLocalNumber] = useState('');
-  const [email, setEmail] = useState('');
+  const [email, setEmail] = useState(draft?.email ?? '');
   const [password, setPassword] = useState('');
   const [showPw, setShowPw] = useState(false);
   const [agreed, setAgreed] = useState(false);
+  const [policyOpen, setPolicyOpen] = useState<'terms' | 'privacy' | null>(null);
+  const legalQuery = useQuery({
+    queryKey: ['legal', 'documents'],
+    queryFn: getLegalDocuments,
+    staleTime: 5 * 60_000,
+  });
+  const legalDocs = legalQuery.data;
+  const termsDoc = legalDocs?.documents.find((d) => d.kind === 'TERMS_OF_SERVICE');
+  const privacyDoc = legalDocs?.documents.find((d) => d.kind === 'PRIVACY_NOTICE');
+  const legalReady = !!termsDoc && !!privacyDoc && legalDocs?.acceptanceOpen === true;
+  const consentCopy = SIGNUP_CONSENT_COPY[lang === 'ar' ? 'ar' : 'en'];
+
+  useEffect(() => {
+    if (step < 3) writeSignupDraft({ step, name, email });
+  }, [step, name, email]);
   const [isLoading, setIsLoading] = useState(false);
   const [signUpError, setSignUpError] = useState<string | undefined>();
   const [dialCodeTouched, setDialCodeTouched] = useState(false);
@@ -630,7 +715,7 @@ export function SignUpScreen({
   // Registration persists names/email/password only. Do not require a phone
   // number that the current account contract does not accept or save.
   const canStep1 = name.trim().length > 2;
-  const canStep2 = email.includes('@') && password.length >= 12 && agreed;
+  const canStep2 = email.includes('@') && password.length >= 12 && agreed && legalReady;
 
   const goNext = async () => {
     if (requestFlight.current) return;
@@ -643,11 +728,36 @@ export function SignUpScreen({
       setIsLoading(true);
       setSignUpError(undefined);
       try {
-        const issued = await onCredentialsSubmit({ name, email: email.trim(), password });
+        if (!termsDoc || !privacyDoc) return;
+        const issued = await onCredentialsSubmit({
+          name,
+          email: email.trim(),
+          password,
+          legalAcceptance: {
+            termsVersion: termsDoc.version,
+            privacyVersion: privacyDoc.version,
+            locale: lang === 'ar' ? 'ar' : 'en',
+          },
+        });
+        clearSignupDraft();
         setChallenge(issued);
         setStep(3);
       } catch (err: unknown) {
-        setSignUpError(lang === 'ar' ? 'تعذر تأكيد التسجيل. تحقق من البيانات وحاول مجدداً.' : registrationErrorMessage(err));
+        if (legalRefusalReason(err) === 'LEGAL_VERSION_STALE') {
+          // The policy changed while the form was open: the box is cleared
+          // so the person accepts the version they can now read.
+          setAgreed(false);
+          void legalQuery.refetch();
+          setSignUpError(consentCopy.stale);
+        } else if (legalRefusalReason(err) === 'LEGAL_ACCEPTANCE_CLOSED') {
+          setSignUpError(consentCopy.closed);
+        } else {
+          setSignUpError(
+            lang === 'ar'
+              ? 'تعذر تأكيد التسجيل. تحقق من البيانات وحاول مجدداً.'
+              : registrationErrorMessage(err),
+          );
+        }
       } finally {
         requestFlight.current = false;
         setIsLoading(false);
@@ -682,7 +792,11 @@ export function SignUpScreen({
     setOtpError(undefined);
     try {
       await onOtpResend(challenge.challengeId);
-      setResendNotice(lang === 'ar' ? 'تم استلام الطلب. تحقق من بريدك واستخدم أحدث رمز يصلك.' : 'Request received. Check your inbox and use the most recent code.');
+      setResendNotice(
+        lang === 'ar'
+          ? 'تم استلام الطلب. تحقق من بريدك واستخدم أحدث رمز يصلك.'
+          : 'Request received. Check your inbox and use the most recent code.',
+      );
     } catch (err: unknown) {
       setOtpError(otpErrorMessage(err, 'resend'));
     } finally {
@@ -821,7 +935,11 @@ export function SignUpScreen({
                       value={localNumber}
                       onChange={setLocalNumber}
                       leadingIcon={<Phone size={16} />}
-                      hint={lang === 'ar' ? 'اختياري، لا يُحفظ في خطوة التسجيل.' : 'Optional; not saved during registration.'}
+                      hint={
+                        lang === 'ar'
+                          ? 'اختياري، لا يُحفظ في خطوة التسجيل.'
+                          : 'Optional; not saved during registration.'
+                      }
                     />
                   </div>
                 </div>
@@ -870,7 +988,7 @@ export function SignUpScreen({
                 <TextField
                   label={t('password')}
                   type={showPw ? 'text' : 'password'}
-                autoComplete="new-password"
+                  autoComplete="new-password"
                   value={password}
                   onChange={setPassword}
                   leadingIcon={<Lock size={16} />}
@@ -879,52 +997,95 @@ export function SignUpScreen({
                     <button
                       type="button"
                       onClick={() => setShowPw((v) => !v)}
-                      className="flex items-center justify-center w-5 h-5"
+                      aria-label={consentCopy.showPassword}
+                      aria-pressed={showPw}
+                      className="flex items-center justify-center w-11 h-11 -me-3 rounded-xl focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
                     >
-                      {showPw ? <EyeOff size={16} /> : <Eye size={16} />}
+                      {showPw ? (
+                        <EyeOff size={18} aria-hidden="true" />
+                      ) : (
+                        <Eye size={18} aria-hidden="true" />
+                      )}
                     </button>
                   }
                 />
                 <PasswordStrength password={password} />
               </div>
 
-              <button
-                onClick={() => setAgreed((v) => !v)}
-                className="flex items-start gap-3 text-start active:opacity-80 transition-opacity"
-              >
-                <div
-                  className={`w-5 h-5 rounded-md border-2 flex-shrink-0 flex items-center justify-center mt-0.5 transition-all ${
-                    agreed
-                      ? `${experience.classes.accentBg} ${experience.classes.accentBorder}`
-                      : 'border-slate-300 bg-white'
-                  }`}
-                >
-                  {agreed && (
-                    <svg
-                      width="10"
-                      height="10"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="white"
-                      strokeWidth="3.5"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    >
-                      <polyline points="20 6 9 17 4 12" />
-                    </svg>
-                  )}
+              <div className="flex flex-col gap-2" data-testid="signup-consent">
+                <div className="flex items-start gap-3">
+                  <input
+                    id="signup-consent"
+                    type="checkbox"
+                    checked={agreed}
+                    onChange={(event) => setAgreed(event.target.checked)}
+                    disabled={!legalReady}
+                    aria-describedby="signup-consent-links"
+                    className="mt-0.5 h-6 w-6 shrink-0 cursor-pointer accent-blue-600 disabled:cursor-not-allowed"
+                  />
+                  <label
+                    htmlFor="signup-consent"
+                    className="cursor-pointer text-slate-700"
+                    style={{ fontSize: '15px', lineHeight: '1.5' }}
+                  >
+                    {consentCopy.statement}
+                  </label>
                 </div>
-                <p className="text-slate-500" style={{ fontSize: '13px', lineHeight: '1.5' }}>
-                  {t('agreeTerms')}{' '}
-                  <span className={`${experience.classes.accentText} font-semibold`}>
-                    {t('termsConditions')}
-                  </span>{' '}
-                  {t('andWord')}{' '}
-                  <span className={`${experience.classes.accentText} font-semibold`}>
-                    {t('privacyPolicy')}
-                  </span>
+                <p
+                  id="signup-consent-links"
+                  className="flex flex-wrap gap-x-4 ps-9"
+                  style={{ fontSize: '15px' }}
+                >
+                  {(['terms', 'privacy'] as const).map((id) => (
+                    <a
+                      key={id}
+                      href={id === 'terms' ? '/legal/terms' : '/legal/privacy'}
+                      onClick={(event) => {
+                        // A plain click reads the policy in place; a
+                        // modified or middle click opens the real page.
+                        if (
+                          event.metaKey ||
+                          event.ctrlKey ||
+                          event.shiftKey ||
+                          event.altKey ||
+                          event.button !== 0
+                        )
+                          return;
+                        event.preventDefault();
+                        setPolicyOpen(id);
+                      }}
+                      className={`inline-flex min-h-11 items-center underline underline-offset-2 font-semibold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 ${experience.classes.accentText}`}
+                    >
+                      {id === 'terms' ? consentCopy.readTerms : consentCopy.readPrivacy}
+                    </a>
+                  ))}
                 </p>
-              </button>
+                {legalQuery.isPending ? (
+                  <p className="ps-9 text-slate-500" style={{ fontSize: '14px' }} role="status">
+                    {consentCopy.loading}
+                  </p>
+                ) : legalQuery.isError ? (
+                  <p className="ps-9 text-red-600" style={{ fontSize: '14px' }} role="alert">
+                    {consentCopy.loadFailed}{' '}
+                    <button
+                      type="button"
+                      onClick={() => void legalQuery.refetch()}
+                      className="inline-flex min-h-11 items-center underline font-semibold"
+                    >
+                      {consentCopy.retry}
+                    </button>
+                  </p>
+                ) : legalDocs && !legalDocs.acceptanceOpen ? (
+                  <p className="ps-9 text-amber-800" style={{ fontSize: '14px' }} role="status">
+                    {consentCopy.closed}
+                  </p>
+                ) : null}
+              </div>
+              <PolicyDialog
+                id={policyOpen}
+                lang={lang === 'ar' ? 'ar' : 'en'}
+                onClose={() => setPolicyOpen(null)}
+              />
             </div>
           )}
 
@@ -940,8 +1101,12 @@ export function SignUpScreen({
               verifyError={otpError}
               resendNotice={resendNotice}
               experience={experience}
-              onRestart={() => onRecoverVerification ? onRecoverVerification(email.trim()) : onBack()}
-              restartLabel={lang === 'ar' ? 'طلب رابط تحقق بدلاً من الرمز' : 'Use a verification link instead'}
+              onRestart={() =>
+                onRecoverVerification ? onRecoverVerification(email.trim()) : onBack()
+              }
+              restartLabel={
+                lang === 'ar' ? 'طلب رابط تحقق بدلاً من الرمز' : 'Use a verification link instead'
+              }
             />
           )}
 
@@ -953,7 +1118,11 @@ export function SignUpScreen({
         {step !== 3 && (
           <div className="bg-white border-t border-slate-100 px-6 py-4 shadow-[0_-4px_20px_rgba(0,0,0,0.06)]">
             {signUpError && (
-              <p role="alert" className="text-red-500 text-center mb-2" style={{ fontSize: '13px' }}>
+              <p
+                role="alert"
+                className="text-red-500 text-center mb-2"
+                style={{ fontSize: '13px' }}
+              >
                 {signUpError}
               </p>
             )}
@@ -1022,7 +1191,11 @@ export function ForgotPasswordScreen({
       await onSubmit(email.trim());
       setSubmitted(true);
     } catch (err: unknown) {
-      setError(lang === 'ar' ? 'تعذر تأكيد الطلب. حاول مجدداً بعد قليل.' : recoveryRequestErrorMessage(err));
+      setError(
+        lang === 'ar'
+          ? 'تعذر تأكيد الطلب. حاول مجدداً بعد قليل.'
+          : recoveryRequestErrorMessage(err),
+      );
     } finally {
       requestFlight.current = false;
       setIsLoading(false);
@@ -1054,7 +1227,9 @@ export function ForgotPasswordScreen({
                 className="text-slate-400 mb-2 max-w-[260px]"
                 style={{ fontSize: '14px', lineHeight: '1.6' }}
               >
-                {lang === 'ar' ? 'تم استلام الطلب. إذا كان الحساب مؤهلاً فستصلك تعليمات الاستعادة.' : 'Request received. If the account is eligible, check your inbox for recovery instructions.'}
+                {lang === 'ar'
+                  ? 'تم استلام الطلب. إذا كان الحساب مؤهلاً فستصلك تعليمات الاستعادة.'
+                  : 'Request received. If the account is eligible, check your inbox for recovery instructions.'}
               </p>
               <div
                 className={`inline-flex items-center gap-2 ${experience.classes.softBg} border ${experience.classes.softBorder} rounded-2xl px-4 py-2 mb-8`}
@@ -1112,7 +1287,9 @@ export function ForgotPasswordScreen({
                   label={t('emailAddress')}
                   type="email"
                   autoComplete="email"
-                  onEnter={() => { void handleSend(); }}
+                  onEnter={() => {
+                    void handleSend();
+                  }}
                   value={email}
                   onChange={setEmail}
                   leadingIcon={<Mail size={16} />}

@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { Client } from 'pg';
 import { expect, type BrowserContext } from '@playwright/test';
+import { LEGAL_ACCEPTANCE } from './legal-acceptance';
 
 import {
   api,
@@ -42,7 +43,13 @@ export async function registerSeeker(tag: string): Promise<Seeker> {
   const password = `${tag.toUpperCase()}-${randomUUID()}-Aa1!`;
   const registered = await api<{ challengeId: string }>(jar, '/v1/auth/register', {
     method: 'POST',
-    body: { email, password, firstName: 'Rami', lastName: 'Seeker' },
+    body: {
+      email,
+      password,
+      firstName: 'Rami',
+      lastName: 'Seeker',
+      legalAcceptance: LEGAL_ACCEPTANCE,
+    },
   });
   expect(registered.status, 'seeker registration should succeed').toBeLessThan(400);
   const verified = await api(jar, '/v1/auth/verify-otp', {

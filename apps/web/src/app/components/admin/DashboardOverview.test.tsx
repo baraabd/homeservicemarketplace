@@ -43,21 +43,28 @@ const OVERVIEW = {
     undatedCompletions: 0,
   },
   revenue: {
-    grossWithinRange: 8_400_00, // $8,400 in cents-equivalent
+    grossWithinRange: 8_400_00, // K02: SAR 8,400.00 in halalas
     platformFeesWithinRange: null,
     netProviderEarningsWithinRange: null,
     grossLifetime: 21_000_00,
   },
   revenueByCurrency: [
     {
-      currency: 'USD',
+      currency: 'SAR',
+      amountScale: 2,
       bookedValueLifetime: 21_000_00,
       completedLifetime: 40,
       bookedValueWithinRange: 8_400_00,
       completedWithinRange: 19,
     },
   ],
-  currency: 'USD',
+  excludedAmounts: [] as Array<{
+    currency: string;
+    reason: string;
+    completedCount: number;
+    inFlightCount: number;
+  }>,
+  currency: 'SAR',
   platformFeeRateBps: null,
   feeStatus: 'NOT_APPROVED',
   generatedAt: '2026-05-02T00:00:00.000Z',
@@ -65,7 +72,7 @@ const OVERVIEW = {
 
 const REVENUE = {
   range: { from: '2026-04-01', to: '2026-04-30' },
-  currency: 'USD',
+  currency: 'SAR',
   platformFeeRateBps: null,
   feeStatus: 'NOT_APPROVED',
   buckets: [
@@ -79,7 +86,8 @@ const REVENUE = {
   ],
   series: [
     {
-      currency: 'USD',
+      currency: 'SAR',
+      amountScale: 2,
       buckets: [{ date: '2026-04-15', bookedValue: 4_500_00, completedBookings: 1 }],
     },
   ],
@@ -92,14 +100,17 @@ const MIXED = {
   revenue: { ...OVERVIEW.revenue, grossWithinRange: null, grossLifetime: null },
   revenueByCurrency: [
     {
-      currency: 'EUR',
+      // A hypothetical second approved currency: K02 still shows it apart.
+      currency: 'AED',
+      amountScale: 2,
       bookedValueLifetime: 700_00,
       completedLifetime: 1,
       bookedValueWithinRange: 700_00,
       completedWithinRange: 1,
     },
     {
-      currency: 'USD',
+      currency: 'SAR',
+      amountScale: 2,
       bookedValueLifetime: 1_500_00,
       completedLifetime: 2,
       bookedValueWithinRange: 1_500_00,
@@ -160,8 +171,8 @@ describe('AdminDashboard — DashboardOverview (Sprint 6.4)', () => {
     renderAdmin();
 
     const inRange = await screen.findByTestId('kpi-value-in-range');
-    await waitFor(() => expect(inRange).toHaveTextContent('€700'));
-    expect(inRange).toHaveTextContent('$1,500');
+    await waitFor(() => expect(inRange).toHaveTextContent(/AED\s700\.00/));
+    expect(inRange).toHaveTextContent(/SAR\s1,500\.00/);
     // 700 + 1500 must never appear as one number.
     expect(document.body.textContent).not.toMatch(/2,200/);
     expect(screen.getByTestId('analytics-value-note')).toHaveTextContent(/2 completed booking/);
@@ -188,9 +199,14 @@ describe('AdminDashboard — DashboardOverview (Sprint 6.4)', () => {
     // Scope each assertion to its labelled analytics card. In particular, the
     // approval guide's second step must never satisfy the open-disputes KPI.
     await waitFor(() =>
-      expect(kpi('Completed booking value (lifetime)').getByText('$21,000')).toBeInTheDocument(),
+      expect(
+        kpi('Completed booking value (lifetime)').getByText(/^SAR\s21,000\.00$/),
+      ).toBeInTheDocument(),
     );
-    expect(kpi('Completed booking value (in range)').getByText('$8,400')).toBeInTheDocument();
+    expect(
+      kpi('Completed booking value (in range)').getByText(/^SAR\s8,400\.00$/),
+    ).toBeInTheDocument();
+    expect(document.body.textContent).not.toMatch(/\$/);
     expect(kpi('Users').getByText('142')).toBeInTheDocument();
     expect(kpi('Providers').getByText('27')).toBeInTheDocument();
     expect(kpi('Bookings completed').getByText('19')).toBeInTheDocument();
@@ -228,12 +244,35 @@ describe('AdminDashboard — DashboardOverview (Sprint 6.4)', () => {
 
     renderAdmin();
     await waitFor(() =>
-      expect(kpi('Completed booking value (lifetime)').getByText('$21,000')).toBeInTheDocument(),
+      expect(
+        kpi('Completed booking value (lifetime)').getByText(/^SAR\s21,000\.00$/),
+      ).toBeInTheDocument(),
     );
     const dom = document.body.textContent ?? '';
     expect(dom).not.toContain('passwordHash');
     expect(dom).not.toContain('STRIPE_SECRET');
     expect(dom).not.toContain('JWT_SECRET');
+  });
+});
+
+describe('AdminDashboard — K02 exclusions', () => {
+  it('counts legacy-unit and hourly bookings instead of summing them', async () => {
+    mock.onGet('/v1/auth/me').reply(200, ADMIN_ME);
+    mock.onGet('/v1/admin/analytics/overview').reply(200, {
+      ...OVERVIEW,
+      excludedAmounts: [
+        { currency: 'USD', reason: 'LEGACY_UNVERIFIED', completedCount: 5, inFlightCount: 1 },
+        { currency: 'SAR', reason: 'HOURLY_RATE', completedCount: 2, inFlightCount: 0 },
+      ],
+    });
+    mock.onGet('/v1/admin/analytics/revenue').reply(200, REVENUE);
+    renderAdmin();
+    expect(await screen.findByTestId('analytics-excluded-note')).toHaveTextContent(
+      'Excluded from these values: 6 booking(s) with an unverified legacy amount and 2 hourly-rate booking(s).',
+    );
+    expect(
+      kpi('Completed booking value (lifetime)').getByText(/^SAR\s21,000\.00$/),
+    ).toBeInTheDocument();
   });
 });
 

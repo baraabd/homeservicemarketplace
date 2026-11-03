@@ -127,6 +127,8 @@ export default defineConfig({
       ? []
       : [
           '**/r33-financial-operations/financial-operations.real-api.spec.ts',
+          // K02 — needs the real API, mail catcher and a read-only DB URL.
+          '**/k02-saudi-launch.real-api.spec.ts',
           '**/auth-cookies.spec.ts',
           '**/provider-onboarding-v2-real-api.spec.ts',
           '**/provider-onboarding-repairs.real-api.spec.ts',

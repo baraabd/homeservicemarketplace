@@ -1,6 +1,7 @@
 import { readOtpFromMailbox } from './otp-mailbox';
 import type { Page } from '@playwright/test';
 import { expect } from '@playwright/test';
+import { LEGAL_ACCEPTANCE } from './legal-acceptance';
 
 // Sprint 9B.27 — the real-stack harness for Provider Onboarding V2.
 //
@@ -144,13 +145,25 @@ export async function registerProvider(): Promise<Account> {
   let email = freshEmail();
   let registered = await api<{ challengeId: string }>(jar, '/v1/auth/register', {
     method: 'POST',
-    body: { email, password: PASSWORD, firstName: 'Pat', lastName: 'Provider' },
+    body: {
+      email,
+      password: PASSWORD,
+      firstName: 'Pat',
+      lastName: 'Provider',
+      legalAcceptance: LEGAL_ACCEPTANCE,
+    },
   });
   if (registered.status >= 500) {
     email = freshEmail();
     registered = await api<{ challengeId: string }>(jar, '/v1/auth/register', {
       method: 'POST',
-      body: { email, password: PASSWORD, firstName: 'Pat', lastName: 'Provider' },
+      body: {
+        email,
+        password: PASSWORD,
+        firstName: 'Pat',
+        lastName: 'Provider',
+        legalAcceptance: LEGAL_ACCEPTANCE,
+      },
     });
   }
   expect(registered.status, 'register should be accepted').toBeLessThan(400);

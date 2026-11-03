@@ -96,6 +96,8 @@ function RootInner() {
   const navigation = useNavigation();
   const isHome = location.pathname.startsWith('/home');
   const isSelect = location.pathname === '/select';
+  // K02 — public policy pages read on a full-width, readable column.
+  const isLegal = location.pathname.startsWith('/legal/');
   const isProvider = location.pathname.startsWith('/provider');
   const isLoading = navigation.state === 'loading';
 
@@ -186,6 +188,16 @@ function RootInner() {
           closeButton
           toastOptions={{ className: 'hsm-toast hsm-toast--provider' }}
         />
+      </div>
+    );
+  }
+
+  // ── Public legal pages: full-screen, no phone shell (K02) ─────────────────
+  if (isLegal) {
+    return (
+      <div className={darkMode ? 'dark' : undefined} style={{ fontFamily }} dir={dir}>
+        <AuthSessionNotice />
+        <Outlet context={ctx} />
       </div>
     );
   }

@@ -3,6 +3,7 @@ import { Client } from 'pg';
 import { expect, test, type BrowserContext, type Page } from '@playwright/test';
 
 import { seedLanguage } from './fixtures';
+import { LEGAL_ACCEPTANCE } from './legal-acceptance';
 import {
   api,
   newJar,
@@ -21,7 +22,13 @@ async function registerSeeker(): Promise<Account> {
   const password = `R07-${randomUUID()}-Aa1!`;
   const registered = await api<{ challengeId: string }>(jar, '/v1/auth/register', {
     method: 'POST',
-    body: { email, password, firstName: 'R07', lastName: 'Seeker' },
+    body: {
+      email,
+      password,
+      firstName: 'R07',
+      lastName: 'Seeker',
+      legalAcceptance: LEGAL_ACCEPTANCE,
+    },
   });
   expect(registered.status, 'R07 seeker registration should succeed').toBeLessThan(400);
   const verified = await api(jar, '/v1/auth/verify-otp', {
