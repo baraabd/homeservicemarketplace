@@ -57,20 +57,31 @@ function BackChevron() {
 
 // ─── Shared top bar ───────────────────────────────────────────────────────────
 function AuthTopBar({ title, onBack }: { title: string; onBack: () => void }) {
+  const { lang } = useLang();
+  // K02 — at 200% zoom the language control wraps onto its own row instead
+  // of being pushed off-screen, and the title keeps whole words; the back
+  // control is named and 44px.
   return (
-    <div className="sticky top-0 z-20 bg-white/96 backdrop-blur-md flex items-center justify-between gap-3 px-4 py-3.5 border-b border-slate-100 shadow-sm">
-      <div className="flex items-center gap-3">
+    <div className="sticky top-0 z-20 bg-white/96 backdrop-blur-md flex flex-wrap items-center justify-between gap-3 px-4 py-3.5 border-b border-slate-100 shadow-sm">
+      <div className="flex min-w-[8rem] flex-1 items-center gap-3">
         <button
+          type="button"
           onClick={onBack}
-          className="w-9 h-9 rounded-xl bg-slate-50 border border-slate-200 flex items-center justify-center active:scale-90 transition-all flex-shrink-0"
+          aria-label={lang === 'ar' ? 'رجوع' : 'Back'}
+          className="w-11 h-11 rounded-xl bg-slate-50 border border-slate-200 flex items-center justify-center active:scale-90 transition-all flex-shrink-0 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
         >
           <BackChevron />
         </button>
-        <h2 className="text-slate-900" style={{ fontSize: '16px', fontWeight: 700 }}>
+        <h2
+          className="min-w-0 text-slate-900"
+          style={{ fontSize: '16px', fontWeight: 700, overflowWrap: 'break-word' }}
+        >
           {title}
         </h2>
       </div>
-      <LangToggle />
+      <div className="shrink-0">
+        <LangToggle />
+      </div>
     </div>
   );
 }
@@ -840,7 +851,7 @@ export function SignUpScreen({
           {/* Step indicator */}
           <div className="flex items-center gap-2 mb-6">
             {stepLabels.map((label, i) => (
-              <div key={label} className="flex items-center gap-2 flex-1">
+              <div key={label} className="flex min-w-0 items-center gap-2 flex-1">
                 <div
                   className={`flex items-center justify-center w-7 h-7 rounded-full flex-shrink-0 transition-all ${
                     i + 1 < step

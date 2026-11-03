@@ -195,6 +195,10 @@ test('V02 200% zoom: legal page and signup stay usable at 390 CSS px', async ({ 
   await page.goto('/signup');
   await expect(page.locator('input').first()).toBeVisible();
   await noHorizontalOverflow(page);
+  // The language control stays fully inside the viewport at 200%.
+  const toggle = (await page.getByTestId('lang-toggle').boundingBox())!;
+  expect(toggle.x + toggle.width).toBeLessThanOrEqual(195);
+  expect(toggle.x).toBeGreaterThanOrEqual(0);
   await shot(page, 'zoom200-signup-en');
   await context.close();
 });
