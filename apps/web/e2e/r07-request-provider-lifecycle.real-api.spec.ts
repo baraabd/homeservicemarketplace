@@ -334,4 +334,191 @@ test.describe('R07 request-to-provider lifecycle — real browsers, API and Post
       idempotencyKey: sent.idempotencyKey,
     });
   });
+
+  // K04 — one customer and two providers through the real guarded routes.
+  //
+  // The race itself is pinned with barriers in r07-marketplace-races; this
+  // proves the same rule at the HTTP boundary the customer actually uses: an
+  // accepted request can no longer be edited, the refusal is a safe 409 that
+  // changes nothing, and seeker, provider and database agree on the booking.
+  test('K04: two providers bid, one is booked, and the booked request is frozen for every actor', async () => {
+    const seeker = await registerSeeker();
+    const stranger = await registerSeeker();
+    const address = await api<{ id: string }>(seeker.jar, '/v1/me/addresses', {
+      method: 'POST',
+      body: {
+        label: 'K04 Home',
+        type: 'HOME',
+        line1: '4 Lifecycle Street',
+        city: 'Aleppo',
+        country: 'Syria',
+        isDefault: true,
+      },
+    });
+    expect(address.status).toBeLessThan(300);
+
+    const categoryId = await withDb(async (db) => {
+      const result = await db.query<{ id: string }>(
+        `SELECT id FROM "ServiceCategory" WHERE "isActive" AND "isLeaf" ORDER BY id LIMIT 1`,
+      );
+      return result.rows[0]?.id;
+    });
+    expect(categoryId, 'a seeded active leaf category is required').toBeTruthy();
+
+    const scheduledAt = new Date(Date.now() + 48 * 3_600_000).toISOString();
+    const created = await api<{ id: string; scheduledAt: string; description: string }>(
+      seeker.jar,
+      '/v1/me/requests',
+      {
+        method: 'POST',
+        body: {
+          categoryId,
+          description: 'K04 original description',
+          scheduleType: 'LATER',
+          scheduledAt,
+          addressId: address.body.id,
+          idempotencyKey: randomUUID(),
+        },
+      },
+    );
+    expect(created.status, JSON.stringify(created.body)).toBe(201);
+    const requestId = created.body.id;
+
+    const first = await registerProvider();
+    const second = await registerProvider();
+    await makeWorkingProvider(first, categoryId!, 'Aleppo', 'aleppo');
+    await makeWorkingProvider(second, categoryId!, 'Aleppo', 'aleppo');
+
+    const offer = (account: Account, amount: number) =>
+      api<BidResponse>(account.jar, '/v1/provider/bids', {
+        method: 'POST',
+        body: { requestId, amount, pricingType: 'FIXED', note: 'K04 offer' },
+      });
+    const offerA = await offer(first, 12_500);
+    const offerB = await offer(second, 9_000);
+    expect(offerA.status, JSON.stringify(offerA.body)).toBe(201);
+    expect(offerB.status, JSON.stringify(offerB.body)).toBe(201);
+
+    // Comparison: the seeker sees both offers on their own request.
+    const compared = await api<{ items: Array<{ id: string; status: string }> }>(
+      seeker.jar,
+      `/v1/me/requests/${requestId}/bids`,
+    );
+    expect(compared.status).toBe(200);
+    expect(compared.body.items.map((b) => b.id).sort()).toEqual(
+      [offerA.body.bid.id, offerB.body.bid.id].sort(),
+    );
+
+    // While open, the owner may edit.
+    const openEdit = await api<{ description: string }>(
+      seeker.jar,
+      `/v1/me/requests/${requestId}`,
+      {
+        method: 'PATCH',
+        body: { description: 'K04 edited while open' },
+      },
+    );
+    expect(openEdit.status, JSON.stringify(openEdit.body)).toBe(200);
+    expect(openEdit.body.description).toBe('K04 edited while open');
+
+    const accepted = await api<AcceptResponse>(
+      seeker.jar,
+      `/v1/me/requests/${requestId}/bids/${offerA.body.bid.id}/accept`,
+      { method: 'POST' },
+    );
+    expect(accepted.status, JSON.stringify(accepted.body)).toBe(200);
+    const bookingId = accepted.body.booking.id;
+
+    // A second acceptance (lost response retried, or the other offer) is refused.
+    const again = await api(
+      seeker.jar,
+      `/v1/me/requests/${requestId}/bids/${offerB.body.bid.id}/accept`,
+      { method: 'POST' },
+    );
+    expect(again.status).toBe(409);
+
+    // The booked request is frozen: the owner's edit is a safe conflict.
+    const lateEdit = await api<Record<string, unknown>>(
+      seeker.jar,
+      `/v1/me/requests/${requestId}`,
+      {
+        method: 'PATCH',
+        body: {
+          description: 'K04 edit after booking',
+          scheduledAt: new Date(Date.now() + 96 * 3_600_000).toISOString(),
+        },
+      },
+    );
+    expect(lateEdit.status).toBe(409);
+    const leaked = JSON.stringify(lateEdit.body);
+    expect(leaked).not.toMatch(/prisma|P20\d\d|stack|SELECT|FOR UPDATE/i);
+
+    // Another customer cannot touch, or learn about, this request or booking.
+    for (const [method, path, body] of [
+      ['PATCH', `/v1/me/requests/${requestId}`, { description: 'hijack' }],
+      ['POST', `/v1/me/requests/${requestId}/cancel`, undefined],
+      ['GET', `/v1/me/requests/${requestId}/bids`, undefined],
+      ['GET', `/v1/me/bookings/${bookingId}`, undefined],
+    ] as const) {
+      const attempt = await api(stranger.jar, path, { method, body });
+      expect(attempt.status, `${method} ${path}`).toBe(404);
+    }
+    // The provider who was not booked cannot open the booking.
+    const rivalRead = await api(second.jar, `/v1/provider/bookings/${bookingId}`);
+    expect(rivalRead.status).toBe(404);
+
+    // Seeker, booked provider and the database agree on what was booked.
+    const seekerView = await api<{
+      status: string;
+      priceAmount: number;
+      currency: string;
+      scheduledAt: string | null;
+    }>(seeker.jar, `/v1/me/bookings/${bookingId}`);
+    const providerView = await api<{
+      status: string;
+      priceAmount: number;
+      currency: string;
+      scheduledAt: string | null;
+    }>(first.jar, `/v1/provider/bookings/${bookingId}`);
+    expect(seekerView.status).toBe(200);
+    expect(providerView.status).toBe(200);
+    for (const key of ['status', 'priceAmount', 'currency', 'scheduledAt'] as const) {
+      expect(providerView.body[key], key).toEqual(seekerView.body[key]);
+    }
+
+    const durable = await withDb(async (db) => {
+      const result = await db.query<{
+        requestStatus: string;
+        description: string;
+        sameTime: boolean;
+        bookingAtUtc: string | null;
+        priceAmount: number;
+        currency: string;
+        rivalStatus: string;
+      }>(
+        // Compared and rendered in SQL: the columns are timestamp without time
+        // zone holding UTC, and node-pg would parse them in the host's zone.
+        `SELECT r.status AS "requestStatus", r.description,
+                r."scheduledAt" IS NOT DISTINCT FROM bk."scheduledAt" AS "sameTime",
+                to_char(bk."scheduledAt", 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS "bookingAtUtc",
+                bk."priceAmount", bk.currency,
+                (SELECT status FROM "Bid" WHERE id = $3) AS "rivalStatus"
+           FROM "ServiceRequest" r
+           JOIN "Booking" bk ON bk."requestId" = r.id
+          WHERE r.id = $1 AND bk.id = $2`,
+        [requestId, bookingId, offerB.body.bid.id],
+      );
+      return result.rows[0];
+    });
+    expect(durable).toMatchObject({
+      requestStatus: 'BID_ACCEPTED',
+      description: 'K04 edited while open',
+      rivalStatus: 'REJECTED',
+      currency: seekerView.body.currency,
+    });
+    expect(Number(durable.priceAmount)).toBe(seekerView.body.priceAmount);
+    // The booked time is the request's time, and what both parties are shown.
+    expect(durable.sameTime).toBe(true);
+    expect(durable.bookingAtUtc).toBe(seekerView.body.scheduledAt);
+  });
 });
