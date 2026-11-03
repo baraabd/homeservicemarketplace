@@ -38,6 +38,12 @@ d('R07 — marketplace races and delivery recovery (real Postgres, real outbox w
   let seekerBookings: any;
   let providerBookings: any;
   let makeWorker: (over?: { failBatchTimes?: number }) => { runOnce: () => Promise<number> };
+  // K04 — the same services over repositories a test may wrap, so a barrier
+  // can stop one transaction at an exact step while a rival runs.
+  let lifecycle: (wrap?: { requestRepo?: (r: any) => any; bidRepo?: (b: any) => any }) => {
+    requests: any;
+    seekerBids: any;
+  };
 
   const P = fixturePrefix('r07-races');
   const SEEKER = `${P}seeker`;
@@ -282,6 +288,32 @@ d('R07 — marketplace races and delivery recovery (real Postgres, real outbox w
       realtime,
       capabilities,
     );
+    lifecycle = (wrap = {}) => {
+      const reqRepo = wrap.requestRepo ? wrap.requestRepo(requestRepo) : requestRepo;
+      const bRepo = wrap.bidRepo ? wrap.bidRepo(bidRepo) : bidRepo;
+      return {
+        requests: new RequestsService(
+          reqRepo,
+          requestEvents,
+          new AddressRepository(prismaSvc),
+          categoryRepo,
+          tx,
+          outbox,
+          new RequestMediaService(prismaSvc, config, throwingStorage),
+        ),
+        seekerBids: new BidsService(
+          bRepo,
+          reqRepo,
+          bookingRepo,
+          requestEvents,
+          bookingEvents,
+          notifications,
+          tx,
+          realtime,
+          capabilities,
+        ),
+      };
+    };
     feed = new AvailableRequestsService(providerRepo, requestRepo, bidRepo, categoryRepo);
     seekerBookings = new BookingsService(bookingRepo, bookingEvents, notifications, tx, realtime);
     providerBookings = new ProviderBookingsService(
@@ -792,6 +824,292 @@ d('R07 — marketplace races and delivery recovery (real Postgres, real outbox w
         seekerUserId: SEEKER,
         providerId: ELIGIBLE.profile,
         priceAmount: 12_500,
+      });
+    });
+  });
+
+  // ── K04: edits are serialized with the request lifecycle ────────────────
+  //
+  // The audit race: an edit reads OPEN_FOR_BIDS, an acceptance (or a
+  // cancellation) commits, then the edit writes with no expected-state
+  // predicate. The booking was made from the request as it stood, so the
+  // request it points at no longer says what was agreed.
+  //
+  // Promise.allSettled cannot pin that interleaving, so each case stops one
+  // transaction at an exact step with a barrier and lets the rival run until
+  // it has either finished or is waiting on the stopped transaction
+  // (pg_blocking_pids). The order is decided by the test, not the scheduler,
+  // and the same protocol runs whether or not the code under test locks.
+  describe('K04 — request edits against lifecycle transitions (barrier-controlled)', () => {
+    type Gate = { reached: Promise<number>; open: () => void };
+
+    /**
+     * Wrap `method` so its first call stops inside its transaction, before or
+     * after delegating, and reports that transaction's backend pid.
+     */
+    function stopAt(repo: any, method: string, when: 'before' | 'after'): [any, Gate] {
+      let signal!: (pid: number) => void;
+      let release!: () => void;
+      const reached = new Promise<number>((resolve) => (signal = resolve));
+      const released = new Promise<void>((resolve) => (release = resolve));
+      let fired = false;
+      const wrapped = new Proxy(repo, {
+        get(target, prop, receiver) {
+          const value = Reflect.get(target, prop, receiver);
+          if (typeof value !== 'function') return value;
+          if (prop !== method) return value.bind(target);
+          return async (...args: unknown[]) => {
+            if (fired) return value.apply(target, args);
+            fired = true;
+            const tx = args[args.length - 1] as any;
+            const hold = async () => {
+              const [{ pid }] = await tx.$queryRaw`SELECT pg_backend_pid() AS pid`;
+              signal(Number(pid));
+              await released;
+            };
+            if (when === 'before') {
+              await hold();
+              return value.apply(target, args);
+            }
+            const result = await value.apply(target, args);
+            await hold();
+            return result;
+          };
+        },
+      });
+      return [wrapped, { reached, open: release }];
+    }
+
+    /** Resolve once `rival` has settled or is waiting on backend `pid`. */
+    async function settledOrBlockedBy(
+      rival: Promise<unknown>,
+      pid: number,
+    ): Promise<'settled' | 'blocked'> {
+      let settled = false;
+      rival.then(
+        () => (settled = true),
+        () => (settled = true),
+      );
+      for (let i = 0; i < 500; i += 1) {
+        if (settled) return 'settled';
+        const [{ n }] = await prisma.$queryRaw`
+          SELECT count(*)::int AS n FROM pg_stat_activity
+          WHERE ${pid}::int = ANY(pg_blocking_pids(pid))`;
+        if (n > 0) return 'blocked';
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      }
+      throw new Error('the rival neither finished nor waited on the stopped transaction');
+    }
+
+    /** Services whose request (or bid) repository stops at one step. */
+    function stoppedServices(
+      side: 'requestRepo' | 'bidRepo',
+      method: string,
+      when: 'before' | 'after',
+    ): { svc: { requests: any; seekerBids: any }; gate: Gate } {
+      let gate!: Gate;
+      const svc = lifecycle({
+        [side]: (real: any) => {
+          const [wrapped, g] = stopAt(real, method, when);
+          gate = g;
+          return wrapped;
+        },
+      });
+      return { svc, gate };
+    }
+
+    const ORIGINAL = 'K04 original description';
+    const EDITED = 'K04 edited description';
+    const openLaterRequest = async () => {
+      const created = await requests.create(
+        SEEKER,
+        body({ description: ORIGINAL, scheduleType: 'LATER', scheduledAt: inHours(48) }),
+      );
+      const offer = await providerBids.submit(ELIGIBLE.user, bid(created.id));
+      return { created, offer };
+    };
+    const patch = (target: string) => ({ description: EDITED, scheduledAt: target });
+    const iso = (d: Date | string | null) => (d ? new Date(d).toISOString() : null);
+    const quiet = <T>(p: Promise<T>): Promise<T> => {
+      p.catch(() => undefined);
+      return p;
+    };
+
+    it('an edit that read the open request cannot write after an acceptance commits', async () => {
+      const { created, offer } = await openLaterRequest();
+      const target = inHours(96);
+      // The edit stops after every read it makes and before its write.
+      const { svc, gate } = stoppedServices('requestRepo', 'updateOwned', 'before');
+      const pendingEdit = quiet(svc.requests.update(SEEKER, created.id, patch(target)));
+      const editPid = await gate.reached;
+
+      const pendingAccept = quiet(seekerBids.accept(SEEKER, created.id, offer.bid.id));
+      await settledOrBlockedBy(pendingAccept, editPid);
+      gate.open();
+      const [edited, accepted] = await Promise.allSettled([pendingEdit, pendingAccept]);
+
+      expect(accepted.status).toBe('fulfilled');
+      const stored = await requestRow(created.id);
+      const booking = await prisma.booking.findFirst({ where: { requestId: created.id } });
+      expect(stored.status).toBe('BID_ACCEPTED');
+      // What was booked and what the request says must agree.
+      expect(iso(booking.scheduledAt)).toBe(iso(stored.scheduledAt));
+      if (edited.status === 'fulfilled') {
+        // The edit held the lifecycle lock, so the booking saw the edit.
+        expect(stored.description).toBe(EDITED);
+        expect(iso(booking.scheduledAt)).toBe(iso(target));
+      } else {
+        expect(edited.reason).toMatchObject({ code: 'CONFLICT', status: 409 });
+        expect(stored.description).toBe(ORIGINAL);
+      }
+    });
+
+    it('an edit arriving while an acceptance is in flight is refused once it commits', async () => {
+      const { created, offer } = await openLaterRequest();
+      // The acceptance stops after its lock and reads, before the bid flips.
+      const { svc, gate } = stoppedServices('bidRepo', 'setStatusIf', 'before');
+      const pendingAccept = quiet(svc.seekerBids.accept(SEEKER, created.id, offer.bid.id));
+      const acceptPid = await gate.reached;
+
+      const pendingEdit = quiet(requests.update(SEEKER, created.id, patch(inHours(96))));
+      await settledOrBlockedBy(pendingEdit, acceptPid);
+      gate.open();
+      const [accepted, edited] = await Promise.allSettled([pendingAccept, pendingEdit]);
+
+      expect(accepted.status).toBe('fulfilled');
+      expect(edited.status).toBe('rejected');
+      expect((edited as PromiseRejectedResult).reason).toMatchObject({
+        code: 'CONFLICT',
+        status: 409,
+      });
+      const stored = await requestRow(created.id);
+      const booking = await prisma.booking.findFirst({ where: { requestId: created.id } });
+      expect(stored).toMatchObject({ status: 'BID_ACCEPTED', description: ORIGINAL });
+      expect(iso(stored.scheduledAt)).toBe(created.scheduledAt);
+      expect(iso(booking.scheduledAt)).toBe(created.scheduledAt);
+      // A refused edit leaves no audit row claiming a change.
+      const updates = await prisma.serviceRequestEvent.findMany({
+        where: { requestId: created.id, type: 'REQUEST_UPDATED' },
+      });
+      expect(updates.filter((e: any) => e.metadata?.changed)).toEqual([]);
+    });
+
+    it('an edit that read the open request cannot write after a cancellation commits', async () => {
+      const { created } = await openLaterRequest();
+      const { svc, gate } = stoppedServices('requestRepo', 'updateOwned', 'before');
+      const pendingEdit = quiet(svc.requests.update(SEEKER, created.id, patch(inHours(96))));
+      const editPid = await gate.reached;
+
+      const pendingCancel = quiet(requests.cancel(SEEKER, created.id));
+      await settledOrBlockedBy(pendingCancel, editPid);
+      gate.open();
+      const [edited, cancelled] = await Promise.allSettled([pendingEdit, pendingCancel]);
+
+      expect(cancelled.status).toBe('fulfilled');
+      const stored = await requestRow(created.id);
+      expect(stored.status).toBe('CANCELLED');
+      // The record the seeker was shown on cancelling is the record kept: a
+      // cancelled request is never rewritten afterwards.
+      const shown = (cancelled as PromiseFulfilledResult<any>).value;
+      expect(stored.description).toBe(shown.description);
+      expect(iso(stored.scheduledAt)).toBe(shown.scheduledAt);
+      if (edited.status === 'rejected') {
+        expect(edited.reason).toMatchObject({ code: 'CONFLICT', status: 409 });
+      }
+    });
+
+    it('an edit arriving while a cancellation is in flight is refused once it commits', async () => {
+      const { created } = await openLaterRequest();
+      // The cancellation stops after its status write, before it commits.
+      const { svc, gate } = stoppedServices('requestRepo', 'setStatusOwned', 'after');
+      const pendingCancel = quiet(svc.requests.cancel(SEEKER, created.id));
+      const cancelPid = await gate.reached;
+
+      const pendingEdit = quiet(requests.update(SEEKER, created.id, patch(inHours(96))));
+      await settledOrBlockedBy(pendingEdit, cancelPid);
+      gate.open();
+      const [cancelled, edited] = await Promise.allSettled([pendingCancel, pendingEdit]);
+
+      expect(cancelled.status).toBe('fulfilled');
+      expect(edited.status).toBe('rejected');
+      expect((edited as PromiseRejectedResult).reason).toMatchObject({
+        code: 'CONFLICT',
+        status: 409,
+      });
+      const stored = await requestRow(created.id);
+      expect(stored).toMatchObject({ status: 'CANCELLED', description: ORIGINAL });
+      expect(iso(stored.scheduledAt)).toBe(created.scheduledAt);
+    });
+
+    it('an acceptance that fails after the flips rolls back and leaves the request editable', async () => {
+      const { created, offer } = await openLaterRequest();
+      // Fail the transaction after the bid and the request have flipped.
+      const failing = lifecycle({
+        requestRepo: (real: any) =>
+          new Proxy(real, {
+            get(target, prop, receiver) {
+              const value = Reflect.get(target, prop, receiver);
+              if (typeof value !== 'function') return value;
+              if (prop !== 'setStatusOwned') return value.bind(target);
+              return async (...args: unknown[]) => {
+                await value.apply(target, args);
+                throw new Error('simulated failure after the request flipped');
+              };
+            },
+          }),
+      });
+      await expect(failing.seekerBids.accept(SEEKER, created.id, offer.bid.id)).rejects.toThrow(
+        'simulated failure',
+      );
+
+      expect((await requestRow(created.id)).status).toBe('OPEN_FOR_BIDS');
+      expect((await bidsOn(created.id))[0].status).toBe('PENDING');
+      expect(await prisma.booking.count({ where: { requestId: created.id } })).toBe(0);
+      // Nothing half-done blocks the next honest command.
+      await expect(
+        requests.update(SEEKER, created.id, { description: EDITED }),
+      ).resolves.toMatchObject({ description: EDITED });
+      await expect(seekerBids.accept(SEEKER, created.id, offer.bid.id)).resolves.toMatchObject({
+        booking: expect.objectContaining({ id: expect.any(String) }),
+      });
+    });
+
+    it('unsynchronised edits racing an acceptance never leave the booking disagreeing', async () => {
+      for (let round = 0; round < 8; round += 1) {
+        const { created, offer } = await openLaterRequest();
+        const target = inHours(120 + round);
+        const [edited] = await Promise.allSettled([
+          requests.update(SEEKER, created.id, patch(target)),
+          seekerBids.accept(SEEKER, created.id, offer.bid.id),
+        ]);
+        const stored = await requestRow(created.id);
+        const booking = await prisma.booking.findFirst({ where: { requestId: created.id } });
+        expect(stored.status).toBe('BID_ACCEPTED');
+        expect(iso(booking.scheduledAt)).toBe(iso(stored.scheduledAt));
+        if (edited.status === 'rejected') {
+          expect(edited.reason).toMatchObject({ code: 'CONFLICT', status: 409 });
+        }
+      }
+    });
+
+    it("another seeker cannot edit, cancel or reopen this seeker's request", async () => {
+      const { created } = await openLaterRequest();
+      await expect(
+        requests.update(OTHER_SEEKER, created.id, { description: 'hijack' }),
+      ).rejects.toMatchObject({ status: 404 });
+      await expect(requests.cancel(OTHER_SEEKER, created.id)).rejects.toMatchObject({
+        status: 404,
+      });
+      await expect(requests.reopen(OTHER_SEEKER, created.id)).rejects.toMatchObject({
+        status: 404,
+      });
+      // Refused exactly like an id that does not exist.
+      await expect(
+        requests.update(OTHER_SEEKER, 'no-such-request', { description: 'x' }),
+      ).rejects.toMatchObject({ status: 404 });
+      expect(await requestRow(created.id)).toMatchObject({
+        status: 'OPEN_FOR_BIDS',
+        description: ORIGINAL,
       });
     });
   });

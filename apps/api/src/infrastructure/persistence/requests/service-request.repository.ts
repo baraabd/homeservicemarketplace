@@ -407,6 +407,30 @@ export class ServiceRequestRepository {
     return rows.length === 1;
   }
 
+  // K04 — the seeker-side twin of lockForLifecycle, for the seeker's own
+  // edit / cancel / reopen commands. Same row, same lock, so a seeker command
+  // and an acceptance or bid on the request serialize in one order (request
+  // row first, everything else after).
+  //
+  // Scoped to the owner: a foreign or unknown id locks nothing and returns
+  // false, so one seeker can neither stall another seeker's transactions nor
+  // tell a foreign request from a missing one by how long the refusal took.
+  async lockOwnedForLifecycle(
+    requestId: string,
+    seekerUserId: string,
+    tx: PrismaTx,
+  ): Promise<boolean> {
+    const rows = await tx.$queryRaw<Array<{ id: string }>>`
+      SELECT "id"
+      FROM "ServiceRequest"
+      WHERE "id" = ${requestId}
+        AND "seekerUserId" = ${seekerUserId}
+        AND "deletedAt" IS NULL
+      FOR UPDATE
+    `;
+    return rows.length === 1;
+  }
+
   // Plain non-ownership-scoped finder. Used on the provider side
   // where the caller is NOT the seeker (submit-bid). Soft-deleted
   // rows are still filtered out. Callers must enforce their own
@@ -443,17 +467,24 @@ export class ServiceRequestRepository {
     });
   }
 
-  // Updates only when the row is owned and not soft-deleted; the
-  // composite where prevents cross-user mutation even if the caller
-  // passes a foreign id.
+  // Updates only when the row is owned, not soft-deleted AND still in
+  // `expectedStatus`; the composite where prevents cross-user mutation even
+  // if the caller passes a foreign id.
+  //
+  // K04 — the status predicate is the conditional write. Without it an edit
+  // that read OPEN_FOR_BIDS could land after an acceptance or cancellation
+  // committed and rewrite a request whose booking was made from the old
+  // values. Callers hold lockOwnedForLifecycle, so count 0 here means the
+  // state moved; it is reported as a conflict, never as success.
   updateOwned(
     requestId: string,
     seekerUserId: string,
     input: UpdateServiceRequestInput,
+    expectedStatus: ServiceRequestStatus,
     tx?: PrismaTx,
   ): Promise<Prisma.BatchPayload> {
     return this.db(tx).serviceRequest.updateMany({
-      where: { id: requestId, seekerUserId, deletedAt: null },
+      where: { id: requestId, seekerUserId, deletedAt: null, status: expectedStatus },
       data: {
         ...input,
         // Re-derive whenever the address changes. Editing a request's address
