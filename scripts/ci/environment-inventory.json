@@ -1,0 +1,730 @@
+{
+  "schemaVersion": 1,
+  "purpose": "K01 executable environment inventory. Verified by scripts/ci/environment-inventory.cjs; update both together.",
+  "parallelism": "Unchanged by K01: API jest and web vitest use their configured worker defaults; DB integration suites keep advisory-lock serialization for table-wide assertions.",
+  "localOnly": [
+    {
+      "suite": "apps/web startup-tests (pnpm --filter @homeservicemarketplace/web test:startup)",
+      "where": "web-startup.yml on ubuntu-latest and windows-latest; also runnable locally",
+      "notes": "Cold Vite dependency optimization can take minutes on slow Windows hosts; the dev-server readiness budget is separate from route assertions."
+    },
+    {
+      "suite": "Docker-backed gated API suites (RUN_DB_INTEGRATION etc.) on a developer host",
+      "where": "local Docker PostgreSQL/Redis/Mailpit/ClamAV containers",
+      "notes": "Optional local reproduction; hosted CI is the acceptance location."
+    }
+  ],
+  "findings": [
+    "ci.yml services use axllent/mailpit:latest while other workflows pin v1.31.1 (floating tag; reproducibility).",
+    "ClamAV runs from the floating clamav/clamav:stable tag (signature freshness vs. reproducibility trade-off).",
+    "Five sprint12-* workflows are branch-scoped historical transfers and never run for develop."
+  ],
+  "workflows": {
+    "auth-lifecycle.yml": {
+      "triggers": ["pull_request", "push", "workflow_dispatch"],
+      "jobs": {
+        "acceptance": {
+          "owner": "R04 seeker auth lifecycle",
+          "location": "ubuntu-latest",
+          "executes": "GitHub-hosted: ubuntu-latest",
+          "requiredOnFinalSha": true,
+          "checkName": "R04 real browser, SMTP and Postgres",
+          "services": ["axllent/mailpit:v1.31.1", "postgres:16-alpine", "redis:7-alpine"],
+          "containers": [],
+          "composeFiles": [],
+          "gates": ["RUN_DB_INTEGRATION"]
+        }
+      }
+    },
+    "ci.yml": {
+      "triggers": ["pull_request", "push", "workflow_dispatch"],
+      "jobs": {
+        "verify": {
+          "owner": "Platform CI baseline (K01)",
+          "location": "reusable:./.github/workflows/reusable-verify.yml",
+          "executes": "reusable workflow (jobs below)",
+          "requiredOnFinalSha": false,
+          "services": [],
+          "containers": [],
+          "composeFiles": [],
+          "gates": [],
+          "notes": "Reported as \"Verify / …\" checks; required through CI gate."
+        },
+        "integration-e2e": {
+          "owner": "Platform integration (R18 baseline; R21 mail, R22 worker gates)",
+          "location": "ubuntu-latest",
+          "executes": "GitHub-hosted: ubuntu-latest",
+          "requiredOnFinalSha": false,
+          "services": ["axllent/mailpit:latest", "postgres:16-alpine", "redis:7-alpine"],
+          "containers": [],
+          "composeFiles": [],
+          "gates": ["RUN_DB_INTEGRATION", "RUN_R22_WORKER_PROCESS", "RUN_REDIS_INTEGRATION"]
+        },
+        "browser-e2e": {
+          "owner": "Web E2E (R18 baseline)",
+          "location": "ubuntu-latest",
+          "executes": "GitHub-hosted: ubuntu-latest",
+          "requiredOnFinalSha": false,
+          "services": [],
+          "containers": [],
+          "composeFiles": [],
+          "gates": []
+        },
+        "r25-realtime": {
+          "owner": "R25 realtime multi-instance",
+          "location": "ubuntu-latest",
+          "executes": "GitHub-hosted: ubuntu-latest",
+          "requiredOnFinalSha": false,
+          "services": [],
+          "containers": [],
+          "composeFiles": ["infra/production/realtime/compose.test.yml"],
+          "gates": []
+        },
+        "r31-subscriptions": {
+          "owner": "R31 subscriptions",
+          "location": "ubuntu-latest",
+          "executes": "GitHub-hosted: ubuntu-latest",
+          "requiredOnFinalSha": false,
+          "services": ["postgres:16-alpine", "redis:7-alpine"],
+          "containers": [],
+          "composeFiles": [],
+          "gates": ["RUN_DB_INTEGRATION"]
+        },
+        "phase5-visual": {
+          "owner": "Provider onboarding Phase 5",
+          "location": "ubuntu-latest",
+          "executes": "GitHub-hosted: ubuntu-latest",
+          "requiredOnFinalSha": false,
+          "services": [],
+          "containers": [],
+          "composeFiles": [],
+          "gates": []
+        },
+        "phase5-real-api": {
+          "owner": "Provider onboarding Phase 5",
+          "location": "ubuntu-latest",
+          "executes": "GitHub-hosted: ubuntu-latest",
+          "requiredOnFinalSha": false,
+          "services": ["axllent/mailpit:latest", "postgres:16-alpine", "redis:7-alpine"],
+          "containers": [],
+          "composeFiles": [],
+          "gates": []
+        },
+        "admin-review-real-api": {
+          "owner": "Admin provider review",
+          "location": "ubuntu-latest",
+          "executes": "GitHub-hosted: ubuntu-latest",
+          "requiredOnFinalSha": false,
+          "services": ["axllent/mailpit:latest", "postgres:16-alpine", "redis:7-alpine"],
+          "containers": [],
+          "composeFiles": [],
+          "gates": []
+        },
+        "browser-auth-e2e": {
+          "owner": "Auth cookie contract (R04/R26)",
+          "location": "ubuntu-latest",
+          "executes": "GitHub-hosted: ubuntu-latest",
+          "requiredOnFinalSha": false,
+          "services": ["axllent/mailpit:latest", "postgres:16-alpine", "redis:7-alpine"],
+          "containers": [],
+          "composeFiles": [],
+          "gates": []
+        },
+        "docker-image": {
+          "owner": "Platform release images (R18)",
+          "location": "ubuntu-latest",
+          "executes": "GitHub-hosted: ubuntu-latest",
+          "requiredOnFinalSha": false,
+          "services": ["postgres:16-alpine", "redis:7-alpine"],
+          "containers": [],
+          "composeFiles": [],
+          "gates": []
+        },
+        "compose-smoke": {
+          "owner": "Platform release compose (R18)",
+          "location": "ubuntu-latest",
+          "executes": "GitHub-hosted: ubuntu-latest",
+          "requiredOnFinalSha": false,
+          "services": [],
+          "containers": [],
+          "composeFiles": ["infra/docker/docker-compose.yml"],
+          "gates": []
+        },
+        "security-scan": {
+          "owner": "Security: dependency/secret/container scans (K01 audit policy)",
+          "location": "ubuntu-latest",
+          "executes": "GitHub-hosted: ubuntu-latest",
+          "requiredOnFinalSha": false,
+          "services": [],
+          "containers": [],
+          "composeFiles": [],
+          "gates": []
+        },
+        "evidence-retention": {
+          "owner": "R20 storage / evidence retention",
+          "location": "ubuntu-latest",
+          "executes": "GitHub-hosted: ubuntu-latest",
+          "requiredOnFinalSha": false,
+          "services": ["postgres:16-alpine"],
+          "containers": ["clamav/clamav:stable"],
+          "composeFiles": [],
+          "gates": [
+            "RUN_DB_INTEGRATION",
+            "RUN_R20_STORAGE_INTEGRATION",
+            "RUN_RETENTION_INTEGRATION"
+          ]
+        },
+        "dispute-workspace": {
+          "owner": "R17-C disputes",
+          "location": "ubuntu-latest",
+          "executes": "GitHub-hosted: ubuntu-latest",
+          "requiredOnFinalSha": false,
+          "services": ["postgres:16-alpine", "redis:7-alpine"],
+          "containers": ["clamav/clamav:stable"],
+          "composeFiles": [],
+          "gates": [
+            "RUN_ADMIN_BROWSER",
+            "RUN_DB_INTEGRATION",
+            "RUN_DISPUTE_BROWSER",
+            "RUN_DISPUTE_WORKER",
+            "RUN_PROVIDER_BROWSER"
+          ]
+        },
+        "r30-manual-payments": {
+          "owner": "R30 manual payments",
+          "location": "ubuntu-latest",
+          "executes": "GitHub-hosted: ubuntu-latest",
+          "requiredOnFinalSha": false,
+          "services": ["postgres:16-alpine", "redis:7-alpine"],
+          "containers": ["clamav/clamav:stable"],
+          "composeFiles": [],
+          "gates": ["RUN_DB_INTEGRATION", "RUN_R30_BROWSER", "RUN_R30_INTEGRATION"]
+        },
+        "r18-acceptance": {
+          "owner": "R18 functional completion",
+          "location": "ubuntu-latest",
+          "executes": "GitHub-hosted: ubuntu-latest",
+          "requiredOnFinalSha": false,
+          "services": [],
+          "containers": [],
+          "composeFiles": [],
+          "gates": []
+        },
+        "ci-gate": {
+          "owner": "Release coordinator",
+          "location": "ubuntu-latest",
+          "executes": "GitHub-hosted: ubuntu-latest",
+          "requiredOnFinalSha": true,
+          "checkName": "CI gate",
+          "services": [],
+          "containers": [],
+          "composeFiles": [],
+          "gates": [],
+          "notes": "Needs every ci.yml job; the single required check for the CI workflow."
+        }
+      }
+    },
+    "codeql.yml": {
+      "triggers": ["push", "pull_request", "schedule", "workflow_dispatch"],
+      "jobs": {
+        "analyze": {
+          "owner": "Security (CodeQL)",
+          "location": "ubuntu-latest",
+          "executes": "GitHub-hosted: ubuntu-latest",
+          "requiredOnFinalSha": true,
+          "checkName": "Analyze JavaScript/TypeScript",
+          "services": [],
+          "containers": [],
+          "composeFiles": [],
+          "gates": []
+        }
+      }
+    },
+    "dev-workspace-recovery.yml": {
+      "triggers": ["pull_request", "workflow_dispatch"],
+      "jobs": {
+        "recovery": {
+          "owner": "Developer workspace recovery",
+          "location": "${{ matrix.os }}",
+          "executes": "GitHub-hosted: ubuntu-latest + windows-latest matrix",
+          "requiredOnFinalSha": false,
+          "services": [],
+          "containers": [],
+          "composeFiles": [],
+          "gates": [],
+          "notes": "Path-filtered pull_request trigger: requiring it would strand unrelated PRs."
+        }
+      }
+    },
+    "observability.yml": {
+      "triggers": ["pull_request", "workflow_dispatch"],
+      "jobs": {
+        "synthetic-alert": {
+          "owner": "R23 observability",
+          "location": "ubuntu-latest",
+          "executes": "GitHub-hosted: ubuntu-latest",
+          "requiredOnFinalSha": false,
+          "services": [],
+          "containers": ["prom/alertmanager:v0.28.1", "prom/prometheus:v3.5.0"],
+          "composeFiles": ["infra/production/observability/compose.alert-test.yml"],
+          "gates": [],
+          "notes": "Path-filtered pull_request trigger: requiring it would strand unrelated PRs."
+        }
+      }
+    },
+    "production-governance.yml": {
+      "triggers": ["pull_request", "push", "workflow_dispatch"],
+      "jobs": {
+        "governance": {
+          "owner": "Post-R18 production governance",
+          "location": "ubuntu-latest",
+          "executes": "GitHub-hosted: ubuntu-latest",
+          "requiredOnFinalSha": true,
+          "checkName": "Production governance",
+          "services": [],
+          "containers": [],
+          "composeFiles": [],
+          "gates": []
+        }
+      }
+    },
+    "r26-security.yml": {
+      "triggers": ["pull_request", "push", "workflow_dispatch"],
+      "jobs": {
+        "acceptance": {
+          "owner": "R26 HTTP security and CSP",
+          "location": "ubuntu-latest",
+          "executes": "GitHub-hosted: ubuntu-latest",
+          "requiredOnFinalSha": true,
+          "checkName": "R26 cookies, authorization and enforced CSP",
+          "services": ["axllent/mailpit:v1.31.1", "postgres:16-alpine", "redis:7-alpine"],
+          "containers": [],
+          "composeFiles": [],
+          "gates": ["RUN_DB_INTEGRATION"]
+        }
+      }
+    },
+    "r27-performance.yml": {
+      "triggers": ["pull_request", "workflow_dispatch"],
+      "jobs": {
+        "measure": {
+          "owner": "R27 performance",
+          "location": "ubuntu-latest",
+          "executes": "GitHub-hosted: ubuntu-latest",
+          "requiredOnFinalSha": false,
+          "services": [],
+          "containers": [],
+          "composeFiles": ["scripts/perf/post-r18/compose.r27.yml"],
+          "gates": [],
+          "notes": "Pull-request-only measurement lane; no push trigger."
+        },
+        "acceptance": {
+          "owner": "R27 performance",
+          "location": "ubuntu-latest",
+          "executes": "GitHub-hosted: ubuntu-latest",
+          "requiredOnFinalSha": false,
+          "services": [],
+          "containers": [],
+          "composeFiles": [],
+          "gates": [],
+          "notes": "Pull-request-only measurement lane; no push trigger."
+        }
+      }
+    },
+    "reusable-verify.yml": {
+      "triggers": ["workflow_call"],
+      "jobs": {
+        "install": {
+          "owner": "Platform CI baseline (K01)",
+          "location": "ubuntu-latest",
+          "executes": "GitHub-hosted: ubuntu-latest",
+          "requiredOnFinalSha": false,
+          "services": [],
+          "containers": [],
+          "composeFiles": [],
+          "gates": [],
+          "notes": "workflow_call only; runs inside ci.yml#verify."
+        },
+        "verify-contracts": {
+          "owner": "Platform CI baseline (K01)",
+          "location": "ubuntu-latest",
+          "executes": "GitHub-hosted: ubuntu-latest",
+          "requiredOnFinalSha": false,
+          "services": [],
+          "containers": [],
+          "composeFiles": [],
+          "gates": [],
+          "notes": "workflow_call only; runs inside ci.yml#verify."
+        },
+        "verify-database": {
+          "owner": "Platform CI baseline (K01)",
+          "location": "ubuntu-latest",
+          "executes": "GitHub-hosted: ubuntu-latest",
+          "requiredOnFinalSha": false,
+          "services": [],
+          "containers": [],
+          "composeFiles": [],
+          "gates": [],
+          "notes": "workflow_call only; runs inside ci.yml#verify."
+        },
+        "verify-api": {
+          "owner": "Platform CI baseline (K01)",
+          "location": "ubuntu-latest",
+          "executes": "GitHub-hosted: ubuntu-latest",
+          "requiredOnFinalSha": false,
+          "services": [],
+          "containers": [],
+          "composeFiles": [],
+          "gates": [],
+          "notes": "workflow_call only; runs inside ci.yml#verify."
+        },
+        "verify-web": {
+          "owner": "Platform CI baseline (K01)",
+          "location": "ubuntu-latest",
+          "executes": "GitHub-hosted: ubuntu-latest",
+          "requiredOnFinalSha": false,
+          "services": [],
+          "containers": [],
+          "composeFiles": [],
+          "gates": [],
+          "notes": "workflow_call only; runs inside ci.yml#verify."
+        }
+      }
+    },
+    "sprint12-materialize-validated-source.yml": {
+      "triggers": ["push"],
+      "jobs": {
+        "materialize": {
+          "owner": "Historical Sprint 12 transfer (inactive)",
+          "location": "ubuntu-24.04",
+          "executes": "GitHub-hosted: ubuntu-24.04",
+          "requiredOnFinalSha": false,
+          "services": [],
+          "containers": [],
+          "composeFiles": [],
+          "gates": [],
+          "notes": "Fires only on chore/sprint12-readable-transfer-20260920; not part of develop acceptance."
+        }
+      }
+    },
+    "sprint12-recover-pieces.yml": {
+      "triggers": ["push"],
+      "jobs": {
+        "recover": {
+          "owner": "Historical Sprint 12 transfer (inactive)",
+          "location": "ubuntu-latest",
+          "executes": "GitHub-hosted: ubuntu-latest",
+          "requiredOnFinalSha": false,
+          "services": [],
+          "containers": [],
+          "composeFiles": [],
+          "gates": [],
+          "notes": "Fires only on chore/sprint12-readable-transfer-20260920; not part of develop acceptance."
+        }
+      }
+    },
+    "sprint12-resume-materialize.yml": {
+      "triggers": ["push"],
+      "jobs": {
+        "materialize": {
+          "owner": "Historical Sprint 12 transfer (inactive)",
+          "location": "ubuntu-24.04",
+          "executes": "GitHub-hosted: ubuntu-24.04",
+          "requiredOnFinalSha": false,
+          "services": [],
+          "containers": [],
+          "composeFiles": [],
+          "gates": [],
+          "notes": "Fires only on chore/sprint12-readable-transfer-20260920; not part of develop acceptance."
+        }
+      }
+    },
+    "sprint12-resume-source.yml": {
+      "triggers": ["push"],
+      "jobs": {
+        "source": {
+          "owner": "Historical Sprint 12 transfer (inactive)",
+          "location": "ubuntu-24.04",
+          "executes": "GitHub-hosted: ubuntu-24.04",
+          "requiredOnFinalSha": false,
+          "services": [],
+          "containers": [],
+          "composeFiles": [],
+          "gates": [],
+          "notes": "Fires only on chore/sprint12-readable-transfer-20260920; not part of develop acceptance."
+        }
+      }
+    },
+    "sprint12-validated-increment1.yml": {
+      "triggers": ["push"],
+      "jobs": {
+        "source": {
+          "owner": "Historical Sprint 12 transfer (inactive)",
+          "location": "ubuntu-24.04",
+          "executes": "GitHub-hosted: ubuntu-24.04",
+          "requiredOnFinalSha": false,
+          "services": [],
+          "containers": [],
+          "composeFiles": [],
+          "gates": [],
+          "notes": "Fires only on chore/sprint12-readable-transfer-20260920; not part of develop acceptance."
+        }
+      }
+    },
+    "staging-boundary.yml": {
+      "triggers": ["pull_request", "push", "workflow_dispatch"],
+      "jobs": {
+        "controls": {
+          "owner": "Staging release boundary",
+          "location": "${{ matrix.os }}",
+          "executes": "GitHub-hosted: ubuntu-latest + windows-latest matrix",
+          "requiredOnFinalSha": true,
+          "services": [],
+          "containers": [],
+          "composeFiles": [],
+          "gates": [],
+          "notes": "Required by .github/scripts/pr-acceptance.mjs POLICY; also aggregated by Staging boundary gate.",
+          "checkName": [
+            "Staging release controls (ubuntu-latest)",
+            "Staging release controls (windows-latest)"
+          ]
+        },
+        "images": {
+          "owner": "Staging release boundary",
+          "location": "ubuntu-latest",
+          "executes": "GitHub-hosted: ubuntu-latest",
+          "requiredOnFinalSha": true,
+          "services": [],
+          "containers": [],
+          "composeFiles": [],
+          "gates": [],
+          "notes": "Required by .github/scripts/pr-acceptance.mjs POLICY; also aggregated by Staging boundary gate.",
+          "checkName": "Staging image boundaries"
+        },
+        "gate": {
+          "owner": "Staging release boundary",
+          "location": "ubuntu-latest",
+          "executes": "GitHub-hosted: ubuntu-latest",
+          "requiredOnFinalSha": true,
+          "checkName": "Staging boundary gate",
+          "services": [],
+          "containers": [],
+          "composeFiles": [],
+          "gates": []
+        }
+      }
+    },
+    "startup-performance.yml": {
+      "triggers": ["pull_request", "push", "workflow_dispatch"],
+      "jobs": {
+        "acceptance": {
+          "owner": "Real role startup performance",
+          "location": "ubuntu-latest",
+          "executes": "GitHub-hosted: ubuntu-latest",
+          "requiredOnFinalSha": true,
+          "checkName": "Real Seeker Provider Admin startup",
+          "services": ["axllent/mailpit:v1.31.1", "postgres:16-alpine", "redis:7-alpine"],
+          "containers": [],
+          "composeFiles": [],
+          "gates": []
+        }
+      }
+    },
+    "web-startup.yml": {
+      "triggers": ["pull_request", "push", "workflow_dispatch"],
+      "jobs": {
+        "startup": {
+          "owner": "Web development startup (K01 Windows repair)",
+          "location": "${{ matrix.os }}",
+          "executes": "GitHub-hosted: ubuntu-latest + windows-latest matrix",
+          "requiredOnFinalSha": true,
+          "checkName": [
+            "Dev browser startup (ubuntu-latest)",
+            "Dev browser startup (windows-latest)"
+          ],
+          "services": [],
+          "containers": [],
+          "composeFiles": [],
+          "gates": []
+        }
+      }
+    }
+  },
+  "gates": {
+    "RUN_ADMIN_BROWSER": {
+      "owner": "R17-D admin operations",
+      "suites": ["apps/api/test/integration/r17-admin-operations-browser.integration.spec.ts"],
+      "setBy": ["ci.yml#dispute-workspace"]
+    },
+    "RUN_DB_INTEGRATION": {
+      "owner": "Platform integration (real PostgreSQL)",
+      "suites": [
+        "apps/api/test/e2e/password-reset.e2e.spec.ts",
+        "apps/api/test/integration/admin-provider-directory.integration.spec.ts",
+        "apps/api/test/integration/admin-provider-review.integration.spec.ts",
+        "apps/api/test/integration/admin-verification-policy.integration.spec.ts",
+        "apps/api/test/integration/auth-flow.integration.spec.ts",
+        "apps/api/test/integration/availability-schedule.integration.spec.ts",
+        "apps/api/test/integration/dispute-decision-boundaries.integration.spec.ts",
+        "apps/api/test/integration/dispute-intake.integration.spec.ts",
+        "apps/api/test/integration/dispute-private-lifecycle.integration.spec.ts",
+        "apps/api/test/integration/dispute-workspace-http.integration.spec.ts",
+        "apps/api/test/integration/dispute-workspace.integration.spec.ts",
+        "apps/api/test/integration/evidence-cleanup.integration.spec.ts",
+        "apps/api/test/integration/evidence-log-hygiene.integration.spec.ts",
+        "apps/api/test/integration/evidence-read-boundary.integration.spec.ts",
+        "apps/api/test/integration/evidence-scan.integration.spec.ts",
+        "apps/api/test/integration/evidence-upload.integration.spec.ts",
+        "apps/api/test/integration/g2-query-projections.integration.spec.ts",
+        "apps/api/test/integration/g3-financial-foundation.integration.spec.ts",
+        "apps/api/test/integration/g3-financial-runtime.integration.spec.ts",
+        "apps/api/test/integration/geo-fanout.integration.spec.ts",
+        "apps/api/test/integration/marketplace-preview.integration.spec.ts",
+        "apps/api/test/integration/migration-bootstrap.spec.ts",
+        "apps/api/test/integration/onboarding-review-submit.integration.spec.ts",
+        "apps/api/test/integration/outbox.integration.spec.ts",
+        "apps/api/test/integration/password-reset.integration.spec.ts",
+        "apps/api/test/integration/pending-specialty-deadlock.integration.spec.ts",
+        "apps/api/test/integration/phase3-journey-a-pending-submission.integration.spec.ts",
+        "apps/api/test/integration/phase3-journey-b-work-access-denied.integration.spec.ts",
+        "apps/api/test/integration/phase3-journey-c-activation.integration.spec.ts",
+        "apps/api/test/integration/phase3-journey-c-admin-approval.integration.spec.ts",
+        "apps/api/test/integration/phase3-journey-d-returned-correction.integration.spec.ts",
+        "apps/api/test/integration/phase3-journey-e-concurrency-and-ownership.integration.spec.ts",
+        "apps/api/test/integration/phase3-submission-stamping-audit.integration.spec.ts",
+        "apps/api/test/integration/phase4-persistence-durability.integration.spec.ts",
+        "apps/api/test/integration/phase4-public-media-lifecycle.integration.spec.ts",
+        "apps/api/test/integration/phase5-c1-onboarding-defaults.integration.spec.ts",
+        "apps/api/test/integration/phase5-c2-market-and-radius.integration.spec.ts",
+        "apps/api/test/integration/platform-transaction-commit.integration.spec.ts",
+        "apps/api/test/integration/provider-journey.integration.spec.ts",
+        "apps/api/test/integration/provider-lifecycle-backfill.integration.spec.ts",
+        "apps/api/test/integration/provider-my-bids.integration.spec.ts",
+        "apps/api/test/integration/provider-portfolio.integration.spec.ts",
+        "apps/api/test/integration/provider-upgrade-session.integration.spec.ts",
+        "apps/api/test/integration/public-profile-preview.integration.spec.ts",
+        "apps/api/test/integration/r04-auth-lifecycle.integration.spec.ts",
+        "apps/api/test/integration/r05-seeker-durability.integration.spec.ts",
+        "apps/api/test/integration/r06-request-media.integration.spec.ts",
+        "apps/api/test/integration/r07-marketplace-races.integration.spec.ts",
+        "apps/api/test/integration/r07-request-provider-lifecycle.integration.spec.ts",
+        "apps/api/test/integration/r09-geo-authority.integration.spec.ts",
+        "apps/api/test/integration/r09-geo-matching.integration.spec.ts",
+        "apps/api/test/integration/r10-working-hours-durability.integration.spec.ts",
+        "apps/api/test/integration/r11-reviews-reputation.integration.spec.ts",
+        "apps/api/test/integration/r12-booking-communication.integration.spec.ts",
+        "apps/api/test/integration/r13-support.integration.spec.ts",
+        "apps/api/test/integration/r15-ledger.integration.spec.ts",
+        "apps/api/test/integration/r17-admin-operations.integration.spec.ts",
+        "apps/api/test/integration/r17-dispute-legacy-http.integration.spec.ts",
+        "apps/api/test/integration/r17-disputes.integration.spec.ts",
+        "apps/api/test/integration/r17-e-closure.integration.spec.ts",
+        "apps/api/test/integration/r17-notifications.integration.spec.ts",
+        "apps/api/test/integration/r17-provider-surfaces.integration.spec.ts",
+        "apps/api/test/integration/r18-admin-floor.integration.spec.ts",
+        "apps/api/test/integration/r18-work-access-readiness.integration.spec.ts",
+        "apps/api/test/integration/r19-subscription-money.integration.spec.ts",
+        "apps/api/test/integration/r20-storage/r20-mediated-read-s3.integration.spec.ts",
+        "apps/api/test/integration/r20-storage/r20-orphan-cleanup-s3.integration.spec.ts",
+        "apps/api/test/integration/r21-durable-mail.integration.spec.ts",
+        "apps/api/test/integration/r21-mail-feedback.integration.spec.ts",
+        "apps/api/test/integration/r22-outbox-process.integration.spec.ts",
+        "apps/api/test/integration/r22-outbox-reliability.integration.spec.ts",
+        "apps/api/test/integration/r22-outbox-replay.integration.spec.ts",
+        "apps/api/test/integration/r24-money-api.integration.spec.ts",
+        "apps/api/test/integration/r25-realtime-recovery.integration.spec.ts",
+        "apps/api/test/integration/r26-authorization.integration.spec.ts",
+        "apps/api/test/integration/r27-read-projections.integration.spec.ts",
+        "apps/api/test/integration/r29-stripe-sandbox.integration.spec.ts",
+        "apps/api/test/integration/r30-manual-payments.integration.spec.ts",
+        "apps/api/test/integration/r31-subscription-entitlements.integration.spec.ts",
+        "apps/api/test/integration/r32-refund-recovery.integration.spec.ts",
+        "apps/api/test/integration/r33-financial-reporting.integration.spec.ts",
+        "apps/api/test/integration/route-capability-matrix.integration.spec.ts",
+        "apps/api/test/integration/seed-idempotency.spec.ts",
+        "apps/api/test/integration/service-area-expansion.integration.spec.ts",
+        "apps/api/test/integration/sprint02-constraints.integration.spec.ts",
+        "apps/api/test/integration/v1-pending-specialty.integration.spec.ts",
+        "apps/api/test/integration/verification-case-workflow.integration.spec.ts",
+        "apps/api/test/integration/verification-constraints.integration.spec.ts",
+        "apps/api/test/integration/work-access-enforcement.integration.spec.ts",
+        "apps/api/test/support/isolated-database.spec.ts",
+        "apps/api/test/support/isolated-database.ts",
+        "apps/api/test/support/r24-money-http.fixture.ts",
+        "apps/api/test/support/r30-manual-http.fixture.ts",
+        "apps/api/test/support/r31-browser.fixture.ts"
+      ],
+      "setBy": [
+        "auth-lifecycle.yml#acceptance",
+        "ci.yml#integration-e2e",
+        "ci.yml#r31-subscriptions",
+        "ci.yml#evidence-retention",
+        "ci.yml#dispute-workspace",
+        "ci.yml#r30-manual-payments",
+        "r26-security.yml#acceptance"
+      ]
+    },
+    "RUN_DISPUTE_BROWSER": {
+      "owner": "R17-C disputes",
+      "suites": [
+        "apps/api/test/integration/dispute-workspace-browser.integration.spec.ts",
+        "apps/api/test/integration/r17-dispute-legacy-browser.integration.spec.ts"
+      ],
+      "setBy": ["ci.yml#dispute-workspace"]
+    },
+    "RUN_DISPUTE_WORKER": {
+      "owner": "R17-C disputes",
+      "suites": ["apps/api/test/integration/dispute-worker-process.integration.spec.ts"],
+      "setBy": ["ci.yml#dispute-workspace"]
+    },
+    "RUN_PROVIDER_BROWSER": {
+      "owner": "R17-E provider surfaces",
+      "suites": [
+        "apps/api/test/integration/provider-my-bids-browser.integration.spec.ts",
+        "apps/api/test/integration/r17-e-closure-browser.integration.spec.ts",
+        "apps/api/test/integration/r17-provider-surfaces-browser.integration.spec.ts"
+      ],
+      "setBy": ["ci.yml#dispute-workspace"]
+    },
+    "RUN_R20_STORAGE_INTEGRATION": {
+      "owner": "R20 storage",
+      "suites": ["apps/api/test/integration/r20-storage/r20-s3-fixture.ts"],
+      "setBy": ["ci.yml#evidence-retention"]
+    },
+    "RUN_R22_WORKER_PROCESS": {
+      "owner": "R22 worker/outbox",
+      "suites": ["apps/api/test/integration/r22-outbox-process.integration.spec.ts"],
+      "setBy": ["ci.yml#integration-e2e"]
+    },
+    "RUN_R30_BROWSER": {
+      "owner": "R30 manual payments",
+      "suites": ["apps/api/test/e2e/r30-browser-runtime.e2e.spec.ts"],
+      "setBy": ["ci.yml#r30-manual-payments"]
+    },
+    "RUN_R30_INTEGRATION": {
+      "owner": "R30 manual payments",
+      "suites": [
+        "apps/api/test/integration/g3-financial-runtime.integration.spec.ts",
+        "apps/api/test/integration/r30-manual-payments.integration.spec.ts",
+        "apps/api/test/support/r30-manual-http.fixture.ts"
+      ],
+      "setBy": ["ci.yml#r30-manual-payments"]
+    },
+    "RUN_REDIS_INTEGRATION": {
+      "owner": "Platform integration (real Redis)",
+      "suites": [
+        "apps/api/test/integration/r25-realtime-recovery.integration.spec.ts",
+        "apps/api/test/integration/registration-throttle.integration.spec.ts"
+      ],
+      "setBy": ["ci.yml#integration-e2e"]
+    },
+    "RUN_RETENTION_INTEGRATION": {
+      "owner": "R20 evidence retention",
+      "suites": [
+        "apps/api/test/integration/evidence-retention.integration.spec.ts",
+        "apps/api/test/integration/manifest-evidence-retention.integration.spec.ts"
+      ],
+      "setBy": ["ci.yml#evidence-retention"]
+    }
+  }
+}

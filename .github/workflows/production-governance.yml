@@ -40,6 +40,10 @@ jobs:
         run: |
           node scripts/production/platform/validate-plan.cjs --check
           node --test scripts/production/platform/validate-plan.test.cjs
+      - name: Verify the CI environment inventory and required-check boundary
+        run: |
+          node scripts/ci/environment-inventory.cjs
+          node --test scripts/ci/environment-inventory.test.cjs
       - name: Validate repository governance files
         run: node .github/scripts/production-governance.mjs
       - name: Validate current release baseline and ownership

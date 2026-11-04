@@ -144,7 +144,7 @@ for (const [name, mutate, expected] of [
       v.record.baseline = emptyControl;
       v.baseline = emptyControl.commit;
     },
-    /only the four dependency files/u,
+    /only registered dependency files/u,
   ],
   [
     'unknown old-dependency base',
@@ -201,7 +201,7 @@ for (const [name, mutate, expected] of [
       v.record.baseline = changedRuntime;
       v.baseline = changedRuntime.commit;
     },
-    /only the four dependency files/u,
+    /only registered dependency files/u,
   ],
   [
     'unrelated repair control',
@@ -252,3 +252,17 @@ for (const [name, mutate, expected] of [
     assert.throws(() => selectDependencyControls(value), expected);
   });
 }
+
+test('the vendored dependency fork is dependency identity: unregistered edits are rejected', () => {
+  git('switch', '-c', 'vendored-fork-edit', candidate);
+  try {
+    write('vendor/deepmerge/index.cjs', 'an unreviewed fork change\n');
+    const edited = commit('fork edited without new controls');
+    assert.throws(
+      () => selectDependencyControls({ ...input(), candidate: edited }),
+      /unregistered candidate dependency change: vendor\/deepmerge\/index\.cjs/u,
+    );
+  } finally {
+    git('switch', 'repair');
+  }
+});

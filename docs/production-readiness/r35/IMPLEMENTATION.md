@@ -68,3 +68,30 @@ R34 owns reconciliation-specific acceptance. Do not import an unmerged peer or
 change R34/R36/R37/R38 product code. The coordinator must rerun the suite on the
 final combined Wave 4 source; preparation is not release sign-off. No browser,
 hosted-target, screenshot or deployed-bundle check was performed here.
+
+## Current-source correction (K01, 2026-11-03)
+
+Appended by K01. The text above and `evidence/preflight.json` are kept
+unchanged as the historical record of parent `73a4a64a`. PR #197 merged them
+and ended R35's single-writer documentation assignment. On develop
+`92770ea65ee1154f94f4251d5febfa39822f9b9a`, the statements that the Stripe SDK
+dependency, raw-body parser, ingress, rail routing and scheduling, and browser
+purchase surface "remain unintegrated" are **obsolete**. The source now
+contains:
+
+- `stripe@23.0.1` in `apps/api/package.json`, and a raw JSON body parser for
+  `/v1/money/webhooks/stripe` (`apps/api/src/infrastructure/http/request-body.ts`);
+- `StripeRuntimeModule` and `StripeWebhookModule` registered in
+  `apps/api/src/app.module.ts` (R29 `287237b9`, G3 integration `3b6607cf`);
+- the Stripe inbox scheduler and job, plus Stripe and manual refund adapters
+  and the manual refund review service under `apps/api/src/modules/money/`;
+- the browser purchase surface `StripePlanPurchase` in
+  `apps/web/src/app/features/subscriptions/`.
+
+What has **not** changed: every Stripe adapter fails closed (`503 …UNAVAILABLE`)
+until `MONEY_STRIPE_SANDBOX_JSON` and the publishable key are configured. No
+independent sandbox operation, statement or hosted acceptance has been
+executed. Approval of the refund policy and its consequences remains an
+owner/policy input that K01 did not verify. Every R35 acceptance row is still
+**NOT RUN**, and G3 and the Wave 4 assignment conditions are unchanged. K01 is
+not R35 execution.

@@ -1,36 +1,34 @@
 {
   "schemaVersion": 1,
-  "experiment": "g3-stripe-sdk-integration",
+  "experiment": "ksa-k01-dependency-audit",
   "advisories": [
-    "GHSA-27r3-jxmh-p828",
-    "GHSA-q7qp-rjg7-q26m",
-    "GHSA-834v-8h66-3h79",
-    "GHSA-4qv8-2p9j-2685",
-    "GHSA-f72v-6w45-q472",
-    "GHSA-8c8m-p3m8-cjg8",
-    "GHSA-m943-m63m-w62w",
-    "GHSA-85x2-q946-cp5h",
-    "GHSA-w74x-v6f9-j3xg",
-    "GHSA-xhq7-xmqj-769h",
-    "GHSA-wjr9-j795-jxcr",
-    "GHSA-333x-w4r6-6crp"
+    "GHSA-mrwp-f3q8-3g9p",
+    "GHSA-6pq8-jhm2-2vcw",
+    "GHSA-8g5g-mxqh-grgj",
+    "GHSA-g3hv-75wg-m249",
+    "GHSA-3g3m-2fjr-6pw4",
+    "GHSA-gcqx-w48m-w2h4"
   ],
   "priorBaseline": "462418888be76ec642664ea77971da9239ffb02a",
-  "originalPrBase": "73a4a64a77844db7815466f47d8afdefb0b35c2f",
+  "originalPrBase": "92770ea65ee1154f94f4251d5febfa39822f9b9a",
   "dependencySha256": {
-    "apps/api/package.json": "4fc9a4b11f880245b341ffef8087db5daff48393e331a2f8e7a7d72f635949a1",
-    "apps/web/package.json": "d7cc575b382eaabfb1cf07a2eec80eb246872498ca716fd2be95a0562e53860b",
-    "package.json": "5b1918cfd23189939190a6ded41c41d4f445750c79617f8c8515ca8b2fe3dafe",
-    "pnpm-lock.yaml": "0fbc9017b26168e7b3b150d16f9721cd5f044e900e22285954d93050ac83074e"
+    "apps/api/package.json": "888ef21b0c0cd474c16fffc5a470e9e67cbb6293719b8d5a437ae4d3b819f6a1",
+    "apps/web/package.json": "16a0c6a4abfe68591b54c73765b301500d3be37037d2ca298458efdba647fac7",
+    "package.json": "6eb7f082a0e259ee4438f3e18b4a2aa6d5d408235f3394911b1f512f8dd7ea59",
+    "pnpm-lock.yaml": "802465d02dc2faae19c77f63c763e73db114537439995ae6a46e6d955987a77a",
+    "vendor/deepmerge/index.cjs": "8b51276b1720fd68734add9e48cf000d36c15de1775d116fbc03c8bc2110dcf3",
+    "vendor/deepmerge/index.d.ts": "d9fe3cb82c11b576a7ea5886ae5de649c8242b20d0a1418fb8203b42453ffd41",
+    "vendor/deepmerge/license.txt": "6cfc4687cb2f2d86f4a77e6b526290d3878e5e512f3fec2f4cb36a9cb36f798b",
+    "vendor/deepmerge/package.json": "228a2e50f2f8312688c965f44d380b906ac06d4e96d5d026eeeac310b0d87795"
   },
   "baseline": {
-    "commit": "ebbf70579a1d15f9e4e40b0b4b89abf145a7de82",
-    "tree": "014af9e5b0d9dd435331ce1470dcf9203cf48b52",
+    "commit": "2a1b53bb2bdd2b08e6dc7c71a240558bc0de4ba2",
+    "tree": "3c3e67b03478d07474b075a8d15a2b3f1b48e650",
     "parent": "462418888be76ec642664ea77971da9239ffb02a"
   },
   "repair": {
-    "commit": "59df0cd4c8416c4a512973763396f78bcb2ccc82",
-    "tree": "2071028f253f71511abae6ff42e85867955d7130",
-    "parent": "73a4a64a77844db7815466f47d8afdefb0b35c2f"
+    "commit": "5739cdf73d086eaa550826a5409f0094d9949620",
+    "tree": "54db9281b06a160671dd83aa0d6cd76f142321eb",
+    "parent": "92770ea65ee1154f94f4251d5febfa39822f9b9a"
   }
 }

@@ -1,0 +1,74 @@
+{
+  "required_status_checks": {
+    "strict": true,
+    "checks": [
+      {
+        "context": "Analyze JavaScript/TypeScript",
+        "app_id": 15368
+      },
+      {
+        "context": "CI gate",
+        "app_id": 15368
+      },
+      {
+        "context": "Dev browser startup (ubuntu-latest)",
+        "app_id": 15368
+      },
+      {
+        "context": "Dev browser startup (windows-latest)",
+        "app_id": 15368
+      },
+      {
+        "context": "Production governance",
+        "app_id": 15368
+      },
+      {
+        "context": "R04 real browser, SMTP and Postgres",
+        "app_id": 15368
+      },
+      {
+        "context": "R26 cookies, authorization and enforced CSP",
+        "app_id": 15368
+      },
+      {
+        "context": "Real Seeker Provider Admin startup",
+        "app_id": 15368
+      },
+      {
+        "context": "Staging boundary gate",
+        "app_id": 15368
+      },
+      {
+        "context": "Staging image boundaries",
+        "app_id": 15368
+      },
+      {
+        "context": "Staging release controls (ubuntu-latest)",
+        "app_id": 15368
+      },
+      {
+        "context": "Staging release controls (windows-latest)",
+        "app_id": 15368
+      },
+      {
+        "context": "CodeQL",
+        "app_id": 57789
+      }
+    ]
+  },
+  "enforce_admins": true,
+  "required_pull_request_reviews": {
+    "dismiss_stale_reviews": true,
+    "require_code_owner_reviews": false,
+    "required_approving_review_count": 0,
+    "require_last_push_approval": false
+  },
+  "restrictions": null,
+  "required_conversation_resolution": true,
+  "allow_force_pushes": false,
+  "allow_deletions": false,
+  "required_linear_history": false,
+  "block_creations": false,
+  "lock_branch": false,
+  "allow_fork_syncing": false
+}

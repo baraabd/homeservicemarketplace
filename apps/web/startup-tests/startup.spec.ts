@@ -112,14 +112,37 @@ async function stop(child: ChildProcess): Promise<void> {
   children.delete(child);
 }
 
-async function serve(args: string[], port: number, info: TestInfo, name: string) {
+// Vite answers index.html before a forced dependency optimization commits, and
+// HOLDS every pre-bundled module request until it does. Measured on Windows
+// (2026-11-03): index.html answered after 17 s while
+// /node_modules/.vite/deps/react.js was held for 160.6 s, then served with 200
+// the moment Vite logged "dependencies optimized". A route asserted inside that
+// window sits on its Suspense fallback ("Loading the page") with no page error.
+// A dev server is therefore ready only when a pre-bundled module is served.
+// This is the server cold-start budget; route assertions keep their own 30 s.
+const DEV_DEPENDENCY_PROBE = '/node_modules/.vite/deps/react.js';
+const DEV_DEPENDENCY_OPTIMIZER_BUDGET_MS = 240_000;
+const DEV_TEST_TIMEOUT_MS = 180_000 + DEV_DEPENDENCY_OPTIMIZER_BUDGET_MS;
+
+async function serve(
+  args: string[],
+  port: number,
+  info: TestInfo,
+  name: string,
+  options: { env?: Record<string, string>; awaitDependencyOptimizer?: boolean } = {},
+) {
   let output = '';
   let failure: Error | undefined;
   const spawnedAt = performance.now();
   const child = spawn(process.execPath, args, {
     cwd: web,
     detached: process.platform !== 'win32',
-    env: { ...process.env, VITE_API_URL: 'https://api.example.test', BROWSER: 'none' },
+    env: {
+      ...process.env,
+      VITE_API_URL: 'https://api.example.test',
+      BROWSER: 'none',
+      ...options.env,
+    },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
   children.add(child);
@@ -154,6 +177,40 @@ async function serve(args: string[], port: number, info: TestInfo, name: string)
         { timeout: 90_000, message: `Waiting for ${name}` },
       )
       .toBe(true);
+    const readiness: Record<string, number | string> = {
+      htmlReadyMs: Math.round(performance.now() - spawnedAt),
+    };
+    if (options.awaitDependencyOptimizer) {
+      await expect
+        .poll(
+          async () => {
+            if (failure) throw failure;
+            if (child.exitCode !== null) throw new Error(`Server exited: ${output}`);
+            try {
+              // The request is held while optimization runs; abort and retry
+              // so a server exit is still noticed promptly.
+              const response = await fetch(`${baseURL}${DEV_DEPENDENCY_PROBE}`, {
+                signal: AbortSignal.timeout(15_000),
+              });
+              return response.status;
+            } catch {
+              return 0;
+            }
+          },
+          {
+            timeout: DEV_DEPENDENCY_OPTIMIZER_BUDGET_MS,
+            message: `Waiting for ${name} to serve pre-bundled dependencies`,
+          },
+        )
+        .toBe(200);
+      readiness.dependencyProbe = DEV_DEPENDENCY_PROBE;
+      readiness.dependenciesReadyMs = Math.round(performance.now() - spawnedAt);
+    }
+    await info.attach(`${name}-readiness`, {
+      body: JSON.stringify({ platform: process.platform, ...readiness }, null, 2),
+      contentType: 'application/json',
+    });
+    console.log('SERVER_READINESS', name, JSON.stringify(readiness));
     return { baseURL, close, spawnedAt };
   } catch (error) {
     await close();
@@ -241,7 +298,10 @@ test('isolates the selector and recovers the affected admin route when an old co
   page,
 }, info) => {
   await writeFile(path.join(web, 'vite.config.js'), legacyConfig);
-  const server = await serve([viteCli, ...cliFlags(5197)], 5197, info, 'legacy-dev');
+  test.setTimeout(DEV_TEST_TIMEOUT_MS);
+  const server = await serve([viteCli, ...cliFlags(5197)], 5197, info, 'legacy-dev', {
+    awaitDependencyOptimizer: true,
+  });
   const errors: string[] = [];
   const contractRequests: string[] = [];
   page.on('pageerror', (error) => errors.push(error.message));
@@ -297,7 +357,13 @@ test('real pnpm dev renders public and Admin routes with the stale config still 
   await writeFile(path.join(web, 'vite.config.js'), legacyConfig);
   const pnpm = process.env.npm_execpath;
   expect(pnpm, 'Run through pnpm test:startup so the pinned package manager is used').toBeTruthy();
-  const server = await serve([pnpm!, 'run', 'dev', ...cliFlags(5198)], 5198, info, 'fixed-dev');
+  // vite:deps records runtime dependency discovery and optimizer commits, so a
+  // stalled route can be correlated with the optimizer instead of guessed at.
+  test.setTimeout(DEV_TEST_TIMEOUT_MS);
+  const server = await serve([pnpm!, 'run', 'dev', ...cliFlags(5198)], 5198, info, 'fixed-dev', {
+    env: { DEBUG: 'vite:deps' },
+    awaitDependencyOptimizer: true,
+  });
   const evidence: Array<Record<string, unknown>> = [];
   try {
     for (const lang of ['en', 'ar'] as const) {
@@ -311,6 +377,28 @@ test('real pnpm dev renders public and Admin routes with the stale config still 
           const errors: string[] = [];
           const distRequests: string[] = [];
           let sourceContractRequests = 0;
+          // A dynamic import that neither resolves nor rejects leaves a module
+          // request open. Record those so a stalled "Loading the page" names
+          // its cause instead of ending as a bare locator timeout.
+          const unfinished = new Map<object, string>();
+          const failedRequests: string[] = [];
+          const consoleProblems: string[] = [];
+          page.on('request', (request) => unfinished.set(request, request.url()));
+          page.on('requestfinished', (request) => unfinished.delete(request));
+          page.on('requestfailed', (request) => {
+            unfinished.delete(request);
+            failedRequests.push(`${request.url()} ${request.failure()?.errorText ?? ''}`);
+          });
+          page.on('response', (response) => {
+            if (response.status() >= 400) {
+              failedRequests.push(`${response.status()} ${response.url()}`);
+            }
+          });
+          page.on('console', (message) => {
+            if (['error', 'warning'].includes(message.type())) {
+              consoleProblems.push(`${message.type()}: ${message.text()}`);
+            }
+          });
           page.on('pageerror', (error) => errors.push(error.message));
           page.on('request', (request) => {
             const url = decodeURIComponent(request.url());
@@ -369,6 +457,19 @@ test('real pnpm dev renders public and Admin routes with the stale config still 
             });
           } catch (error) {
             await capture(`failure-${label}`);
+            const diagnostics = {
+              label,
+              url: page.url(),
+              unfinishedRequests: [...unfinished.values()],
+              failedRequests,
+              consoleProblems,
+              errors,
+            };
+            await info.attach(`failure-${label}-network`, {
+              body: JSON.stringify(diagnostics, null, 2),
+              contentType: 'application/json',
+            });
+            console.log('STARTUP_FAILURE_DIAGNOSTICS', JSON.stringify(diagnostics));
             throw new Error(`${label}: ${String(error)}; page errors: ${JSON.stringify(errors)}`, {
               cause: error,
             });
@@ -434,7 +535,10 @@ for (const mode of ['dev', 'production-preview'] as const) {
       failedApiRequests += 1;
       await route.abort('connectionrefused');
     });
-    const server = await serve(args, port, info, `r02-${mode}`);
+    if (mode === 'dev') test.setTimeout(DEV_TEST_TIMEOUT_MS);
+    const server = await serve(args, port, info, `r02-${mode}`, {
+      awaitDependencyOptimizer: mode === 'dev',
+    });
     try {
       await page.goto(server.baseURL);
       await expect(page.getByTestId('app-card-seeker')).toBeVisible();
