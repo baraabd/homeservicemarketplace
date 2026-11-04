@@ -396,13 +396,19 @@ test.describe('R07 request-to-provider lifecycle — real browsers, API and Post
     await makeWorkingProvider(first, categoryId!, 'Aleppo', 'aleppo');
     await makeWorkingProvider(second, categoryId!, 'Aleppo', 'aleppo');
 
-    const offer = (account: Account, amount: number) =>
+    const offer = (account: Account, amountDecimal: string) =>
       api<BidResponse>(account.jar, '/v1/provider/bids', {
         method: 'POST',
-        body: { requestId, amount, pricingType: 'FIXED', note: 'K04 offer' },
+        body: {
+          requestId,
+          amountDecimal,
+          currency: 'SAR',
+          pricingType: 'FIXED',
+          note: 'K04 offer',
+        },
       });
-    const offerA = await offer(first, 12_500);
-    const offerB = await offer(second, 9_000);
+    const offerA = await offer(first, '125.00');
+    const offerB = await offer(second, '90.00');
     expect(offerA.status, JSON.stringify(offerA.body)).toBe(201);
     expect(offerB.status, JSON.stringify(offerB.body)).toBe(201);
 
@@ -489,6 +495,12 @@ test.describe('R07 request-to-provider lifecycle — real browsers, API and Post
     }>(first.jar, `/v1/provider/bookings/${bookingId}`);
     expect(seekerView.status).toBe(200);
     expect(providerView.status).toBe(200);
+    expect(seekerView.body).toMatchObject({ priceAmount: 12500, currency: 'SAR', amountScale: 2 });
+    expect(providerView.body).toMatchObject({
+      priceAmount: 12500,
+      currency: 'SAR',
+      amountScale: 2,
+    });
     for (const key of ['status', 'priceAmount', 'currency', 'scheduledAt'] as const) {
       expect(providerView.body[key], key).toEqual(seekerView.body[key]);
     }

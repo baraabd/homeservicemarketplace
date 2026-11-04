@@ -15,7 +15,7 @@ each K directory remains historical, not a claim about this combined tree.
 | ------- | ---------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
 | 204     | Vercel delivery preparation                    | Keep K01 dependency fixes and qs 6.16.2; register CD in the CI inventory; require HSM_CD_ENABLED before delivery                       |
 | 205–207 | K10, K09, K08 acceptance dossiers              | Preserve the explicit blocked status; documentation merge is not launch certification                                                  |
-| 208     | Provider feed pagination                       | Combine with the customer and Saudi contracts changes                                                                                  |
+| 208     | Provider feed pagination                       | Combine with the customer changes; declare SAR and amountScale 2 in the real pagination bid fixture                                    |
 | 209     | Serialize request edits with booking lifecycle | Combine both real lifecycle test additions                                                                                             |
 | 210     | Dependency and startup baseline                | Merged first; no audit suppressions                                                                                                    |
 | 211     | Staging configuration and source identity      | Replace substring URL regex with exact CSP source-token membership (CodeQL finding)                                                    |
@@ -26,6 +26,13 @@ each K directory remains historical, not a claim about this combined tree.
 The legal-policy API client now rejects malformed response shapes as a query
 error so the signup form can show its existing retry state, rather than crash.
 It never treats a malformed response as approval or opens registration.
+
+The CSP image check compares complete source expressions in the first
+`script-src` directive. Adversarial regressions cover lookalike hosts, userinfo,
+embedded paths, unrelated directives and duplicate directives. Public build
+configuration metadata uses `envName`, and the repeat-purchase fixture uses
+its disposable UUID as its plan identifier. The full tracked-tree secret scan
+passes without adding scanner suppressions.
 
 ## Verification
 

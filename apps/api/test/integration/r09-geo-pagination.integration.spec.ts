@@ -309,7 +309,14 @@ d('K05/R09 — radius feed pagination reaches every eligible request (real Postg
     for (const f of fixtures) await insert(f);
     const bidOn = fixtures.find((f) => f.kind === 'already-bid')!;
     await prisma.bid.create({
-      data: { requestId: bidOn.id, providerId: PROFILE, amount: 100, pricingType: 'FIXED' },
+      data: {
+        requestId: bidOn.id,
+        providerId: PROFILE,
+        amount: 10000,
+        currency: 'SAR',
+        amountScale: 2,
+        pricingType: 'FIXED',
+      },
     });
   });
 
