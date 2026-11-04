@@ -22,6 +22,7 @@ permissions:
   contents: read
   actions: read
   checks: read
+  pull-requests: read
 
 # Never kill a deployment midway through promotion. A queued stale source is
 # rejected by the evidence gate instead of moving the domain backwards.

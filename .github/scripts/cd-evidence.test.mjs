@@ -3,6 +3,7 @@ import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import test from 'node:test';
 import { POLICY, REPOSITORY } from './pr-acceptance.mjs';
+import { collectEquivalentCodeQL } from './cd-codeql-source.mjs';
 import {
   CD_POLICY,
   MAX_WAIT_SECONDS,
@@ -95,6 +96,221 @@ const mutate = (change) => {
   change(value);
   return value;
 };
+
+function equivalentFixture() {
+  const value = fixture();
+  const tree = 'd'.repeat(40);
+  const run = structuredClone(value.runs.find((entry) => entry.path.endsWith('/codeql.yml')));
+  Object.assign(run, {
+    event: 'pull_request',
+    head_sha: otherSha,
+    head_branch: 'reviewed',
+    pull_requests: [{ number: 215 }],
+  });
+  const check = { ...value.codeScanning[0], head_sha: otherSha, pull_requests: [{ number: 215 }] };
+  const source = {
+    complete: true,
+    commit: {
+      sha,
+      commit: { tree: { sha: tree } },
+      parents: [{ sha: 'e'.repeat(40) }, { sha: otherSha }],
+    },
+    parent: { sha: otherSha, commit: { tree: { sha: tree } } },
+    pr: {
+      number: 215,
+      merged: true,
+      state: 'closed',
+      merge_commit_sha: sha,
+      merged_at: '2026-11-03T11:40:00Z',
+      head: { sha: otherSha, ref: 'reviewed', repo: { full_name: REPOSITORY } },
+      base: { ref: 'develop', repo: { full_name: REPOSITORY } },
+    },
+    run,
+    checks: [check],
+  };
+  value.codeScanning = [];
+  value.codeScanningAfter = [];
+  value.equivalentCodeQL = source;
+  value.equivalentCodeQLAfter = structuredClone(source);
+  return value;
+}
+
+test('push without a security-result check accepts only the identical merged PR tree', () => {
+  const result = assess(equivalentFixture());
+  assert.equal(result.state, 'PASS');
+  assert.equal(result.proof.sha, sha);
+  assert.equal(result.proof.codeQLSourceSha, otherSha);
+  assert.equal(result.proof.codeQLCheckId, 900);
+});
+
+test('merged PR associations cleared by GitHub retain explicit commit/tree/PR provenance', () => {
+  const value = equivalentFixture();
+  for (const source of [value.equivalentCodeQL, value.equivalentCodeQLAfter]) {
+    source.run.pull_requests = [];
+    source.checks[0].pull_requests = [];
+  }
+  assert.equal(assess(value).state, 'PASS');
+  value.equivalentCodeQL.pr.merged = false;
+  assert.equal(assess(value).state, 'FAIL');
+});
+
+for (const [name, change] of Object.entries({
+  'different merge tree': (source) => {
+    source.commit.commit.tree.sha = 'f'.repeat(40);
+  },
+  'missing tree identity': (source) => {
+    delete source.parent.commit.tree;
+  },
+  'different merge commit': (source) => {
+    source.commit.sha = otherSha;
+  },
+  'ordinary direct push': (source) => {
+    source.commit.parents.pop();
+  },
+  'wrong merge parent': (source) => {
+    source.commit.parents[1].sha = 'f'.repeat(40);
+  },
+  'unmerged PR': (source) => {
+    source.pr.merged = false;
+  },
+  'open PR': (source) => {
+    source.pr.state = 'open';
+  },
+  'unrelated PR merge': (source) => {
+    source.pr.merge_commit_sha = otherSha;
+  },
+  'wrong PR head': (source) => {
+    source.pr.head.sha = sha;
+  },
+  'fork PR': (source) => {
+    source.pr.head.repo.full_name = 'other/repository';
+  },
+  'different target repository': (source) => {
+    source.pr.base.repo.full_name = 'other/repository';
+  },
+  'different target branch': (source) => {
+    source.pr.base.ref = 'main';
+  },
+  'future merge timestamp': (source) => {
+    source.pr.merged_at = '2027-01-01T00:00:00Z';
+  },
+  'incomplete source pagination': (source) => {
+    source.complete = false;
+  },
+  'malformed source checks': (source) => {
+    source.checks = [null];
+  },
+  'wrong source workflow': (source) => {
+    source.run.event = 'push';
+  },
+  'wrong source branch': (source) => {
+    source.run.head_branch = 'other';
+  },
+  'unrelated source workflow PR': (source) => {
+    source.run.pull_requests = [{ number: 214 }];
+  },
+  'newer failed source workflow': (source) => {
+    source.run.conclusion = 'failure';
+  },
+  'source check alert': (source) => {
+    source.checks[0].output.annotations_count = 1;
+  },
+  'failed source check': (source) => {
+    source.checks[0].conclusion = 'failure';
+  },
+  'unrelated source check PR': (source) => {
+    source.checks[0].pull_requests = [{ number: 214 }];
+  },
+  'source check for other code': (source) => {
+    source.checks[0].head_sha = sha;
+  },
+})) {
+  test(`identical-tree CodeQL rejects ${name} at either read`, () => {
+    for (const key of ['equivalentCodeQL', 'equivalentCodeQLAfter']) {
+      const value = equivalentFixture();
+      change(value[key]);
+      assert.equal(assess(value).state, 'FAIL');
+    }
+  });
+}
+
+test('identical-tree evidence waits for absent, changed or pending source results', () => {
+  for (const change of [
+    (source) => {
+      source.run.status = 'in_progress';
+      source.run.conclusion = null;
+    },
+    (source) => {
+      source.run.run_attempt += 1;
+    },
+    (source) => {
+      source.checks = [];
+    },
+    (source) => {
+      source.checks[0].app = { id: 1, slug: 'untrusted' };
+    },
+  ]) {
+    const value = equivalentFixture();
+    change(value.equivalentCodeQLAfter);
+    assert.equal(assess(value).state, 'WAIT');
+  }
+  const missing = equivalentFixture();
+  delete missing.equivalentCodeQLAfter;
+  assert.equal(assess(missing).state, 'WAIT');
+});
+
+test('a failing push security result cannot fall back to a successful PR', () => {
+  const value = equivalentFixture();
+  value.codeScanning = fixture().codeScanning;
+  value.codeScanningAfter = fixture().codeScanning;
+  value.codeScanning[0].conclusion = 'failure';
+  assert.equal(assess(value).state, 'FAIL');
+});
+
+test('source collector exhausts associated PR pages and selects newest CodeQL attempt', async () => {
+  const source = equivalentFixture().equivalentCodeQL;
+  const calls = [];
+  const request = async (route) => {
+    calls.push(route);
+    if (route === `commits/${sha}`) return source.commit;
+    if (route === `commits/${otherSha}`) return source.parent;
+    if (route === 'pulls/215') return source.pr;
+    if (route === `commits/${sha}/pulls?per_page=100&page=1`)
+      return Array.from({ length: 100 }, (_, index) => ({ number: index + 1 }));
+    if (route === `commits/${sha}/pulls?per_page=100&page=2`) return [source.pr];
+    if (route.startsWith('actions/runs?'))
+      return {
+        total_count: 2,
+        workflow_runs: [
+          { ...source.run, id: 1 },
+          { ...source.run, id: 2, run_attempt: 2 },
+        ],
+      };
+    if (route.startsWith(`commits/${otherSha}/check-runs?`))
+      return { total_count: 1, check_runs: source.checks };
+    throw new Error(`Unexpected route: ${route}`);
+  };
+  const result = await collectEquivalentCodeQL(request, target);
+  assert.equal(result.run.id, 2);
+  assert.equal(result.run.run_attempt, 2);
+  assert.equal(result.complete, true);
+  assert.ok(calls.some((route) => route.endsWith('pulls?per_page=100&page=2')));
+});
+
+test('source collector cannot invent evidence for a direct push or ambiguous merge', async () => {
+  const source = equivalentFixture().equivalentCodeQL;
+  assert.equal(
+    await collectEquivalentCodeQL(async () => ({ ...source.commit, parents: [] }), target),
+    null,
+  );
+  assert.equal(
+    await collectEquivalentCodeQL(
+      async (route) => (route === `commits/${sha}` ? source.commit : [source.pr, source.pr]),
+      target,
+    ),
+    null,
+  );
+});
 
 test('release policy inherits existing acceptance gates and includes R26 source-bound evidence', () => {
   assert.deepEqual(CD_POLICY.slice(0, POLICY.length), POLICY);
@@ -501,6 +717,42 @@ function fakeGitHub(value, { splitRuns = false, onRequest = () => {} } = {}) {
   };
   return { fetchImpl, requests };
 }
+
+test('collector reads the merged source twice when push has no official result', async () => {
+  const value = equivalentFixture();
+  const source = value.equivalentCodeQL;
+  const api = fakeGitHub(value);
+  let prReads = 0;
+  let sourceChecks = 0;
+  const fetchImpl = async (input, options) => {
+    const url = new URL(input);
+    const route = url.pathname.slice(`/repos/${REPOSITORY}/`.length);
+    let body;
+    if (route === `commits/${sha}`) body = source.commit;
+    else if (route === `commits/${otherSha}`) body = source.parent;
+    else if (route === `commits/${sha}/pulls`) body = [source.pr];
+    else if (route === 'pulls/215') {
+      prReads += 1;
+      body = source.pr;
+    } else if (route === 'actions/runs' && url.searchParams.get('event') === 'pull_request') {
+      assert.equal(url.searchParams.get('head_sha'), otherSha);
+      body = { total_count: 1, workflow_runs: [source.run] };
+    } else if (route === `commits/${otherSha}/check-runs`) {
+      sourceChecks += 1;
+      body = { total_count: 1, check_runs: source.checks };
+    } else return api.fetchImpl(input, options);
+    assert.equal(options.redirect, 'error');
+    assert.equal(url.origin, 'https://api.github.com');
+    return { ok: true, json: async () => structuredClone(body) };
+  };
+  const snapshot = await collectSnapshot(target, 'synthetic-read-token', {
+    fetchImpl,
+    now: () => now,
+  });
+  assert.equal(assess(snapshot).state, 'PASS');
+  assert.equal(prReads, 2);
+  assert.equal(sourceChecks, 2);
+});
 
 test('collector exhausts pagination, uses attempt-specific jobs, and rechecks head, runs and CodeQL', async () => {
   const api = fakeGitHub(fixture(), { splitRuns: true });
