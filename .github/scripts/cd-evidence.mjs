@@ -2,6 +2,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { POLICY, REPOSITORY, allPages } from './pr-acceptance.mjs';
+import { collectEquivalentCodeQL, equivalentCodeQLProblems } from './cd-codeql-source.mjs';
 
 // Reuse the repository's release checks; R26 additionally exercises the
 // deployed cookie, authorization and enforced document-CSP contract.
@@ -249,8 +250,23 @@ export function assessSnapshot(snapshot, target) {
     }
   }
 
-  const codeQLRun = latestRun(snapshot.runs, '.github/workflows/codeql.yml');
-  const checks = [snapshot.codeScanning, snapshot.codeScanningAfter];
+  let codeQLRun = latestRun(snapshot.runs, '.github/workflows/codeql.yml');
+  let checks = [snapshot.codeScanning, snapshot.codeScanningAfter];
+  let codeQLSourceSha = target.sha;
+  let codeQLPrNumber;
+  if (checks.every((items) => !officialCodeQL(items))) {
+    const source = snapshot.equivalentCodeQL;
+    const after = snapshot.equivalentCodeQLAfter;
+    const problem = equivalentCodeQLProblems(source, after, target, snapshot.capturedAt);
+    errors.push(...problem.errors);
+    pending.push(...problem.pending);
+    if (!problem.errors.length && !problem.pending.length) {
+      codeQLSourceSha = source.parent.sha;
+      codeQLPrNumber = source.pr.number;
+      codeQLRun = source.run;
+      checks = [source.checks, after.checks];
+    }
+  }
   const selected = checks.map(officialCodeQL);
   for (const list of checks) {
     const official = list.filter(
@@ -271,7 +287,14 @@ export function assessSnapshot(snapshot, target) {
       pending.push('Missing official CodeQL security result');
       continue;
     }
-    if (!positiveId(check.id) || check.head_sha !== target.sha) {
+    if (
+      !positiveId(check.id) ||
+      check.head_sha !== codeQLSourceSha ||
+      (codeQLPrNumber !== undefined &&
+        (!Array.isArray(check.pull_requests) ||
+          (check.pull_requests.length > 0 &&
+            !check.pull_requests.some((pr) => pr?.number === codeQLPrNumber))))
+    ) {
       errors.push('Wrong official CodeQL security-result provenance');
     } else if (PENDING.has(check.status) && check.conclusion === null) {
       pending.push('Pending official CodeQL security result');
@@ -311,6 +334,7 @@ export function assessSnapshot(snapshot, target) {
         return { path: policy.path, runId: run.id, attempt: run.run_attempt };
       }),
       codeQLCheckId: selected[0].id,
+      codeQLSourceSha,
     };
   return result;
 }
@@ -354,6 +378,9 @@ export async function collectSnapshot(target, token, { fetchImpl = fetch, now = 
   ]);
   if (!runs.every(object) || !codeScanning.every(object))
     throw new Error('Malformed GitHub evidence inventory');
+  const equivalentCodeQL = officialCodeQL(codeScanning)
+    ? null
+    : await collectEquivalentCodeQL(request, target);
   const details = {};
   await Promise.all(
     CD_POLICY.map(async (policy) => {
@@ -383,6 +410,9 @@ export async function collectSnapshot(target, token, { fetchImpl = fetch, now = 
     allPages(request, runsRoute, 'workflow_runs'),
     allPages(request, checksRoute, 'check_runs'),
   ]);
+  const equivalentCodeQLAfter = officialCodeQL(codeScanningAfter)
+    ? null
+    : await collectEquivalentCodeQL(request, target);
   const branchAfter = await request(branchRoute);
   return {
     schemaVersion: 1,
@@ -395,6 +425,8 @@ export async function collectSnapshot(target, token, { fetchImpl = fetch, now = 
     runsAfter,
     codeScanning,
     codeScanningAfter,
+    equivalentCodeQL,
+    equivalentCodeQLAfter,
     details,
   };
 }
