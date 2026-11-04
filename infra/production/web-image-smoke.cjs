@@ -4,6 +4,7 @@ const { execFileSync } = require('node:child_process');
 const { setTimeout: delay } = require('node:timers/promises');
 const {
   DOCUMENT_HEADER_CSP,
+  cspDirectiveHasSource,
   documentCsp,
   verifyWebBuildInfo,
 } = require('../../scripts/production/security-app/web-build-identity.cjs');
@@ -76,7 +77,7 @@ async function main() {
   assert.equal(fingerprint, process.env.EXPECTED_WEB_CONFIG_FINGERPRINT);
   assert.equal(documentCsp(html), policy, 'The served document must carry the declared CSP');
   assert.equal(
-    policy.split(/[;\s]+/u).includes('https://js.stripe.com'),
+    cspDirectiveHasSource(policy, 'script-src', 'https://js.stripe.com'),
     expectedStripe === 'true',
     'Stripe.js is admitted only by an explicit sandbox build',
   );

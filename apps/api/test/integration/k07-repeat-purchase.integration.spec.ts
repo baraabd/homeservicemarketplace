@@ -90,7 +90,7 @@ db('K07 repeat purchase of one plan version (real infrastructure)', () => {
     );
     const plan = await h.prisma.subscriptionPlanVersion.create({
       data: {
-        planKey: 'k07-synthetic-' + label,
+        planKey: label, // Disposable UUID identity; this is not a provider credential.
         version: 1,
         billingInterval: 'MONTHLY',
         priceMinor: 1000n,

@@ -27,19 +27,39 @@ const DOCUMENT_HEADER_CSP = "frame-ancestors 'none'; object-src 'none'; base-uri
  * compiling a different product than the release declares.
  */
 const PUBLIC_WEB_INPUTS = Object.freeze([
-  { key: 'VITE_API_URL', field: 'apiUrl', kind: 'origin', explicit: true },
-  { key: 'VITE_PROVIDER_ONBOARDING_V2', field: 'onboardingV2', kind: 'boolean', explicit: true },
-  { key: 'VITE_STRIPE_SANDBOX_ENABLED', field: 'stripeSandbox', kind: 'boolean', explicit: true },
-  { key: 'VITE_DISPUTE_INTAKE_V1', field: 'disputeIntakeV1', kind: 'boolean', default: 'false' },
-  { key: 'VITE_REALTIME_SOCKET_IO', field: 'realtimeSocketIo', kind: 'boolean', default: 'false' },
+  { envName: 'VITE_API_URL', field: 'apiUrl', kind: 'origin', explicit: true },
   {
-    key: 'VITE_REALTIME_TRANSPORTS',
+    envName: 'VITE_PROVIDER_ONBOARDING_V2',
+    field: 'onboardingV2',
+    kind: 'boolean',
+    explicit: true,
+  },
+  {
+    envName: 'VITE_STRIPE_SANDBOX_ENABLED',
+    field: 'stripeSandbox',
+    kind: 'boolean',
+    explicit: true,
+  },
+  {
+    envName: 'VITE_DISPUTE_INTAKE_V1',
+    field: 'disputeIntakeV1',
+    kind: 'boolean',
+    default: 'false',
+  },
+  {
+    envName: 'VITE_REALTIME_SOCKET_IO',
+    field: 'realtimeSocketIo',
+    kind: 'boolean',
+    default: 'false',
+  },
+  {
+    envName: 'VITE_REALTIME_TRANSPORTS',
     field: 'realtimeTransports',
     kind: 'transports',
     default: 'websocket',
   },
-  { key: 'VITE_CSP_MEDIA_ORIGINS', field: 'cspMediaOrigins', kind: 'origins', default: '' },
-  { key: 'VITE_CSP_UPLOAD_ORIGINS', field: 'cspUploadOrigins', kind: 'origins', default: '' },
+  { envName: 'VITE_CSP_MEDIA_ORIGINS', field: 'cspMediaOrigins', kind: 'origins', default: '' },
+  { envName: 'VITE_CSP_UPLOAD_ORIGINS', field: 'cspUploadOrigins', kind: 'origins', default: '' },
 ]);
 
 function fail(code, key) {
@@ -48,9 +68,9 @@ function fail(code, key) {
 }
 
 function readInput(env, input) {
-  const raw = env[input.key];
+  const raw = env[input.envName];
   if (raw === undefined || raw === '') {
-    if (input.explicit) fail('WEB_IMAGE_INPUT_REQUIRED', input.key);
+    if (input.explicit) fail('WEB_IMAGE_INPUT_REQUIRED', input.envName);
     return input.default;
   }
   return raw;
@@ -61,27 +81,27 @@ function publicWebConfig(env) {
   const config = { schema: SCHEMA };
   for (const input of PUBLIC_WEB_INPUTS) {
     const raw = readInput(env, input);
-    if (typeof raw !== 'string') fail('WEB_IMAGE_INPUT_INVALID', input.key);
+    if (typeof raw !== 'string') fail('WEB_IMAGE_INPUT_INVALID', input.envName);
     if (input.kind === 'boolean') {
-      if (raw !== 'true' && raw !== 'false') fail('WEB_IMAGE_INPUT_INVALID', input.key);
+      if (raw !== 'true' && raw !== 'false') fail('WEB_IMAGE_INPUT_INVALID', input.envName);
       config[input.field] = raw === 'true';
     } else if (input.kind === 'transports') {
-      if (!TRANSPORTS.includes(raw)) fail('WEB_IMAGE_INPUT_INVALID', input.key);
+      if (!TRANSPORTS.includes(raw)) fail('WEB_IMAGE_INPUT_INVALID', input.envName);
       config[input.field] = raw;
     } else if (input.kind === 'origin') {
       let origin;
       try {
-        origin = exactOrigin(raw, input.key);
+        origin = exactOrigin(raw, input.envName);
       } catch {
-        fail('WEB_IMAGE_INPUT_INVALID', input.key);
+        fail('WEB_IMAGE_INPUT_INVALID', input.envName);
       }
-      if (origin !== raw) fail('WEB_IMAGE_INPUT_INVALID', input.key);
+      if (origin !== raw) fail('WEB_IMAGE_INPUT_INVALID', input.envName);
       config[input.field] = origin;
     } else {
       try {
-        config[input.field] = originList(raw, input.key);
+        config[input.field] = originList(raw, input.envName);
       } catch {
-        fail('WEB_IMAGE_INPUT_INVALID', input.key);
+        fail('WEB_IMAGE_INPUT_INVALID', input.envName);
       }
     }
   }
@@ -93,7 +113,7 @@ function viteEnvironment(config) {
   const env = {};
   for (const input of PUBLIC_WEB_INPUTS) {
     const value = config[input.field];
-    env[input.key] = Array.isArray(value) ? value.join(',') : String(value);
+    env[input.envName] = Array.isArray(value) ? value.join(',') : String(value);
   }
   return env;
 }
@@ -115,6 +135,19 @@ function documentCsp(html) {
     .replaceAll('&lt;', '<')
     .replaceAll('&gt;', '>')
     .replaceAll('&amp;', '&');
+}
+
+/** Compare complete source expressions in the first matching CSP directive. */
+function cspDirectiveHasSource(policy, directive, source) {
+  for (const entry of policy.split(';')) {
+    const [name, ...sources] = entry.trim().split(/\s+/u);
+    if (name.toLowerCase() === directive.toLowerCase()) {
+      // CSP ignores later duplicate directives. A similar host, userinfo or
+      // path containing the expected origin must never count as that source.
+      return sources.some((value) => value === source);
+    }
+  }
+  return false;
 }
 
 function sha256(text) {
@@ -243,6 +276,7 @@ module.exports = {
   DOCUMENT_HEADER_CSP,
   PUBLIC_WEB_INPUTS,
   configFingerprint,
+  cspDirectiveHasSource,
   documentCsp,
   publicWebConfig,
   verifyWebBuildInfo,

@@ -8,6 +8,7 @@ const {
   DOCUMENT_HEADER_CSP,
   PUBLIC_WEB_INPUTS,
   configFingerprint,
+  cspDirectiveHasSource,
   documentCsp,
   publicWebConfig,
   verifyWebBuildInfo,
@@ -25,19 +26,47 @@ const declared = {
 const HEAD = '<!doctype html><html><head><meta charset="UTF-8" /><title>x</title></head></html>';
 const built = (env) => injectWebCsp(HEAD, buildWebCsp(env));
 
+test('CSP source checks reject deceptive hosts, paths and unrelated directives', () => {
+  const source = 'https://js.stripe.com';
+  assert.equal(
+    cspDirectiveHasSource(`script-src 'self'\t${source}; object-src 'none'`, 'script-src', source),
+    true,
+  );
+  for (const value of [
+    'https://js.stripe.com.attacker.test',
+    'https://js.stripe.com@attacker.test',
+    'https://attacker.test/https://js.stripe.com',
+    'https://attacker.test/?next=https://js.stripe.com',
+    'https://js.stripe.com/path',
+    'https://*.js.stripe.com',
+  ]) {
+    assert.equal(cspDirectiveHasSource(`script-src 'self' ${value}`, 'script-src', source), false);
+  }
+  assert.equal(
+    cspDirectiveHasSource(`img-src ${source}; script-src 'self'`, 'script-src', source),
+    false,
+  );
+  assert.equal(
+    cspDirectiveHasSource(`script-src 'self'; script-src ${source}`, 'script-src', source),
+    false,
+  );
+  assert.equal(cspDirectiveHasSource(`default-src ${source}`, 'script-src', source), false);
+});
+
 test('K03 reported defect: the web Dockerfile propagates every public build input', () => {
   const dockerfile = fs.readFileSync(path.join(ROOT, 'apps/web/Dockerfile'), 'utf8');
   const builder = dockerfile.split(/^FROM /mu)[1];
   for (const input of PUBLIC_WEB_INPUTS) {
-    const arg = builder.match(new RegExp(`^ARG ${input.key}(?:=(.*))?$`, 'mu'));
-    assert.ok(arg, `${input.key} must be a declared builder ARG`);
+    const arg = builder.match(new RegExp(`^ARG ${input.envName}(?:=(.*))?$`, 'mu'));
+    assert.ok(arg, `${input.envName} must be a declared builder ARG`);
     if (input.explicit)
-      assert.equal(arg[1], undefined, `${input.key} must not have an image default`);
-    else assert.equal(arg[1] ?? '', input.default, `${input.key} default must match the bundle`);
+      assert.equal(arg[1], undefined, `${input.envName} must not have an image default`);
+    else
+      assert.equal(arg[1] ?? '', input.default, `${input.envName} default must match the bundle`);
     assert.match(
       builder,
-      new RegExp(`\\b${input.key}=\\$\\{${input.key}\\}`, 'u'),
-      `${input.key} must reach the Vite build environment`,
+      new RegExp(`\\b${input.envName}=\\$\\{${input.envName}\\}`, 'u'),
+      `${input.envName} must reach the Vite build environment`,
     );
   }
   assert.match(builder, /^ARG WEB_CONFIG_FINGERPRINT$/mu);
@@ -129,7 +158,7 @@ test('every public input changes the fingerprint; equivalent spellings do not', 
   };
   assert.deepEqual(
     Object.keys(variants),
-    PUBLIC_WEB_INPUTS.map((input) => input.key),
+    PUBLIC_WEB_INPUTS.map((input) => input.envName),
   );
   const seen = new Set([base]);
   for (const [key, value] of Object.entries(variants)) {
