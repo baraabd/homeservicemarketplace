@@ -1,0 +1,83 @@
+{
+  "schema": "hsm.ksa-launch.k10.preflight/v1",
+  "recordedAt": "2026-11-03",
+  "finalStatus": "BLOCKED",
+  "branch": "release/ksa-k10-launch",
+  "branchRole": "coordinator-integration-only",
+  "base": {
+    "ref": "origin/develop",
+    "sha": "92770ea65ee1154f94f4251d5febfa39822f9b9a",
+    "tree": "854a9146c05bf21ef62af060358f581ec4c19306",
+    "equalsAuditReference": true
+  },
+  "toolchain": { "node": "24.21.0", "pnpm": "10.32.1" },
+  "migrationHeadSource": "20261024120000_g3_financial_integration",
+  "migrationDirectoryCount": 74,
+  "baseCi": {
+    "failed": [
+      {
+        "run": 41093704746,
+        "workflow": "CI",
+        "jobs": [
+          "Dependency, secret, and container scans",
+          "R18 functional completion acceptance",
+          "CI gate"
+        ]
+      },
+      {
+        "run": 41093704442,
+        "workflow": "Web development startup",
+        "jobs": ["Dev browser startup (windows-latest)"]
+      }
+    ],
+    "passed": [
+      "CodeQL",
+      "Production governance",
+      "Staging release boundary",
+      "R26 application security acceptance",
+      "Authentication lifecycle acceptance",
+      "Real application startup performance"
+    ]
+  },
+  "gates": {
+    "G3": "BLOCKED",
+    "G4": "NOT_APPROVED",
+    "R34": "PLANNED",
+    "R35": "PLANNED",
+    "R36": "PLANNED",
+    "R37": "PLANNED",
+    "R38": "PLANNED"
+  },
+  "wave4Branches": {
+    "feat/r34-reconciliation-settlement": "37619c2c",
+    "test/r35-cross-role-certification": "16d3a658",
+    "test/r36-backup-restore-recovery": "6478bbed",
+    "test/r37-hosted-load-security": "b2fe1bf3",
+    "release/r38-release-certification": "2451e9d9"
+  },
+  "kLanes": {
+    "K01": "uncommitted work in HSM-k01",
+    "K02": "uncommitted work in HSM-k02",
+    "K03": "unpublished local commits e4458df3 plus uncommitted work in HSM-k03",
+    "K04": "uncommitted work in HSM-k04",
+    "K05": "no work",
+    "K06": "no work",
+    "K07": "no work",
+    "K08": "no branch",
+    "K09": "no branch"
+  },
+  "remoteKsaBranchesBeforeThisChange": [],
+  "approvedDomain": null,
+  "deployedRuntime": null,
+  "imageDigests": null,
+  "actionsPerformed": ["documentation only"],
+  "actionsNotPerformed": [
+    "domain purchase",
+    "DNS change",
+    "deployment",
+    "migration",
+    "mail send",
+    "merge",
+    "live money"
+  ]
+}

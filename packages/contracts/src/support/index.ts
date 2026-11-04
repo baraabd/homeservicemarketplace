@@ -1,5 +1,7 @@
 export type SupportTicketStatus = 'OPEN' | 'CLOSED';
 export type SupportMessageAuthorRole = 'REQUESTER' | 'SUPPORT';
+/** K06 — the app a ticket was opened from. Only steers the requester's notification link. */
+export type SupportTicketExperience = 'seeker' | 'provider';
 
 export interface SupportMessageView {
   id: string;
@@ -39,6 +41,8 @@ export interface CreateSupportTicketRequest {
   subject: string;
   message: string;
   idempotencyKey: string;
+  /** Optional; omitted by older clients. Grants no authority. */
+  experience?: SupportTicketExperience;
 }
 
 export interface CreateSupportTicketResponse {

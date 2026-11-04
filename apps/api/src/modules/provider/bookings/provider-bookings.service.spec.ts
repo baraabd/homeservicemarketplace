@@ -71,6 +71,7 @@ function makeBookingRow(
     scheduledAt: date,
     priceAmount: 4500,
     currency: 'USD',
+    amountScale: null,
     createdAt: date,
     updatedAt: date,
     deletedAt: null,
@@ -121,6 +122,7 @@ function makeBookingRow(
       providerId: profile.id,
       amount: 4500,
       currency: 'USD',
+      amountScale: null,
       pricingType: 'HOURLY',
       note: 'I can be there in 20 minutes',
       status: 'ACCEPTED',
@@ -265,6 +267,7 @@ describe('ProviderBookingsService', () => {
         scheduledAt: full.scheduledAt,
         priceAmount: full.priceAmount,
         currency: full.currency,
+        amountScale: full.amountScale,
         createdAt: full.createdAt,
         updatedAt: full.updatedAt,
         request: {

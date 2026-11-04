@@ -16,7 +16,10 @@ import { RoleRepository } from '../../../../infrastructure/persistence/iam/role.
 import { UserRepository } from '../../../../infrastructure/persistence/iam/user.repository';
 import { TransactionRunner } from '../../../../infrastructure/prisma/transaction.runner';
 import { SecurityEventsBus } from '../../../../shared/security-events/security-events.bus';
+import type { LegalAcceptanceInput } from '@homeservicemarketplace/contracts';
+
 import { AuditService } from '../../audit/audit.service';
+import { LegalAcceptanceService } from '../../legal/legal-acceptance.service';
 import { isInGoodStanding } from '../helpers/account-standing';
 import { LoginAttemptService } from './login-attempt.service';
 import { OTP_CODE_LENGTH, OTP_TTL_MINUTES, OtpService } from './otp.service';
@@ -29,6 +32,8 @@ export interface RegistrationInput {
   password: string;
   firstName: string;
   lastName: string;
+  /** K02 — exact policy versions the user accepted; validated before lookup. */
+  legalAcceptance: LegalAcceptanceInput;
 }
 
 export interface LoginInput {
@@ -76,6 +81,7 @@ export class AuthenticationService {
     // the gateway keeps IAM free of a dependency on the realtime transport.
     private readonly securityEvents: SecurityEventsBus,
     @Inject(MAIL_PORT) private readonly mail: MailPort,
+    private readonly legal: LegalAcceptanceService,
   ) {}
 
   // --- Registration -------------------------------------------------------
@@ -94,6 +100,9 @@ export class AuthenticationService {
     const startedAt = Date.now();
     const email = normalizeEmail(input.email);
     const requireVerification = this.config.get('AUTH_REQUIRE_EMAIL_VERIFICATION');
+    // K02 — before any account lookup: a stale or closed policy version is
+    // refused identically for new and existing emails.
+    this.legal.assertAcceptable(input.legalAcceptance);
 
     try {
       const result = await this.tx.run(async (trx) => {
@@ -123,6 +132,7 @@ export class AuthenticationService {
           },
           trx,
         );
+        await this.legal.recordSignupAcceptance(user.id, input.legalAcceptance, trx);
         const customer = await this.roles.findByName('customer', trx);
         if (customer) {
           await this.users.assignRole(user.id, customer.id, trx);

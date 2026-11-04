@@ -6,6 +6,7 @@ import { seedLanguage } from './fixtures';
 import { api, newJar, otpFor, REAL_API, type Jar } from './real-api';
 import { assertFontsReady, freezeMotion, serveVendoredAssets } from './prototype-assets';
 import { recordParityEvidence, writeParityReport, type ParityMeasurement } from './visual-evidence';
+import { LEGAL_ACCEPTANCE } from './legal-acceptance';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REFERENCE_DIR = join(HERE, '__screenshots__', 'reference');
@@ -51,7 +52,13 @@ test.describe('activation screens 0 and 1 — visual parity with the approved pr
     const email = `${prefix}-${Date.now()}-${Math.floor(Math.random() * 1e6)}@itest.local`;
     const registered = await api<{ challengeId: string }>(jar, '/v1/auth/register', {
       method: 'POST',
-      body: { email, password: PASSWORD, firstName: 'Sam', lastName: 'Seeker' },
+      body: {
+        email,
+        password: PASSWORD,
+        firstName: 'Sam',
+        lastName: 'Seeker',
+        legalAcceptance: LEGAL_ACCEPTANCE,
+      },
     });
     expect(registered.status, 'register should be accepted').toBeLessThan(400);
     const verified = await api(jar, '/v1/auth/verify-otp', {

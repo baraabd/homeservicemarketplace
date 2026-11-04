@@ -7,6 +7,7 @@ import { randomUUID } from 'node:crypto';
 import type { PrismaTx } from '@homeservicemarketplace/database';
 import { withAdvisoryLock } from '../support/db-isolation';
 import { makeTestSecret } from '../support/test-secrets';
+import { currentLegalAcceptance, legalAcceptanceServiceFor } from '../support/legal-acceptance';
 const suite = process.env.RUN_DB_INTEGRATION === '1' ? describe : describe.skip;
 jest.setTimeout(60000);
 suite('R04 account lifecycle invariants (real Postgres)', () => {
@@ -33,7 +34,13 @@ suite('R04 account lifecycle invariants (real Postgres)', () => {
   async function register() {
     const address = email();
     const challenge = await s.auth.register(
-      { email: address, password, firstName: 'Synthetic', lastName: 'R04' },
+      {
+        email: address,
+        password,
+        firstName: 'Synthetic',
+        lastName: 'R04',
+        legalAcceptance: currentLegalAcceptance(),
+      },
       ctx,
     );
     const user = await prisma.user.findUniqueOrThrow({ where: { email: address } });
@@ -165,6 +172,7 @@ suite('R04 account lifecycle invariants (real Postgres)', () => {
       config,
       securityEvents,
       mail,
+      legalAcceptanceServiceFor(config),
     );
 
     s = {

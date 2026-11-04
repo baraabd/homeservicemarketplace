@@ -1,0 +1,81 @@
+{
+  "schemaVersion": 1,
+  "sprint": "K08",
+  "recordedAt": "2026-11-03",
+  "decision": "BLOCKED",
+  "acceptanceClaimed": false,
+  "jointCandidate": null,
+  "source": {
+    "branch": "release/ksa-k08-integrated-certification",
+    "base": "92770ea65ee1154f94f4251d5febfa39822f9b9a",
+    "baseTree": "854a9146c05bf21ef62af060358f581ec4c19306",
+    "originDevelopAtRecord": "92770ea65ee1154f94f4251d5febfa39822f9b9a",
+    "matchesAuditReference": true
+  },
+  "toolchain": { "node": "24.21.0", "pnpm": "10.32.1" },
+  "gateObservations": {
+    "g3Acceptance": "BLOCKED (gates/g3/ACCEPTANCE.md)",
+    "g3ExternalScenarios": "14 NOT_RUN",
+    "wave4": { "baseSha": null, "status": "BLOCKED", "startableLanes": [] },
+    "r34": { "frozenBaseSha": null, "leases": 0, "reconciliationModuleFilesPresent": 0 },
+    "r35": { "frozenBaseSha": null, "leases": 0 },
+    "financialReportingBinding": "UnavailableFinancialReconciliationStatus",
+    "kSprintsOnRemote": [],
+    "kSprintsLocal": {
+      "K01": "uncommitted peer work",
+      "K02": "uncommitted peer work",
+      "K03": "2 unpushed commits (e4458df3)",
+      "K04": "no commits beyond develop",
+      "K05": "no commits beyond develop",
+      "K06": "no commits beyond develop",
+      "K07": "absent"
+    }
+  },
+  "commands": [
+    { "command": "pnpm install --frozen-lockfile", "exit": 0 },
+    { "command": "pnpm --filter @homeservicemarketplace/contracts build", "exit": 0 },
+    {
+      "command": "npx vitest run src/app/features/subscriptions/StripePlanPurchase.same-tab.test.tsx (apps/web, baseline + reproduction test only)",
+      "exit": 1,
+      "tests": { "passed": 2, "failed": 1, "skipped": 0 },
+      "failure": "a confirmed purchase does not absorb a second explicit purchase after reload/sign-in: expected 1 to be 2",
+      "meaning": "Expected red: reproduces CR-K08-01 on the unmodified baseline"
+    },
+    {
+      "command": "npx vitest run src/app/features/subscriptions (apps/web, CR-K08-01 patch applied, after Prettier)",
+      "exit": 0,
+      "files": 6,
+      "tests": { "passed": 44, "failed": 0, "skipped": 0 }
+    },
+    { "command": "pnpm --filter @homeservicemarketplace/web typecheck (patch applied)", "exit": 0 },
+    { "command": "npx eslint src/app/features/subscriptions (patch applied)", "exit": 0 },
+    { "command": "npx prettier --check src/app/features/subscriptions (patch applied)", "exit": 0 },
+    {
+      "command": "git apply --check patches/CR-K08-01-same-tab-purchase-identity.patch (on 92770ea6)",
+      "exit": 0
+    },
+    {
+      "command": "node --test scripts/production/security-app/verify-boundaries.test.cjs",
+      "exit": 0,
+      "tests": { "passed": 32, "failed": 0, "skipped": 0, "todo": 0 },
+      "meaning": "Static CSP builder evidence only; not hosted artifact inspection"
+    }
+  ],
+  "patches": [
+    {
+      "id": "CR-K08-01",
+      "path": "docs/production-readiness/ksa-launch/K08/patches/CR-K08-01-same-tab-purchase-identity.patch",
+      "sha256": "57d975068b770537d08b748b1b30d6cfef07b492380a9aef8f6ef39206b5fb53",
+      "owner": "G3 coordinator (StripePlanPurchase lease)",
+      "appliedToBranch": false
+    }
+  ],
+  "notRun": [
+    "Any R34 implementation or real-PostgreSQL reconciliation test (no lease, G3 blocked)",
+    "Any R35 joined journey, real-API Playwright or real-device run",
+    "Stripe sandbox purchase/webhook/refund (no credentials)",
+    "Hosted Docker artifact CSP inspection, flag ON and OFF (no K03 hosted target)",
+    "Screenshots or visual review (no UI change, no candidate)",
+    "Remote CI for a joined candidate (none exists)"
+  ]
+}

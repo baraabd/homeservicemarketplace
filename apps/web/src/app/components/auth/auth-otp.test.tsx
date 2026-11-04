@@ -254,9 +254,11 @@ describe('Login → OTP → authenticated', () => {
     });
     // Acknowledgement is not proof of external mailbox delivery. Preserve the
     // non-enumerating request notice and the exact resend endpoint assertions.
-    await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent(
-      'Request received. Check your inbox and use the most recent code.',
-    ));
+    await waitFor(() =>
+      expect(screen.getByRole('status')).toHaveTextContent(
+        'Request received. Check your inbox and use the most recent code.',
+      ),
+    );
   });
 });
 
@@ -288,6 +290,25 @@ describe('Register → OTP → authenticated', () => {
       expiresInSeconds: 300,
     });
     mock.onPost('/v1/auth/verify-otp').reply(200, {});
+    mock.onGet('/v1/legal/documents').reply(200, {
+      documents: [
+        {
+          kind: 'TERMS_OF_SERVICE',
+          version: 'terms-v-test',
+          status: 'DRAFT',
+          approvalReference: null,
+          path: '/legal/terms',
+        },
+        {
+          kind: 'PRIVACY_NOTICE',
+          version: 'privacy-v-test',
+          status: 'DRAFT',
+          approvalReference: null,
+          path: '/legal/privacy',
+        },
+      ],
+      acceptanceOpen: true,
+    });
 
     renderAuth('/signup');
 
@@ -316,15 +337,15 @@ describe('Register → OTP → authenticated', () => {
       typeInto(email, 'ada@example.com');
       typeInto(password, 'a-reasonable-passphrase');
     });
-    // Click the terms checkbox (label button contains the text).
-    const termsBtn = screen
-      .getAllByRole('button')
-      .find((b) => /privacyPolicy|agreeTerms|I agree/i.test(b.textContent ?? ''));
-    if (termsBtn) {
-      await act(async () => {
-        termsBtn.click();
-      });
-    }
+    // K02 — a real checkbox, enabled once the server's versions load.
+    const consent = (await screen.findByRole('checkbox', {
+      name: /Terms of Service and the Privacy Notice/,
+    })) as HTMLInputElement;
+    await waitFor(() => expect(consent.disabled).toBe(false));
+    await act(async () => {
+      consent.click();
+    });
+    expect(consent.checked).toBe(true);
     const registerBtn = screen
       .getAllByRole('button')
       .find((b) => /register|create/i.test(b.textContent ?? ''))!;
@@ -342,5 +363,11 @@ describe('Register → OTP → authenticated', () => {
     const post = mock.history.post.find((r) => r.url === '/v1/auth/verify-otp');
     expect(post).toBeDefined();
     expect(JSON.parse(post!.data)).toEqual({ challengeId: 'chal-reg-42', code: '654321' });
+    const reg = mock.history.post.find((r) => r.url === '/v1/auth/register');
+    expect(JSON.parse(reg!.data).legalAcceptance).toEqual({
+      termsVersion: 'terms-v-test',
+      privacyVersion: 'privacy-v-test',
+      locale: 'en',
+    });
   });
 });

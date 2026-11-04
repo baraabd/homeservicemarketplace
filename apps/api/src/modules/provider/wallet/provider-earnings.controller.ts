@@ -57,6 +57,6 @@ export class ProviderEarningsController {
     @CurrentUser() user: AuthenticatedUser,
     @Query() query: ProviderEarningsChartQueryDto,
   ): Promise<EarningsChart> {
-    return this.earnings.chart(user.id, query.range ?? DEFAULT_CHART_RANGE);
+    return this.earnings.chart(user.id, query.range ?? DEFAULT_CHART_RANGE, query.currency);
   }
 }

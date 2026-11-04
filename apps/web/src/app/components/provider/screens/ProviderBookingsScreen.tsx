@@ -147,7 +147,13 @@ export function ProviderBookingsScreen({ canTakeNewWork }: { canTakeNewWork: boo
                   (language === 'ar' ? b.service.categoryLabelAr : b.service.categoryLabelEn) ??
                   b.service.customServiceText ??
                   '';
-                const offer = formatOffer(b.priceAmount, b.currency, b.pricingType, language);
+                const offer = formatOffer(
+                  b.priceAmount,
+                  b.currency,
+                  b.amountScale,
+                  b.pricingType,
+                  language,
+                );
                 return (
                   <li key={b.id}>
                     <Link

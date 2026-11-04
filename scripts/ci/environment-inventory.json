@@ -548,6 +548,44 @@
           "gates": []
         }
       }
+    },
+    "cd-vercel.yml": {
+      "triggers": ["push", "workflow_dispatch"],
+      "jobs": {
+        "select": {
+          "owner": "Vercel delivery (PR204)",
+          "location": "ubuntu-latest",
+          "services": [],
+          "containers": [],
+          "composeFiles": [],
+          "gates": [],
+          "executes": "GitHub-hosted: ubuntu-latest",
+          "requiredOnFinalSha": false,
+          "notes": "Deployment workflow after source verification; not a pull-request test."
+        },
+        "verified": {
+          "owner": "Vercel delivery (PR204)",
+          "location": "ubuntu-latest",
+          "services": [],
+          "containers": [],
+          "composeFiles": [],
+          "gates": [],
+          "executes": "GitHub-hosted: ubuntu-latest",
+          "requiredOnFinalSha": false,
+          "notes": "Deployment workflow after source verification; not a pull-request test."
+        },
+        "deploy": {
+          "owner": "Vercel delivery (PR204)",
+          "location": "ubuntu-latest",
+          "services": [],
+          "containers": [],
+          "composeFiles": [],
+          "gates": [],
+          "executes": "GitHub-hosted: ubuntu-latest",
+          "requiredOnFinalSha": false,
+          "notes": "Deployment workflow after source verification; not a pull-request test."
+        }
+      }
     }
   },
   "gates": {

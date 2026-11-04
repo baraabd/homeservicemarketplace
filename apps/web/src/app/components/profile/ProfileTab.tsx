@@ -477,7 +477,9 @@ export function ProfileTab({
             }}
           />
         )}
-        {view === 'helpSupport' && <HelpSupportPage key="help" onBack={() => setView(null)} />}
+        {view === 'helpSupport' && (
+          <HelpSupportPage key="help" experience="seeker" onBack={() => setView(null)} />
+        )}
         {view === 'settings' && <SettingsPage key="settings" onBack={() => setView(null)} />}
       </AnimatePresence>
     </div>

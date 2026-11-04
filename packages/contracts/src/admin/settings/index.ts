@@ -58,7 +58,7 @@ export const ADMIN_SETTINGS_SCHEMA: readonly AdminSettingFieldSchema[] = [
     key: 'default_currency',
     type: 'currency',
     description:
-      'Not read by the platform. Each booking carries its own currency; there is no platform currency or conversion.',
+      'Not read by the platform. New bids are priced in SAR by server policy (K02, hsm.amount-unit.v1); changing this value changes nothing. There is no conversion.',
     default: 'USD',
     inEffect: false,
   },

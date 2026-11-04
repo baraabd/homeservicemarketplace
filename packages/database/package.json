@@ -33,7 +33,8 @@
     "verify:migrations": "node scripts/verify-constraint-migrations.mjs",
     "backfill:provider-lifecycle": "dotenv -e ../../.env -- node scripts/backfill-provider-lifecycle.mjs",
     "catalog:group": "dotenv -e ../../.env -- node scripts/group-flat-categories.mjs",
-    "work-access:readiness": "dotenv -e ../../.env -- node dist/work-access-readiness.js"
+    "work-access:readiness": "dotenv -e ../../.env -- node dist/work-access-readiness.js",
+    "market:init:ksa": "dotenv -e ../../.env -- node dist/market-init.js"
   },
   "dependencies": {
     "@prisma/client": "6.12.0",

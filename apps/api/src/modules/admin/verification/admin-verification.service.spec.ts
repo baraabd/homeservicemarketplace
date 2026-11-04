@@ -133,6 +133,34 @@ describe('AdminVerificationService', () => {
     });
     expect(m.providers.decideIfInStatus).not.toHaveBeenCalled();
   });
+  // K06 — the profile's own user is never its decider.
+  it.each([
+    [
+      'approve',
+      'PENDING_REVIEW',
+      (s: AdminVerificationService) => s.approve('user-prov-1', 'pp-1', null),
+    ],
+    [
+      'reject',
+      'PENDING_REVIEW',
+      (s: AdminVerificationService) => s.reject('user-prov-1', 'pp-1', 'x'),
+    ],
+    ['suspend', 'ACTIVE', (s: AdminVerificationService) => s.suspend('user-prov-1', 'pp-1', 'x')],
+    [
+      'reactivate',
+      'SUSPENDED',
+      (s: AdminVerificationService) => s.reactivate('user-prov-1', 'pp-1'),
+    ],
+  ] as const)('%s refuses the profile owner and writes nothing', async (_name, status, act) => {
+    const m = makeMocks(makeProfile({ status: status as ProviderProfileStatus }));
+    await expect(act(makeService(m))).rejects.toMatchObject({
+      status: 403,
+      details: { reason: 'SELF_REVIEW' },
+    });
+    expect(m.providers.decideIfInStatus).not.toHaveBeenCalled();
+    expect(m.audit.record).not.toHaveBeenCalled();
+    expect(m.notifications.createForUser).not.toHaveBeenCalled();
+  });
   it('approve: PENDING_REVIEW → ACTIVE writes audit + notifies provider', async () => {
     const m = makeMocks(makeProfile({ status: 'PENDING_REVIEW' }));
     await makeService(m).approve('admin-1', 'pp-1', 'looks good');

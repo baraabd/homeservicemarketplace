@@ -17,6 +17,8 @@ import type { UserRepository } from '../../../../infrastructure/persistence/iam/
 import type { TransactionRunner } from '../../../../infrastructure/prisma/transaction.runner';
 import type { SecurityEventsBus } from '../../../../shared/security-events/security-events.bus';
 import type { AuditService } from '../../audit/audit.service';
+import { CURRENT_LEGAL_DOCUMENTS } from '@homeservicemarketplace/contracts';
+import { LegalAcceptanceService } from '../../legal/legal-acceptance.service';
 import { AuthenticationService } from './authentication.service';
 import type { LoginAttemptService } from './login-attempt.service';
 import type { PasswordService } from './password.service';
@@ -49,7 +51,15 @@ function makeUser(overrides: Partial<User> = {}): User {
 interface FakeTx {
   $queryRaw: jest.Mock;
   user: { update: jest.Mock; updateMany: jest.Mock };
+  userLegalAcceptance: { createMany: jest.Mock };
 }
+
+// K02 — the exact current policy versions a signup names.
+const legalAcceptance = {
+  termsVersion: CURRENT_LEGAL_DOCUMENTS.TERMS_OF_SERVICE.version,
+  privacyVersion: CURRENT_LEGAL_DOCUMENTS.PRIVACY_NOTICE.version,
+  locale: 'en' as const,
+};
 
 function makeHarness() {
   const users = {
@@ -115,6 +125,7 @@ function makeHarness() {
       update: jest.fn().mockResolvedValue(undefined),
       updateMany: jest.fn().mockResolvedValue({ count: 1 }),
     },
+    userLegalAcceptance: { createMany: jest.fn().mockResolvedValue({ count: 2 }) },
   };
   const tx = {
     run: jest.fn(async <T>(fn: (t: unknown) => Promise<T>) => fn(fakeTx)),
@@ -168,6 +179,7 @@ function makeHarness() {
     config,
     securityEvents,
     mail,
+    new LegalAcceptanceService(config),
   );
 
   return {
@@ -206,6 +218,7 @@ describe('AuthenticationService', () => {
           password: 'a-reasonable-passphrase',
           firstName: '  Ada  ',
           lastName: 'Lovelace',
+          legalAcceptance,
         },
         ctx,
       );
@@ -228,6 +241,95 @@ describe('AuthenticationService', () => {
       );
     });
 
+    it('K02: records the exact accepted Terms and Privacy versions in the account transaction', async () => {
+      const h = makeHarness();
+      h.users.findByEmail.mockResolvedValueOnce(null);
+      h.users.create.mockResolvedValueOnce(makeUser({ id: 'new-u' }));
+      await h.svc.register(
+        {
+          email: 'n@example.com',
+          password: 'x'.repeat(12),
+          firstName: 'A',
+          lastName: 'B',
+          legalAcceptance,
+        },
+        ctx,
+      );
+      const rows = h.fakeTx.userLegalAcceptance.createMany.mock.calls[0]![0].data;
+      expect(rows).toEqual([
+        expect.objectContaining({
+          userId: 'new-u',
+          documentKind: 'TERMS_OF_SERVICE',
+          version: legalAcceptance.termsVersion,
+          source: 'SIGNUP',
+        }),
+        expect.objectContaining({
+          userId: 'new-u',
+          documentKind: 'PRIVACY_NOTICE',
+          version: legalAcceptance.privacyVersion,
+          source: 'SIGNUP',
+        }),
+      ]);
+      expect(rows[0].acceptedAt).toBeInstanceOf(Date);
+    });
+
+    it('K02: a stale policy version is refused (409) BEFORE any account lookup', async () => {
+      const h = makeHarness();
+      await expect(
+        h.svc.register(
+          {
+            email: 'n@example.com',
+            password: 'x'.repeat(12),
+            firstName: 'A',
+            lastName: 'B',
+            legalAcceptance: { ...legalAcceptance, termsVersion: 'ksa-terms-old' },
+          },
+          ctx,
+        ),
+      ).rejects.toMatchObject({
+        status: 409,
+        details: expect.objectContaining({ reason: 'LEGAL_VERSION_STALE' }),
+      });
+      expect(h.users.findByEmail).not.toHaveBeenCalled();
+      expect(h.users.create).not.toHaveBeenCalled();
+    });
+
+    it('K02: production refuses acceptance of DRAFT policy text unless explicitly allowed', async () => {
+      const h = makeHarness();
+      const prodConfig = {
+        get: (k: string) =>
+          k === 'NODE_ENV' ? 'production' : k === 'AUTH_ANTI_ENUM_DELAY_MS' ? 0 : undefined,
+      } as unknown as AppConfigService;
+      const prodSvc = new AuthenticationService(
+        h.users,
+        h.roles,
+        h.passwords,
+        h.verification,
+        h.otp,
+        h.sessions,
+        h.attempts,
+        h.tx,
+        h.audit,
+        prodConfig,
+        h.securityEvents,
+        h.mail,
+        new LegalAcceptanceService(prodConfig),
+      );
+      await expect(
+        prodSvc.register(
+          {
+            email: 'n@example.com',
+            password: 'x'.repeat(12),
+            firstName: 'A',
+            lastName: 'B',
+            legalAcceptance,
+          },
+          ctx,
+        ),
+      ).rejects.toMatchObject({ status: 409, details: { reason: 'LEGAL_ACCEPTANCE_CLOSED' } });
+      expect(h.users.findByEmail).not.toHaveBeenCalled();
+    });
+
     it('anti-enumeration timing floor: register pads the response so duplicate vs new takes >= AUTH_ANTI_ENUM_DELAY_MS', async () => {
       // Build a service with the floor enabled (the suite-level config sets 0).
       const local = makeHarness();
@@ -247,11 +349,18 @@ describe('AuthenticationService', () => {
         flooredConfig,
         local.securityEvents,
         local.mail,
+        new LegalAcceptanceService(flooredConfig),
       );
       local.users.findByEmail.mockResolvedValueOnce(makeUser()); // duplicate path (fast)
       const t0 = Date.now();
       await flooredSvc.register(
-        { email: 'ada@example.com', password: 'x'.repeat(12), firstName: 'A', lastName: 'B' },
+        {
+          email: 'ada@example.com',
+          password: 'x'.repeat(12),
+          firstName: 'A',
+          lastName: 'B',
+          legalAcceptance,
+        },
         ctx,
       );
       const elapsed = Date.now() - t0;
@@ -263,7 +372,13 @@ describe('AuthenticationService', () => {
       h.users.findByEmail.mockResolvedValueOnce(makeUser({ id: 'existing-u' }));
 
       await h.svc.register(
-        { email: 'ada@example.com', password: 'x'.repeat(12), firstName: 'A', lastName: 'B' },
+        {
+          email: 'ada@example.com',
+          password: 'x'.repeat(12),
+          firstName: 'A',
+          lastName: 'B',
+          legalAcceptance,
+        },
         ctx,
       );
 
@@ -852,6 +967,7 @@ describe('R04 concurrent identity and error boundaries', () => {
       password: 'test-password-long',
       firstName: 'A',
       lastName: 'B',
+      legalAcceptance,
     };
     const h = makeHarness();
     h.users.findByEmail.mockResolvedValue(null);

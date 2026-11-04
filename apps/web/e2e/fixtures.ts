@@ -1,4 +1,5 @@
 import type { AdminProviderSummary } from '@homeservicemarketplace/contracts';
+import { CURRENT_LEGAL_DOCUMENTS } from '@homeservicemarketplace/contracts';
 import { expect, type Locator, type Page, type BrowserContext } from '@playwright/test';
 
 // Phase 12 — shared fixtures for the real-browser suite.
@@ -204,6 +205,10 @@ export async function stubApi(page: Page, options: StubOptions = {}): Promise<vo
       if (url.includes(fragment)) return json(body);
     }
 
+    if (new URL(url).pathname === '/v1/legal/documents') {
+      return json({ documents: Object.values(CURRENT_LEGAL_DOCUMENTS), acceptanceOpen: true });
+    }
+
     if (url.includes('/auth/me')) {
       return me
         ? json(me)
@@ -358,7 +363,9 @@ export function signedInAdmin(): Record<string, unknown> {
 
 /** The visible control a user would actually click. Never a direct state poke. */
 export function langToggle(page: Page): Locator {
-  return page.getByRole('button', { name: 'Switch language' });
+  // K02 — the toggle's accessible name is localised and states the current
+  // language, so tests address it by its stable test id.
+  return page.getByTestId('lang-toggle');
 }
 
 export async function htmlLangDir(page: Page): Promise<{ lang: string; dir: string }> {

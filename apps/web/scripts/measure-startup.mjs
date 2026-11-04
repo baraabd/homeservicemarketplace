@@ -15,7 +15,7 @@
  *     "name": "admin-dashboard", "path": "/admin",
  *     "storageState": "./admin-session.json",
  *     "readySelectors": ["[data-testid='admin-approval-center']"],
- *     "interactions": [{ "type": "click", "selector": "button[aria-label='Switch language']",
+ *     "interactions": [{ "type": "click", "selector": "[data-testid='lang-toggle']",
  *       "acknowledge": { "selector": "html[lang='ar']", "state": "attached" } }]
  *   }]
  * }

@@ -127,6 +127,8 @@ export default defineConfig({
       ? []
       : [
           '**/r33-financial-operations/financial-operations.real-api.spec.ts',
+          // K02 — needs the real API, mail catcher and a read-only DB URL.
+          '**/k02-saudi-launch.real-api.spec.ts',
           '**/auth-cookies.spec.ts',
           '**/provider-onboarding-v2-real-api.spec.ts',
           '**/provider-onboarding-repairs.real-api.spec.ts',
@@ -166,6 +168,8 @@ export default defineConfig({
           '**/phase3-activation-chain.real-api.spec.ts',
           '**/phase3-v2-journey.real-api.spec.ts',
           '**/phase3-v1-flag-off.real-api.spec.ts',
+          // K06 — support operations: real accounts, mail catcher and admin UI.
+          '**/k06-support-operations.real-api.spec.ts',
         ]),
   ],
   // Sprint 09B.29 — one stable snapshot location, shared by the spec that

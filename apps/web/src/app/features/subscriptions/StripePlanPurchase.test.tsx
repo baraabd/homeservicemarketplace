@@ -3,13 +3,17 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import type { MoneyPlanVersionWireV1 } from '@homeservicemarketplace/contracts';
 import { StripePlanPurchase } from './StripePlanPurchase';
 import * as requests from './stripe-purchase.api';
-vi.mock('./stripe-purchase.api', () => ({
+vi.mock('./stripe-purchase.api', async (actual) => ({
+  stripePurchaseResolution: (await actual<typeof import('./stripe-purchase.api')>())
+    .stripePurchaseResolution,
   stripePurchaseKeys: () => ({
     intent: 'stable-intent',
     attempt: 'stable-attempt',
     resume: 'stable-resume',
   }),
+  rotateStripePurchaseKeys: vi.fn(),
   createStripePurchase: vi.fn(),
+  readStripePurchaseIntent: vi.fn(),
   startStripePurchase: vi.fn(),
   resumeStripePurchase: vi.fn(),
   stripePurchaseSession: vi.fn(),
@@ -21,6 +25,11 @@ beforeEach(() => {
     id: 'intent',
     total: { amountMinor: '9223372036854775807', currency: 'XTS' },
   } as Awaited<ReturnType<typeof requests.createStripePurchase>>);
+  vi.mocked(requests.readStripePurchaseIntent).mockResolvedValue({
+    id: 'intent',
+    status: 'CREATED',
+    total: { amountMinor: '9223372036854775807', currency: 'XTS' },
+  } as Awaited<ReturnType<typeof requests.readStripePurchaseIntent>>);
   vi.mocked(requests.startStripePurchase).mockResolvedValue({ resourceId: 'attempt' } as Awaited<
     ReturnType<typeof requests.startStripePurchase>
   >);

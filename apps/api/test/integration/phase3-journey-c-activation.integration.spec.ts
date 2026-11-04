@@ -218,9 +218,13 @@ d('Phase 3 Journey C (reopened) — complete canonical activation (real Postgres
   // ── the surfaces ─────────────────────────────────────────────────────────
   const listWork = () => request(http).get('/v1/provider/bids');
   const createBid = () =>
-    request(http)
-      .post('/v1/provider/bids')
-      .send({ requestId: REQUEST, amount: 25_000, pricingType: 'FIXED', note: 'I can help.' });
+    request(http).post('/v1/provider/bids').send({
+      requestId: REQUEST,
+      amountDecimal: '250',
+      currency: 'SAR',
+      pricingType: 'FIXED',
+      note: 'I can help.',
+    });
   const capabilities = () => request(http).get('/v1/me/provider/capabilities');
 
   const upgrade = () => request(http).post('/v1/me/provider/upgrade').send({});

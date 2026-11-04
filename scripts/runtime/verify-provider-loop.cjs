@@ -318,7 +318,10 @@ async function main() {
     token: PROVIDER_TOKEN,
     body: {
       requestId: captured.requestId,
-      priceQuote: { amount: 4500, currency: 'USD', pricingType: 'FIXED' },
+      // K02 — decimal major units in the approved currency (stored as halalas).
+      amountDecimal: '45.00',
+      currency: 'SAR',
+      pricingType: 'FIXED',
       note: `${RUN_ID} bid`,
     },
     expect: [200, 201],
@@ -434,8 +437,13 @@ async function main() {
   const earnings = await call('provider earnings', 'GET', '/v1/provider/earnings/summary', {
     token: PROVIDER_TOKEN,
   });
-  if (!earnings || typeof earnings.grossEarnings !== 'number') {
-    fail('provider earnings', 'envelope missing grossEarnings number', { earnings });
+  // K02 (hsm.amount-unit.v1): booked value per currency, no fee figures.
+  const sar =
+    earnings && Array.isArray(earnings.byCurrency)
+      ? earnings.byCurrency.find((c) => c.currency === 'SAR')
+      : null;
+  if (!sar || typeof sar.completedValue !== 'number' || earnings.feeStatus !== 'NOT_APPROVED') {
+    fail('provider earnings', 'envelope missing a SAR byCurrency entry or feeStatus', { earnings });
   }
   if (earnings.completedBookingsCount < 1) {
     fail('provider earnings', 'completedBookingsCount expected ≥ 1 after the loop', {
@@ -443,7 +451,7 @@ async function main() {
     });
   }
   console.log(
-    `  → gross=${earnings.grossEarnings} fees=${earnings.platformFees} net=${earnings.netEarnings} count=${earnings.completedBookingsCount}`,
+    `  → SAR booked value=${sar.completedValue} halalas (scale ${sar.amountScale}) count=${earnings.completedBookingsCount}`,
   );
 
   // ── Negative security spot-check: cross-role 403 ───────────────────────────

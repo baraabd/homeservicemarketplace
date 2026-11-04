@@ -21,6 +21,7 @@ import { CsrfGuard } from '../../iam/authentication/guards/csrf.guard';
 import { JwtAuthGuard } from '../../iam/authentication/guards/jwt-auth.guard';
 import type { AuthenticatedUser } from '../../iam/authentication/types/authenticated-user';
 import { Roles } from '../../iam/authorization/decorators/roles.decorator';
+import { CurrentAdminGuard } from '../../iam/authorization/guards/current-admin.guard';
 import { RolesGuard } from '../../iam/authorization/guards/roles.guard';
 import {
   ListAdminDisputesQueryDto,
@@ -48,7 +49,9 @@ export class AdminDisputesController {
     return this.disputes.detail(disputeId);
   }
 
-  @UseGuards(CsrfGuard)
+  // K06 — decisions require live admin membership. Reads stay within the R27
+  // statement budget; see ksa-launch/k06/BLOCKED_INPUTS.md B-11.
+  @UseGuards(CsrfGuard, CurrentAdminGuard)
   @Post()
   @HttpCode(HttpStatus.CREATED)
   open(
@@ -63,7 +66,9 @@ export class AdminDisputesController {
   // emits its own DisputeEvent row; the response carries the
   // refreshed recentEvents slice so the timeline reconciles in one
   // round-trip.
-  @UseGuards(CsrfGuard)
+  // K06 — decisions require live admin membership. Reads stay within the R27
+  // statement budget; see ksa-launch/k06/BLOCKED_INPUTS.md B-11.
+  @UseGuards(CsrfGuard, CurrentAdminGuard)
   @Patch(':disputeId')
   @HttpCode(HttpStatus.OK)
   update(
@@ -74,7 +79,9 @@ export class AdminDisputesController {
     return this.disputes.update(admin.id, disputeId, body);
   }
 
-  @UseGuards(CsrfGuard)
+  // K06 — decisions require live admin membership. Reads stay within the R27
+  // statement budget; see ksa-launch/k06/BLOCKED_INPUTS.md B-11.
+  @UseGuards(CsrfGuard, CurrentAdminGuard)
   @Post(':disputeId/resolve')
   @HttpCode(HttpStatus.OK)
   resolve(

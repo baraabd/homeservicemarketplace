@@ -226,6 +226,25 @@ describe('Provider intent survives the entire auth flow', () => {
       // real auth check to 200 and breaking the post-OTP redirect.
       let otpVerified = false;
       mock.onGet('/v1/auth/me').reply(() => (otpVerified ? [200, MOCK_ME] : [401, {}]));
+      mock.onGet('/v1/legal/documents').reply(200, {
+        documents: [
+          {
+            kind: 'TERMS_OF_SERVICE',
+            version: 't-test',
+            status: 'DRAFT',
+            approvalReference: null,
+            path: '/legal/terms',
+          },
+          {
+            kind: 'PRIVACY_NOTICE',
+            version: 'p-test',
+            status: 'DRAFT',
+            approvalReference: null,
+            path: '/legal/privacy',
+          },
+        ],
+        acceptanceOpen: true,
+      });
       mock.onPost('/v1/auth/refresh').reply(401, {});
       mock.onPost('/v1/auth/login').reply(200, {
         otpRequired: true,
@@ -304,6 +323,25 @@ describe('Provider intent survives the entire auth flow', () => {
       // sibling test in this describe for the same rationale.
       let otpVerified = false;
       mock.onGet('/v1/auth/me').reply(() => (otpVerified ? [200, MOCK_ME] : [401, {}]));
+      mock.onGet('/v1/legal/documents').reply(200, {
+        documents: [
+          {
+            kind: 'TERMS_OF_SERVICE',
+            version: 't-test',
+            status: 'DRAFT',
+            approvalReference: null,
+            path: '/legal/terms',
+          },
+          {
+            kind: 'PRIVACY_NOTICE',
+            version: 'p-test',
+            status: 'DRAFT',
+            approvalReference: null,
+            path: '/legal/privacy',
+          },
+        ],
+        acceptanceOpen: true,
+      });
       mock.onPost('/v1/auth/refresh').reply(401, {});
       mock.onPost('/v1/auth/register').reply(202, {
         otpRequired: true,
@@ -364,14 +402,13 @@ describe('Provider intent survives the entire auth flow', () => {
         fireEvent.change(emailInput, { target: { value: 'ada@example.com' } });
         fireEvent.change(passwordInput, { target: { value: 'a-reasonable-passphrase' } });
       });
-      const termsBtn = screen
-        .getAllByRole('button')
-        .find((b) => /privacyPolicy|agreeTerms|i agree/i.test(b.textContent ?? ''));
-      if (termsBtn) {
-        await act(async () => {
-          termsBtn.click();
-        });
-      }
+      // K02 — a real consent checkbox, enabled once the server's current
+      // policy versions have loaded.
+      const consent = (await screen.findByRole('checkbox')) as HTMLInputElement;
+      await waitFor(() => expect(consent.disabled).toBe(false));
+      await act(async () => {
+        consent.click();
+      });
       const registerBtn = screen
         .getAllByRole('button')
         .find((b) => /register|create/i.test(b.textContent ?? ''))!;

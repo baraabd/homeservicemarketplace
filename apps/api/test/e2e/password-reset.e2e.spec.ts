@@ -24,6 +24,7 @@ import request from 'supertest';
 
 import { createIsolatedDatabase, type IsolatedDatabase } from '../support/isolated-database';
 import { makeTestSecret } from '../support/test-secrets';
+import { legalAcceptanceServiceFor } from '../support/legal-acceptance';
 
 const shouldRun = process.env.RUN_DB_INTEGRATION === '1';
 const d = shouldRun ? describe : describe.skip;
@@ -172,6 +173,7 @@ d('Password reset — real HTTP round trip', () => {
       config,
       securityEvents,
       mail,
+      legalAcceptanceServiceFor(config),
     );
 
     @Module({

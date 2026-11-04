@@ -54,7 +54,7 @@
       "type": "object",
       "properties": {
         "schemaVersion": {
-          "const": 1
+          "const": 2
         },
         "sourceSha": {
           "type": "string",
@@ -138,6 +138,15 @@
         },
         "onboardingV2": {
           "type": "boolean"
+        },
+        "stripeSandbox": {
+          "type": "boolean",
+          "description": "K03: explicit compiled Stripe sandbox CSP state; live payment modes have no web flag."
+        },
+        "webConfigFingerprint": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$",
+          "description": "K03: reviewed SHA-256 of the normalized public web build configuration (web-build-identity.cjs)."
         }
       },
       "required": [
@@ -151,10 +160,12 @@
         "ports",
         "webOrigin",
         "apiOrigin",
-        "onboardingV2"
+        "onboardingV2",
+        "stripeSandbox",
+        "webConfigFingerprint"
       ],
       "additionalProperties": false,
-      "description": "Existing staging.cjs version-1 manifest, not a new deployment interface. Its sourceSha is the selected accepted release revision, not necessarily frozenBaseSha."
+      "description": "Existing staging.cjs manifest (version 2 since K03 binds the public web configuration), not a new deployment interface. Its sourceSha is the selected accepted release revision, not necessarily frozenBaseSha."
     },
     "platformInput": {
       "type": "object",

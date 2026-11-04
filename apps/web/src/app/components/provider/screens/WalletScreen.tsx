@@ -16,7 +16,13 @@ import {
   useProviderEarningsSummary,
   useProviderEarningsTransactions,
 } from '../../../hooks/provider/useProviderEarnings';
-import type { EarningsChartRange } from '@homeservicemarketplace/contracts';
+import {
+  LAUNCH_CURRENCY,
+  minorToDecimal,
+  type CurrencyBookedValue,
+  type EarningsChartRange,
+} from '@homeservicemarketplace/contracts';
+import { formatAmount as formatMoney } from '../../../../lib/money/format-amount';
 import { formatRelativeTime } from '../../../../lib/provider/available-jobs-adapter';
 import { Wallet, TrendingUp } from 'lucide-react';
 import {
@@ -44,8 +50,39 @@ export function WalletScreen() {
   const chartQuery = useProviderEarningsChart(chartRange);
 
   const summary = summaryQuery.data;
-  const currency = summary?.currency ?? 'USD';
   const transactions = txQuery.data?.items ?? [];
+  const moneyLang = lang === 'ar' ? 'ar' : 'en';
+
+  // K02 — one figure per currency, never a sum across currencies. The
+  // launch currency leads; any other currency is listed beneath it in its
+  // own unit. With no verified booking yet, the headline is SAR 0.00.
+  const primary: CurrencyBookedValue | null = summary
+    ? (summary.byCurrency.find((c) => c.currency === LAUNCH_CURRENCY) ??
+      summary.byCurrency[0] ?? {
+        currency: LAUNCH_CURRENCY,
+        amountScale: 2,
+        completedValue: 0,
+        completedCount: 0,
+        currentMonthValue: 0,
+        inFlightValue: 0,
+        inFlightCount: 0,
+      })
+    : null;
+  const others = summary ? summary.byCurrency.filter((c) => c !== primary) : [];
+  const legacyCount = summary
+    ? summary.excluded
+        .filter((e) => e.reason === 'LEGACY_UNVERIFIED')
+        .reduce((n, e) => n + e.completedCount + e.inFlightCount, 0)
+    : 0;
+  const hourlyCount = summary
+    ? summary.excluded
+        .filter((e) => e.reason === 'HOURLY_RATE')
+        .reduce((n, e) => n + e.completedCount + e.inFlightCount, 0)
+    : 0;
+  // A chart without a scale (older API) is NOT assumed to be halalas:
+  // assuming 2 would re-introduce the "/ 100" defect K02 removed.
+  const chartScale: number | null = chartQuery.data?.amountScale ?? null;
+  const chartCurrency = chartQuery.data?.currency ?? LAUNCH_CURRENCY;
 
   // Build the AreaChart data from the canonical /chart buckets. Every
   // bucket has a stable ISO date and a gross amount; no client-side
@@ -59,9 +96,18 @@ export function WalletScreen() {
       // 'MM-DD' so the axis stays legible at 30/90 ticks.
       const tick =
         chartRange === '7d' ? (wkLabels[d.getUTCDay()] ?? b.date.slice(5)) : b.date.slice(5);
-      return { tick, gross: b.grossEarnings / 100, net: b.netEarnings / 100 };
+      // The axis needs a number; the exact figure is formatted from the
+      // stored minor units in the tooltip.
+      return {
+        tick,
+        gross:
+          chartScale === null
+            ? b.grossEarnings
+            : Number(minorToDecimal(b.grossEarnings, chartScale)),
+        grossMinor: b.grossEarnings,
+      };
     });
-  }, [chartQuery.data, chartRange, lang]);
+  }, [chartQuery.data, chartRange, chartScale, lang]);
 
   const L = {
     title: lang === 'ar' ? 'المحفظة والأرباح' : 'Wallet & Earnings',
@@ -89,19 +135,28 @@ export function WalletScreen() {
     // the platform neither holds nor pays out money (R16).
     valueNote:
       lang === 'ar'
-        ? 'قيم الحجوزات وليست رصيداً. لا توجد عمولة منصة معتمدة، ولا تحتفظ المنصة بأي أموال ولا تدفعها.'
-        : 'Booking values, not a balance. No platform fee is approved; the platform holds and pays out nothing.',
+        ? 'قيم الحجوزات بسعر ثابت وليست رصيداً. لا توجد عمولة منصة معتمدة، ولا تحتفظ المنصة بأي أموال ولا تدفعها.'
+        : 'Fixed-price booking values, not a balance. No platform fee is approved; the platform holds and pays out nothing.',
+    otherCurrencies: lang === 'ar' ? 'بعملات أخرى' : 'In other currencies',
+    excludedLegacy: (n: number) =>
+      lang === 'ar'
+        ? `${n} حجز بمبلغ قديم غير مؤكد الوحدة غير محتسب في هذه القيم.`
+        : `${n} booking(s) with an unverified legacy amount are not included in these values.`,
+    excludedHourly: (n: number) =>
+      lang === 'ar'
+        ? `${n} حجز بسعر بالساعة غير محتسب: سعر الساعة ليس مبلغاً إجمالياً.`
+        : `${n} hourly-rate booking(s) are not included: an hourly rate is not a total.`,
+    perHour: lang === 'ar' ? '/ساعة' : '/hr',
   };
 
-  // Format an integer marketplace currency unit (cents-equivalent in
-  // the schema) into a human-readable string. `currency` comes from
-  // the server and reflects the dominant booking currency.
-  const formatAmount = (amount: number) =>
-    new Intl.NumberFormat(lang === 'ar' ? 'ar' : 'en', {
-      style: 'currency',
-      currency,
-      maximumFractionDigits: 0,
-    }).format(amount / 100);
+  // Honour reduced motion: the chart must not animate its values in.
+  const reduceMotion =
+    typeof window !== 'undefined' &&
+    !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+
+  // K02 — exact, in the value's own currency and unit; never "/ 100".
+  const formatValue = (value: CurrencyBookedValue, amount: number) =>
+    formatMoney(amount, value.currency, value.amountScale, moneyLang);
 
   const summaryError = summaryQuery.isError;
 
@@ -112,13 +167,18 @@ export function WalletScreen() {
     >
       <Link
         to="/provider/financial-history"
-        className="mx-4 mt-4 inline-flex min-h-11 items-center justify-center rounded-xl border border-slate-300 px-4 py-2 text-sm font-medium text-slate-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 dark:border-slate-600 dark:text-slate-100"
+        className="mx-4 mt-4 shrink-0 inline-flex min-h-11 items-center justify-center rounded-xl border border-slate-300 px-4 py-2 text-sm font-medium text-slate-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 dark:border-slate-600 dark:text-slate-100"
       >
         {lang === 'ar' ? 'سجل مدفوعات الاشتراكات' : 'Subscription payment history'}
       </Link>
       {/* Header card — the value of completed bookings is the headline. It is
          not a balance: nothing is held, deducted or paid out. */}
-      <div className="bg-gradient-to-br from-blue-600 via-indigo-600 to-purple-700 mx-4 mt-4 rounded-3xl p-6 relative overflow-hidden">
+      {/* K02 — shrink-0: in this scrolling column an overflow-hidden card may
+          otherwise shrink below its content and clip the headline. */}
+      <div
+        data-testid="wallet-headline-card"
+        className="shrink-0 bg-gradient-to-br from-blue-600 via-indigo-600 to-purple-700 mx-4 mt-4 rounded-3xl p-6 relative overflow-hidden"
+      >
         <div className="absolute -top-8 -end-8 w-36 h-36 rounded-full bg-white/10" />
         <div className="absolute -bottom-6 start-0 w-24 h-24 rounded-full bg-purple-500/20" />
         <div className="relative">
@@ -129,11 +189,41 @@ export function WalletScreen() {
             className="text-white"
             style={{ fontSize: '38px', fontWeight: 900, letterSpacing: '-0.02em' }}
           >
-            {summary ? formatAmount(summary.grossEarnings) : summaryError ? '—' : '…'}
+            <bdi>
+              {primary ? formatValue(primary, primary.completedValue) : summaryError ? '—' : '…'}
+            </bdi>
           </p>
           {summary ? (
-            <p className="text-white/60 mt-1" style={{ fontSize: '11px' }}>
+            <p className="text-white/80 mt-1" style={{ fontSize: '12px' }}>
               {L.valueNote}
+            </p>
+          ) : null}
+          {others.length > 0 ? (
+            <div className="mt-2" data-testid="wallet-other-currencies">
+              <p className="text-white/80" style={{ fontSize: '12px' }}>
+                {L.otherCurrencies}
+              </p>
+              <ul>
+                {others.map((value) => (
+                  <li
+                    key={`${value.currency}:${value.amountScale}`}
+                    className="text-white"
+                    style={{ fontSize: '14px', fontWeight: 700 }}
+                  >
+                    <bdi>{formatValue(value, value.completedValue)}</bdi>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+          {legacyCount > 0 ? (
+            <p className="text-white/90 mt-2" style={{ fontSize: '12px' }} role="note">
+              {L.excludedLegacy(legacyCount)}
+            </p>
+          ) : null}
+          {hourlyCount > 0 ? (
+            <p className="text-white/90 mt-1" style={{ fontSize: '12px' }} role="note">
+              {L.excludedHourly(hourlyCount)}
             </p>
           ) : null}
           <div className="flex gap-3 mt-4 flex-wrap">
@@ -142,7 +232,7 @@ export function WalletScreen() {
                 {L.pending}
               </p>
               <p className="text-white" style={{ fontSize: '14px', fontWeight: 700 }}>
-                {summary ? formatAmount(summary.pendingBalance) : '…'}
+                <bdi>{primary ? formatValue(primary, primary.inFlightValue) : '…'}</bdi>
               </p>
             </div>
             <div className="bg-white/15 rounded-2xl px-3 py-2 flex-1 min-w-[80px]">
@@ -158,14 +248,14 @@ export function WalletScreen() {
       </div>
 
       {summaryError ? (
-        <div className="mx-4 mt-3 text-rose-600 text-center" style={{ fontSize: '12px' }}>
+        <div className="shrink-0 mx-4 mt-3 text-rose-600 text-center" style={{ fontSize: '12px' }}>
           {L.failed}
         </div>
       ) : null}
 
       {/* Withdrawals do not exist (R16_POLICY_BLOCKED). The control stays
          disabled and promises no date. */}
-      <div className="px-4 mt-3">
+      <div className="shrink-0 px-4 mt-3">
         <button
           disabled
           className="w-full py-4 rounded-2xl flex items-center justify-center gap-2.5 bg-slate-200 dark:bg-slate-700 text-slate-500 cursor-not-allowed"
@@ -179,7 +269,7 @@ export function WalletScreen() {
 
       {/* Daily-earnings chart — server-side buckets from /v1/provider/
          earnings/chart. Range toggle: 7d / 30d / 90d. */}
-      <div className="mx-4 mt-4 bg-white dark:bg-slate-800 rounded-3xl border border-slate-100 dark:border-slate-700 shadow-sm p-4">
+      <div className="shrink-0 mx-4 mt-4 bg-white dark:bg-slate-800 rounded-3xl border border-slate-100 dark:border-slate-700 shadow-sm p-4">
         <div className="flex items-center justify-between mb-3">
           <p
             className="text-slate-900 dark:text-white"
@@ -242,11 +332,19 @@ export function WalletScreen() {
                   boxShadow: '0 4px 20px rgba(0,0,0,0.1)',
                   fontSize: '12px',
                 }}
-                formatter={(v: number) => [formatAmount(v * 100), L.gross]}
+                formatter={(
+                  _v: number,
+                  _name: string,
+                  item: { payload?: { grossMinor?: number } },
+                ) => [
+                  formatMoney(item.payload?.grossMinor ?? 0, chartCurrency, chartScale, moneyLang),
+                  L.gross,
+                ]}
               />
               <Area
                 type="monotone"
                 dataKey="gross"
+                isAnimationActive={!reduceMotion}
                 stroke="#3b82f6"
                 strokeWidth={2.5}
                 fill="url(#blueGrad)"
@@ -258,7 +356,7 @@ export function WalletScreen() {
       </div>
 
       {/* Transaction history — COMPLETED-only canonical rows. */}
-      <div className="mx-4 mt-4 mb-4">
+      <div className="shrink-0 mx-4 mt-4 mb-4">
         <p
           className="text-slate-900 dark:text-white mb-3"
           style={{ fontSize: '15px', fontWeight: 700 }}
@@ -306,7 +404,8 @@ export function WalletScreen() {
                   </div>
                   <div className="text-end">
                     <p style={{ fontSize: '14px', fontWeight: 700, color: '#16a34a' }}>
-                      {formatAmount(tx.amount)}
+                      <bdi>{formatMoney(tx.amount, tx.currency, tx.amountScale, moneyLang)}</bdi>
+                      {tx.pricingType === 'HOURLY' ? L.perHour : ''}
                     </p>
                   </div>
                 </div>

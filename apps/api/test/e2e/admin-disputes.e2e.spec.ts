@@ -19,6 +19,7 @@ import request from 'supertest';
 
 import { AppConfigService } from '../../src/config/app-config.service';
 import { AllExceptionsFilter } from '../../src/infrastructure/http/all-exceptions.filter';
+import { PrismaService } from '../../src/infrastructure/prisma/prisma.service';
 import { AdminDisputesController } from '../../src/modules/admin/disputes/admin-disputes.controller';
 import { AdminDisputesService } from '../../src/modules/admin/disputes/admin-disputes.service';
 import { CsrfGuard } from '../../src/modules/iam/authentication/guards/csrf.guard';
@@ -45,6 +46,7 @@ const disputesService = {
 };
 
 let fakeAuthedUser: { id: string; sessionId: string; jti: string; roles: string[] } | null = null;
+let liveAdmin = true;
 
 class FakeJwtAuthGuard {
   canActivate(ctx: ExecutionContext): boolean {
@@ -70,6 +72,21 @@ async function bootApp(): Promise<INestApplication> {
     providers: [
       Reflector,
       { provide: AdminDisputesService, useValue: disputesService },
+      // K06 — CurrentAdminGuard re-reads live admin membership. Here it follows the
+      // fake user's claim unless a test removes the membership (liveAdmin = false).
+      {
+        provide: PrismaService,
+        useValue: {
+          client: {
+            userRole: {
+              findFirst: () =>
+                Promise.resolve(
+                  liveAdmin && fakeAuthedUser?.roles.includes('admin') ? { roleId: 'admin' } : null,
+                ),
+            },
+          },
+        },
+      },
       { provide: AppConfigService, useValue: config },
       { provide: APP_FILTER, useFactory: () => new AllExceptionsFilter(config) },
     ],
@@ -288,6 +305,25 @@ describe('AdminDisputes (e2e) — Sprint 6.3 refined', () => {
         .post('/v1/admin/disputes/dp-1/resolve')
         .send({ status: 'OPEN', resolution: 'x' });
       expect(res.status).toBe(400);
+    });
+  });
+
+  // K06 — a dispute decision with a token that still claims admin after the
+  // membership was removed is refused before the service is reached.
+  describe('stale admin claim', () => {
+    beforeEach(() => {
+      fakeAuthedUser = { id: 'admin-1', sessionId: 's', jti: 'j', roles: ['admin'] };
+      liveAdmin = false;
+    });
+    afterEach(() => {
+      liveAdmin = true;
+    });
+    it('resolve → 403 without calling the service', async () => {
+      const res = await request(app.getHttpServer())
+        .post('/v1/admin/disputes/dp-1/resolve')
+        .send({ status: 'RESOLVED_REFUND', resolution: 'full refund' });
+      expect(res.status).toBe(403);
+      expect(disputesService.resolve).not.toHaveBeenCalled();
     });
   });
 });

@@ -154,7 +154,7 @@ export function TextField({
         <label
           htmlFor={inputId}
           className={[
-            'absolute pointer-events-none select-none transition-all duration-200',
+            'absolute pointer-events-none select-none transition-all duration-200 motion-reduce:transition-none',
             labelColor,
             leadingIcon ? 'start-11' : 'start-4',
           ].join(' ')}
@@ -165,7 +165,7 @@ export function TextField({
             // center default.
             top: floated ? '8px' : multiline ? '1.25rem' : '50%',
             transform: floated ? 'translateY(0)' : multiline ? 'translateY(0)' : 'translateY(-50%)',
-            fontSize: floated ? '11px' : '14px',
+            fontSize: floated ? '11px' : '16px',
             fontWeight: floated ? 600 : 400,
             lineHeight: '1.2',
           }}
@@ -200,7 +200,9 @@ export function TextField({
               padEnd,
               'disabled:cursor-not-allowed disabled:text-slate-400',
             ].join(' ')}
-            style={{ fontSize: '14px', lineHeight: '1.5' }}
+            // K02 — 16px: the project minimum for editable mobile text (and
+            // the size below which iOS Safari zooms the page on focus).
+            style={{ fontSize: '16px', lineHeight: '1.5' }}
           />
         ) : (
           <input
@@ -234,7 +236,9 @@ export function TextField({
               padEnd,
               'disabled:cursor-not-allowed disabled:text-slate-400',
             ].join(' ')}
-            style={{ fontSize: '14px', lineHeight: '1.5' }}
+            // K02 — 16px: the project minimum for editable mobile text (and
+            // the size below which iOS Safari zooms the page on focus).
+            style={{ fontSize: '16px', lineHeight: '1.5' }}
           />
         )}
 

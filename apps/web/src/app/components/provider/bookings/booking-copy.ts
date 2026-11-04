@@ -1,6 +1,9 @@
 import type { BookingStatus, PricingType } from '@homeservicemarketplace/contracts';
 
+import { LAUNCH_MARKET } from '@homeservicemarketplace/contracts';
+
 import type { ProviderTone } from '../../../features/provider-ui';
+import { formatAmount } from '../../../../lib/money/format-amount';
 
 // R17-E — one vocabulary for provider booking state, actions and failures.
 //
@@ -139,33 +142,31 @@ export const BOOKING_COPY = { en, ar } as const;
 export type BookingCopy = typeof en;
 
 /**
- * The stored offer, as stored: the integer amount, the record's currency code
- * and its pricing type.
- *
- * Deliberately NOT a currency format. Whether `amount` is whole units or minor
- * units is an open money decision (R16 P8, R17-D decision 5); `Intl` with
- * `style: 'currency'` would pick an answer, and a "$" would assert dollars
- * the platform never chose. This prints exactly what the record holds.
+ * A stored offer in its own currency and unit (K02, hsm.amount-unit.v1).
+ * Verified amounts (`amountScale` non-null) are exact currency text —
+ * 10025 at scale 2 in SAR is "SAR 100.25". A pre-K02 amount (null scale)
+ * is printed as stored and labelled unverified; it is never divided by 100.
+ * `basis` says whether the figure is a whole-job price or an hourly rate.
  */
 export function formatOffer(
   amount: number,
   currency: string,
+  amountScale: number | null,
   pricingType: PricingType,
   lang: 'en' | 'ar',
 ): { value: string; basis: string } {
-  // Explicit regions, as the V2 provider copy does: a bare `ar` resolves
-  // differently in Node and in Chromium.
-  const locale = lang === 'ar' ? 'ar-EG' : 'en-US';
   return {
-    value: `${new Intl.NumberFormat(locale, { maximumFractionDigits: 0 }).format(amount)} ${currency}`,
+    value: formatAmount(amount, currency, amountScale, lang),
     basis: BOOKING_COPY[lang].pricing[pricingType],
   };
 }
 
 /** A server timestamp in the reader's language. */
 export function formatBookingTime(iso: string, lang: 'en' | 'ar'): string {
+  // K02 — always in the launch market's zone (Asia/Riyadh).
   return new Intl.DateTimeFormat(lang === 'ar' ? 'ar-EG' : 'en-GB', {
     dateStyle: 'medium',
     timeStyle: 'short',
+    timeZone: LAUNCH_MARKET.timeZone,
   }).format(new Date(iso));
 }

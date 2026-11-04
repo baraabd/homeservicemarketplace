@@ -209,6 +209,7 @@ async function harness() {
       scheduledAt: row.scheduledAt,
       priceAmount: row.priceAmount,
       currency: row.currency,
+      amountScale: row.amountScale,
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,
       request: {
@@ -248,7 +249,9 @@ async function harness() {
       id: row.id,
       priceAmount: row.priceAmount,
       currency: row.currency,
+      amountScale: row.amountScale,
       updatedAt: row.updatedAt,
+      bid: { pricingType: row.bid.pricingType },
       request: {
         addressSnapshot: row.request.addressSnapshot,
         customServiceText: row.request.customServiceText,
@@ -391,6 +394,9 @@ async function harness() {
               requestId: idAt('request', 119),
               providerId: historyProvider,
               amount: 1111,
+              // Legacy (pre-K02) row, like the booking below.
+              currency: 'USD',
+              amountScale: null,
               pricingType: 'FIXED',
               status: 'ACCEPTED',
             },

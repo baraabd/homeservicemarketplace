@@ -13,6 +13,7 @@ import request from 'supertest';
 import { fixtureEmailDomain } from '../support/db-isolation';
 import { clearAuthRateBudget } from '../support/rate-limit-reset';
 import { makeTestSecret } from '../support/test-secrets';
+import { currentLegalAcceptance } from '../support/legal-acceptance';
 
 // Derived, never written: a literal here is indistinguishable from a real
 // key to the CI secret scanner. See test/support/test-secrets.ts.
@@ -146,7 +147,13 @@ d('Provider upgrade → session rotation → provider access (real Postgres / Re
 
     const registered = await request(http)
       .post('/v1/auth/register')
-      .send({ email, password: PASSWORD, firstName: 'Sam', lastName: 'Seeker' })
+      .send({
+        email,
+        password: PASSWORD,
+        firstName: 'Sam',
+        lastName: 'Seeker',
+        legalAcceptance: currentLegalAcceptance(),
+      })
       .expect(202);
 
     const verified = await request(http)

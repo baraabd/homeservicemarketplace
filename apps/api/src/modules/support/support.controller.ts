@@ -25,6 +25,7 @@ import {
 import type {
   CreateSupportTicketRequest,
   SendSupportMessageRequest,
+  SupportTicketExperience,
 } from '@homeservicemarketplace/contracts';
 import { SupportTicketStatus } from '@homeservicemarketplace/database';
 
@@ -56,6 +57,10 @@ class CreateSupportTicketDto implements CreateSupportTicketRequest {
   @MaxLength(128)
   @Matches(KEY_PATTERN)
   idempotencyKey!: string;
+
+  @IsOptional()
+  @IsIn(['seeker', 'provider'])
+  experience?: SupportTicketExperience;
 }
 
 class SendSupportMessageDto implements SendSupportMessageRequest {

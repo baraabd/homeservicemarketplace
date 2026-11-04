@@ -551,3 +551,55 @@ describe('R33 stable bounded pagination', () => {
     ).rejects.toMatchObject({ status: 400 });
   });
 });
+
+describe('K07 finance action links follow real routes and fresh permissions', () => {
+  const unavailable = (reason: string) => ({ available: false, reason, href: null });
+  const reviewer = ['money:review:read', 'money:receipt:review'];
+
+  it('links an authorized receipt reviewer to the manual payment review route', async () => {
+    const f = fixture(reviewer);
+    f.db.moneyPaymentIntent.findFirst.mockResolvedValue(intent());
+    for (const capabilities of [
+      (await f.service.summary('actor')).capabilities,
+      (await f.service.detail('actor', 'ADMIN', 'PAYMENT', 'intent-1')).capabilities,
+      (await f.service.reconciliation('actor')).capabilities,
+    ]) {
+      expect(capabilities).toEqual({
+        receiptReview: { available: true, reason: null, href: '/admin/manual-payments' },
+        // No refund workspace route exists in the web application yet.
+        refund: unavailable('REFUND_WORKSPACE_ROUTE_ABSENT'),
+        myPlan: unavailable('NOT_APPLICABLE'),
+        reconciliationActions: unavailable('R34_INTEGRATION_PENDING'),
+      });
+    }
+  });
+
+  it('withholds the receipt-review link from a read-only finance reviewer', async () => {
+    const f = fixture(['money:review:read']);
+    expect((await f.service.summary('actor')).capabilities.receiptReview).toEqual(
+      unavailable('PERMISSION_REQUIRED'),
+    );
+  });
+
+  it('re-resolves permissions for reconciliation instead of reusing a stale grant', async () => {
+    const f = fixture(reviewer);
+    f.permissions.resolveFreshForUser.mockResolvedValueOnce(new Set(['money:review:read']));
+    expect((await f.service.reconciliation('actor')).capabilities.receiptReview).toEqual(
+      unavailable('PERMISSION_REQUIRED'),
+    );
+    expect(f.permissions.resolveFreshForUser).toHaveBeenCalledWith('actor');
+  });
+
+  it('links a provider to My Plan and never to administrator review', async () => {
+    const f = fixture(['money:read:self', 'money:receipt:review']);
+    f.db.moneyPaymentIntent.findFirst.mockResolvedValue(intent());
+    expect(
+      (await f.service.detail('actor', 'PROVIDER', 'PAYMENT', 'intent-1')).capabilities,
+    ).toEqual({
+      myPlan: { available: true, reason: null, href: '/provider/my-plan' },
+      receiptReview: unavailable('NOT_APPLICABLE'),
+      refund: unavailable('REFUND_WORKSPACE_ROUTE_ABSENT'),
+      reconciliationActions: unavailable('NOT_APPLICABLE'),
+    });
+  });
+});

@@ -31,7 +31,8 @@ export const TRANSLATIONS: Record<Lang, Record<string, string>> = {
     nameOnId: 'As it appears on your ID',
     phoneNumber: 'Phone Number',
     phoneHint: 'e.g. +966 5X XXX XXXX',
-    minPassword: 'Min. 8 characters with a number',
+    // K02 — the form and the API both require 12 characters (RegisterDto).
+    minPassword: 'At least 12 characters',
     agreeTerms: 'I agree to the',
     termsConditions: 'Terms & Conditions',
     andWord: 'and',
@@ -259,7 +260,7 @@ export const TRANSLATIONS: Record<Lang, Record<string, string>> = {
     nameOnId: 'كما هو في الهوية الوطنية',
     phoneNumber: 'رقم الجوال',
     phoneHint: 'مثال: +966 5X XXX XXXX',
-    minPassword: '8 أحرف على الأقل مع رقم',
+    minPassword: '12 حرفاً على الأقل',
     agreeTerms: 'أوافق على',
     termsConditions: 'الشروط والأحكام',
     andWord: 'و',

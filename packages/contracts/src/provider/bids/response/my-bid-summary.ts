@@ -20,6 +20,8 @@ export interface MyBidSummary {
   id: string;
   amount: number;
   currency: string;
+  // K02 — minor-unit scale (2 = SAR halalas); null = LEGACY_UNVERIFIED pre-K02 amount.
+  amountScale: number | null;
   pricingType: PricingType;
   note: string | null;
   status: BidStatus;

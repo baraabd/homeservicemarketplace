@@ -78,6 +78,9 @@ describe('PermissionsGuard', () => {
     'support:read',
     'support:respond',
     'user:read:any',
+    'user:write:any',
+    // K06: the grant that mints administrators.
+    'admin:access:grant',
     ...MONEY_API_CAPABILITIES,
   ])('denies revoked %s even when the token and cached role still grant it', async (permission) => {
     const resolver = resolverReturning([permission]);

@@ -371,6 +371,8 @@ d('R25 two API replicas, real PostgreSQL/Redis and authorized REST recovery', ()
         requestId: `${id}-r`,
         providerId,
         amount: 100,
+        currency: 'SAR',
+        amountScale: 2,
         pricingType: 'FIXED',
         status: 'ACCEPTED',
       },
@@ -383,6 +385,8 @@ d('R25 two API replicas, real PostgreSQL/Redis and authorized REST recovery', ()
         seekerUserId: seeker.id,
         providerId,
         priceAmount: 100,
+        currency: 'SAR',
+        amountScale: 2,
         status: 'SCHEDULED',
       },
     });

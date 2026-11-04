@@ -136,7 +136,7 @@ d('Service-area matching and fan-out (real Postgres)', () => {
   }
 
   async function listIds(serviceArea: Record<string, unknown>, take = 100): Promise<string[]> {
-    const rows = await repo.listAvailableForProvider({
+    const { rows } = await repo.listAvailableForProvider({
       excludeSeekerUserId: null,
       categoryIds: [categoryId],
       serviceArea,

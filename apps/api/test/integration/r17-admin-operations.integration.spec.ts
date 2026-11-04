@@ -141,6 +141,182 @@ const enabled = process.env.RUN_DB_INTEGRATION === '1';
     }
   });
 
+  // K06 — settings writes include the dispute-intake pilot policy and the market
+  // registry, yet were authorized only by the `admin` claim inside the access
+  // token. No API path removes the admin role, so removal is out of band (an
+  // operator or database change) and the old token kept writing settings until
+  // it expired. Writes now re-read live admin membership in their transaction.
+  it('K06 a removed admin membership cannot write settings through a still-valid token', async () => {
+    const { db, users } = h.fixture;
+    const adminRole = await db.role.findFirstOrThrow({ where: { name: 'admin', deletedAt: null } });
+    const membership = { userId_roleId: { userId: users.independent, roleId: adminRole.id } };
+    const key = 'provider_onboarding_max_service_areas';
+    const intake = 'disputes.self_service.intake';
+    const restoreKey = await preserveSetting(key);
+    const restoreIntake = await preserveSetting(intake);
+    const before = await db.platformSetting.findUnique({ where: { key } });
+    const intakeBefore = await db.platformSetting.findUnique({ where: { key: intake } });
+    const since = new Date();
+    await db.userRole.delete({ where: membership });
+    try {
+      // The session is still valid and its token still says `admin`.
+      expect((await otherAdmin.request('/v1/auth/me')).status).toBe(200);
+      const writes = [
+        [`/v1/admin/settings/${key}`, 'PUT', { value: 7 }],
+        ['/v1/admin/settings', 'PATCH', { values: { [key]: 8 } }],
+        [`/v1/admin/settings/${key}`, 'DELETE', undefined],
+        [
+          `/v1/admin/settings/${intake}`,
+          'PUT',
+          {
+            value: {
+              version: 'k06-stale-token',
+              enabled: true,
+              pilotUserIds: [users.independent],
+              allowedBookingStates: ['COMPLETED'],
+              terminalWindowHours: 24,
+            },
+          },
+        ],
+      ] as const;
+      for (const [path, method, body] of writes) {
+        const res = await otherAdmin.request(path, { method, body });
+        expect({ path, method, status: res.status }).toEqual({ path, method, status: 403 });
+      }
+      expect(await db.platformSetting.findUnique({ where: { key } })).toEqual(before);
+      expect(await db.platformSetting.findUnique({ where: { key: intake } })).toEqual(intakeBefore);
+      expect(await historyRows(key, since)).toBe(0);
+      expect(await historyRows(intake, since)).toBe(0);
+      expect(await settingAudits(key, since)).toBe(0);
+      expect(await settingAudits(intake, since)).toBe(0);
+    } finally {
+      await db.userRole.upsert({
+        where: membership,
+        create: { userId: users.independent, roleId: adminRole.id },
+        update: {},
+      });
+    }
+    try {
+      // Restored membership: the same session writes again on its next request.
+      const put = await otherAdmin.request(`/v1/admin/settings/${key}`, {
+        method: 'PUT',
+        body: { value: 9 },
+      });
+      expect(put.status).toBe(200);
+    } finally {
+      await restoreKey();
+      await restoreIntake();
+      await db.platformSettingHistory.deleteMany({
+        where: { key: { in: [key, intake] }, changedAt: { gte: since } },
+      });
+    }
+  });
+
+  // K06 — the same stale-claim gap on every other admin surface that trusted
+  // the token: catalog, service-area policy, the legacy dispute desk, and
+  // (worst) admin access approval, which mints a new administrator. Each is
+  // refused on the next request once live admin membership is gone, and none
+  // changes state.
+  it('K06 a removed admin membership cannot mint an admin or change catalog, area or disputes', async () => {
+    const { db, users } = h.fixture;
+    const adminRole = await db.role.findFirstOrThrow({ where: { name: 'admin', deletedAt: null } });
+    const membership = { userId_roleId: { userId: users.independent, roleId: adminRole.id } };
+    const request = await db.adminAccessRequest.create({
+      data: { userId: users.outsider, justification: 'K06 stale-token fixture' },
+    });
+    const categoriesBefore = await db.serviceCategory.count();
+    await db.userRole.delete({ where: membership });
+    try {
+      expect((await otherAdmin.request('/v1/auth/me')).status).toBe(200);
+      const attempts = [
+        [`/v1/admin/access-requests/${request.id}/approve`, 'POST', {}],
+        [`/v1/admin/access-requests/${request.id}/reject`, 'POST', {}],
+        ['/v1/admin/access-requests', 'GET', undefined],
+        ['/v1/admin/catalog/categories', 'POST', { slug: 'k06-stale', labelEn: 'x', labelAr: 'x' }],
+        ['/v1/admin/service-area/policies', 'POST', {}],
+        ['/v1/admin/disputes', 'POST', {}],
+        ['/v1/admin/settings', 'GET', undefined],
+      ] as const;
+      for (const [path, method, body] of attempts) {
+        const res = await otherAdmin.request(path, { method, body });
+        expect({ path, method, status: res.status }).toEqual({ path, method, status: 403 });
+      }
+      const after = await db.adminAccessRequest.findUniqueOrThrow({ where: { id: request.id } });
+      expect(after.status).toBe('PENDING');
+      expect(after.decidedByUserId).toBeNull();
+      expect(
+        await db.userRole.count({ where: { userId: users.outsider, roleId: adminRole.id } }),
+      ).toBe(0);
+      expect(await db.serviceCategory.count()).toBe(categoriesBefore);
+    } finally {
+      await db.userRole.upsert({
+        where: membership,
+        create: { userId: users.independent, roleId: adminRole.id },
+        update: {},
+      });
+      await db.adminAccessRequest.deleteMany({ where: { id: request.id } });
+    }
+    // Restored membership: the same session reads the admin queues again.
+    expect((await otherAdmin.request('/v1/admin/access-requests')).status).toBe(200);
+    expect((await otherAdmin.request('/v1/admin/settings')).status).toBe(200);
+  });
+
+  // K06 — "No administrator may approve their own provider application." The
+  // review workspace refuses SELF_REVIEW, but the legacy provider actions did
+  // not check the actor at all, and their approve is live while verification
+  // and work-access enforcement are off (the env defaults). An administrator
+  // who is also a provider must not approve, reject, suspend or reactivate
+  // their own profile; a stale admin claim must not reach these actions either.
+  it('K06 an administrator cannot decide their own provider profile through the legacy actions', async () => {
+    const { db, users, prefix } = h.fixture;
+    const profileId = `${prefix}k06-self-profile`;
+    await db.providerProfile.deleteMany({ where: { id: profileId } });
+    await db.providerProfile.create({
+      data: {
+        id: profileId,
+        userId: users.independent,
+        displayName: 'K06 Self Review',
+        initials: 'KS',
+        status: 'PENDING_REVIEW',
+      },
+    });
+    const since = new Date();
+    try {
+      for (const action of ['approve', 'reject', 'suspend', 'reactivate'] as const) {
+        const res = await otherAdmin.request(`/v1/admin/providers/${profileId}/${action}`, {
+          method: 'POST',
+          body: action === 'approve' ? {} : { reason: 'self' },
+        });
+        expect({ action, status: res.status }).toEqual({ action, status: 403 });
+      }
+      const row = await db.providerProfile.findUniqueOrThrow({ where: { id: profileId } });
+      expect(row.status).toBe('PENDING_REVIEW');
+      expect(row.reviewedByUserId).toBeNull();
+      expect(
+        await db.auditEvent.count({
+          where: {
+            createdAt: { gte: since },
+            type: {
+              in: [
+                'ADMIN_PROVIDER_APPROVED',
+                'ADMIN_PROVIDER_REJECTED',
+                'ADMIN_PROVIDER_SUSPENDED',
+              ],
+            },
+            metadata: { path: ['providerProfileId'], equals: profileId },
+          },
+        }),
+      ).toBe(0);
+      expect(
+        await db.notification.count({
+          where: { userId: users.independent, createdAt: { gte: since } },
+        }),
+      ).toBe(0);
+    } finally {
+      await db.providerProfile.deleteMany({ where: { id: profileId } });
+    }
+  });
+
   it('D-3 hostile property names select nothing, write nothing and pollute nothing', async () => {
     const { db } = h.fixture;
     const hostile = ['__proto__', 'constructor', 'prototype', 'toString', 'hasOwnProperty'];
@@ -404,6 +580,9 @@ const enabled = process.env.RUN_DB_INTEGRATION === '1';
       updatedAt: string,
     ) => {
       const id = `${prefix}r17d-${tag}`;
+      // K02 — only SAR can be a verified unit (DB CHECK); any other currency
+      // is a pre-K02 legacy row with an unverified unit (scale NULL).
+      const amountScale = currency === 'SAR' ? 2 : null;
       await db.serviceRequest.create({
         data: {
           id: `${id}-request`,
@@ -419,6 +598,8 @@ const enabled = process.env.RUN_DB_INTEGRATION === '1';
           requestId: `${id}-request`,
           providerId: profile.id,
           amount: priceAmount,
+          currency,
+          amountScale,
           pricingType: 'FIXED',
           status: 'ACCEPTED',
         },
@@ -432,6 +613,7 @@ const enabled = process.env.RUN_DB_INTEGRATION === '1';
           providerId: profile.id,
           priceAmount,
           currency,
+          amountScale,
           status,
         },
       });
@@ -454,16 +636,16 @@ const enabled = process.env.RUN_DB_INTEGRATION === '1';
     };
     const changed = (at: string) => ({ type: 'BOOKING_STATUS_CHANGED' as const, at });
     await make(
-      'xts-a',
-      'XTS',
+      'sar-a',
+      'SAR',
       1000,
       'COMPLETED',
       changed('2026-01-10T23:30:00Z'),
       '2026-02-01T00:00:00Z',
     );
     await make(
-      'xts-b',
-      'XTS',
+      'sar-b',
+      'SAR',
       500,
       'COMPLETED',
       changed('2026-01-11T00:10:00Z'),
@@ -477,10 +659,10 @@ const enabled = process.env.RUN_DB_INTEGRATION === '1';
       changed('2026-01-10T12:00:00Z'),
       '2026-02-01T00:00:00Z',
     );
-    await make('xts-undated', 'XTS', 300, 'COMPLETED', null, '2026-01-10T12:00:00Z');
+    await make('sar-undated', 'SAR', 300, 'COMPLETED', null, '2026-01-10T12:00:00Z');
     await make(
-      'xts-cancelled',
-      'XTS',
+      'sar-cancelled',
+      'SAR',
       900,
       'CANCELLED',
       { type: 'BOOKING_CANCELLED', at: '2026-01-10T08:00:00Z' },
@@ -489,6 +671,15 @@ const enabled = process.env.RUN_DB_INTEGRATION === '1';
   }
 
   it('D-6 analytics separate currencies, date completions by their real event and never invent fees', async () => {
+    // K02 — SAR lifetime is shared with other suites' verified bookings, so
+    // the lifetime assertion is a delta around this fixture.
+    const lifetimeSar = async () => {
+      const r = await admin.request<{
+        revenueByCurrency: { currency: string; bookedValueLifetime: number }[];
+      }>('/v1/admin/analytics/overview?from=2026-01-10&to=2026-01-11');
+      return r.body.revenueByCurrency.find((x) => x.currency === 'SAR')?.bookedValueLifetime ?? 0;
+    };
+    const lifetimeBefore = await lifetimeSar();
     await analyticsFixture();
     type Overview = {
       revenue: {
@@ -499,10 +690,12 @@ const enabled = process.env.RUN_DB_INTEGRATION === '1';
       };
       revenueByCurrency: {
         currency: string;
+        amountScale: number;
         bookedValueWithinRange: number;
         completedWithinRange: number;
         bookedValueLifetime: number;
       }[];
+      excludedAmounts: { currency: string; reason: string; completedCount: number }[];
       currency: string | null;
       platformFeeRateBps: number | null;
       feeStatus: string;
@@ -512,18 +705,31 @@ const enabled = process.env.RUN_DB_INTEGRATION === '1';
     );
     expect(res.status).toBe(200);
     const o = res.body;
-    const xts = o.revenueByCurrency.find((r) => r.currency === 'XTS');
-    const xxx = o.revenueByCurrency.find((r) => r.currency === 'XXX');
+    const sar = o.revenueByCurrency.find((r) => r.currency === 'SAR');
     // Completed by the BOOKING_STATUS_CHANGED → COMPLETED event, inside the
     // inclusive UTC range; `updatedAt` (February) is irrelevant.
-    expect(xts).toMatchObject({ bookedValueWithinRange: 1500, completedWithinRange: 2 });
-    expect(xxx).toMatchObject({ bookedValueWithinRange: 700, completedWithinRange: 1 });
+    expect(sar).toMatchObject({
+      amountScale: 2,
+      bookedValueWithinRange: 1500,
+      completedWithinRange: 2,
+    });
     // Lifetime includes the completion that has no dated event.
-    expect(xts!.bookedValueLifetime).toBe(1800);
-    // Two currencies in range: there is no honest single total.
-    expect(o.revenue.grossWithinRange).toBeNull();
-    expect(o.revenue.grossLifetime).toBeNull();
-    expect(o.currency).toBeNull();
+    expect(sar!.bookedValueLifetime - lifetimeBefore).toBe(1800);
+    // K02 — the legacy XXX row (unverified unit) is never money: it is not a
+    // currency entry and is reported as an exclusion instead. (Two VERIFIED
+    // currencies cannot coexist while only SAR is approved; the "no single
+    // total across currencies" rule is pinned in admin-analytics.service.spec.)
+    expect(o.revenueByCurrency.find((r) => r.currency === 'XXX')).toBeUndefined();
+    expect(o.excludedAmounts).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          currency: 'XXX',
+          reason: 'LEGACY_UNVERIFIED',
+          completedCount: 1,
+        }),
+      ]),
+    );
+    expect(o.currency).toBe(o.revenueByCurrency.length === 1 ? 'SAR' : null);
     // No fee is approved or charged (R16 P10): not computed, not zero.
     expect(o.revenue.platformFeesWithinRange).toBeNull();
     expect(o.revenue.netProviderEarningsWithinRange).toBeNull();
@@ -541,16 +747,14 @@ const enabled = process.env.RUN_DB_INTEGRATION === '1';
       '/v1/admin/analytics/revenue?from=2026-01-10&to=2026-01-11',
     );
     expect(daily.status).toBe(200);
-    const xtsDays = daily.body.series.find((s) => s.currency === 'XTS')!.buckets;
+    const sarDays = daily.body.series.find((s) => s.currency === 'SAR')!.buckets;
     // 23:30Z on the 10th stays on the 10th; 00:10Z on the 11th is the 11th.
-    expect(xtsDays).toEqual([
+    expect(sarDays).toEqual([
       { date: '2026-01-10', bookedValue: 1000, completedBookings: 1 },
       { date: '2026-01-11', bookedValue: 500, completedBookings: 1 },
     ]);
-    expect(daily.body.series.find((s) => s.currency === 'XXX')!.buckets).toEqual([
-      { date: '2026-01-10', bookedValue: 700, completedBookings: 1 },
-      { date: '2026-01-11', bookedValue: 0, completedBookings: 0 },
-    ]);
+    // The legacy row has no money series.
+    expect(daily.body.series.find((s) => s.currency === 'XXX')).toBeUndefined();
     for (const b of daily.body.buckets) {
       expect(b.platformFees).toBeNull();
       expect(b.netProviderEarnings).toBeNull();

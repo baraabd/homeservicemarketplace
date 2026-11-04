@@ -163,7 +163,7 @@ export function ProviderBookingDetailScreen() {
       (language === 'ar' ? b.service.categoryLabelAr : b.service.categoryLabelEn) ??
       b.service.customServiceText ??
       '';
-    const offer = formatOffer(b.priceAmount, b.currency, b.pricingType, language);
+    const offer = formatOffer(b.priceAmount, b.currency, b.amountScale, b.pricingType, language);
     const place = [b.addressSnapshot?.line1, b.addressSnapshot?.city].filter(Boolean).join(', ');
     body = (
       <>

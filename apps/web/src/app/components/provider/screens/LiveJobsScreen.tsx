@@ -17,19 +17,21 @@ import type { ServiceRequest } from '../../../context/EcosystemContext';
 import { useProviderProfile } from '../../../hooks/provider/useProviderProfile';
 import { useAvailableRequests } from '../../../hooks/provider/useAvailableRequests';
 import { useSubmitBid } from '../../../hooks/provider/useMyBids';
+import { LAUNCH_CURRENCY, normalizeDigits } from '@homeservicemarketplace/contracts';
+import { bidPriceError } from '../../../../lib/money/bid-price';
+
+interface BidFormSubmission {
+  amountDecimal: string;
+  pricingType: 'FIXED' | 'HOURLY';
+  timeLabel: string;
+  responseTimeMinutes: number;
+  note: string;
+}
+
 import { mapAvailableJobToLegacy } from '../../../../lib/provider/available-jobs-adapter';
 import { RequestMediaGallery } from '../../ds/RequestMediaGallery';
 import { resolveMediaUrl } from '../../../../lib/media-url';
-import {
-  ChevronUp,
-  X,
-  DollarSign,
-  Star,
-  CheckCircle2,
-  MapPin,
-  Navigation,
-  Send,
-} from 'lucide-react';
+import { ChevronUp, X, Star, CheckCircle2, MapPin, Navigation, Send } from 'lucide-react';
 // Leaflet powers the map. Kept in THIS module and nowhere else: it is the
 // single heaviest dependency in the provider bundle, and it only earns its
 // weight on the jobs route. Importing it from the shell would pull it into
@@ -72,15 +74,14 @@ function BiddingModal({
   // Returns a promise that resolves on success, rejects on failure.
   // The modal drives its own sending / done / error state from the
   // promise — no setTimeout placeholders.
-  onSubmit: (input: {
-    price: number;
-    timeLabel: string;
-    responseTimeMinutes: number;
-    note: string;
-  }) => Promise<void>;
+  onSubmit: (input: BidFormSubmission) => Promise<void>;
 }) {
   const { lang } = useLang();
   const [price, setPrice] = useState('');
+  // K02 — the provider states what the figure means. FIXED is the default:
+  // only a whole-job price is a booked value; an hourly rate is a rate.
+  const [pricingType, setPricingType] = useState<'FIXED' | 'HOURLY'>('FIXED');
+  const [priceTouched, setPriceTouched] = useState(false);
   const [time, setTime] = useState('');
   const [note, setNote] = useState('');
   const [sending, setSending] = useState(false);
@@ -93,8 +94,23 @@ function BiddingModal({
   const L = {
     title: lang === 'ar' ? 'تقديم عرض' : 'Submit Offer',
     requestFor: lang === 'ar' ? 'طلب:' : 'For:',
-    priceLabel: lang === 'ar' ? 'سعرك ($/ساعة)' : 'Your Price ($/hr)',
-    pricePlh: lang === 'ar' ? 'مثال: 35' : 'e.g. 35',
+    priceLabel:
+      pricingType === 'HOURLY'
+        ? lang === 'ar'
+          ? 'سعرك للساعة (ريال سعودي)'
+          : 'Your hourly rate (SAR)'
+        : lang === 'ar'
+          ? 'سعرك الإجمالي للعمل (ريال سعودي)'
+          : 'Your total price for the job (SAR)',
+    pricePlh: lang === 'ar' ? 'مثال: 150.50' : 'e.g. 150.50',
+    basisLabel: lang === 'ar' ? 'نوع السعر' : 'Price type',
+    fixed: lang === 'ar' ? 'سعر ثابت للعمل' : 'Fixed price',
+    hourly: lang === 'ar' ? 'سعر بالساعة' : 'Hourly rate',
+    priceUnit: pricingType === 'HOURLY' ? (lang === 'ar' ? 'ر.س/ساعة' : 'SAR/hr') : 'SAR',
+    priceInvalid:
+      lang === 'ar'
+        ? 'أدخل مبلغاً بين 0.01 و1,000,000 ريال، بخانتين عشريتين على الأكثر.'
+        : 'Enter an amount from 0.01 to 1,000,000 SAR, with at most 2 decimal places.',
     timeLabel: lang === 'ar' ? 'وقت التنفيذ' : 'Execution Time',
     noteLabel: lang === 'ar' ? 'ملاحظة للعميل' : 'Note to Client',
     notePlh: lang === 'ar' ? 'أخبر العميل عن خبرتك…' : 'Tell the client about your experience…',
@@ -107,15 +123,19 @@ function BiddingModal({
         : 'Could not send your offer. Please try again.',
   };
 
+  // Exact validation with the same rule the server applies — no float.
+  const priceError = price.trim() === '' ? null : bidPriceError(price);
+  const showPriceError = priceTouched && priceError !== null;
+
   const handleSubmit = async () => {
-    if (!price || !time || sending) return;
-    const amount = Math.round(parseFloat(price));
-    if (!Number.isFinite(amount) || amount < 1) return;
+    setPriceTouched(true);
+    if (!price || !time || sending || bidPriceError(price) !== null) return;
     setSending(true);
     setSubmitError(null);
     try {
       await onSubmit({
-        price: amount,
+        amountDecimal: normalizeDigits(price.trim()),
+        pricingType,
         timeLabel: time,
         responseTimeMinutes: TIME_CHIP_MINUTES[time] ?? 60,
         note,
@@ -199,30 +219,77 @@ function BiddingModal({
           </motion.div>
         ) : (
           <div className="px-5 pb-6 flex flex-col gap-4">
-            {/* Price */}
-            <div>
-              <p
+            {/* K02 — price type, then the price in SAR. */}
+            <fieldset>
+              <legend
                 className="text-slate-600 dark:text-slate-300 mb-2"
                 style={{ fontSize: '13px', fontWeight: 600 }}
               >
+                {L.basisLabel}
+              </legend>
+              <div className="grid grid-cols-2 gap-2" role="radiogroup" aria-label={L.basisLabel}>
+                {(['FIXED', 'HOURLY'] as const).map((basis) => (
+                  <button
+                    key={basis}
+                    type="button"
+                    role="radio"
+                    aria-checked={pricingType === basis}
+                    onClick={() => setPricingType(basis)}
+                    className={`min-h-[44px] px-3 rounded-xl border-2 transition-all ${
+                      pricingType === basis
+                        ? 'bg-blue-600 border-blue-600 text-white'
+                        : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-600 text-slate-700 dark:text-slate-200'
+                    }`}
+                    style={{ fontSize: '14px', fontWeight: 600 }}
+                  >
+                    {basis === 'FIXED' ? L.fixed : L.hourly}
+                  </button>
+                ))}
+              </div>
+            </fieldset>
+            <div>
+              <label
+                htmlFor="bid-price-input"
+                className="block text-slate-600 dark:text-slate-300 mb-2"
+                style={{ fontSize: '13px', fontWeight: 600 }}
+              >
                 {L.priceLabel}
-              </p>
-              <div className="flex items-center gap-3 bg-slate-100 dark:bg-slate-700 rounded-2xl px-4 py-3">
-                <DollarSign size={16} className="text-slate-400" />
+              </label>
+              <div
+                className={`flex items-center gap-3 bg-slate-100 dark:bg-slate-700 rounded-2xl px-4 py-3 border-2 ${
+                  showPriceError ? 'border-red-500' : 'border-transparent'
+                }`}
+              >
                 <input
-                  type="number"
+                  id="bid-price-input"
+                  type="text"
+                  inputMode="decimal"
+                  autoComplete="off"
+                  dir="ltr"
                   value={price}
                   onChange={(e) => setPrice(e.target.value)}
+                  onBlur={() => setPriceTouched(true)}
                   placeholder={L.pricePlh}
-                  min={1}
-                  max={999}
-                  className="flex-1 bg-transparent outline-none text-slate-900 dark:text-white placeholder-slate-400"
+                  aria-invalid={showPriceError}
+                  aria-describedby={showPriceError ? 'bid-price-error' : undefined}
+                  className="flex-1 min-w-0 bg-transparent outline-none text-slate-900 dark:text-white placeholder-slate-400"
                   style={{ fontSize: '18px', fontWeight: 700 }}
                 />
-                <span className="text-slate-400" style={{ fontSize: '12px' }}>
-                  USD/hr
+                <span
+                  className="text-slate-500 dark:text-slate-300 shrink-0"
+                  style={{ fontSize: '13px' }}
+                >
+                  {L.priceUnit}
                 </span>
               </div>
+              <p
+                id="bid-price-error"
+                role="alert"
+                className="text-red-600 mt-1"
+                style={{ fontSize: '13px' }}
+              >
+                {showPriceError ? L.priceInvalid : ''}
+              </p>
             </div>
 
             {/* Time chips */}
@@ -891,18 +958,16 @@ export function LiveJobsScreen() {
   // toast a friendly message, and refresh the bids list so the
   // caller's My Bids screen reflects the existing bid without
   // forcing a manual refetch.
-  const handleBidSubmit = async (input: {
-    price: number;
-    timeLabel: string;
-    responseTimeMinutes: number;
-    note: string;
-  }) => {
+  const handleBidSubmit = async (input: BidFormSubmission) => {
     if (!biddingReq) return;
     try {
+      // K02 — the decimal exactly as typed plus the currency the form showed;
+      // the server converts it once and owns the stored unit.
       await submitBidMutation.mutateAsync({
         requestId: biddingReq.id,
-        amount: input.price,
-        pricingType: 'HOURLY',
+        amountDecimal: input.amountDecimal,
+        currency: LAUNCH_CURRENCY,
+        pricingType: input.pricingType,
         note: input.note ? input.note : null,
         responseTimeMinutes: input.responseTimeMinutes,
       });

@@ -138,6 +138,8 @@ d('R12 - booking conversations (real HTTP, real Postgres)', () => {
         requestId: `${id}-request`,
         providerId,
         amount: 100,
+        currency: 'SAR',
+        amountScale: 2,
         pricingType: 'FIXED',
         status: 'ACCEPTED',
       },
@@ -150,6 +152,8 @@ d('R12 - booking conversations (real HTTP, real Postgres)', () => {
         seekerUserId,
         providerId,
         priceAmount: 100,
+        currency: 'SAR',
+        amountScale: 2,
         status: bookingStatus,
       },
     });

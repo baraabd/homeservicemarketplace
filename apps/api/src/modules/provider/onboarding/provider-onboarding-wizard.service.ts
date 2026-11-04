@@ -3,6 +3,7 @@ import {
   ADMIN_SETTINGS_SCHEMA,
   PROVIDER_ONBOARDING_STEPS,
   isPlausibleE164,
+  normalisePhoneNumber,
   suggestProfessionalTitle,
   type ProviderSpecialtyState,
   type ProviderSpecialtyView,
@@ -617,16 +618,20 @@ export class ProviderOnboardingWizardService {
           if (next !== null && !isPlausibleE164(next)) {
             throw new AppError(
               'VALIDATION_ERROR',
-              'Enter a phone number in international format, e.g. +963912345678.',
+              'Enter a phone number in international format, e.g. +966512345678.',
               400,
               { reason: 'PHONE_FORMAT' },
             );
           }
-          profileData.phoneNumber = next;
+          // K02 — store the NORMALISED E.164 form (`+966 51 234 5678`,
+          // `00966512345678` and Arabic-Indic digits all store as
+          // `+966512345678`), so one number has one representation.
+          const normalised = next === null ? null : normalisePhoneNumber(next);
+          profileData.phoneNumber = normalised;
           // Changing the number INVALIDATES the verification. Keeping the old
           // proof against a new number is how an unverifiable number ends up
           // marked verified — the single most valuable thing to get wrong here.
-          if (next !== ctx.profile.phoneNumber) profileData.phoneVerifiedAt = null;
+          if (normalised !== ctx.profile.phoneNumber) profileData.phoneVerifiedAt = null;
         }
         break;
       }

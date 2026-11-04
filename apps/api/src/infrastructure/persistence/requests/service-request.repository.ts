@@ -16,8 +16,9 @@ import {
   type ServiceArea,
 } from '../../../shared/geo/service-area';
 import {
-  BOX_OVERSELECT_FACTOR,
   filterByExactRadius,
+  SCAN_MAX_ROUNDS,
+  scanBatchSize,
   serviceAreaWhere,
 } from '../../../shared/geo/service-area.sql';
 
@@ -90,6 +91,24 @@ export type ServiceRequestWithCategory = ServiceRequest & {
 export type ServiceRequestForProvider = ServiceRequestWithCategory & {
   seeker: ServiceRequestSeekerPreview;
 };
+
+/** One page of the provider feed.
+ *
+ *  `nextCursor` is owned here, not by the services, because only the
+ *  repository knows how far it scanned. Null means the feed truly ended. A
+ *  non-null cursor with a short (even empty) page means the scan budget was
+ *  spent: more matching rows may exist. Pass the cursor back to resume. */
+export interface AvailableRequestsPage {
+  rows: ServiceRequestForProvider[];
+  nextCursor: string | null;
+}
+
+function pageOf(rows: ServiceRequestForProvider[], take: number): AvailableRequestsPage {
+  return {
+    rows: rows.slice(0, take),
+    nextCursor: rows.length > take ? rows[take - 1].id : null,
+  };
+}
 
 type SeekerPageDetails = { requestId: string; bidsCount: bigint } & (
   | ServiceCategory
@@ -219,15 +238,19 @@ export class ServiceRequestRepository {
       // filter so the SQL stays one round-trip — a single LEFT JOIN
       // + correlated NOT EXISTS plan from Postgres.
       excludeBidsByProviderId?: string;
+      // K05 — scan budget override for tests that must exhaust it with a
+      // small fixture. Not reachable from any request: the services never
+      // pass it, and the HTTP layer has no field that maps onto it.
+      scan?: { batchSize: number; maxRounds: number };
     },
     tx?: PrismaTx,
-  ): Promise<ServiceRequestForProvider[]> {
+  ): Promise<AvailableRequestsPage> {
     // A null fragment means the area constrains NOTHING — an unonboarded
     // provider with neither a city nor a service-area centre. That must be an
     // empty feed, never an unfiltered one: omitting the clause would hand
     // them the global request list.
     const geoWhere = serviceAreaWhere(args.serviceArea);
-    if (!geoWhere || args.categoryIds.length === 0) return Promise.resolve([]);
+    if (!geoWhere || args.categoryIds.length === 0) return { rows: [], nextCursor: null };
 
     const where: Prisma.ServiceRequestWhereInput = {
       status: 'OPEN_FOR_BIDS' as ServiceRequestStatus,
@@ -242,7 +265,7 @@ export class ServiceRequestRepository {
       // `locationLat` / `locationLng` are real columns with composite
       // indexes behind them, and the same fragment expresses both the
       // city-equality fallback and the bounding-box radius filter.
-      ...(geoWhere ?? {}),
+      ...geoWhere,
       ...(args.excludeBidsByProviderId
         ? {
             bids: {
@@ -255,35 +278,60 @@ export class ServiceRequestRepository {
           }
         : {}),
     };
-    // Over-fetch before the exact-radius pass.
+    const fetchBatch = (take: number, cursor: string | undefined) =>
+      this.db(tx).serviceRequest.findMany({
+        where,
+        take,
+        ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+        // createdAt alone is not a total order; id makes the keyset stable
+        // across equal timestamps, so a page boundary can never duplicate or
+        // skip a row.
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+        include: {
+          category: true,
+          // Sprint 7.4 — narrow projection: id + first + last only. Email /
+          // phone / status / MFA cannot reach the mapper.
+          seeker: { select: { id: true, firstName: true, lastName: true } },
+        },
+      }) as Promise<ServiceRequestForProvider[]>;
+
+    // City matching is exact in SQL: one query, one look-ahead row.
+    if (!usesRadiusMatching(args.serviceArea)) {
+      const rows = await fetchBatch(args.take + 1, args.cursor);
+      return pageOf(rows, args.take);
+    }
+
+    // K05 — radius matching. The SQL selects the bounding box, a superset of
+    // the circle; the exact Haversine runs here. A fixed over-fetch (the old
+    // ceil(take * 4/π) + 1) is NOT a pagination guarantee: the 4/π figure is
+    // an average over uniformly spread rows, and when the newest box rows sit
+    // in the corners the page came back short — or empty — and the caller
+    // read that as the end of the feed.
     //
-    // The bounding box is a square around a circle, so it admits up to
-    // 4/π ≈ 27% more rows than actually match, and `filterByExactRadius`
-    // drops them. Taking exactly `take` rows here would return a short page
-    // whenever any corner row was selected — and a short page is read by the
-    // cursor pager as "end of feed", silently truncating the provider's
-    // results. Ask for the corners too, then trim.
-    const overFetch = usesRadiusMatching(args.serviceArea)
-      ? Math.ceil(args.take * BOX_OVERSELECT_FACTOR) + 1
-      : args.take;
-
-    const rows = (await this.db(tx).serviceRequest.findMany({
-      where,
-      take: overFetch,
-      ...(args.cursor ? { cursor: { id: args.cursor }, skip: 1 } : {}),
-      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
-      include: {
-        category: true,
-        // Sprint 7.4 — narrow projection: id + first + last only. Email /
-        // phone / status / MFA cannot reach the mapper.
-        seeker: { select: { id: true, firstName: true, lastName: true } },
-      },
-    })) as ServiceRequestForProvider[];
-
-    // Exact Haversine over the box survivors. Sound in this direction only:
-    // the SQL is a strict superset of the circle, so this can remove false
-    // positives but can never invent or hide a true match.
-    return filterByExactRadius(args.serviceArea, rows, toRequestPoint).slice(0, args.take);
+    // Instead, scan forward in keyset batches until the page and its
+    // look-ahead row are filled, the candidates run out, or the query budget
+    // is spent. In the last case the continuation is the last row SCANNED, so
+    // a short page still says, truthfully, "there may be more" — the next
+    // call resumes exactly where this one stopped, never re-reading or
+    // skipping a candidate.
+    const batchSize = args.scan?.batchSize ?? scanBatchSize(args.take);
+    const maxRounds = args.scan?.maxRounds ?? SCAN_MAX_ROUNDS;
+    const matched: ServiceRequestForProvider[] = [];
+    let scanCursor = args.cursor;
+    for (let round = 0; round < maxRounds; round += 1) {
+      const batch = await fetchBatch(batchSize, scanCursor);
+      for (const row of batch) {
+        scanCursor = row.id;
+        if (filterByExactRadius(args.serviceArea, [row], toRequestPoint).length === 1) {
+          matched.push(row);
+          if (matched.length > args.take) return pageOf(matched, args.take);
+        }
+      }
+      // A short batch means the candidates are exhausted: the end is real.
+      if (batch.length < batchSize) return { rows: matched, nextCursor: null };
+    }
+    // Budget spent with the page not full. More candidates may exist.
+    return { rows: matched, nextCursor: scanCursor ?? null };
   }
 
   // Sprint 5.2 (canonical): single-row variant of the above. Returns
@@ -407,6 +455,30 @@ export class ServiceRequestRepository {
     return rows.length === 1;
   }
 
+  // K04 — the seeker-side twin of lockForLifecycle, for the seeker's own
+  // edit / cancel / reopen commands. Same row, same lock, so a seeker command
+  // and an acceptance or bid on the request serialize in one order (request
+  // row first, everything else after).
+  //
+  // Scoped to the owner: a foreign or unknown id locks nothing and returns
+  // false, so one seeker can neither stall another seeker's transactions nor
+  // tell a foreign request from a missing one by how long the refusal took.
+  async lockOwnedForLifecycle(
+    requestId: string,
+    seekerUserId: string,
+    tx: PrismaTx,
+  ): Promise<boolean> {
+    const rows = await tx.$queryRaw<Array<{ id: string }>>`
+      SELECT "id"
+      FROM "ServiceRequest"
+      WHERE "id" = ${requestId}
+        AND "seekerUserId" = ${seekerUserId}
+        AND "deletedAt" IS NULL
+      FOR UPDATE
+    `;
+    return rows.length === 1;
+  }
+
   // Plain non-ownership-scoped finder. Used on the provider side
   // where the caller is NOT the seeker (submit-bid). Soft-deleted
   // rows are still filtered out. Callers must enforce their own
@@ -443,17 +515,24 @@ export class ServiceRequestRepository {
     });
   }
 
-  // Updates only when the row is owned and not soft-deleted; the
-  // composite where prevents cross-user mutation even if the caller
-  // passes a foreign id.
+  // Updates only when the row is owned, not soft-deleted AND still in
+  // `expectedStatus`; the composite where prevents cross-user mutation even
+  // if the caller passes a foreign id.
+  //
+  // K04 — the status predicate is the conditional write. Without it an edit
+  // that read OPEN_FOR_BIDS could land after an acceptance or cancellation
+  // committed and rewrite a request whose booking was made from the old
+  // values. Callers hold lockOwnedForLifecycle, so count 0 here means the
+  // state moved; it is reported as a conflict, never as success.
   updateOwned(
     requestId: string,
     seekerUserId: string,
     input: UpdateServiceRequestInput,
+    expectedStatus: ServiceRequestStatus,
     tx?: PrismaTx,
   ): Promise<Prisma.BatchPayload> {
     return this.db(tx).serviceRequest.updateMany({
-      where: { id: requestId, seekerUserId, deletedAt: null },
+      where: { id: requestId, seekerUserId, deletedAt: null, status: expectedStatus },
       data: {
         ...input,
         // Re-derive whenever the address changes. Editing a request's address

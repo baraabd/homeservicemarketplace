@@ -9,7 +9,7 @@ import type {
   ListAdminFinancialsProviderEarningsResponse,
 } from '@homeservicemarketplace/contracts';
 
-import { AppConfigService } from '../../../config/app-config.service';
+import { summarizeBookedValue } from '../../../infrastructure/persistence/bookings/booked-value';
 import {
   BookingRepository,
   type AdminFinancialBookingListRow,
@@ -17,35 +17,28 @@ import {
 import { ProviderProfileRepository } from '../../../infrastructure/persistence/bids/provider-profile.repository';
 
 const DEFAULT_PAGE_SIZE = 30;
-const DEFAULT_CURRENCY = 'USD';
-const BPS_DENOMINATOR = 10_000;
 
-// Sprint 6.4 — admin financials service. Three read-only methods that
-// roll up the marketplace's revenue using the same env-driven
-// platform-fee math as the provider wallet (Sprint 5.6). Cancelled
-// bookings are excluded from revenue; refunds aren't tracked yet so
-// `totalRefunds` is constant 0.
+// Admin financials — read-only BOOKED value of marketplace bookings (not
+// collected money). K02: per currency, verified FIXED-price only,
+// exclusions counted, no fee/net/refund totals (no fee is approved and no
+// booking refund exists). Cancelled bookings are excluded.
 @Injectable()
 export class AdminFinancialsService {
   constructor(
     private readonly bookings: BookingRepository,
     private readonly providers: ProviderProfileRepository,
-    private readonly config: AppConfigService,
   ) {}
 
   async summary(): Promise<AdminFinancialsSummary> {
-    const feeBps = this.platformFeeBps();
-    const agg = await this.bookings.aggregateGrossRevenueForMarketplace();
-    const totalPlatformFees = applyFee(agg.grossLifetime, feeBps);
+    const value = summarizeBookedValue(
+      await this.bookings.bookedValueGroups({ monthStart: startOfCurrentMonthUtc() }),
+    );
     return {
-      totalRevenue: agg.grossLifetime,
-      totalPlatformFees,
-      totalProviderEarnings: agg.grossLifetime - totalPlatformFees,
-      totalRefunds: 0,
-      pendingBalance: agg.pendingAmount,
-      completedBookingsCount: agg.completedLifetime,
-      currency: agg.dominantCurrency ?? DEFAULT_CURRENCY,
-      platformFeeRateBps: feeBps,
+      byCurrency: value.byCurrency,
+      excluded: value.excluded,
+      completedBookingsCount: value.completedCount,
+      feeStatus: 'NOT_APPROVED',
+      platformFeeRateBps: null,
       generatedAt: new Date().toISOString(),
     };
   }
@@ -59,8 +52,7 @@ export class AdminFinancialsService {
       cursor: query.cursor,
     });
     const page = rows.slice(0, take);
-    const feeBps = this.platformFeeBps();
-    const items: AdminFinancialsBookingRow[] = page.map((row) => toBookingRow(row, feeBps));
+    const items: AdminFinancialsBookingRow[] = page.map(toBookingRow);
     const nextCursor = rows.length > take ? items[items.length - 1].id : null;
     return { items, nextCursor };
   }
@@ -80,13 +72,8 @@ export class AdminFinancialsService {
     const profiles = await Promise.all(
       page.map((r) => this.providers.findByIdForAdmin(r.providerId)),
     );
-    const feeBps = this.platformFeeBps();
-    const dominantCurrency = await this.bookings
-      .aggregateGrossRevenueForMarketplace()
-      .then((agg) => agg.dominantCurrency ?? DEFAULT_CURRENCY);
     const items: AdminFinancialsProviderEarningsRow[] = page.map((r, i) => {
       const profile = profiles[i] ?? null;
-      const platformFees = applyFee(r.gross, feeBps);
       return {
         providerId: r.providerId,
         displayName: profile?.displayName ?? '—',
@@ -94,38 +81,29 @@ export class AdminFinancialsService {
         email: profile?.user?.email ?? null,
         completedBookings: r.completedCount,
         grossEarnings: r.gross,
-        platformFees,
-        netEarnings: r.gross - platformFees,
-        currency: dominantCurrency,
+        currency: r.currency,
+        amountScale: r.amountScale,
       };
     });
     const nextCursor = rows.length > take ? String(skip + take) : null;
     return { items, nextCursor };
   }
-
-  private platformFeeBps(): number {
-    return this.config.get('PROVIDER_PLATFORM_FEE_BPS');
-  }
 }
 
-function applyFee(amount: number, feeBps: number): number {
-  if (amount <= 0 || feeBps <= 0) return 0;
-  return Math.round((amount * feeBps) / BPS_DENOMINATOR);
+function startOfCurrentMonthUtc(): Date {
+  const now = new Date();
+  return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
 }
 
-function toBookingRow(
-  row: AdminFinancialBookingListRow,
-  feeBps: number,
-): AdminFinancialsBookingRow {
-  const platformFee = applyFee(row.priceAmount, feeBps);
+function toBookingRow(row: AdminFinancialBookingListRow): AdminFinancialsBookingRow {
   const snapshot = row.request.addressSnapshot as { city?: string };
   return {
     id: row.id,
     bookingId: row.id,
     amount: row.priceAmount,
-    platformFee,
-    netAmount: row.priceAmount - platformFee,
+    pricingType: row.bid.pricingType,
     currency: row.currency,
+    amountScale: row.amountScale,
     occurredAt: row.updatedAt.toISOString(),
     service: {
       categorySlug: row.request.category?.slug ?? null,

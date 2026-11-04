@@ -38,6 +38,7 @@ import {
 } from '../../src/infrastructure/throttle/registration-throttle.service';
 import { AuthenticationService } from '../../src/modules/iam/authentication/services/authentication.service';
 import { TokenService } from '../../src/modules/iam/authentication/services/token.service';
+import { currentLegalAcceptance } from '../support/legal-acceptance';
 
 jest.setTimeout(30_000);
 
@@ -173,6 +174,7 @@ describe('Authentication controller (e2e)', () => {
       app = await bootApp();
       authService.register.mockResolvedValueOnce(issuedChallenge());
       const res = await request(app.getHttpServer()).post('/v1/auth/register').send({
+        legalAcceptance: currentLegalAcceptance(),
         email: 'ada@example.com',
         password: 'strong-password',
         firstName: 'Ada',
@@ -192,9 +194,13 @@ describe('Authentication controller (e2e)', () => {
 
     it('returns 400 via ValidationPipe when payload is invalid', async () => {
       app = await bootApp();
-      const res = await request(app.getHttpServer())
-        .post('/v1/auth/register')
-        .send({ email: 'not-an-email', password: 'short', firstName: '', lastName: '' });
+      const res = await request(app.getHttpServer()).post('/v1/auth/register').send({
+        legalAcceptance: currentLegalAcceptance(),
+        email: 'not-an-email',
+        password: 'short',
+        firstName: '',
+        lastName: '',
+      });
       expect(res.status).toBe(400);
       expect(res.body.error.code).toBe('VALIDATION_ERROR');
       expect(authService.register).not.toHaveBeenCalled();
@@ -227,6 +233,7 @@ describe('Authentication controller (e2e)', () => {
       const res = await request(app.getHttpServer())
         .post('/v1/auth/register')
         .send({
+          legalAcceptance: currentLegalAcceptance(),
           email: 'ada@example.com',
           password: 'strong-password',
           firstName: 'Ada',
@@ -249,6 +256,7 @@ describe('Authentication controller (e2e)', () => {
       });
       // 11 characters → policy violation (DTO @Length(12, 128))
       const tooShort = await request(app.getHttpServer()).post('/v1/auth/register').send({
+        legalAcceptance: currentLegalAcceptance(),
         email: 'ada@example.com',
         password: 'short-pass1',
         firstName: 'Ada',
@@ -260,6 +268,7 @@ describe('Authentication controller (e2e)', () => {
 
       // 12 characters → accepted
       const atBoundary = await request(app.getHttpServer()).post('/v1/auth/register').send({
+        legalAcceptance: currentLegalAcceptance(),
         email: 'ada@example.com',
         password: 'twelve-chars',
         firstName: 'Ada',
@@ -290,6 +299,7 @@ describe('Authentication controller (e2e)', () => {
       );
 
       const res = await request(app.getHttpServer()).post('/v1/auth/register').send({
+        legalAcceptance: currentLegalAcceptance(),
         email: 'ada@example.com',
         password: 'Str0ng!Passw0rd',
         firstName: 'Ada',
@@ -315,6 +325,7 @@ describe('Authentication controller (e2e)', () => {
       app = await bootApp();
       const send = (email: string) =>
         request(app.getHttpServer()).post('/v1/auth/register').send({
+          legalAcceptance: currentLegalAcceptance(),
           email,
           password: 'Str0ng!Passw0rd',
           firstName: 'Ada',

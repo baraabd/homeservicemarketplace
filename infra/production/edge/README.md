@@ -75,7 +75,7 @@ More specific entries precede the SPA fallback. Preserve paths without stripping
 | `/v1/`                             | API                   | Preserve raw upload/webhook bytes, methods and application headers; no edge caching |
 | `/health/live`, `/health/ready`    | API                   | No caching; preserve actual status and source/readiness payload                     |
 | `/metrics` and its prefix variants | Denied at public edge | Private authenticated scraper only                                                  |
-| `/build-info.json`                 | Static web            | No caching; exact built source/API-origin/V2 metadata                               |
+| `/build-info.json`                 | Static web            | No caching; exact source, public web configuration, fingerprint and CSP digest      |
 | Remaining web routes               | Existing static web   | Preserve `apps/web/nginx.conf` asset and SPA rules                                  |
 
 The API/web loopback ports and management services must not be publicly reachable.

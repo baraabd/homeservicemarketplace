@@ -222,6 +222,7 @@ function toListItem(row: BookingWithRelations): BookingListItem {
     scheduledAt: row.scheduledAt ? row.scheduledAt.toISOString() : null,
     priceAmount: row.priceAmount,
     currency: row.currency,
+    amountScale: row.amountScale,
     pricingType: row.bid.pricingType,
     createdAt: row.createdAt.toISOString(),
     service: {
