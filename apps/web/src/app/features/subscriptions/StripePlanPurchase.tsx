@@ -8,9 +8,12 @@ import type {
 import { Button } from '../../components/ui/button';
 import {
   createStripePurchase,
-  startStripePurchase,
+  readStripePurchaseIntent,
   resumeStripePurchase,
+  rotateStripePurchaseKeys,
+  startStripePurchase,
   stripePurchaseKeys,
+  stripePurchaseResolution,
   stripePurchaseSession,
 } from './stripe-purchase.api';
 
@@ -22,6 +25,10 @@ const copy = {
     check: 'Check payment status',
     pending: 'Payment is pending confirmation. Refresh My Plan to check the recorded result.',
     confirmed: 'Payment is confirmed by the server. Refresh My Plan to view the subscription.',
+    closed: 'The server closed this purchase without confirming a payment.',
+    unresolved:
+      'The payment result is not recorded yet. Check again later. A new purchase is offered only after the server records this result.',
+    again: 'Start a new purchase',
     failed: 'Payment is unavailable or the request failed. Retry to check the same purchase.',
     units: 'minor units',
     loading: 'Loading payment…',
@@ -37,6 +44,10 @@ const copy = {
     check: 'التحقق من حالة الدفع',
     pending: 'الدفع بانتظار التأكيد. حدّث صفحة خطتي للتحقق من النتيجة المسجلة.',
     confirmed: 'أكد الخادم الدفع. حدّث صفحة خطتي لعرض الاشتراك.',
+    closed: 'أغلق الخادم عملية الشراء هذه دون تأكيد أي دفع.',
+    unresolved:
+      'لم تُسجَّل نتيجة الدفع بعد. تحقّق مرة أخرى لاحقًا. لن تُتاح عملية شراء جديدة إلا بعد أن يسجّل الخادم هذه النتيجة.',
+    again: 'بدء عملية شراء جديدة',
     failed: 'الدفع غير متاح أو تعذر الطلب. أعد المحاولة للتحقق من عملية الشراء نفسها.',
     units: 'وحدة صغرى',
     loading: 'جارٍ تحميل الدفع…',
@@ -61,7 +72,7 @@ export function StripePlanPurchase({
   lang: 'ar' | 'en';
 }) {
   const text = copy[lang];
-  const [keys] = useState(() => stripePurchaseKeys(userId, plan.id));
+  const [keys, setKeys] = useState(() => stripePurchaseKeys(userId, plan.id));
   const inFlight = useRef(false);
   const active = useRef(true);
   const [intent, setIntent] = useState<PaymentIntentWireV1>();
@@ -70,6 +81,7 @@ export function StripePlanPurchase({
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState(false);
   const [ready, setReady] = useState(false);
+  const [unresolved, setUnresolved] = useState(false);
   const target = useRef<HTMLDivElement>(null);
   const checkout = useRef<{ stripe: Stripe; elements: StripeElements }>();
   useEffect(() => {
@@ -112,6 +124,7 @@ export function StripePlanPurchase({
     inFlight.current = true;
     setBusy(true);
     setFailed(false);
+    setUnresolved(false);
     try {
       await task();
     } catch {
@@ -129,6 +142,35 @@ export function StripePlanPurchase({
     }
     return value;
   }
+  /** Fresh owner read; an idempotent create replays only its stored snapshot. */
+  async function reconcile(id: string) {
+    const value = await readStripePurchaseIntent(id);
+    if (active.current) setIntent(value);
+    return value;
+  }
+  /** After a failed step, show a server-settled outcome instead of a retry trap. */
+  async function settleAfter(error: unknown, id: string) {
+    const value = await reconcile(id);
+    if (stripePurchaseResolution(value.status) === 'OPEN') throw error;
+  }
+  const resolution =
+    session?.state === 'CONFIRMED'
+      ? 'CONFIRMED'
+      : intent
+        ? stripePurchaseResolution(intent.status)
+        : 'OPEN';
+  function startNewPurchase() {
+    // Only a server-settled outcome releases the identities; pending or
+    // unknown purchases keep retrying the original intent and attempt.
+    if (inFlight.current || resolution === 'OPEN') return;
+    setKeys(rotateStripePurchaseKeys(userId, plan.id, keys));
+    setIntent(undefined);
+    setAttempt(undefined);
+    setSession(undefined);
+    setReady(false);
+    setFailed(false);
+    setUnresolved(false);
+  }
   return (
     <section className="mt-4 min-w-0 space-y-3" aria-label={text.review} aria-busy={busy}>
       <p className="text-sm text-muted-foreground">{text.sandbox}</p>
@@ -140,8 +182,8 @@ export function StripePlanPurchase({
           disabled={busy}
           onClick={() =>
             void run(async () => {
-              const value = await createStripePurchase(plan.id, keys.intent);
-              if (active.current) setIntent(value);
+              const created = await createStripePurchase(plan.id, keys.intent);
+              await reconcile(created.id);
             })
           }
         >
@@ -159,17 +201,27 @@ export function StripePlanPurchase({
             </bdi>{' '}
             {text.units}
           </p>
-          {!attempt && (
+          {!attempt && resolution === 'OPEN' && (
             <Button
               type="button"
               className={controlClass}
               disabled={busy}
               onClick={() =>
                 void run(async () => {
-                  const value = await startStripePurchase(intent.id, keys.attempt);
+                  let value;
+                  try {
+                    value = await startStripePurchase(intent.id, keys.attempt);
+                  } catch (error) {
+                    await settleAfter(error, intent.id);
+                    return;
+                  }
                   if (!active.current) return;
                   setAttempt(value.resourceId);
-                  await loadSession(value.resourceId);
+                  try {
+                    await loadSession(value.resourceId);
+                  } catch (error) {
+                    await settleAfter(error, intent.id);
+                  }
                 })
               }
             >
@@ -178,7 +230,7 @@ export function StripePlanPurchase({
           )}
         </div>
       )}
-      {attempt && (
+      {attempt && resolution === 'OPEN' && (
         <>
           <div ref={target} />
           {session?.state === 'AWAITING_PAYMENT' && (
@@ -206,7 +258,6 @@ export function StripePlanPurchase({
             </Button>
           )}
           {session?.state === 'PROCESSING' && <p role="status">{text.pending}</p>}
-          {session?.state === 'CONFIRMED' && <p role="status">{text.confirmed}</p>}
           <Button
             type="button"
             variant="outline"
@@ -214,10 +265,25 @@ export function StripePlanPurchase({
             disabled={busy}
             onClick={() =>
               void run(async () => {
-                const current = await loadSession(attempt);
-                if (current.state === 'PROCESSING') {
+                try {
+                  const current = await loadSession(attempt);
+                  if (current.state === 'PROCESSING') {
+                    await resumeStripePurchase(attempt, keys.resume);
+                    await loadSession(attempt);
+                  }
+                  return;
+                } catch (error) {
+                  if (!intent) throw error;
+                  const value = await reconcile(intent.id);
+                  if (stripePurchaseResolution(value.status) !== 'OPEN') return;
+                  if (value.status !== 'PROCESSING') throw error;
+                  // The quote time may have passed while the external outcome is
+                  // still unknown. Recover the same attempt with the same identity;
+                  // an elapsed timer never proves that nothing was charged.
                   await resumeStripePurchase(attempt, keys.resume);
-                  await loadSession(attempt);
+                  const after = await reconcile(intent.id);
+                  if (stripePurchaseResolution(after.status) === 'OPEN' && active.current)
+                    setUnresolved(true);
                 }
               })
             }
@@ -226,6 +292,21 @@ export function StripePlanPurchase({
           </Button>
         </>
       )}
+      {resolution !== 'OPEN' && (
+        <>
+          <p role="status">{resolution === 'CONFIRMED' ? text.confirmed : text.closed}</p>
+          <Button
+            type="button"
+            variant="outline"
+            className={controlClass}
+            disabled={busy}
+            onClick={startNewPurchase}
+          >
+            {text.again}
+          </Button>
+        </>
+      )}
+      {unresolved && <p role="status">{text.unresolved}</p>}
       {busy && <p role="status">{text.loading}</p>}
       {failed && (
         <p role="alert" className="text-sm text-destructive">

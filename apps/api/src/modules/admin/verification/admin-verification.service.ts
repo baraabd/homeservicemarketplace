@@ -314,6 +314,8 @@ export class AdminVerificationService {
     const result = await this.tx.run(async (tx) => {
       const existing = await this.providers.findByIdForAdmin(args.providerProfileId, tx);
       if (!existing) throw new AppError('NOT_FOUND', 'Provider profile not found.', 404);
+      // K06 — read under this transaction, so the refusal and the write agree.
+      if (existing.user?.id === args.adminUserId) throw selfReview();
       if (!args.from.includes(existing.status as ProviderProfileStatus)) {
         throw new AppError('CONFLICT', args.conflictMessage, 409);
       }
@@ -488,4 +490,15 @@ export class AdminVerificationService {
     const nextCursor = rows.length > take ? items[items.length - 1].id : null;
     return { items, nextCursor };
   }
+}
+
+/**
+ * K06 — no administrator decides their own provider profile: not approval,
+ * rejection, suspension or reactivation. Same rule and code as the review
+ * workspace's SELF_REVIEW blocker.
+ */
+function selfReview(): AppError {
+  return new AppError('FORBIDDEN', 'You cannot decide your own provider profile.', 403, {
+    reason: 'SELF_REVIEW',
+  });
 }

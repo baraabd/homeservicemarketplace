@@ -30,17 +30,34 @@ const ADMIN_ME = {
   roles: ['admin' as const],
 };
 
+// K02 — hsm.amount-unit.v1: per-currency booked value in halalas.
 const SUMMARY = {
-  totalRevenue: 21_000_00,
-  totalPlatformFees: 2_100_00,
-  totalProviderEarnings: 18_900_00,
-  totalRefunds: 0,
-  pendingBalance: 800_00,
+  byCurrency: [
+    {
+      currency: 'SAR',
+      amountScale: 2,
+      completedValue: 21_000_00,
+      completedCount: 19,
+      currentMonthValue: 0,
+      inFlightValue: 800_00,
+      inFlightCount: 1,
+    },
+  ],
+  excluded: [] as Array<{
+    currency: string;
+    reason: string;
+    completedCount: number;
+    inFlightCount: number;
+  }>,
   completedBookingsCount: 19,
-  currency: 'USD',
-  platformFeeRateBps: 1000,
+  feeStatus: 'NOT_APPROVED' as const,
+  platformFeeRateBps: null,
   generatedAt: '2026-05-02T00:00:00.000Z',
 };
+
+/** Exact text of an element, NBSP-normalised. */
+const exact = (text: string) => (_: string, el: Element | null) =>
+  !!el && el.children.length === 0 && el.textContent?.replace(/\u00a0/g, ' ') === text;
 
 const BOOKINGS_PAGE = {
   items: [
@@ -48,9 +65,9 @@ const BOOKINGS_PAGE = {
       id: 'bk-1',
       bookingId: 'bk-1',
       amount: 4_500_00,
-      platformFee: 450_00,
-      netAmount: 4_050_00,
-      currency: 'USD',
+      pricingType: 'FIXED' as const,
+      currency: 'SAR',
+      amountScale: 2,
       occurredAt: '2026-05-02T10:00:00.000Z',
       service: {
         categorySlug: 'plumbing',
@@ -80,9 +97,8 @@ const PROVIDER_EARNINGS_PAGE = {
       email: 'p@example.com',
       completedBookings: 5,
       grossEarnings: 22_500_00,
-      platformFees: 2_250_00,
-      netEarnings: 20_250_00,
-      currency: 'USD',
+      currency: 'SAR',
+      amountScale: 2,
     },
   ],
   nextCursor: null,
@@ -158,12 +174,11 @@ describe('AdminDashboard — Financials (Sprint 6.4)', () => {
     openFinancialsTab();
 
     // Summary tiles.
-    await waitFor(() => expect(screen.getByText('$21,000')).toBeInTheDocument());
-    expect(screen.getByText('$800')).toBeInTheDocument();
-    // R18 — booking values only: no unapproved fee, no "net" figure, and no
-    // measured-looking "Refunds: $0" (the server field is a constant).
-    expect(screen.queryByText('−$2,100')).toBeNull();
-    expect(screen.queryByText('$18,900')).toBeNull();
+    await waitFor(() => expect(screen.getByText(exact('SAR 21,000.00'))).toBeInTheDocument());
+    expect(screen.getByText(exact('SAR 800.00'))).toBeInTheDocument();
+    // R18/K02 — booking values only: no fee, no "net" figure, no "$".
+    expect(screen.queryByText(/2,100|18,900/)).toBeNull();
+    expect(document.body.textContent).not.toMatch(/\$/);
     expect(screen.getByTestId('admin-financials-refunds')).toHaveTextContent(
       'Refunds: not tracked; no refund is executed',
     );
@@ -174,12 +189,12 @@ describe('AdminDashboard — Financials (Sprint 6.4)', () => {
     // Bookings table — Plumbing row appears (provider Ada).
     expect(screen.getByText('Plumbing')).toBeInTheDocument();
     expect(screen.getAllByText('Ada Lovelace').length).toBeGreaterThan(0);
-    expect(screen.getByText('$4,500')).toBeInTheDocument(); // gross
-    expect(screen.queryByText('$4,050')).toBeNull(); // no net column
+    expect(screen.getByText(exact('SAR 4,500.00'))).toBeInTheDocument();
+    expect(screen.queryByText(/4,050/)).toBeNull(); // no net column
 
     // Provider-earnings table — top earner row.
-    expect(screen.getByText('$22,500')).toBeInTheDocument(); // gross
-    expect(screen.queryByText('$20,250')).toBeNull(); // no net column
+    expect(screen.getByText(exact('SAR 22,500.00'))).toBeInTheDocument();
+    expect(screen.queryByText(/20,250/)).toBeNull(); // no net column
     expect(screen.getByText('5')).toBeInTheDocument(); // completed bookings
   });
 
@@ -213,10 +228,7 @@ describe('AdminDashboard — Financials (Sprint 6.4)', () => {
     });
     mock.onGet('/v1/admin/financials/summary').reply(200, {
       ...SUMMARY,
-      totalRevenue: 0,
-      totalPlatformFees: 0,
-      totalProviderEarnings: 0,
-      pendingBalance: 0,
+      byCurrency: [],
       completedBookingsCount: 0,
     });
     mock.onGet('/v1/admin/financials/bookings').reply(200, { items: [], nextCursor: null });
@@ -233,6 +245,52 @@ describe('AdminDashboard — Financials (Sprint 6.4)', () => {
       ).toBeInTheDocument(),
     );
     expect(screen.getByText(/No data yet|لا توجد بيانات بعد/i)).toBeInTheDocument();
+  });
+
+  it('K02: legacy and hourly bookings are counted, never summed; a provider gets one row per currency', async () => {
+    mock.onGet('/v1/auth/me').reply(200, ADMIN_ME);
+    mock.onGet('/v1/admin/analytics/overview').reply(500, {});
+    mock.onGet('/v1/admin/analytics/revenue').reply(500, {});
+    mock.onGet('/v1/admin/financials/summary').reply(200, {
+      ...SUMMARY,
+      excluded: [
+        { currency: 'USD', reason: 'LEGACY_UNVERIFIED', completedCount: 3, inFlightCount: 0 },
+        { currency: 'SAR', reason: 'HOURLY_RATE', completedCount: 1, inFlightCount: 1 },
+      ],
+    });
+    mock.onGet('/v1/admin/financials/bookings').reply(200, {
+      items: [
+        {
+          ...BOOKINGS_PAGE.items[0],
+          id: 'bk-legacy',
+          amount: 1000,
+          currency: 'USD',
+          amountScale: null,
+        },
+      ],
+      nextCursor: null,
+    });
+    mock.onGet('/v1/admin/financials/provider-earnings').reply(200, {
+      items: [
+        PROVIDER_EARNINGS_PAGE.items[0],
+        { ...PROVIDER_EARNINGS_PAGE.items[0], currency: 'AED', grossEarnings: 10_00 },
+      ],
+      nextCursor: null,
+    });
+    renderAdmin();
+    openFinancialsTab();
+    expect(
+      await screen.findByText(
+        /3 booking\(s\) with an unverified legacy amount are excluded and await reconciliation/,
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/2 hourly-rate booking\(s\) are excluded/)).toBeInTheDocument();
+    expect(
+      await screen.findByText(exact('1,000 USD · unverified legacy amount')),
+    ).toBeInTheDocument();
+    expect(screen.getByText(exact('SAR 22,500.00'))).toBeInTheDocument();
+    expect(screen.getByText(exact('AED 10.00'))).toBeInTheDocument();
+    expect(screen.queryByText(/22,510/)).toBeNull();
   });
 
   it('does not leak passwordHash / payment secrets in the DOM', async () => {
@@ -269,7 +327,7 @@ describe('AdminDashboard — Financials (Sprint 6.4)', () => {
 
     renderAdmin();
     openFinancialsTab();
-    await waitFor(() => expect(screen.getByText('$21,000')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText(exact('SAR 21,000.00'))).toBeInTheDocument());
     const dom = document.body.textContent ?? '';
     expect(dom).not.toContain('passwordHash');
     expect(dom).not.toContain('STRIPE_SECRET');

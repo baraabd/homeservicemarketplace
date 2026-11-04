@@ -86,7 +86,7 @@ async function language(page: Page, next: 'en' | 'ar', area: 'provider' | 'revie
         .getByRole('button', { name: next === 'ar' ? 'العربية' : 'English', exact: true })
         .click();
     } else {
-      await page.getByRole('button', { name: 'Switch language', exact: true }).click();
+      await page.getByTestId('lang-toggle').click();
     }
   }
   await expect(page.locator('html')).toHaveAttribute('lang', next);

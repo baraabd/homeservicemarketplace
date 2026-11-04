@@ -159,6 +159,51 @@ describe('ProviderStatusState — identity documents entry', () => {
   );
 });
 
+// K06 — every denied state told the provider to "contact support" and offered
+// only "Back to apps". The support route sits outside the workspace status gate,
+// so a suspended, rejected or work-access-denied provider can actually reach it.
+describe('ProviderStatusState — support entry', () => {
+  function renderDenied(status: ProviderProfileStatus, workAccessDenied = false) {
+    mock.onGet('/v1/auth/me').reply(200, MOCK_ME);
+    return render(
+      <MemoryRouter initialEntries={['/provider/status']}>
+        <AuthProvider client={qc}>
+          <LanguageProvider>
+            <Routes>
+              <Route
+                path="/provider/status"
+                element={
+                  <ProviderStatusState status={status} workAccessDenied={workAccessDenied} />
+                }
+              />
+              <Route path="/provider/support" element={<h1>Provider support destination</h1>} />
+            </Routes>
+          </LanguageProvider>
+        </AuthProvider>
+      </MemoryRouter>,
+    );
+  }
+
+  it.each([
+    ['SUSPENDED', false],
+    ['REJECTED', false],
+    ['PENDING_REVIEW', false],
+    ['ACTIVE', true],
+  ] as const)('%s (work access denied: %s) links to provider support', async (status, denied) => {
+    renderDenied(status, denied);
+    fireEvent.click(screen.getByRole('button', { name: 'Contact support', exact: true }));
+    expect(
+      await screen.findByRole('heading', { name: 'Provider support destination' }),
+    ).toBeInTheDocument();
+  });
+
+  it('labels the support action in Arabic', () => {
+    window.localStorage.setItem('hsm.lang', 'ar');
+    renderDenied('SUSPENDED');
+    expect(screen.getByRole('button', { name: 'تواصل مع الدعم', exact: true })).toBeInTheDocument();
+  });
+});
+
 describe('ProviderApp — status gate', () => {
   it('renders the live shell when status is ACTIVE', async () => {
     mock.onGet('/v1/me/provider/capabilities').reply(200, WORKING_CAPABILITIES);

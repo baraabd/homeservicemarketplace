@@ -11,11 +11,11 @@ import {
   BookingRepository,
   type ProviderBookingListRow,
 } from '../../../infrastructure/persistence/bookings/booking.repository';
+import { summarizeBookedValue } from '../../../infrastructure/persistence/bookings/booked-value';
 import { ProviderProfileRepository } from '../../../infrastructure/persistence/bids/provider-profile.repository';
 import { AppError } from '../../../shared/errors/app-error';
 
 const DEFAULT_PAGE_SIZE = 30;
-const DEFAULT_CURRENCY = 'USD';
 
 // Provider earnings read model (Sprint 5 slice 5.6). Read-only — no
 // payouts, no withdrawals, no balance reconciliation. The summary is
@@ -33,14 +33,17 @@ export class ProviderWalletService {
     if (!profile) {
       throw new AppError('NOT_FOUND', 'Provider profile not found.', 404);
     }
-    const monthStart = startOfCurrentMonthUtc();
-    const agg = await this.bookings.aggregateEarningsForProvider(profile.id, monthStart);
+    const value = summarizeBookedValue(
+      await this.bookings.bookedValueGroups({
+        providerId: profile.id,
+        monthStart: startOfCurrentMonthUtc(),
+      }),
+    );
     return {
-      totalGross: agg.totalGross,
-      currentMonthGross: agg.currentMonthGross,
-      pendingAmount: agg.pendingAmount,
-      completedJobsCount: agg.completedJobsCount,
-      currency: agg.dominantCurrency ?? DEFAULT_CURRENCY,
+      byCurrency: value.byCurrency,
+      excluded: value.excluded,
+      completedJobsCount: value.completedCount,
+      feeStatus: 'NOT_APPROVED',
       ratingAvg: profile.ratingAvg,
       reviewCount: profile.reviewCount,
     };
@@ -86,6 +89,7 @@ function toTransaction(row: ProviderBookingListRow): ProviderEarningsTransaction
     status: row.status,
     amount: row.priceAmount,
     currency: row.currency,
+    amountScale: row.amountScale,
     occurredAt: occurredAt.toISOString(),
     service: {
       categorySlug: row.request.category?.slug ?? null,

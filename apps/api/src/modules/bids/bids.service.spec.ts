@@ -104,6 +104,7 @@ function makeBid(overrides: Partial<Bid> = {}, provider = makeProvider()): BidWi
     providerId: provider.id,
     amount: 35,
     currency: 'USD',
+    amountScale: null,
     pricingType: 'HOURLY',
     note: null,
     status: 'PENDING' as BidStatus,
@@ -192,6 +193,7 @@ function makeMocks(over: MocksOverride = {}): Mocks {
         scheduledAt: null,
         priceAmount: 35,
         currency: 'USD',
+        amountScale: null,
         createdAt: new Date('2026-04-28T02:00:00.000Z'),
         updatedAt: new Date('2026-04-28T02:00:00.000Z'),
         deletedAt: null,
@@ -882,6 +884,26 @@ describe('BidsService', () => {
       const passed = m.bookings.create.mock.calls[0]?.[0];
       expect(passed.priceAmount).toBe(99);
       expect(passed.currency).toBe('EUR');
+      // K02 — a pre-K02 (null-scale) bid yields a null-scale booking.
+      expect(passed.amountScale).toBeNull();
+    });
+
+    it('K02: copies the verified SAR unit from the bid unchanged (10025 halalas at scale 2)', async () => {
+      const m = makeMocks({
+        requests: {
+          findOwned: ownedRequest(),
+          setStatusOwned: jest.fn().mockResolvedValue({ count: 1 }),
+        },
+        bids: {
+          listForRequest: jest.fn(),
+          findOwned: pendingBid({ amount: 10025, currency: 'SAR', amountScale: 2 }),
+          setStatusIf: jest.fn().mockResolvedValue({ count: 1 }),
+          rejectSiblings: jest.fn().mockResolvedValue({ count: 0 }),
+        },
+      });
+      await makeService(m).accept('user-1', 'req-1', 'bid-1');
+      const passed = m.bookings.create.mock.calls[0]?.[0];
+      expect(passed).toMatchObject({ priceAmount: 10025, currency: 'SAR', amountScale: 2 });
     });
   });
 

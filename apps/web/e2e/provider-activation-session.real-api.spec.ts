@@ -2,6 +2,7 @@ import { expect, test, type Page } from '@playwright/test';
 
 import { seedLanguage } from './fixtures';
 import { api, newJar, otpFor, REAL_API, type Jar } from './real-api';
+import { LEGAL_ACCEPTANCE } from './legal-acceptance';
 
 // Sprint 09B.29, repair A — the activation journey, in a real browser.
 //
@@ -59,7 +60,13 @@ test.describe('provider activation → session sync → V2 (real browser, real A
 
     const registered = await api<{ challengeId: string }>(jar, '/v1/auth/register', {
       method: 'POST',
-      body: { email, password: PASSWORD, firstName: 'Sam', lastName: 'Seeker' },
+      body: {
+        email,
+        password: PASSWORD,
+        firstName: 'Sam',
+        lastName: 'Seeker',
+        legalAcceptance: LEGAL_ACCEPTANCE,
+      },
     });
     expect(registered.status, 'register should be accepted').toBeLessThan(400);
 

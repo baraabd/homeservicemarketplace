@@ -1,4 +1,9 @@
-import type { MeResponse, OtpChallengeResponse } from '@homeservicemarketplace/contracts';
+import type {
+  LegalAcceptanceInput,
+  LegalDocumentsResponse,
+  MeResponse,
+  OtpChallengeResponse,
+} from '@homeservicemarketplace/contracts';
 import { api } from './api';
 import { authRequestScope, recordSessionEnded, recordVerifiedLogin } from './auth-session-boundary';
 import { withAuthCookieLock } from './auth-cookie-lock';
@@ -17,6 +22,28 @@ export interface RegisterInput {
   password: string;
   firstName: string;
   lastName: string;
+  /** K02 — the exact policy versions shown next to the consent box. */
+  legalAcceptance: LegalAcceptanceInput;
+}
+
+/** K02 — public: the current Terms/Privacy versions and whether signup is open. */
+export async function getLegalDocuments(): Promise<LegalDocumentsResponse> {
+  const { data } = await api.get<LegalDocumentsResponse>('/v1/legal/documents');
+  if (
+    !data ||
+    !Array.isArray(data.documents) ||
+    typeof data.acceptanceOpen !== 'boolean' ||
+    !data.documents.every(
+      (document) =>
+        document &&
+        typeof document.kind === 'string' &&
+        typeof document.version === 'string' &&
+        typeof document.path === 'string',
+    )
+  ) {
+    throw new Error('Legal policy information is unavailable');
+  }
+  return data;
 }
 
 export interface LoginInput {
@@ -53,11 +80,15 @@ export async function getMe(signal?: AbortSignal): Promise<MeResponse> {
 }
 
 export async function logout(): Promise<void> {
-  await withAuthCookieLock(authRequestScope(), () => api.post('/v1/auth/logout', undefined, { timeout: 10_000 }).then(() => undefined));
+  await withAuthCookieLock(authRequestScope(), () =>
+    api.post('/v1/auth/logout', undefined, { timeout: 10_000 }).then(() => undefined),
+  );
 }
 
 export async function refresh(): Promise<void> {
-  await withAuthCookieLock(authRequestScope(), () => api.post('/v1/auth/refresh', undefined, { timeout: 15_000 }).then(() => undefined));
+  await withAuthCookieLock(authRequestScope(), () =>
+    api.post('/v1/auth/refresh', undefined, { timeout: 15_000 }).then(() => undefined),
+  );
 }
 
 export async function forgotPassword(email: string): Promise<void> {

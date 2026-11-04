@@ -97,7 +97,7 @@ async function bootstrapAdmin(h) {
 // ─── D-1 ─────────────────────────────────────────────────────────────────────
 
 async function d1RegistrationThrottle(h) {
-  const { Client, check, section, resetRateLimits, A, B, PASSWORD, RUN } = h;
+  const { Client, check, section, resetRateLimits, A, B, PASSWORD, RUN, LEGAL_ACCEPTANCE } = h;
   section('D-1 — production-safe registration rate limiting');
 
   // Each sub-scenario uses a distinct forwarded identity so the buckets do not
@@ -118,6 +118,7 @@ async function d1RegistrationThrottle(h) {
       password: PASSWORD,
       firstName: 'Rate',
       lastName: 'Limit',
+      legalAcceptance: LEGAL_ACCEPTANCE,
     });
     attempts.push(res);
   }
@@ -157,6 +158,7 @@ async function d1RegistrationThrottle(h) {
       password: PASSWORD,
       firstName: 'Alt',
       lastName: 'Instance',
+      legalAcceptance: LEGAL_ACCEPTANCE,
     });
     alternating.push({ instance: i % 2 === 1 ? 'A' : 'B', status: res.status });
   }
@@ -182,12 +184,14 @@ async function d1RegistrationThrottle(h) {
     password: PASSWORD,
     firstName: 'Known',
     lastName: 'Probe',
+    legalAcceptance: LEGAL_ACCEPTANCE,
   });
   const unknown = await probe.post('/v1/auth/register', {
     email: `d1-never-${RUN}@harness.local`,
     password: PASSWORD,
     firstName: 'Unknown',
     lastName: 'Probe',
+    legalAcceptance: LEGAL_ACCEPTANCE,
   });
   check(
     'D-1 known and unknown emails are indistinguishable under throttling',
@@ -886,7 +890,7 @@ async function providerLifecycle(h, admin) {
 // ─── Customer lifecycle ──────────────────────────────────────────────────────
 
 async function customerLifecycle(h) {
-  const { check, section, signUpAndLogin, A } = h;
+  const { check, section, signUpAndLogin, A, LEGAL_ACCEPTANCE } = h;
   section('Customer — capabilities and boundaries');
 
   const { client } = await signUpAndLogin(A, 'customer', 'customer');
@@ -943,6 +947,7 @@ async function customerLifecycle(h) {
       password: h.PASSWORD,
       firstName: 'Inject',
       lastName: 'Probe',
+      legalAcceptance: LEGAL_ACCEPTANCE,
       [field]: field === 'roles' || field === 'permissions' ? ['admin'] : 'admin',
     };
     const res = await client.post('/v1/auth/register', payload, { absorb: false });

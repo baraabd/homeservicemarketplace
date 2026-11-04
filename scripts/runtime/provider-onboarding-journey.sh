@@ -70,8 +70,14 @@ code() { # method path [body]  -> HTTP status only
 jqf() { node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{try{const o=JSON.parse(s);console.log(eval('o'+process.argv[1]))}catch(e){console.log('')}})" "$1"; }
 
 say "1. Register and verify a fresh account"
+# K02 — the exact current Terms/Privacy versions, read from the server.
+LEGAL_ACCEPTANCE="$(curl -sS "$API/v1/legal/documents" | node -e '
+  let raw = ""; process.stdin.on("data", (c) => (raw += c)).on("end", () => {
+    const d = JSON.parse(raw); const v = (k) => d.documents.find((x) => x.kind === k).version;
+    process.stdout.write(JSON.stringify({ termsVersion: v("TERMS_OF_SERVICE"), privacyVersion: v("PRIVACY_NOTICE"), locale: "en" }));
+  });')"
 curl -sS -c "$JAR" -X POST "$API/v1/auth/register" -H 'Content-Type: application/json' \
-  -d "{\"email\":\"$EMAIL\",\"password\":\"$PASSWORD\",\"firstName\":\"Sprint\",\"lastName\":\"Eight\"}" > /dev/null
+  -d "{\"email\":\"$EMAIL\",\"password\":\"$PASSWORD\",\"firstName\":\"Sprint\",\"lastName\":\"Eight\",\"legalAcceptance\":$LEGAL_ACCEPTANCE}" > /dev/null
 # Mark the email verified directly: the completeness policy requires it, and
 # fishing a token out of Mailpit is not what this check is testing.
 psql "$DATABASE_URL" -q -c "UPDATE \"User\" SET \"emailVerifiedAt\" = now(), status='ACTIVE' WHERE email='$EMAIL';" >/dev/null 2>&1 \

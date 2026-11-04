@@ -1,3 +1,4 @@
+import { LEGAL_ACCEPTANCE } from './legal-acceptance';
 import {
   expect,
   test,
@@ -128,13 +129,25 @@ test.describe('auth cookie contract (real browser)', () => {
     let email = freshEmail();
     let registered = await inPage(page, '/v1/auth/register', {
       method: 'POST',
-      body: { email, password, firstName: 'Cookie', lastName: 'Tester' },
+      body: {
+        email,
+        password,
+        firstName: 'Cookie',
+        lastName: 'Tester',
+        legalAcceptance: LEGAL_ACCEPTANCE,
+      },
     });
     if (registered.status >= 500) {
       email = freshEmail();
       registered = await inPage(page, '/v1/auth/register', {
         method: 'POST',
-        body: { email, password, firstName: 'Cookie', lastName: 'Tester' },
+        body: {
+          email,
+          password,
+          firstName: 'Cookie',
+          lastName: 'Tester',
+          legalAcceptance: LEGAL_ACCEPTANCE,
+        },
       });
     }
     expect(registered.status, 'register should be accepted').toBeLessThan(400);

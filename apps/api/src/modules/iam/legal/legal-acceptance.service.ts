@@ -1,0 +1,105 @@
+import { Injectable } from '@nestjs/common';
+import {
+  CURRENT_LEGAL_DOCUMENTS,
+  LEGAL_DOCUMENT_KINDS,
+  type LegalAcceptanceInput,
+  type LegalDocumentsResponse,
+  type LegalVersionStaleDetails,
+} from '@homeservicemarketplace/contracts';
+import type { Prisma } from '@homeservicemarketplace/database';
+
+import { AppConfigService } from '../../../config/app-config.service';
+import { AppError } from '../../../shared/errors/app-error';
+
+type Tx = Prisma.TransactionClient;
+
+// K02 — server-owned public policy acceptance.
+//
+// The current version of each document is code (contracts registry), not a
+// client claim. A signup that names any other version is refused with 409 so
+// the person is never recorded as accepting text they did not see. DRAFT
+// documents are refused unless LEGAL_DRAFT_ACCEPTANCE_ALLOWED resolves true.
+// Unset, that flag is false when NODE_ENV=production and true otherwise, so a
+// production deployment cannot record acceptance of unapproved text by
+// accident while local development and CI can exercise the real flow.
+@Injectable()
+export class LegalAcceptanceService {
+  constructor(private readonly config: AppConfigService) {}
+
+  documents(): LegalDocumentsResponse {
+    return {
+      documents: LEGAL_DOCUMENT_KINDS.map((kind) => ({ ...CURRENT_LEGAL_DOCUMENTS[kind] })),
+      acceptanceOpen: this.acceptanceOpen(),
+    };
+  }
+
+  /**
+   * Validate before any account lookup, so a refused version answers the
+   * same for a new and an existing email (registration stays non-enumerating).
+   */
+  assertAcceptable(input: LegalAcceptanceInput): void {
+    const terms = CURRENT_LEGAL_DOCUMENTS.TERMS_OF_SERVICE;
+    const privacy = CURRENT_LEGAL_DOCUMENTS.PRIVACY_NOTICE;
+    if (input.termsVersion !== terms.version || input.privacyVersion !== privacy.version) {
+      const details: LegalVersionStaleDetails & { reason: string } = {
+        reason: 'LEGAL_VERSION_STALE',
+        termsVersion: terms.version,
+        privacyVersion: privacy.version,
+      };
+      throw new AppError(
+        'CONFLICT',
+        'The terms or privacy notice changed. Review the current version and try again.',
+        409,
+        details,
+      );
+    }
+    if (!this.acceptanceOpen()) {
+      throw new AppError(
+        'CONFLICT',
+        'Sign-up is not open yet: the terms and privacy notice are awaiting approval.',
+        409,
+        { reason: 'LEGAL_ACCEPTANCE_CLOSED' },
+      );
+    }
+  }
+
+  /** Records both documents in the caller's transaction, with server time. */
+  async recordSignupAcceptance(
+    userId: string,
+    input: LegalAcceptanceInput,
+    trx: Tx,
+  ): Promise<void> {
+    const acceptedAt = new Date();
+    await trx.userLegalAcceptance.createMany({
+      data: [
+        {
+          userId,
+          documentKind: 'TERMS_OF_SERVICE',
+          version: input.termsVersion,
+          locale: input.locale,
+          source: 'SIGNUP',
+          acceptedAt,
+        },
+        {
+          userId,
+          documentKind: 'PRIVACY_NOTICE',
+          version: input.privacyVersion,
+          locale: input.locale,
+          source: 'SIGNUP',
+          acceptedAt,
+        },
+      ],
+      skipDuplicates: true,
+    });
+  }
+
+  private acceptanceOpen(): boolean {
+    const allApproved = LEGAL_DOCUMENT_KINDS.every(
+      (kind) => CURRENT_LEGAL_DOCUMENTS[kind].status === 'APPROVED',
+    );
+    if (allApproved) return true;
+    const explicit = this.config.get('LEGAL_DRAFT_ACCEPTANCE_ALLOWED');
+    if (explicit !== undefined) return explicit;
+    return this.config.get('NODE_ENV') !== 'production';
+  }
+}

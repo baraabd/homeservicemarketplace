@@ -4,6 +4,7 @@ import { expect, test, type BrowserContext, type Page } from '@playwright/test';
 
 import { seedLanguage } from './fixtures';
 import { api, loginViaUi, newJar, otpFor, REAL_API, type Account, type Jar } from './real-api';
+import { LEGAL_ACCEPTANCE } from './legal-acceptance';
 
 // R06 — request media authority, through the real browser, API, storage and
 // Postgres. Nothing here is stubbed: the wizard uploads real bytes to the real
@@ -40,7 +41,7 @@ async function registerSeeker(label: string): Promise<Account> {
   const password = `R06-${randomUUID()}-Aa1!`;
   const registered = await api<{ challengeId: string }>(jar, '/v1/auth/register', {
     method: 'POST',
-    body: { email, password, firstName: 'R06', lastName: label },
+    body: { email, password, firstName: 'R06', lastName: label, legalAcceptance: LEGAL_ACCEPTANCE },
   });
   expect(registered.status, 'R06 seeker registration should succeed').toBeLessThan(400);
   const verified = await api(jar, '/v1/auth/verify-otp', {

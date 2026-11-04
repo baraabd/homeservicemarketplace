@@ -30,7 +30,13 @@ export const PHONE_E164_PATTERN = /^\+[1-9]\d{7,14}$/;
  *  deliberately NOT stripped: `+1 800 FLOWERS` is not diallable, and deleting
  *  them would store a number that looks valid and rings nobody. */
 export function normalisePhoneNumber(value: string): string {
-  return value.replace(/[\s\-().]/g, '');
+  // K02 — mirror of the contracts rule: Arabic-Indic digits → ASCII, bidi
+  // marks dropped, `00` → `+`. National numbers are not converted.
+  const ascii = value
+    .replace(/[٠-٩]/g, (d) => String(d.charCodeAt(0) - 0x0660))
+    .replace(/[۰-۹]/g, (d) => String(d.charCodeAt(0) - 0x06f0))
+    .replace(/[\s\-().\u200e\u200f\u202a-\u202e]/g, '');
+  return ascii.startsWith('00') ? `+${ascii.slice(2)}` : ascii;
 }
 
 /** True when `value` is shaped like an international phone number. */

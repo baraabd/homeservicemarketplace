@@ -1,22 +1,21 @@
 import type { ProviderProfile } from '@homeservicemarketplace/database';
 
-import { AppConfigService } from '../../../config/app-config.service';
+import type { BookedValueGroupRow } from '../../../infrastructure/persistence/bookings/booked-value';
 import type { BookingRepository } from '../../../infrastructure/persistence/bookings/booking.repository';
 import type { ProviderProfileRepository } from '../../../infrastructure/persistence/bids/provider-profile.repository';
 import { ProviderEarningsService } from './provider-earnings.service';
 
-// ProviderEarningsService unit tests (Sprint 5.6 refined). Pin:
-//  - summary platform-fee math from PROVIDER_PLATFORM_FEE_BPS
-//  - summary returns net = gross − platformFees
-//  - cancelled bookings excluded (the repository aggregate already
-//    filters status=COMPLETED; tests verify the wire shape doesn't
-//    pull in cancelled state via some side channel)
+// ProviderEarningsService unit tests. Pin (K02, hsm.amount-unit.v1):
+//  - summary is per currency; currencies are never added together
+//  - only verified FIXED-price value is summed; legacy-unit and
+//    hourly-rate bookings are counted in `excluded`
+//  - no fee / net / available-balance figure (no fee is approved)
 //  - transactions endpoint is COMPLETED-only on the wire (no status
 //    filter accepted)
 //  - chart returns one bucket per day in range, zero-filled for empty
 //    days, range '7d'/'30d'/'90d'
 //  - foreign provider profile → 404 NOT_FOUND
-//  - empty state → all zeros, currency falls back to USD
+//  - empty state → no currency entries (no invented fallback currency)
 
 function makeProfile(over: Partial<ProviderProfile> = {}): ProviderProfile {
   return {
@@ -47,10 +46,18 @@ function makeProfile(over: Partial<ProviderProfile> = {}): ProviderProfile {
   } as ProviderProfile;
 }
 
-function makeConfig(feeBps = 1000): AppConfigService {
+function group(over: Partial<BookedValueGroupRow> = {}): BookedValueGroupRow {
   return {
-    get: (k: string) => (k === 'PROVIDER_PLATFORM_FEE_BPS' ? feeBps : undefined),
-  } as unknown as AppConfigService;
+    currency: 'SAR',
+    amountScale: 2,
+    pricingType: 'FIXED',
+    completedCount: 0,
+    completedValue: 0,
+    currentMonthValue: 0,
+    inFlightCount: 0,
+    inFlightValue: 0,
+    ...over,
+  };
 }
 
 interface Mocks {
@@ -61,13 +68,7 @@ interface Mocks {
 function makeMocks(
   over: {
     profile?: ProviderProfile | null;
-    aggregate?: {
-      totalGross: number;
-      currentMonthGross: number;
-      pendingAmount: number;
-      completedJobsCount: number;
-      dominantCurrency: string | null;
-    };
+    groups?: BookedValueGroupRow[];
     listRows?: unknown[];
     chartRows?: Array<{ day: Date; gross: number; completedCount: number }>;
   } = {},
@@ -78,103 +79,81 @@ function makeMocks(
       findByUserId: jest.fn().mockResolvedValue(profile),
     } as unknown as ProviderProfileRepository,
     bookings: {
-      aggregateEarningsForProvider: jest.fn().mockResolvedValue(
-        over.aggregate ?? {
-          totalGross: 0,
-          currentMonthGross: 0,
-          pendingAmount: 0,
-          completedJobsCount: 0,
-          dominantCurrency: null,
-        },
-      ),
+      bookedValueGroups: jest.fn().mockResolvedValue(over.groups ?? []),
       listForProvider: jest.fn().mockResolvedValue(over.listRows ?? []),
       aggregateEarningsByDayForProvider: jest.fn().mockResolvedValue(over.chartRows ?? []),
     } as unknown as BookingRepository,
   };
 }
 
-function makeService(m: Mocks, feeBps = 1000): ProviderEarningsService {
-  return new ProviderEarningsService(m.providers, m.bookings, makeConfig(feeBps));
+function makeService(m: Mocks): ProviderEarningsService {
+  return new ProviderEarningsService(m.providers, m.bookings);
 }
 
 describe('ProviderEarningsService.summary', () => {
-  it('returns gross/platformFees/net/available/pending and reconciles', async () => {
+  it('returns per-currency booked value with no fee, net or balance figure', async () => {
     const mocks = makeMocks({
-      aggregate: {
-        totalGross: 12_000,
-        currentMonthGross: 4_500,
-        pendingAmount: 800,
-        completedJobsCount: 17,
-        dominantCurrency: 'USD',
-      },
+      groups: [
+        group({
+          completedCount: 17,
+          completedValue: 12_000,
+          currentMonthValue: 4_500,
+          inFlightCount: 2,
+          inFlightValue: 800,
+        }),
+      ],
       profile: makeProfile({ ratingAvg: 4.7, reviewCount: 23 }),
     });
-    const out = await makeService(mocks, 1000).summary('user-provider-1');
-    // 10% fee on 12_000 = 1200; net = 10_800
+    const out = await makeService(mocks).summary('user-provider-1');
     expect(out).toEqual({
-      grossEarnings: 12_000,
-      platformFees: 1200,
-      netEarnings: 10_800,
-      availableBalance: 10_800,
-      pendingBalance: 800,
+      byCurrency: [
+        {
+          currency: 'SAR',
+          amountScale: 2,
+          completedValue: 12_000,
+          completedCount: 17,
+          currentMonthValue: 4_500,
+          inFlightValue: 800,
+          inFlightCount: 2,
+        },
+      ],
+      excluded: [],
       completedBookingsCount: 17,
-      currency: 'USD',
-      platformFeeRateBps: 1000,
+      feeStatus: 'NOT_APPROVED',
+      platformFeeRateBps: null,
       ratingAvg: 4.7,
       reviewCount: 23,
     });
   });
 
-  it('handles a zero fee rate (0 bps → no platform take)', async () => {
+  it('keeps each currency separate and excludes legacy-unit and hourly amounts from every sum', async () => {
     const mocks = makeMocks({
-      aggregate: {
-        totalGross: 5_000,
-        currentMonthGross: 0,
-        pendingAmount: 0,
-        completedJobsCount: 1,
-        dominantCurrency: 'USD',
-      },
-    });
-    const out = await makeService(mocks, 0).summary('user-provider-1');
-    expect(out.platformFees).toBe(0);
-    expect(out.netEarnings).toBe(5_000);
-    expect(out.availableBalance).toBe(5_000);
-    expect(out.platformFeeRateBps).toBe(0);
-  });
-
-  it('rounds the platform fee to the nearest currency unit', async () => {
-    const mocks = makeMocks({
-      aggregate: {
-        totalGross: 1233, // 1233 * 1000 / 10000 = 123.3 → rounds to 123
-        currentMonthGross: 0,
-        pendingAmount: 0,
-        completedJobsCount: 1,
-        dominantCurrency: 'USD',
-      },
-    });
-    const out = await makeService(mocks, 1000).summary('user-provider-1');
-    expect(out.platformFees).toBe(123);
-    expect(out.netEarnings).toBe(1233 - 123);
-  });
-
-  it('returns all-zeros + USD fallback for an empty earnings state', async () => {
-    const mocks = makeMocks({
-      aggregate: {
-        totalGross: 0,
-        currentMonthGross: 0,
-        pendingAmount: 0,
-        completedJobsCount: 0,
-        dominantCurrency: null,
-      },
+      groups: [
+        group({ completedCount: 1, completedValue: 10_025 }),
+        group({ pricingType: 'HOURLY', completedCount: 2, completedValue: 9_000 }),
+        group({ currency: 'USD', amountScale: null, completedCount: 3, completedValue: 1_000 }),
+      ],
     });
     const out = await makeService(mocks).summary('user-provider-1');
-    expect(out.grossEarnings).toBe(0);
-    expect(out.platformFees).toBe(0);
-    expect(out.netEarnings).toBe(0);
-    expect(out.availableBalance).toBe(0);
-    expect(out.pendingBalance).toBe(0);
+    expect(out.byCurrency).toHaveLength(1);
+    expect(out.byCurrency[0]).toMatchObject({
+      currency: 'SAR',
+      completedValue: 10_025,
+      completedCount: 1,
+    });
+    expect(out.excluded).toEqual([
+      { currency: 'SAR', reason: 'HOURLY_RATE', completedCount: 2, inFlightCount: 0 },
+      { currency: 'USD', reason: 'LEGACY_UNVERIFIED', completedCount: 3, inFlightCount: 0 },
+    ]);
+    // Counts still include every completed booking.
+    expect(out.completedBookingsCount).toBe(6);
+  });
+
+  it('returns no currency entry (and no USD fallback) for an empty earnings state', async () => {
+    const out = await makeService(makeMocks()).summary('user-provider-1');
+    expect(out.byCurrency).toEqual([]);
+    expect(out.excluded).toEqual([]);
     expect(out.completedBookingsCount).toBe(0);
-    expect(out.currency).toBe('USD');
   });
 
   it('returns 404 when the provider profile is missing', async () => {
@@ -188,8 +167,9 @@ describe('ProviderEarningsService.summary', () => {
   it('queries the aggregate with a UTC start-of-month timestamp', async () => {
     const mocks = makeMocks();
     await makeService(mocks).summary('user-provider-1');
-    const callArgs = (mocks.bookings.aggregateEarningsForProvider as jest.Mock).mock.calls[0];
-    const monthStart = callArgs[1] as Date;
+    const callArgs = (mocks.bookings.bookedValueGroups as jest.Mock).mock.calls[0];
+    expect(callArgs[0].providerId).toBe('pp-1');
+    const monthStart = callArgs[0].monthStart as Date;
     expect(monthStart.getUTCDate()).toBe(1);
     expect(monthStart.getUTCHours()).toBe(0);
     expect(monthStart.getUTCMinutes()).toBe(0);
@@ -208,7 +188,8 @@ describe('ProviderEarningsService.transactions', () => {
       status: 'COMPLETED',
       scheduledAt: date,
       priceAmount: 4500,
-      currency: 'USD',
+      currency: 'SAR',
+      amountScale: 2,
       createdAt: date,
       updatedAt: date,
       deletedAt: null,
@@ -230,7 +211,8 @@ describe('ProviderEarningsService.transactions', () => {
       bid: {
         id: 'bid-1',
         amount: 4500,
-        currency: 'USD',
+        currency: 'SAR',
+        amountScale: 2,
         pricingType: 'HOURLY',
         note: null,
       },
@@ -248,22 +230,24 @@ describe('ProviderEarningsService.transactions', () => {
     );
   });
 
-  it('projects to the canonical EarningsTransaction shape with platformFee + netAmount', async () => {
+  it('projects each row in its own currency and unit, with its pricing basis and no fee', async () => {
     const row = makeRow();
     const mocks = makeMocks({ listRows: [row] });
-    const out = await makeService(mocks, 1000).transactions('user-provider-1', {});
+    const out = await makeService(mocks).transactions('user-provider-1', {});
     expect(out.items).toHaveLength(1);
     expect(out.items[0]).toMatchObject({
       id: 'bk-1',
       bookingId: 'bk-1',
       kind: 'BOOKING_COMPLETED',
       amount: 4500,
-      platformFee: 450, // 4500 * 10% = 450
-      netAmount: 4050,
-      currency: 'USD',
+      pricingType: 'HOURLY',
+      currency: 'SAR',
+      amountScale: 2,
       city: 'Riyadh',
       service: { categorySlug: 'plumbing' },
     });
+    expect(out.items[0]).not.toHaveProperty('platformFee');
+    expect(out.items[0]).not.toHaveProperty('netAmount');
     // line1 of the address snapshot must NOT leak through.
     expect(JSON.stringify(out)).not.toContain('private');
   });
@@ -326,17 +310,13 @@ describe('ProviderEarningsService.chart', () => {
     const mocks = makeMocks({
       chartRows: [{ day: todayUtc, gross: 5000, completedCount: 2 }],
     });
-    const out = await makeService(mocks, 1000).chart('user-provider-1', '7d');
+    const out = await makeService(mocks).chart('user-provider-1', '7d');
     expect(out.buckets).toHaveLength(7);
     const todayIso = todayUtc.toISOString().slice(0, 10);
     const todayBucket = out.buckets.find((b) => b.date === todayIso);
     expect(todayBucket).toBeDefined();
-    expect(todayBucket).toMatchObject({
-      grossEarnings: 5000,
-      platformFees: 500,
-      netEarnings: 4500,
-      completedBookings: 2,
-    });
+    expect(todayBucket).toEqual({ date: todayIso, grossEarnings: 5000, completedBookings: 2 });
+    expect(out).toMatchObject({ currency: 'SAR', amountScale: 2 });
     // Other days zero-filled.
     const others = out.buckets.filter((b) => b.date !== todayIso);
     expect(others.every((b) => b.grossEarnings === 0 && b.completedBookings === 0)).toBe(true);
@@ -355,6 +335,17 @@ describe('ProviderEarningsService.chart', () => {
     expect(end.getUTCMinutes()).toBe(0);
     // 30-day window: end - start = 30 * 86_400_000 ms.
     expect(end.getTime() - start.getTime()).toBe(30 * 24 * 60 * 60 * 1000);
+    // K02 — one currency and unit per chart (default: the launch currency).
+    expect(args[3]).toEqual({ currency: 'SAR', amountScale: 2 });
+  });
+
+  it('refuses a currency that is not approved instead of charting it', async () => {
+    const mocks = makeMocks();
+    await expect(makeService(mocks).chart('user-provider-1', '7d', 'USD')).rejects.toMatchObject({
+      status: 400,
+      details: { reason: 'CURRENCY_NOT_APPROVED' },
+    });
+    expect(mocks.bookings.aggregateEarningsByDayForProvider).not.toHaveBeenCalled();
   });
 
   it('returns 404 when the provider profile is missing', async () => {

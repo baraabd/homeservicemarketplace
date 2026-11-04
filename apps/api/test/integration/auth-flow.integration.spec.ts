@@ -16,6 +16,7 @@ export {}; // module marker — see migration-bootstrap.spec.ts.
 
 import { fixtureEmailDomain, withAdvisoryLock } from '../support/db-isolation';
 import { makeTestSecret } from '../support/test-secrets';
+import { currentLegalAcceptance, legalAcceptanceServiceFor } from '../support/legal-acceptance';
 
 const shouldRun = process.env.RUN_DB_INTEGRATION === '1';
 const d = shouldRun ? describe : describe.skip;
@@ -189,6 +190,7 @@ d('IAM end-to-end flow (real Postgres)', () => {
       config,
       securityEvents,
       mail,
+      legalAcceptanceServiceFor(config),
     );
 
     services = {
@@ -245,7 +247,13 @@ d('IAM end-to-end flow (real Postgres)', () => {
   // session; register() alone returns only an opaque challenge.
   async function signUp(email: string) {
     const challenge = await services.auth.register(
-      { email, password: PASSWORD, firstName: 'Int', lastName: 'Est' },
+      {
+        email,
+        password: PASSWORD,
+        firstName: 'Int',
+        lastName: 'Est',
+        legalAcceptance: currentLegalAcceptance(),
+      },
       ctx,
     );
     return services.auth.verifyOtp(challenge.challengeId, otpFromMail(email), ctx);

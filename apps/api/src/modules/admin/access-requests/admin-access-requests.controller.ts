@@ -22,6 +22,7 @@ import type { AuthenticatedUser } from '../../iam/authentication/types/authentic
 import { Permissions } from '../../iam/authorization/decorators/permissions.decorator';
 import { Roles } from '../../iam/authorization/decorators/roles.decorator';
 import { PermissionsGuard } from '../../iam/authorization/guards/permissions.guard';
+import { CurrentAdminGuard } from '../../iam/authorization/guards/current-admin.guard';
 import { RolesGuard } from '../../iam/authorization/guards/roles.guard';
 import { AdminAccessService } from '../../iam/admin-access/admin-access.service';
 import { DecideAdminAccessRequestDto } from './dto/decide-admin-access-request.dto';
@@ -42,7 +43,7 @@ import { ListAdminAccessRequestsQueryDto } from './dto/list-admin-access-request
 //                                    touching this controller.
 //
 // The service additionally refuses self-review, which no guard can express.
-@UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
+@UseGuards(JwtAuthGuard, RolesGuard, CurrentAdminGuard, PermissionsGuard)
 @Roles('admin')
 @Permissions('admin:access:grant')
 @Controller({ path: 'admin/access-requests', version: '1' })

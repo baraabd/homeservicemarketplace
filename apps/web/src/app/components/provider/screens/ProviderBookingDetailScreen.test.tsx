@@ -88,7 +88,9 @@ describe('ProviderBookingDetailScreen', () => {
       'IN_PROGRESS',
     );
     expect(screen.getByText('Rami · Aleppo')).toBeInTheDocument();
-    expect(screen.getByTestId('provider-booking-offer')).toHaveTextContent('150 XTS per hour');
+    expect(screen.getByTestId('provider-booking-offer')).toHaveTextContent(
+      '150 XTS · unverified legacy amount per hour',
+    );
     expect(screen.getByText('12 Baron Street, Aleppo')).toBeInTheDocument();
     expect(screen.getByText('As soon as possible')).toBeInTheDocument();
     expect(screen.getByText('Bring the long ladder')).toBeInTheDocument();

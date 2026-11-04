@@ -20,6 +20,7 @@ import { ServiceRequestRepository } from '../../../infrastructure/persistence/re
 import { ServiceRequestEventRepository } from '../../../infrastructure/persistence/requests/service-request-event.repository';
 import { TransactionRunner } from '../../../infrastructure/prisma/transaction.runner';
 import { AppError } from '../../../shared/errors/app-error';
+import { AmountUnitError, parseApprovedBidAmount } from '@homeservicemarketplace/contracts';
 import { NotificationsService } from '../../notifications/notifications.service';
 import {
   constrainsAnything,
@@ -54,6 +55,10 @@ export class ProviderBidsService {
 
   // ─── submit ──────────────────────────────────────────────────────────────────
   async submit(providerUserId: string, input: SubmitBidRequest): Promise<SubmitBidResponse> {
+    // K02 — the one decimal → minor-unit conversion, before any lock is
+    // taken. The currency is server policy: only an approved currency is
+    // accepted, and the stored scale comes from the policy, not the client.
+    const price = parseBidPrice(input.amountDecimal, input.currency);
     const result = await this.tx.run(async (tx) => {
       const profile = await this.providers.findByUserIdWithCategories(providerUserId, tx);
       if (!profile) {
@@ -92,7 +97,9 @@ export class ProviderBidsService {
         {
           requestId: input.requestId,
           providerId: profile.id,
-          amount: input.amount,
+          amount: price.amount,
+          currency: price.currency,
+          amountScale: price.amountScale,
           pricingType: input.pricingType,
           note: input.note ?? null,
           responseTimeMinutes: input.responseTimeMinutes ?? null,
@@ -230,6 +237,7 @@ export class ProviderBidsService {
       id: bid.id,
       amount: bid.amount,
       currency: bid.currency,
+      amountScale: bid.amountScale,
       pricingType: bid.pricingType,
       note: bid.note,
       status: bid.status,
@@ -267,6 +275,7 @@ function myBidSummaryFromListRow(
     id: row.id,
     amount: row.amount,
     currency: row.currency,
+    amountScale: row.amountScale,
     pricingType: row.pricingType,
     note: row.note,
     status: row.status,
@@ -292,4 +301,18 @@ function myBidSummaryFromListRow(
         ? { id: row.booking.id, status: row.booking.status }
         : null,
   };
+}
+
+function parseBidPrice(
+  amountDecimal: string,
+  currency: string,
+): ReturnType<typeof parseApprovedBidAmount> {
+  try {
+    return parseApprovedBidAmount(amountDecimal, currency);
+  } catch (err) {
+    if (err instanceof AmountUnitError) {
+      throw new AppError('VALIDATION_ERROR', err.message, 400, { reason: err.code });
+    }
+    throw err;
+  }
 }

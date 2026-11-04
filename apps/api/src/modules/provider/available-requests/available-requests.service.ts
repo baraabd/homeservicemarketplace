@@ -115,19 +115,19 @@ export class AvailableRequestsService {
     }
 
     const take = Math.min(Math.max(query.limit ?? DEFAULT_PAGE_SIZE, 1), 100);
-    const rows = await this.requests.listAvailableForProvider({
+    // K05 — the repository owns the continuation: only it knows how far it
+    // scanned, and a short page is not necessarily the end of the feed.
+    const { rows: page, nextCursor } = await this.requests.listAvailableForProvider({
       excludeSeekerUserId: profile.userId ?? null,
       categoryIds: effectiveCategoryIds,
       serviceArea,
       excludeBidsByProviderId: profile.id,
-      take: take + 1,
+      take,
       cursor: query.cursor,
     });
-    const page = rows.slice(0, take);
     const requestIds = page.map((r) => r.id);
     const bidCountByRequest = await this.bids.countActiveByRequestIds(requestIds);
     const items = page.map((row) => toSummary(row, bidCountByRequest.get(row.id) ?? 0, profile));
-    const nextCursor = rows.length > take ? items[items.length - 1].id : null;
     return { items, nextCursor };
   }
 

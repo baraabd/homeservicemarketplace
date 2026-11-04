@@ -188,7 +188,7 @@ test('reviewing protected identity then approving in the Admin UI persists accep
   ]) {
     await page.setViewportSize({ width: variant.width, height: variant.height });
     if (language !== variant.lang) {
-      await page.getByRole('button', { name: 'Switch language', exact: true }).click();
+      await page.getByTestId('lang-toggle').click();
       language = variant.lang;
     }
     if (currentTheme !== variant.theme) {
@@ -230,7 +230,7 @@ test('reviewing protected identity then approving in the Admin UI persists accep
     await expect(viewer).toHaveCount(0);
     await expect(opener).toBeFocused();
   }
-  await page.getByRole('button', { name: 'Switch language', exact: true }).click();
+  await page.getByTestId('lang-toggle').click();
   await page.setViewportSize(initialViewport);
 
   await page.getByTestId('review-approve').click();
@@ -283,7 +283,7 @@ test('inspecting and approving a real portfolio image persists its revision with
   expect(original.canWork).toBe(false);
   expect((await capabilitiesOf(account.jar)).allowed).not.toContain('SUBMIT_BID');
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.getByRole('button', { name: 'Switch language', exact: true }).click();
+  await page.getByTestId('lang-toggle').click();
   const mediaResponse = page.waitForResponse(
     (response) =>
       response.url() === `${REAL_API}${portfolioPath}/${item.id}/media` &&
@@ -454,8 +454,7 @@ test.describe('real rendered Admin screens', () => {
         page,
       }, testInfo) => {
         await enterAdmin(page);
-        if (lang === 'ar')
-          await page.getByRole('button', { name: 'Switch language', exact: true }).click();
+        if (lang === 'ar') await page.getByTestId('lang-toggle').click();
         if (theme === 'dark')
           await page
             .getByRole('button', {

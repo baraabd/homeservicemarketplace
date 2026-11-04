@@ -1858,7 +1858,8 @@ dbDescribe(
       expect(bookingReadBefore.status).toBe(200);
       await confirm();
       expect(await wallet.summary(h.actors.owner.userId)).toEqual(before);
-      expect(before).toMatchObject({ totalGross: 0, pendingAmount: 0, completedJobsCount: 0 });
+      // K02 — booked value per currency; a subscription payment adds none.
+      expect(before).toMatchObject({ byCurrency: [], excluded: [], completedJobsCount: 0 });
       expect(await h.prisma.booking.count()).toBe(bookings);
       expect(await h.prisma.providerWorkAccessGrant.count()).toBe(0);
       const guardedAfter = await owner.request('/v1/me/provider/earnings');

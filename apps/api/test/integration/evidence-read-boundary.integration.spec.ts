@@ -393,6 +393,54 @@ d('Restricted evidence read boundary (real Postgres, real bytes)', () => {
       expect(text).not.toContain('Mozilla/5.0');
     });
 
+    // K06 — "an audit failure must not reveal bytes". The access log row is the
+    // ONLY durable record that someone opened an identity document, so when it
+    // cannot be written the read must fail closed. A trigger scoped to this
+    // fixture's case makes the real INSERT fail without touching other suites.
+    it('reveals no bytes when the durable access record cannot be written', async () => {
+      const fn = `k06_reject_access_log_${P.replace(/[^a-z0-9]/gi, '_')}`.slice(0, 60);
+      await prisma.$executeRawUnsafe(`
+        CREATE OR REPLACE FUNCTION "${fn}"() RETURNS trigger AS $$
+        BEGIN
+          IF NEW."caseId" = '${CASE_ID}' THEN
+            RAISE EXCEPTION 'k06: access log unavailable' USING ERRCODE = 'P0001';
+          END IF;
+          RETURN NEW;
+        END $$ LANGUAGE plpgsql`);
+      await prisma.$executeRawUnsafe(
+        `CREATE TRIGGER "${fn}" BEFORE INSERT ON "VerificationAccessLog" FOR EACH ROW EXECUTE FUNCTION "${fn}"()`,
+      );
+      try {
+        await setScanState('CLEAN');
+        currentUser = { id: REVIEWER };
+        reviewerPermission = true;
+        const outage = await readDoc();
+        expect(outage.status).toBe(503);
+        expect(Buffer.from(outage.text ?? '').includes(BYTES)).toBe(false);
+        expect(JSON.stringify(outage.body)).not.toContain('restricted evidence body');
+        expect(JSON.stringify(outage.headers)).not.toContain('passport.pdf');
+
+        // A denied caller still gets the ordinary 404 during the outage, so the
+        // outage cannot be used to learn that the document exists.
+        currentUser = { id: OTHER };
+        reviewerPermission = false;
+        const denied = await readDoc();
+        expect(denied.status).toBe(404);
+        expect(await prisma.verificationAccessLog.count({ where: { caseId: CASE_ID } })).toBe(0);
+      } finally {
+        await prisma.$executeRawUnsafe(`DROP TRIGGER IF EXISTS "${fn}" ON "VerificationAccessLog"`);
+        await prisma.$executeRawUnsafe(`DROP FUNCTION IF EXISTS "${fn}"()`);
+      }
+
+      // Recovery: once the record can be written again the permitted read works.
+      currentUser = { id: REVIEWER };
+      reviewerPermission = true;
+      const recovered = await readDoc();
+      expect(recovered.status).toBe(200);
+      expect(Buffer.from(recovered.body)).toEqual(BYTES);
+      expect(await prisma.verificationAccessLog.count({ where: { caseId: CASE_ID } })).toBe(1);
+    });
+
     it('answers an unknown document exactly as it answers a forbidden one', async () => {
       currentUser = { id: OTHER };
       const forbidden = await readDoc();

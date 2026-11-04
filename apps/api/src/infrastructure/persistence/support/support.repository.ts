@@ -4,6 +4,7 @@ import {
   type PrismaTx,
   type SupportMessage,
   type SupportTicket,
+  type SupportTicketExperience,
   type SupportTicketStatus,
 } from '@homeservicemarketplace/database';
 
@@ -22,7 +23,12 @@ export class SupportRepository {
   constructor(private readonly prisma: PrismaService) {}
 
   createTicket(
-    input: { requesterUserId: string; subject: string; creationKey: string },
+    input: {
+      requesterUserId: string;
+      subject: string;
+      creationKey: string;
+      experience: SupportTicketExperience | null;
+    },
     tx: PrismaTx,
   ): Promise<SupportTicket> {
     return tx.supportTicket.create({ data: input });

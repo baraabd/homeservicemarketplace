@@ -1,10 +1,15 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router';
+import { Link, useNavigate } from 'react-router';
 import { useAuth } from '../../../lib/auth-provider';
 // @ts-ignore – motion/react is the correct package path
 import { motion, AnimatePresence } from 'motion/react';
 import { ChevronLeft, ChevronRight, LogOut, AlertTriangle } from 'lucide-react';
 import { useLang, LangToggle } from '../../i18n/LanguageContext';
+import {
+  LEGAL_PAGES,
+  legalPath,
+  type LegalPageId,
+} from '../../features/legal/copy/legal-documents.copy';
 
 // ─── Reusable Toggle ──────────────────────────────────────────────────────────
 function SettingsToggle({
@@ -18,10 +23,14 @@ function SettingsToggle({
   label: string;
   sub?: string;
 }) {
+  // K02 — a real switch: role, checked state and the visible label as its
+  // name; the hit area is 44px tall around the 24px track.
+  const labelId = `settings-toggle-${label.replace(/\s+/g, '-').toLowerCase()}`;
   return (
     <div className="flex items-center justify-between py-3.5 px-4">
       <div className="flex-1 min-w-0 me-4">
         <p
+          id={labelId}
           className="text-slate-800 dark:text-slate-100"
           style={{ fontSize: '14px', fontWeight: 500 }}
         >
@@ -34,18 +43,26 @@ function SettingsToggle({
         )}
       </div>
       <button
+        type="button"
+        role="switch"
+        aria-checked={enabled}
+        aria-labelledby={labelId}
         onClick={onChange}
-        className={`w-11 h-6 rounded-full border-2 transition-all duration-300 flex items-center px-0.5 flex-shrink-0 ${
-          enabled
-            ? 'bg-amber-500 border-amber-500'
-            : 'bg-slate-200 dark:bg-slate-600 border-slate-200 dark:border-slate-600'
-        }`}
+        className="flex h-11 w-14 flex-shrink-0 items-center justify-center rounded-full focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
       >
-        <motion.div
-          className="w-4 h-4 rounded-full bg-white shadow-sm"
-          animate={{ x: enabled ? 20 : 0 }}
-          transition={{ type: 'spring', stiffness: 500, damping: 30 }}
-        />
+        <span
+          className={`w-11 h-6 rounded-full border-2 transition-all duration-300 flex items-center px-0.5 ${
+            enabled
+              ? 'bg-amber-500 border-amber-500'
+              : 'bg-slate-200 dark:bg-slate-600 border-slate-200 dark:border-slate-600'
+          }`}
+        >
+          <motion.span
+            className="block w-4 h-4 rounded-full bg-white shadow-sm"
+            animate={{ x: enabled ? (document.documentElement.dir === 'rtl' ? -20 : 20) : 0 }}
+            transition={{ type: 'spring', stiffness: 500, damping: 30 }}
+          />
+        </span>
       </button>
     </div>
   );
@@ -111,6 +128,8 @@ export function SettingsPage({ onBack }: SettingsPageProps) {
     terms: lang === 'ar' ? 'الشروط والأحكام' : 'Terms & Conditions',
     privacy2: lang === 'ar' ? 'سياسة الخصوصية' : 'Privacy Policy',
     rateApp: lang === 'ar' ? 'قيّم التطبيق' : 'Rate the App',
+    back: lang === 'ar' ? 'رجوع' : 'Back',
+    legal: lang === 'ar' ? 'المعلومات القانونية' : 'Legal',
     signOut: lang === 'ar' ? 'تسجيل الخروج' : 'Sign Out',
     signOutQ:
       lang === 'ar' ? 'هل أنت متأكد من تسجيل الخروج؟' : 'Are you sure you want to sign out?',
@@ -131,8 +150,10 @@ export function SettingsPage({ onBack }: SettingsPageProps) {
         <div className="flex-shrink-0 bg-white dark:bg-slate-800 border-b border-slate-100 dark:border-slate-700 shadow-sm">
           <div className="flex items-center gap-3 px-4 py-3.5">
             <button
+              type="button"
               onClick={onBack}
-              className="w-9 h-9 rounded-xl bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 flex items-center justify-center active:scale-90 transition-all"
+              aria-label={L.back}
+              className="w-11 h-11 rounded-xl bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 flex items-center justify-center active:scale-90 transition-all focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
             >
               {dir === 'rtl' ? (
                 <ChevronRight size={20} className="text-slate-700 dark:text-slate-300" />
@@ -204,10 +225,27 @@ export function SettingsPage({ onBack }: SettingsPageProps) {
             </div>
           </Section>
 
-          {/* Privacy toggles (location, usage data) and the About rows (version,
-              terms, privacy policy, rate the app) were removed: nothing stored
-              or enforced the toggles, the version was a literal and the rows
-              had no destination. */}
+          {/* Privacy toggles (location, usage data), the version literal and
+              "rate the app" stay removed: nothing stored or enforced them.
+              K02 — the legal rows are back because they now have real,
+              public destinations. */}
+          <Section title={L.legal}>
+            {(['terms', 'privacy', 'operator', 'contact'] as LegalPageId[]).map((id) => (
+              <Link
+                key={id}
+                to={legalPath(id)}
+                className="flex min-h-12 items-center justify-between px-4 py-3 text-slate-800 dark:text-slate-100 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-blue-600"
+                style={{ fontSize: '14px', fontWeight: 500 }}
+              >
+                {LEGAL_PAGES[id][lang === 'ar' ? 'ar' : 'en'].title}
+                {dir === 'rtl' ? (
+                  <ChevronLeft size={18} aria-hidden="true" className="text-slate-400" />
+                ) : (
+                  <ChevronRight size={18} aria-hidden="true" className="text-slate-400" />
+                )}
+              </Link>
+            ))}
+          </Section>
 
           {/* ── Sign Out ── */}
           <button

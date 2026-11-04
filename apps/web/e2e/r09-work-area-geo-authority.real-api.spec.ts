@@ -10,6 +10,7 @@ import {
 } from '@playwright/test';
 
 import { seedLanguage } from './fixtures';
+import { LEGAL_ACCEPTANCE } from './legal-acceptance';
 import {
   api,
   loginViaUi,
@@ -236,7 +237,13 @@ async function registerSeeker(): Promise<Account> {
   const password = `R09-${randomUUID()}-Aa1!`;
   const registered = await api<{ challengeId: string }>(jar, '/v1/auth/register', {
     method: 'POST',
-    body: { email, password, firstName: 'R09', lastName: 'Seeker' },
+    body: {
+      email,
+      password,
+      firstName: 'R09',
+      lastName: 'Seeker',
+      legalAcceptance: LEGAL_ACCEPTANCE,
+    },
   });
   expect(registered.status, 'R09 seeker registration should succeed').toBeLessThan(400);
   const verified = await api(jar, '/v1/auth/verify-otp', {
@@ -1084,7 +1091,7 @@ test.describe('R09 marketplace — the feed, the detail and the bid agree with t
     // The bid follows the same line, and a refusal discloses nothing.
     const refusedBid = await api(provider.jar, '/v1/provider/bids', {
       method: 'POST',
-      body: { requestId: north, amount: 100, pricingType: 'FIXED' },
+      body: { requestId: north, amountDecimal: '100', currency: 'SAR', pricingType: 'FIXED' },
     });
     expect(refusedBid.status).toBe(404);
     expect(JSON.stringify(refusedBid.body)).not.toContain('R09 browser north');
@@ -1125,12 +1132,12 @@ test.describe('R09 marketplace — the feed, the detail and the bid agree with t
 
     const acceptedBid = await api(provider.jar, '/v1/provider/bids', {
       method: 'POST',
-      body: { requestId: north, amount: 100, pricingType: 'FIXED' },
+      body: { requestId: north, amountDecimal: '100', currency: 'SAR', pricingType: 'FIXED' },
     });
     expect(acceptedBid.status, JSON.stringify(acceptedBid.body)).toBe(201);
     const staleBid = await api(provider.jar, '/v1/provider/bids', {
       method: 'POST',
-      body: { requestId: south, amount: 100, pricingType: 'FIXED' },
+      body: { requestId: south, amountDecimal: '100', currency: 'SAR', pricingType: 'FIXED' },
     });
     expect(staleBid.status).toBe(404);
 

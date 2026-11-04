@@ -169,6 +169,8 @@ const enabled = process.env.RUN_PROVIDER_BROWSER === '1';
         requestId: `${tag}-req`,
         providerId: PROVIDER.profile,
         amount: 100 + i,
+        currency: 'SAR',
+        amountScale: 2,
         pricingType: 'FIXED' as const,
         status: i < ACCEPTED ? ('ACCEPTED' as const) : ('PENDING' as const),
         submittedAt: new Date(base - Math.floor(i / 3) * 60_000),
@@ -184,6 +186,8 @@ const enabled = process.env.RUN_PROVIDER_BROWSER === '1';
         status: 'SCHEDULED' as const,
         scheduledAt: new Date(base + i * 3_600_000),
         priceAmount: 100 + i,
+        currency: 'SAR',
+        amountScale: 2,
       })),
     });
     // A second device of the same provider, to revoke every session.

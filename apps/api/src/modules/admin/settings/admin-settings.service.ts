@@ -22,6 +22,7 @@ import {
 } from '../../../infrastructure/persistence/settings/platform-setting-history.repository';
 import { TransactionRunner } from '../../../infrastructure/prisma/transaction.runner';
 import { AppError } from '../../../shared/errors/app-error';
+import { hasCurrentAdminMembership } from '../../iam/authorization/current-admin';
 import { AdminAuditService } from '../admin-audit.service';
 import { assertWritable, settingEntry, validateSettingValue } from './setting-registry';
 
@@ -97,6 +98,7 @@ export class AdminSettingsService {
     }
     const changedKeys: string[] = [];
     await this.tx.run(async (tx) => {
+      await this.requireCurrentAdmin(adminUserId, tx);
       await this.lockKeys([...normalised.keys()], tx);
       for (const [key, newValue] of normalised) {
         const previous = await this.settings.findByKey(key, tx);
@@ -204,6 +206,7 @@ export class AdminSettingsService {
     assertWritable(entry);
     const newValue = validateSettingValue(entry, value) as Prisma.JsonValue;
     const result = await this.tx.run(async (tx) => {
+      await this.requireCurrentAdmin(adminUserId, tx);
       await this.lockKeys([key], tx);
       const previous = await this.settings.findByKey(key, tx);
       const previousValue = previous ? previous.value : null;
@@ -229,12 +232,31 @@ export class AdminSettingsService {
     return { setting: toSummary(result) };
   }
 
+  /**
+   * K06 — every settings write re-reads live admin standing in its own
+   * transaction. The controller's RolesGuard reads the `admin` claim from the
+   * access token, and no API path removes that role, so a removal made out of
+   * band would otherwise leave the old token writing platform policy (dispute
+   * intake, markets) until it expired. Same standing as the verification-policy
+   * check: a live `admin` role on an ACTIVE, non-deleted account.
+   */
+  private async requireCurrentAdmin(adminUserId: string, tx: PrismaTx): Promise<void> {
+    if (!(await hasCurrentAdminMembership(tx, adminUserId))) {
+      throw new AppError(
+        'FORBIDDEN',
+        'You do not have permission to change platform settings.',
+        403,
+      );
+    }
+  }
+
   async remove(adminUserId: string, key: string): Promise<void> {
     // Deleting reverts a registered setting to its default (or, for a policy,
     // to absent, which its consumer treats as disabled). A key outside the
     // registry is not this surface's to delete.
     assertWritable(settingEntry(key));
     await this.tx.run(async (tx) => {
+      await this.requireCurrentAdmin(adminUserId, tx);
       await this.lockKeys([key], tx);
       const previous = await this.settings.findByKey(key, tx);
       if (!previous) throw new AppError('NOT_FOUND', 'Setting not found.', 404);

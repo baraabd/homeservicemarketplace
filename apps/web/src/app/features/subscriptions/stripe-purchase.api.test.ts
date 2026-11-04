@@ -49,3 +49,13 @@ it('retains only opaque idempotency identities across refresh and scopes them to
   expect(stripePurchaseKeys('synthetic-owner', 'plan-b')).not.toEqual(first);
   expect(Object.keys(first).sort()).toEqual(['attempt', 'intent', 'resume']);
 });
+
+it('reads the current owner intent status instead of trusting an idempotent replay', async () => {
+  mock.onGet('/v1/money/intents/intent%2F1').reply(200, { id: 'intent/1', status: 'SUCCEEDED' });
+  const { readStripePurchaseIntent } = await import('./stripe-purchase.api');
+  await expect(readStripePurchaseIntent('intent/1')).resolves.toMatchObject({
+    status: 'SUCCEEDED',
+  });
+  expect(mock.history.get[0]?.url).toBe('/v1/money/intents/intent%2F1');
+  expect(mock.history.post).toHaveLength(0);
+});

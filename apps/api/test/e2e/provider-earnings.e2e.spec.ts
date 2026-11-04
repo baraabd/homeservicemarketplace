@@ -337,19 +337,19 @@ describe('ProviderEarningsController (e2e) — /v1/provider/earnings/*', () => {
     it('defaults to range=30d when omitted', async () => {
       earningsService.chart.mockResolvedValue(CHART_FIXTURE);
       await request(app.getHttpServer()).get('/v1/provider/earnings/chart');
-      expect(earningsService.chart).toHaveBeenCalledWith('user-prov-1', '30d');
+      expect(earningsService.chart).toHaveBeenCalledWith('user-prov-1', '30d', undefined);
     });
 
     it('honours an explicit range=7d', async () => {
       earningsService.chart.mockResolvedValue({ ...CHART_FIXTURE, range: '7d' });
       await request(app.getHttpServer()).get('/v1/provider/earnings/chart?range=7d');
-      expect(earningsService.chart).toHaveBeenCalledWith('user-prov-1', '7d');
+      expect(earningsService.chart).toHaveBeenCalledWith('user-prov-1', '7d', undefined);
     });
 
     it('honours an explicit range=90d', async () => {
       earningsService.chart.mockResolvedValue({ ...CHART_FIXTURE, range: '90d' });
       await request(app.getHttpServer()).get('/v1/provider/earnings/chart?range=90d');
-      expect(earningsService.chart).toHaveBeenCalledWith('user-prov-1', '90d');
+      expect(earningsService.chart).toHaveBeenCalledWith('user-prov-1', '90d', undefined);
     });
 
     it('rejects an invalid range (no silent default)', async () => {

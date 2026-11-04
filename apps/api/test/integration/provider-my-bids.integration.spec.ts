@@ -125,6 +125,8 @@ const enabled = process.env.RUN_DB_INTEGRATION === '1';
         requestId: `${tag}-req`,
         providerId: prov[who].profile,
         amount: 100 + i,
+        currency: 'SAR',
+        amountScale: 2,
         pricingType: 'FIXED' as const,
         status: i < accepted ? ('ACCEPTED' as const) : other[i % 3],
         submittedAt: new Date(base - Math.floor(i / 3) * 60_000),
@@ -140,6 +142,8 @@ const enabled = process.env.RUN_DB_INTEGRATION === '1';
         status: i % 4 === 0 ? ('IN_PROGRESS' as const) : ('SCHEDULED' as const),
         scheduledAt: new Date(base + i * 3_600_000),
         priceAmount: 100 + i,
+        currency: 'SAR',
+        amountScale: 2,
       })),
     });
   }

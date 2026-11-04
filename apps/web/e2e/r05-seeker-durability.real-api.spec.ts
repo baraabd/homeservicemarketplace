@@ -4,6 +4,7 @@ import { expect, test, type BrowserContext } from '@playwright/test';
 
 import { seedLanguage } from './fixtures';
 import { api, loginViaUi, newJar, otpFor, REAL_API, type Account, type Jar } from './real-api';
+import { LEGAL_ACCEPTANCE } from './legal-acceptance';
 
 const BASE_URL = process.env.E2E_BASE_URL ?? 'http://127.0.0.1:4173';
 
@@ -22,7 +23,13 @@ async function registerSeeker(): Promise<Account> {
   const password = `R05-${randomUUID()}-Aa1!`;
   const registered = await api<{ challengeId: string }>(jar, '/v1/auth/register', {
     method: 'POST',
-    body: { email, password, firstName: 'R05', lastName: 'Seeker' },
+    body: {
+      email,
+      password,
+      firstName: 'R05',
+      lastName: 'Seeker',
+      legalAcceptance: LEGAL_ACCEPTANCE,
+    },
   });
   expect(registered.status, 'R05 seeker registration should succeed').toBeLessThan(400);
   const verified = await api(jar, '/v1/auth/verify-otp', {

@@ -241,10 +241,10 @@ export class RequestsService {
     if (input.scheduledAt !== undefined) this.assertNotInThePast(input.scheduledAt);
 
     const updated = await this.tx.run(async (tx) => {
-      const existing = await this.requests.findOwned(requestId, seekerUserId, tx);
-      if (!existing) {
-        throw new AppError('NOT_FOUND', 'Request not found.', 404);
-      }
+      // K04 — lock, THEN read. The state checked below must be the state the
+      // write lands on: an acceptance or cancellation that commits between an
+      // unlocked read and the write would otherwise be silently overwritten.
+      const existing = await this.lockAndReadOwned(requestId, seekerUserId, tx);
       // Forbid editing terminal-state requests so the audit trail stays
       // honest. CANCELLED is recoverable via reopen — patching a
       // cancelled record would silently mutate the cancelled state.
@@ -312,11 +312,17 @@ export class RequestsService {
         return existing;
       }
 
-      const result = await this.requests.updateOwned(requestId, seekerUserId, data, tx);
+      const result = await this.requests.updateOwned(
+        requestId,
+        seekerUserId,
+        data,
+        ServiceRequestStatus.OPEN_FOR_BIDS,
+        tx,
+      );
       if (result.count === 0) {
-        // Should be unreachable — we just verified ownership — but
-        // defend against a concurrent soft-delete racing the update.
-        throw new AppError('NOT_FOUND', 'Request not found.', 404);
+        // Unreachable while the lifecycle lock is held; the predicate is the
+        // database-level backstop if a future writer skips the lock.
+        throw new AppError('CONFLICT', 'This request is no longer editable.', 409);
       }
       await this.events.create(
         {
@@ -345,10 +351,7 @@ export class RequestsService {
   // those states cannot be cancelled here either.
   async cancel(seekerUserId: string, requestId: string): Promise<ServiceRequestDetail> {
     const updated = await this.tx.run(async (tx) => {
-      const existing = await this.requests.findOwned(requestId, seekerUserId, tx);
-      if (!existing) {
-        throw new AppError('NOT_FOUND', 'Request not found.', 404);
-      }
+      const existing = await this.lockAndReadOwned(requestId, seekerUserId, tx);
       if (existing.status === ServiceRequestStatus.CANCELLED) {
         throw new AppError('CONFLICT', 'Request is already cancelled.', 409);
       }
@@ -387,10 +390,7 @@ export class RequestsService {
   // attempting to reopen anything else returns 409.
   async reopen(seekerUserId: string, requestId: string): Promise<ServiceRequestDetail> {
     const updated = await this.tx.run(async (tx) => {
-      const existing = await this.requests.findOwned(requestId, seekerUserId, tx);
-      if (!existing) {
-        throw new AppError('NOT_FOUND', 'Request not found.', 404);
-      }
+      const existing = await this.lockAndReadOwned(requestId, seekerUserId, tx);
       if (existing.status !== ServiceRequestStatus.CANCELLED) {
         throw new AppError('CONFLICT', 'Only cancelled requests can be reopened.', 409);
       }
@@ -516,6 +516,26 @@ export class RequestsService {
   // Verify the supplied category exists and is active. Returns the
   // resolved categoryId (echoes the input on success) so the caller
   // can use it directly. Throws VALIDATION_ERROR / NOT_FOUND otherwise.
+  // K04 — every seeker command that changes a request takes the request's
+  // lifecycle row lock before reading it, in the same order as bid
+  // submission and acceptance (request row first). The lock is owner-scoped,
+  // so a foreign or unknown id is refused as NOT_FOUND without touching any
+  // other seeker's row.
+  private async lockAndReadOwned(
+    requestId: string,
+    seekerUserId: string,
+    tx: Prisma.TransactionClient,
+  ): Promise<ServiceRequestWithCategory> {
+    if (!(await this.requests.lockOwnedForLifecycle(requestId, seekerUserId, tx))) {
+      throw new AppError('NOT_FOUND', 'Request not found.', 404);
+    }
+    const existing = await this.requests.findOwned(requestId, seekerUserId, tx);
+    if (!existing) {
+      throw new AppError('NOT_FOUND', 'Request not found.', 404);
+    }
+    return existing;
+  }
+
   private async resolveCategory(
     categoryId: string | null,
     tx: Prisma.TransactionClient,

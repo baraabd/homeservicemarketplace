@@ -1,34 +1,26 @@
 {
   "schemaVersion": 1,
-  "experiment": "ksa-k01-dependency-audit",
-  "advisories": [
-    "GHSA-mrwp-f3q8-3g9p",
-    "GHSA-6pq8-jhm2-2vcw",
-    "GHSA-8g5g-mxqh-grgj",
-    "GHSA-g3hv-75wg-m249",
-    "GHSA-3g3m-2fjr-6pw4",
-    "GHSA-gcqx-w48m-w2h4"
-  ],
+  "experiment": "nov04-open-pr-integration",
   "priorBaseline": "462418888be76ec642664ea77971da9239ffb02a",
-  "originalPrBase": "92770ea65ee1154f94f4251d5febfa39822f9b9a",
+  "originalPrBase": "d0690dd626eae55d39b9c592ba6639b594a01032",
   "dependencySha256": {
     "apps/api/package.json": "888ef21b0c0cd474c16fffc5a470e9e67cbb6293719b8d5a437ae4d3b819f6a1",
     "apps/web/package.json": "16a0c6a4abfe68591b54c73765b301500d3be37037d2ca298458efdba647fac7",
-    "package.json": "6eb7f082a0e259ee4438f3e18b4a2aa6d5d408235f3394911b1f512f8dd7ea59",
-    "pnpm-lock.yaml": "802465d02dc2faae19c77f63c763e73db114537439995ae6a46e6d955987a77a",
+    "package.json": "b8c5564e1f20737a5f269d9d2fa32efe4249e868e8cde814e83394ecf9aeda81",
+    "pnpm-lock.yaml": "6cd977c095d479f18f9556303d263937c099adde00e828016fca36c0c13561bf",
     "vendor/deepmerge/index.cjs": "8b51276b1720fd68734add9e48cf000d36c15de1775d116fbc03c8bc2110dcf3",
     "vendor/deepmerge/index.d.ts": "d9fe3cb82c11b576a7ea5886ae5de649c8242b20d0a1418fb8203b42453ffd41",
     "vendor/deepmerge/license.txt": "6cfc4687cb2f2d86f4a77e6b526290d3878e5e512f3fec2f4cb36a9cb36f798b",
     "vendor/deepmerge/package.json": "228a2e50f2f8312688c965f44d380b906ac06d4e96d5d026eeeac310b0d87795"
   },
   "baseline": {
-    "commit": "2a1b53bb2bdd2b08e6dc7c71a240558bc0de4ba2",
-    "tree": "3c3e67b03478d07474b075a8d15a2b3f1b48e650",
+    "commit": "280e9e23c8a8e54b7b06d507b57a74ba35554eeb",
+    "tree": "dac6b54598f63a750b69eaf1caabded3b23b48e5",
     "parent": "462418888be76ec642664ea77971da9239ffb02a"
   },
   "repair": {
-    "commit": "5739cdf73d086eaa550826a5409f0094d9949620",
-    "tree": "54db9281b06a160671dd83aa0d6cd76f142321eb",
-    "parent": "92770ea65ee1154f94f4251d5febfa39822f9b9a"
+    "commit": "e835e1eeae136dbf1048ecb612a665afb1655ad4",
+    "tree": "86841b26b3594d73835a2e7df73a158f919ef787",
+    "parent": "d0690dd626eae55d39b9c592ba6639b594a01032"
   }
 }

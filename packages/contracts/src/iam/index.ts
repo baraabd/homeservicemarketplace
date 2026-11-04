@@ -1,6 +1,7 @@
 export * from './enums/role-name';
 export * from './enums/account-status';
 export * from './enums/auth-error-code';
+export * from './legal/legal-documents';
 export * from './request/register.request';
 export * from './request/login.request';
 export * from './request/verify-email.request';

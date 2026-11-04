@@ -41,6 +41,11 @@ apps/web/vite.config.d.ts
 .env.staging
 !.env.example
 
+# Vercel pull contains environment values; never commit or upload this directory.
+.vercel/
+# Generated from the verified source immediately before a CD build.
+/apps/web/public/deployment.json
+
 # Sprint 7.x — local-disk media storage. Holds binary uploads when
 # STORAGE_DRIVER=local. Recreated on demand by LocalDiskStorageAdapter.
 .media-uploads/

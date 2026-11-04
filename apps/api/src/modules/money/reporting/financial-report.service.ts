@@ -168,7 +168,7 @@ export class FinancialReportService {
     const query = pageInput(input);
     return this.transactions.run(
       async (tx) => {
-        const providerProfileId = await this.authorize(tx, userId, audience);
+        const { providerProfileId } = await this.authorize(tx, userId, audience);
         const scope: Scope = {
           kind: query.kind,
           actor: userId,
@@ -324,7 +324,7 @@ export class FinancialReportService {
     checkedId(id);
     return this.transactions.run(
       async (tx) => {
-        const providerProfileId = await this.authorize(tx, userId, audience);
+        const { providerProfileId, rights } = await this.authorize(tx, userId, audience);
         const owner = providerProfileId
           ? { providerProfileId, providerProfile: { userId, deletedAt: null } }
           : {};
@@ -383,7 +383,7 @@ export class FinancialReportService {
           ...version(),
           record: projected,
           provenance: provenance(),
-          capabilities: unavailableCapabilities(),
+          capabilities: financialCapabilities(audience, rights),
         };
       },
       { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead },
@@ -398,7 +398,7 @@ export class FinancialReportService {
     const ledger = await this.queries.reviewFinancials(userId, { currency });
     return this.transactions.run(
       async (tx) => {
-        await this.authorize(tx, userId, 'ADMIN');
+        const { rights } = await this.authorize(tx, userId, 'ADMIN');
         const pendingAsOf = new Date().toISOString();
         // Prisma's relation filters cannot express the latest attempt per intent.
         // One parameterized LATERAL join caps that relation at one row. Amounts
@@ -455,7 +455,7 @@ export class FinancialReportService {
           pendingAsOf,
           provenance: provenance(),
           reconciliation: await this.checkedReconciliationStatus(),
-          capabilities: unavailableCapabilities(),
+          capabilities: financialCapabilities('ADMIN', rights),
         };
       },
       { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead },
@@ -470,12 +470,14 @@ export class FinancialReportService {
     // Exceptions may exist even without an available run history. They do not
     // establish zero differences or a successful reconciliation.
     const status = await this.checkedReconciliationStatus();
+    // reviewExceptions authorized the read; action links use their own fresh grant.
+    const rights = await this.permissions.resolveFreshForUser(userId);
     return {
       ...version(),
       ...result,
       status,
       provenance: provenance(),
-      capabilities: unavailableCapabilities(),
+      capabilities: financialCapabilities('ADMIN', rights),
     };
   }
 
@@ -522,7 +524,7 @@ export class FinancialReportService {
     tx: PrismaTx,
     userId: string,
     audience: FinancialReadAudience,
-  ): Promise<string | null> {
+  ): Promise<{ providerProfileId: string | null; rights: ReadonlySet<string> }> {
     if (audience !== 'ADMIN' && audience !== 'PROVIDER') throw forbidden();
     const rights = await this.permissions.resolveFreshForUser(userId, tx);
     const role = audience === 'ADMIN' ? 'admin' : 'provider';
@@ -539,13 +541,13 @@ export class FinancialReportService {
       select: { id: true },
     });
     if (!user) throw forbidden();
-    if (audience === 'ADMIN') return null;
+    if (audience === 'ADMIN') return { providerProfileId: null, rights };
     const provider = await tx.providerProfile.findFirst({
       where: { userId, deletedAt: null },
       select: { id: true },
     });
     if (!provider) throw notFound();
-    return provider.id;
+    return { providerProfileId: provider.id, rights };
   }
 
   private async checkedReconciliationStatus(): Promise<FinancialReconciliationStatusV1> {
@@ -777,12 +779,32 @@ function pageEnvelope(kind: FinancialRecordKind) {
     availability: { state: 'AVAILABLE' as const, reason: null },
   };
 }
-function unavailableCapabilities(): FinancialOperationsCapabilitiesV1 {
+const unavailable = (reason: string) => ({ available: false, reason, href: null });
+const linked = (href: string) => ({ available: true, reason: null, href });
+/**
+ * Navigation hints only. Each destination route and its API re-authorize every
+ * read and command; a link never grants authority. Only routes that the web
+ * application actually serves are linked (apps/web/src/app/routes.ts and
+ * components/admin/admin-routes.ts).
+ */
+function financialCapabilities(
+  audience: FinancialReadAudience,
+  rights: ReadonlySet<string>,
+): FinancialOperationsCapabilitiesV1 {
+  const admin = audience === 'ADMIN';
   return {
-    refund: { available: false, reason: 'R32_INTEGRATION_PENDING', href: null },
-    receiptReview: { available: false, reason: 'R30_INTEGRATION_PENDING', href: null },
-    myPlan: { available: false, reason: 'R31_INTEGRATION_PENDING', href: null },
-    reconciliationActions: { available: false, reason: 'R34_INTEGRATION_PENDING', href: null },
+    // R32 refund commands exist in the API, but no web refund workspace route does.
+    refund: unavailable('REFUND_WORKSPACE_ROUTE_ABSENT'),
+    receiptReview: !admin
+      ? unavailable('NOT_APPLICABLE')
+      : rights.has('money:receipt:review')
+        ? linked('/admin/manual-payments')
+        : unavailable('PERMISSION_REQUIRED'),
+    // The provider audience already required money:read:self, which My Plan reads use.
+    myPlan: admin ? unavailable('NOT_APPLICABLE') : linked('/provider/my-plan'),
+    reconciliationActions: admin
+      ? unavailable('R34_INTEGRATION_PENDING')
+      : unavailable('NOT_APPLICABLE'),
   };
 }
 function order() {

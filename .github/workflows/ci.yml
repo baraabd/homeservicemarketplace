@@ -2069,7 +2069,8 @@ jobs:
           node -e "
             const runs = ['r17d-admin-browser-ci.json', 'r17d-admin-ci.json'].map((f) => require('./apps/api/' + f));
             const sum = (k) => runs.reduce((n, r) => n + r[k], 0);
-            const expected = 14;
+            // K06 added three service cases (stale admin claim x2, self-decision).
+            const expected = 17;
             console.log('R17-D passed', sum('numPassedTests'), 'failed', sum('numFailedTests'), 'pending', sum('numPendingTests'), 'todo', sum('numTodoTests'));
             if (sum('numFailedTests') || sum('numPendingTests') || sum('numTodoTests') || sum('numPassedTests') !== expected) {
               console.error('::error::R17-D acceptance did not execute all ' + expected + ' cases');
@@ -2275,6 +2276,11 @@ jobs:
           pnpm --filter @homeservicemarketplace/api exec jest --runInBand --runTestsByPath \
             test/integration/g3-financial-runtime.integration.spec.ts \
             --json --outputFile=g3-financial-runtime-ci.json
+      - name: Verify K07 repeat purchase of one plan version against the same real services
+        run: |
+          pnpm --filter @homeservicemarketplace/api exec jest --runInBand --runTestsByPath \
+            test/integration/k07-repeat-purchase.integration.spec.ts \
+            --json --outputFile=k07-repeat-purchase-ci.json
       - name: Verify external Stripe runner authorization and evidence guards
         run: node --test scripts/production/stripe-sandbox/verify-external.test.cjs
       - name: Verify R30 bilingual browser against the same real services
@@ -2291,6 +2297,7 @@ jobs:
           for (const [file, expected] of [
             ['apps/api/r30-manual-service-ci.json', 16],
             ['apps/api/g3-financial-runtime-ci.json', 6],
+            ['apps/api/k07-repeat-purchase-ci.json', 2],
             ['apps/api/r30-manual-browser-ci.json', 1],
           ]) {
             const r = JSON.parse(fs.readFileSync(file, 'utf8'));
@@ -2312,6 +2319,7 @@ jobs:
           path: |
             apps/api/r30-manual-service-ci.json
             apps/api/g3-financial-runtime-ci.json
+            apps/api/k07-repeat-purchase-ci.json
             apps/api/r30-manual-browser-ci.json
             apps/web/test-results/r30-manual-results.json
             apps/web/test-results/r30-manual-browser/**/*.png

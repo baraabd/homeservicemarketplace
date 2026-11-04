@@ -16,6 +16,8 @@ const row = {
   deletedAt: null,
   priceAmount: 1357,
   currency: 'SEK',
+  // A pre-K02 legacy row: its unit is unverified.
+  amountScale: null,
   addressSnapshot: { city: 'Test city', line1: 'Accepted booking address' },
   customServiceText: null,
   categoryId: 'category',
@@ -48,6 +50,7 @@ describe('bounded booking list projections', () => {
       scheduledAt: null,
       priceAmount: 1357,
       currency: 'SEK',
+      amountScale: null,
       createdAt: time,
       updatedAt: time,
       request: {
@@ -79,14 +82,16 @@ describe('bounded booking list projections', () => {
     expect(query.text).toContain('booking.id <= cursor.id');
   });
 
-  it('retains admin currency, amount, dates and permitted identities without loading a bid', async () => {
+  it('retains admin currency, unit, amount, dates and permitted identities; reads Bid only for the bounded page', async () => {
     const { client, repo } = setup();
     const [actual] = await repo.listCompletedBookingsForAdmin({ take: 31 });
     expect(actual).toEqual({
       id: 'booking',
       priceAmount: 1357,
       currency: 'SEK',
+      amountScale: null,
       updatedAt: time,
+      bid: { pricingType: 'HOURLY' },
       request: {
         addressSnapshot: row.addressSnapshot,
         customServiceText: null,
@@ -102,7 +107,20 @@ describe('bounded booking list projections', () => {
     expect(actual.updatedAt).toBe(time);
     expect(client.$queryRaw).toHaveBeenCalledTimes(1);
     const query = client.$queryRaw.mock.calls[0][0] as Prisma.Sql;
-    expect(query.text).not.toMatch(/"Bid"|Ledger/);
+    // K02 — pricingType (fixed price vs hourly rate) comes from Bid through a
+    // correlated primary-key lookup per page row: never a join the planner
+    // could hash with a sequential scan (R27), never inside the LIMITed page
+    // subquery, and never a ledger read.
+    expect(query.text).not.toMatch(/Ledger/);
+    expect(query.text).not.toMatch(/JOIN "Bid"/);
+    expect(query.text).toContain(
+      '(SELECT bid."pricingType"::text FROM "Bid" bid WHERE bid.id = page."bidId") AS "pricingType"',
+    );
+    const pageStart = query.text.indexOf('FROM (');
+    const pageEnd = query.text.indexOf(') page');
+    expect(pageStart).toBeGreaterThan(0);
+    expect(pageEnd).toBeGreaterThan(pageStart);
+    expect(query.text.slice(pageStart, pageEnd)).not.toMatch(/"Bid"/);
     expect(query.text).toContain("booking.status = 'COMPLETED'");
     expect(query.text).toContain('booking."deletedAt" IS NULL');
     expect(query.values).toEqual([31, 0]);

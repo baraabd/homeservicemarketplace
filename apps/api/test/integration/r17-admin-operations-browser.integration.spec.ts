@@ -84,13 +84,15 @@ const enabled = process.env.RUN_ADMIN_BROWSER === '1';
     const profile = await db.providerProfile.findFirstOrThrow({
       where: { userId: users.provider },
     });
-    // Completed yesterday (inside the dashboard's default 30-day range), in
-    // two ISO test currencies with distinctive values: a cross-currency sum
-    // (1,801) would be visible in the rendered text.
+    // Completed yesterday (inside the dashboard's default 30-day range), with
+    // distinctive values. K02 — a verified SAR booking (123,400 halalas =
+    // SAR 1,234.00) next to a pre-K02 legacy row in the ISO test currency XXX
+    // (unit unverified, scale NULL). The legacy row must never be summed or
+    // shown as money; a cross-currency sum (1,801) would be visible in text.
     const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000);
-    for (const [tag, currency, amount] of [
-      ['xts', 'XTS', 123_400],
-      ['xxx', 'XXX', 56_700],
+    for (const [tag, currency, amount, amountScale] of [
+      ['sar', 'SAR', 123_400, 2],
+      ['xxx', 'XXX', 56_700, null],
     ] as const) {
       const id = `${prefix}r17d-browser-${tag}`;
       await db.serviceRequest.create({
@@ -108,6 +110,8 @@ const enabled = process.env.RUN_ADMIN_BROWSER === '1';
           requestId: `${id}-request`,
           providerId: profile.id,
           amount: amount,
+          currency,
+          amountScale,
           pricingType: 'FIXED',
           status: 'ACCEPTED',
         },
@@ -121,6 +125,7 @@ const enabled = process.env.RUN_ADMIN_BROWSER === '1';
           providerId: profile.id,
           priceAmount: amount,
           currency,
+          amountScale,
           status: 'COMPLETED',
         },
       });
@@ -244,7 +249,7 @@ const enabled = process.env.RUN_ADMIN_BROWSER === '1';
             auditActor: users.reader,
             auditRows: 60,
             settingBefore: (before?.value as number | undefined) ?? 10,
-            expect: { xts: '1,234', xxx: '567' },
+            expect: { sar: '1,234.00', legacyCurrency: 'XXX' },
           },
         });
       });

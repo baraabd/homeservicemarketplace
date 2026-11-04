@@ -15,6 +15,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { fixtureEmailDomain, acquireAdvisoryLocks, type HeldLock } from '../support/db-isolation';
+import { currentLegalAcceptance } from '../support/legal-acceptance';
 
 // Sprint 9B.13 — the whole provider journey, through the REAL application.
 //
@@ -161,7 +162,13 @@ d('Provider journey, flags ON (real AppModule, real Postgres, real Redis)', () =
   async function registerAndSignIn(email: string): Promise<Session> {
     const registered = await request(http)
       .post('/v1/auth/register')
-      .send({ email, password: PASSWORD, firstName: 'Jo', lastName: 'Walker' })
+      .send({
+        email,
+        password: PASSWORD,
+        firstName: 'Jo',
+        lastName: 'Walker',
+        legalAcceptance: currentLegalAcceptance(),
+      })
       .expect(202);
     expect(registered.body.otpRequired).toBe(true);
 

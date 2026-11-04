@@ -6,9 +6,11 @@
 // /v1/me/provider/earnings/transactions endpoint kept the status filter
 // for the prior wallet UI; this canonical shape is wallet-only.
 //
-// platformFee + netAmount are computed at query time from
-// PROVIDER_PLATFORM_FEE_BPS. They are present per-row so the UI does
-// not need to recompute, and they reconcile with the summary when SUM-d.
+// K02 — each row is shown in its OWN currency and scale. No fee or net
+// figure exists (no fee is approved). `pricingType` tells the UI whether
+// `amount` is a whole-job price or an hourly rate.
+import type { PricingType } from '../../../seeker/bids/enums/pricing-type';
+
 export interface EarningsTransaction {
   id: string;
   bookingId: string;
@@ -16,10 +18,11 @@ export interface EarningsTransaction {
   // future expansion (refunds, bonuses) can pivot without a breaking
   // contract change.
   kind: 'BOOKING_COMPLETED';
-  amount: number; // gross priceAmount of the underlying booking
-  platformFee: number; // marketplace take on this row
-  netAmount: number; // amount − platformFee
+  amount: number; // priceAmount of the underlying booking, minor units
+  pricingType: PricingType;
   currency: string;
+  // K02 — minor-unit scale (2 = SAR halalas); null = LEGACY_UNVERIFIED pre-K02 amount.
+  amountScale: number | null;
   // ISO-8601 — booking.updatedAt at the moment the provider marked it
   // COMPLETED. The booking row never updates again unless soft-deleted.
   occurredAt: string;

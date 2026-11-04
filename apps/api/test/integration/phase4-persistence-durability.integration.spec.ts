@@ -18,6 +18,7 @@ import {
 } from '../support/db-isolation';
 import { clearAuthRateBudget } from '../support/rate-limit-reset';
 import { makeTestSecret } from '../support/test-secrets';
+import { currentLegalAcceptance } from '../support/legal-acceptance';
 
 // Derived, never written: a literal here is indistinguishable from a real key
 // to the CI secret scanner. See test/support/test-secrets.ts.
@@ -173,7 +174,13 @@ d('Phase 4 — onboarding persistence is durable across sessions (real Postgres 
     await clearRegistrationBudget(email);
     const registered = await request(http)
       .post('/v1/auth/register')
-      .send({ email, password: PASSWORD, firstName: 'Dur', lastName: 'Able' })
+      .send({
+        email,
+        password: PASSWORD,
+        firstName: 'Dur',
+        lastName: 'Able',
+        legalAcceptance: currentLegalAcceptance(),
+      })
       .expect(202);
     const verified = await request(http)
       .post('/v1/auth/verify-otp')
