@@ -34,6 +34,12 @@ configuration metadata uses `envName`, and the repeat-purchase fixture uses
 its disposable UUID as its plan identifier. The full tracked-tree secret scan
 passes without adding scanner suppressions.
 
+The scanner installation downloads the same Trivy 0.70.0 binary directly from
+its official GitHub release and verifies its pinned SHA-256. The upstream
+installer failed twice while downloading through get.trivy.dev. Download
+retries address transient transport failures; the image scan, action pin,
+severity threshold and fail-on-findings behavior remain unchanged.
+
 ## Verification
 
 - Frozen install: Node 24.21.0, pnpm 10.32.1. The only lockfile change after
@@ -48,8 +54,13 @@ passes without adding scanner suppressions.
 - Local results cover the integration source tree. Real-service/browser CI and
   final-source security checks must pass on the integration PR's actual final
   SHA. This document is not a substitute for those checks.
-- Local Docker services are unavailable in this environment. Hosted CI owns
-  the real PostgreSQL/Redis/ClamAV, migration, container and browser acceptance.
+- An isolated local PostgreSQL 16.15 instance applied all migrations and passed
+  all 14 pagination integration tests. Docker services are unavailable locally;
+  hosted CI owns the Redis/ClamAV, container and browser acceptance.
+- GitHub run 41785892135 passed 401 API suites / 7,353 tests, the browser and
+  real-service jobs, unchanged R27 budgets, CodeQL and platform startup checks.
+  Its remaining failure was the upstream scanner download. The installer repair
+  must pass a new complete check suite before this integration can merge.
 - Dependency-only R27 controls retain previous runtime trees, register the
   eight dependency blobs, and include the patched qs without changing budgets.
 
