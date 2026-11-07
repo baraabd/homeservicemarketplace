@@ -1,3 +1,4 @@
+import type { BookingDetail, ProviderOnboardingDraftView } from '@homeservicemarketplace/contracts';
 import { randomUUID } from 'node:crypto';
 import { Client } from 'pg';
 import { expect, type BrowserContext } from '@playwright/test';
@@ -37,7 +38,10 @@ export interface Seeker extends Account {
   addressId: string;
 }
 
-export async function registerSeeker(tag: string): Promise<Seeker> {
+export async function registerSeeker(
+  tag: string,
+  location = { city: 'Aleppo', country: 'Syria' },
+): Promise<Seeker> {
   const jar = newJar();
   const email = `${tag}-seeker-${Date.now()}-${Math.floor(Math.random() * 1e6)}@itest.local`;
   const password = `${tag.toUpperCase()}-${randomUUID()}-Aa1!`;
@@ -63,19 +67,15 @@ export async function registerSeeker(tag: string): Promise<Seeker> {
       label: 'Home',
       type: 'HOME',
       line1: '12 Message Street',
-      city: 'Aleppo',
-      country: 'Syria',
+      ...location,
       isDefault: true,
     },
   });
   expect(address.status, JSON.stringify(address.body)).toBeLessThan(300);
-  const userId = await withDb(async (db) => {
-    const { rows } = await db.query<{ id: string }>('SELECT id FROM "User" WHERE email = $1', [
-      email,
-    ]);
-    return rows[0].id;
-  });
-  return { email, password, jar, profileId: '', userId, addressId: address.body.id };
+  const me = await api<{ id: string }>(jar, '/v1/auth/me');
+  expect(me.status, 'the verified seeker session should identify its owner').toBe(200);
+  expect(me.body.id).toBeTruthy();
+  return { email, password, jar, profileId: '', userId: me.body.id, addressId: address.body.id };
 }
 
 export async function leafCategoryId(): Promise<string> {
@@ -187,4 +187,29 @@ export async function applySession(context: BrowserContext, jar: Jar): Promise<v
       path: name === 'hsm_rt' ? '/v1/auth/refresh' : '/',
     })),
   );
+}
+
+export async function completeBookingAfterApproval(account: Account): Promise<void> {
+  const draft = await api<ProviderOnboardingDraftView>(
+    account.jar,
+    '/v1/me/provider/onboarding/draft',
+  );
+  expect(draft.status).toBe(200);
+  const { serviceAreaCity: city, serviceAreaCountry: country, specialtyLeafIds } = draft.body.data;
+  const categoryId = specialtyLeafIds[0];
+  if (!city || !country || !categoryId)
+    throw new Error('The approved application needs a work area and a granted specialty');
+
+  const seeker = await registerSeeker('activation', { city, country });
+  const bookingId = await scheduledBooking(seeker, account, categoryId);
+
+  for (const [action, status] of [
+    ['start', 'IN_PROGRESS'],
+    ['complete', 'COMPLETED'],
+  ] as const) {
+    await providerMoves(account, bookingId, action);
+    const observed = await api<BookingDetail>(seeker.jar, `/v1/me/bookings/${bookingId}`);
+    expect(observed.status).toBe(200);
+    expect(observed.body).toMatchObject({ id: bookingId, status });
+  }
 }

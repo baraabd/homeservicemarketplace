@@ -9,6 +9,9 @@ export const SIGNUP_CONSENT_COPY = {
     loading: 'Loading the current terms…',
     loadFailed: 'The current terms could not be loaded, so sign-up cannot continue.',
     retry: 'Try again',
+    reload: 'Reload this page',
+    updateRequired:
+      'Refresh this page to load the current terms and privacy notice before signing up.',
     closed: 'Sign-up opens once the terms and privacy notice are approved.',
     stale:
       'The terms or privacy notice changed while you were signing up. Please read the current version and tick the box again.',
@@ -21,6 +24,8 @@ export const SIGNUP_CONSENT_COPY = {
     loading: 'جارٍ تحميل الشروط الحالية…',
     loadFailed: 'تعذّر تحميل الشروط الحالية، لذا لا يمكن متابعة التسجيل.',
     retry: 'إعادة المحاولة',
+    reload: 'إعادة تحميل الصفحة',
+    updateRequired: 'أعد تحميل الصفحة لقراءة النسخة الحالية من الشروط وإشعار الخصوصية قبل التسجيل.',
     closed: 'يُفتح التسجيل بعد اعتماد الشروط وإشعار الخصوصية.',
     stale:
       'تغيّرت الشروط أو إشعار الخصوصية أثناء تسجيلك. اقرأ الإصدار الحالي ثم حدّد المربع مجدداً.',

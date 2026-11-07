@@ -20,7 +20,10 @@ import { Button } from '../ds/Button';
 import { TextField } from '../ds/TextField';
 import { useSwipe } from '../../hooks/useSwipe';
 import { useQuery } from '@tanstack/react-query';
-import type { LegalAcceptanceInput } from '@homeservicemarketplace/contracts';
+import {
+  CURRENT_LEGAL_DOCUMENTS,
+  type LegalAcceptanceInput,
+} from '@homeservicemarketplace/contracts';
 import { getLegalDocuments } from '../../../lib/auth-api';
 // K02 — the policy dialog (Radix Dialog + full bilingual policy text) is
 // loaded only when a policy is opened, keeping it out of the auth chunk
@@ -706,7 +709,12 @@ export function SignUpScreen({
   const legalDocs = legalQuery.data;
   const termsDoc = legalDocs?.documents.find((d) => d.kind === 'TERMS_OF_SERVICE');
   const privacyDoc = legalDocs?.documents.find((d) => d.kind === 'PRIVACY_NOTICE');
-  const legalReady = !!termsDoc && !!privacyDoc && legalDocs?.acceptanceOpen === true;
+  // The dialog renders the policy text shipped with this web build. During a
+  // rolling release it can lag behind the API's current document versions.
+  const samePolicies =
+    termsDoc?.version === CURRENT_LEGAL_DOCUMENTS.TERMS_OF_SERVICE.version &&
+    privacyDoc?.version === CURRENT_LEGAL_DOCUMENTS.PRIVACY_NOTICE.version;
+  const legalReady = samePolicies && legalDocs?.acceptanceOpen === true;
   const consentCopy = SIGNUP_CONSENT_COPY[lang === 'ar' ? 'ar' : 'en'];
 
   useEffect(() => {
@@ -746,7 +754,7 @@ export function SignUpScreen({
       setIsLoading(true);
       setSignUpError(undefined);
       try {
-        if (!termsDoc || !privacyDoc) return;
+        if (!canStep2 || !termsDoc || !privacyDoc) return;
         const issued = await onCredentialsSubmit({
           name,
           email: email.trim(),
@@ -768,6 +776,8 @@ export function SignUpScreen({
           void legalQuery.refetch();
           setSignUpError(consentCopy.stale);
         } else if (legalRefusalReason(err) === 'LEGAL_ACCEPTANCE_CLOSED') {
+          setAgreed(false);
+          void legalQuery.refetch();
           setSignUpError(consentCopy.closed);
         } else {
           setSignUpError(
@@ -822,6 +832,39 @@ export function SignUpScreen({
       setIsResending(false);
     }
   };
+
+  if (step < 3 && legalDocs && !legalReady) {
+    return (
+      <SwipeableScreen onBack={onBack}>
+        <div className="flex min-h-svh flex-col bg-white">
+          <AuthTopBar title={t('createAccount')} onBack={onBack} />
+          <main className="mx-auto flex w-full max-w-md flex-col gap-4 px-6 py-8">
+            <h2 role="status" className="text-lg font-semibold text-slate-900">
+              {legalDocs.acceptanceOpen ? consentCopy.updateRequired : consentCopy.closed}
+            </h2>
+            <a className="min-h-11 underline" href="/legal/terms">
+              {consentCopy.readTerms}
+            </a>
+            <a className="min-h-11 underline" href="/legal/privacy">
+              {consentCopy.readPrivacy}
+            </a>
+            <Button variant="primary" tone={experience.id} onClick={onBack}>
+              {t('login')}
+            </Button>
+            {legalDocs.acceptanceOpen && (
+              <button
+                type="button"
+                className="min-h-11 underline"
+                onClick={() => window.location.reload()}
+              >
+                {consentCopy.reload}
+              </button>
+            )}
+          </main>
+        </div>
+      </SwipeableScreen>
+    );
+  }
 
   const stepLabels = [t('accountInfo'), t('createAccount'), t('verification')];
 
@@ -1092,10 +1135,6 @@ export function SignUpScreen({
                     >
                       {consentCopy.retry}
                     </button>
-                  </p>
-                ) : legalDocs && !legalDocs.acceptanceOpen ? (
-                  <p className="ps-9 text-amber-800" style={{ fontSize: '14px' }} role="status">
-                    {consentCopy.closed}
                   </p>
                 ) : null}
               </div>

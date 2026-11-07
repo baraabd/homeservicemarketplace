@@ -216,13 +216,21 @@ describe('K02 signup consent', () => {
   it('cannot proceed when the server says acceptance is closed (production with draft text)', async () => {
     mock.onGet('/v1/legal/documents').reply(200, { ...DOCS, acceptanceOpen: false });
     renderSignup();
-    await waitFor(() => expect(document.querySelector('input[type="tel"]')).toBeTruthy());
-    const name = document.querySelectorAll('input')[0] as HTMLInputElement;
-    await act(async () => fireEvent.change(name, { target: { value: 'Noura Alharbi' } }));
-    const next = screen.getAllByRole('button').find((b) => /next/i.test(b.textContent ?? ''))!;
-    await act(async () => next.click());
     expect(await screen.findByText(/Sign-up opens once the terms/)).toBeInTheDocument();
-    expect((screen.getByRole('checkbox') as HTMLInputElement).disabled).toBe(true);
+    expect(screen.queryByRole('textbox')).toBeNull();
+    expect(screen.getByRole('button', { name: /log in/i })).toBeEnabled();
+    expect(mock.history.post.some((req) => req.url === '/v1/auth/register')).toBe(false);
+  });
+
+  it('requires the displayed policy versions to match the API before collecting credentials', async () => {
+    mock.onGet('/v1/legal/documents').reply(200, {
+      ...DOCS,
+      documents: DOCS.documents.map((doc) => ({ ...doc, version: 'newer-server-version' })),
+    });
+    renderSignup();
+    expect(await screen.findByRole('button', { name: 'Reload this page' })).toBeEnabled();
+    expect(screen.queryByRole('textbox')).toBeNull();
+    expect(mock.history.post.some((req) => req.url === '/v1/auth/register')).toBe(false);
   });
 
   it('restores the non-secret draft after a reload, without the password or consent', async () => {

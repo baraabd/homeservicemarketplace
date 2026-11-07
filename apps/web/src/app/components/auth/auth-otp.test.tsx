@@ -1,3 +1,4 @@
+import { CURRENT_LEGAL_DOCUMENTS } from '@homeservicemarketplace/contracts';
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import MockAdapter from 'axios-mock-adapter';
@@ -291,22 +292,7 @@ describe('Register → OTP → authenticated', () => {
     });
     mock.onPost('/v1/auth/verify-otp').reply(200, {});
     mock.onGet('/v1/legal/documents').reply(200, {
-      documents: [
-        {
-          kind: 'TERMS_OF_SERVICE',
-          version: 'terms-v-test',
-          status: 'DRAFT',
-          approvalReference: null,
-          path: '/legal/terms',
-        },
-        {
-          kind: 'PRIVACY_NOTICE',
-          version: 'privacy-v-test',
-          status: 'DRAFT',
-          approvalReference: null,
-          path: '/legal/privacy',
-        },
-      ],
+      documents: Object.values(CURRENT_LEGAL_DOCUMENTS),
       acceptanceOpen: true,
     });
 
@@ -365,8 +351,8 @@ describe('Register → OTP → authenticated', () => {
     expect(JSON.parse(post!.data)).toEqual({ challengeId: 'chal-reg-42', code: '654321' });
     const reg = mock.history.post.find((r) => r.url === '/v1/auth/register');
     expect(JSON.parse(reg!.data).legalAcceptance).toEqual({
-      termsVersion: 'terms-v-test',
-      privacyVersion: 'privacy-v-test',
+      termsVersion: CURRENT_LEGAL_DOCUMENTS.TERMS_OF_SERVICE.version,
+      privacyVersion: CURRENT_LEGAL_DOCUMENTS.PRIVACY_NOTICE.version,
       locale: 'en',
     });
   });
