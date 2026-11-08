@@ -1,6 +1,7 @@
 import * as argon2 from 'argon2';
 
 import { grantAdminWithTx, grantProviderWithTx } from './admin-access-grant';
+import { SERVICE_CATEGORIES } from './service-categories';
 import { Prisma, prisma } from './index';
 
 // Safe development seed:
@@ -21,14 +22,6 @@ interface RoleSpec {
 interface PermissionSpec {
   key: string;
   description: string;
-}
-
-interface ServiceCategorySpec {
-  slug: string;
-  labelEn: string;
-  labelAr: string;
-  icon: string;
-  sortOrder: number;
 }
 
 interface ProviderProfileSpec {
@@ -55,19 +48,6 @@ interface ProviderProfileSpec {
   // after the catalog upsert runs).
   categorySlugs: readonly string[];
 }
-
-// Sprint 1, slice 1: bootstrap the public service-catalog. Slugs are
-// stable; labels and sortOrder can be edited via subsequent migrations
-// or admin tooling without breaking existing service_requests rows
-// (those reference categories by id, not slug).
-const SERVICE_CATEGORIES: ServiceCategorySpec[] = [
-  { slug: 'plumbing', labelEn: 'Plumbing', labelAr: 'سباكة', icon: '🔧', sortOrder: 0 },
-  { slug: 'electrical', labelEn: 'Electrical', labelAr: 'كهرباء', icon: '⚡', sortOrder: 1 },
-  { slug: 'ac-repair', labelEn: 'AC Repair', labelAr: 'صيانة تكييف', icon: '❄️', sortOrder: 2 },
-  { slug: 'cleaning', labelEn: 'Cleaning', labelAr: 'تنظيف', icon: '✨', sortOrder: 3 },
-  { slug: 'carpentry', labelEn: 'Carpentry', labelAr: 'نجارة', icon: '🔨', sortOrder: 4 },
-  { slug: 'painting', labelEn: 'Painting', labelAr: 'دهانات', icon: '🎨', sortOrder: 5 },
-];
 
 // Sprint 2, slice 2.1: bootstrap a small Provider read-model so the
 // Seeker BidsScreen has someone to bid on requests. The Provider app
