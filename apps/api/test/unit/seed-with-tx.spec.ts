@@ -264,7 +264,7 @@ describe('seedWithTx (unit)', () => {
     }
   });
 
-  it('never seeds the development provider pool in production (R18)', async () => {
+  it('keeps the production catalog and provider pool outside the general seed', async () => {
     const previous = process.env.NODE_ENV;
     const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
     try {
@@ -273,6 +273,7 @@ describe('seedWithTx (unit)', () => {
       await seedWithTx(tx as never);
       // Reference data still lands; invented sellers do not.
       expect([...tx._rolesByName.keys()].sort()).toEqual(['admin', 'customer', 'provider']);
+      expect(tx.serviceCategory.upsert).not.toHaveBeenCalled();
       expect(tx._calls.providerProfile).toHaveLength(0);
       expect(tx._providerProfilesById.size).toBe(0);
     } finally {

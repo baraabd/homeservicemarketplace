@@ -147,7 +147,7 @@ export class ProviderCategoriesService {
       ? await this.categories.findById(categoryId, tx)
       : await this.categories.findBySlug(categorySlug!, tx);
 
-    if (!found || !found.isActive || found.deletedAt !== null) {
+    if (!found || !found.isActive || !found.isLeaf || found.deletedAt !== null) {
       throw new AppError(
         'VALIDATION_ERROR',
         'That service category was not found or is not currently available.',

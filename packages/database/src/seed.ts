@@ -2,6 +2,7 @@ import * as argon2 from 'argon2';
 
 import { grantAdminWithTx, grantProviderWithTx } from './admin-access-grant';
 import { Prisma, prisma } from './index';
+import { SERVICE_SPECIALTIES } from './service-catalog-data';
 
 // Safe development seed:
 //  - upserts system roles (customer, provider, admin)
@@ -21,14 +22,6 @@ interface RoleSpec {
 interface PermissionSpec {
   key: string;
   description: string;
-}
-
-interface ServiceCategorySpec {
-  slug: string;
-  labelEn: string;
-  labelAr: string;
-  icon: string;
-  sortOrder: number;
 }
 
 interface ProviderProfileSpec {
@@ -55,19 +48,6 @@ interface ProviderProfileSpec {
   // after the catalog upsert runs).
   categorySlugs: readonly string[];
 }
-
-// Sprint 1, slice 1: bootstrap the public service-catalog. Slugs are
-// stable; labels and sortOrder can be edited via subsequent migrations
-// or admin tooling without breaking existing service_requests rows
-// (those reference categories by id, not slug).
-const SERVICE_CATEGORIES: ServiceCategorySpec[] = [
-  { slug: 'plumbing', labelEn: 'Plumbing', labelAr: 'سباكة', icon: '🔧', sortOrder: 0 },
-  { slug: 'electrical', labelEn: 'Electrical', labelAr: 'كهرباء', icon: '⚡', sortOrder: 1 },
-  { slug: 'ac-repair', labelEn: 'AC Repair', labelAr: 'صيانة تكييف', icon: '❄️', sortOrder: 2 },
-  { slug: 'cleaning', labelEn: 'Cleaning', labelAr: 'تنظيف', icon: '✨', sortOrder: 3 },
-  { slug: 'carpentry', labelEn: 'Carpentry', labelAr: 'نجارة', icon: '🔨', sortOrder: 4 },
-  { slug: 'painting', labelEn: 'Painting', labelAr: 'دهانات', icon: '🎨', sortOrder: 5 },
-];
 
 // Sprint 2, slice 2.1: bootstrap a small Provider read-model so the
 // Seeker BidsScreen has someone to bid on requests. The Provider app
@@ -281,8 +261,7 @@ async function upsertProviderProfiles(tx: Prisma.TransactionClient): Promise<voi
   // invented marketplace sellers (names, cities, categories, ACTIVE status and
   // some "verified"/"Top Pro" flags) that no person applied for and no admin
   // reviewed. In production they would be offered to real seekers as real
-  // providers. Roles, permissions and the catalogue above are the reference
-  // data production needs; providers arrive only through onboarding and review.
+  // providers. Production providers arrive through onboarding and review.
   if (isProductionSeedTarget()) {
     console.warn(
       '[seed] SKIPPING the development provider pool: NODE_ENV=production. ' +
@@ -366,7 +345,7 @@ async function upsertServiceCategories(tx: Prisma.TransactionClient): Promise<vo
   // Idempotent: every call upserts on the unique slug. Reactivates a
   // soft-deleted row if a previous environment archived a category we
   // now consider canonical (sets `isActive: true, deletedAt: null`).
-  for (const spec of SERVICE_CATEGORIES) {
+  for (const spec of SERVICE_SPECIALTIES) {
     await tx.serviceCategory.upsert({
       where: { slug: spec.slug },
       update: {
@@ -614,7 +593,9 @@ export async function seedWithTx(tx: Prisma.TransactionClient): Promise<void> {
   const roleIds = await upsertRoles(tx);
   const permissionIds = await upsertPermissions(tx);
   await syncRolePermissions(tx, roleIds, permissionIds);
-  await upsertServiceCategories(tx);
+  // The development reset restores labels and archived rows. Production
+  // catalog changes belong to the audited operator CLI and admin API.
+  if (!isProductionSeedTarget()) await upsertServiceCategories(tx);
   await upsertProviderProfiles(tx);
   // Dev users are seeded LAST so the role catalog is available. The
   // `assertSeedProductionSafe()` check in seed() guarantees this block
@@ -727,9 +708,9 @@ export function assertSeedProductionSafe(env: NodeJS.ProcessEnv = process.env): 
  * Is this process seeding a PRODUCTION database?
  *
  * Sprint 9B.14. `ALLOW_PROD_SEED=true` is a legitimate thing for an operator to
- * set: the roles, permissions and category catalogue are reference data that
- * production genuinely needs, and this file is where they live. But that flag
- * was ALL OR NOTHING, and the two blocks below are not reference data:
+ * set: roles and permissions are reference data. The service catalog has a
+ * separate operator command. Historically this flag
+ * also unlocked development fixtures:
  *
  *   - `upsertDevUsers` creates four accounts with passwords printed in this
  *     repository — two of them ADMIN, `status: ACTIVE`, `emailVerifiedAt` set.
@@ -759,7 +740,9 @@ async function main(): Promise<void> {
     [
       'Seed complete:',
       '  - system roles + permissions + role↔permission mappings',
-      '  - service category catalog',
+      isProductionSeedTarget()
+        ? '  - catalog managed by catalog:init'
+        : '  - service category catalog',
       '  - static ProviderProfile pool (NODE_ENV != production)',
       '  - dev users (NODE_ENV != production):',
       '      test1@admin.com           / DevAdmin123!     (admin)',
