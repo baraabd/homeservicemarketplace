@@ -53,6 +53,98 @@ describe('requested changes in the Provider journey', () => {
     expect(screen.queryByTestId('review-feedback')).not.toBeInTheDocument();
   });
 
+  for (const lang of ['en', 'ar'] as const) {
+    const identityLabel = lang === 'ar' ? 'رفع وثائق الهوية' : 'Upload identity documents';
+    const verificationLabel = lang === 'ar' ? 'رفع وثائق التوثيق' : 'Upload verification documents';
+    const uploadHint =
+      lang === 'ar'
+        ? 'ارفع المستندات المطلوبة من صفحة التوثيق الخاصة. هذه الوثائق منفصلة عن الصورة الشخصية التي يراها العملاء.'
+        : 'Upload the requested documents on the private verification page. They are separate from the profile photo customers see.';
+
+    for (const taskId of [undefined, 'BASICS_IDENTITY']) {
+      it(`names the identity upload action and opens it from ${taskId ?? 'the hub'} (${lang})`, () => {
+        const onOpen = vi.fn();
+        render(
+          <ReviewFeedback
+            feedback={{
+              ...feedback,
+              items: [
+                {
+                  ...feedback.items[0],
+                  taskId: 'BASICS_IDENTITY',
+                  field: 'identityDocument',
+                  providerMessage: 'Send a clear identity document.',
+                },
+              ],
+            }}
+            lang={lang}
+            taskId={taskId}
+            onOpen={onOpen}
+          />,
+        );
+
+        expect(screen.getByText(uploadHint)).toBeInTheDocument();
+        expect(screen.getAllByRole('button')).toHaveLength(1);
+        expect(
+          screen.queryByRole('button', {
+            name: lang === 'ar' ? /^مراجعة هذه المهمة:/ : /^Review this task:/,
+          }),
+        ).not.toBeInTheDocument();
+        fireEvent.click(screen.getByRole('button', { name: identityLabel }));
+        expect(onOpen).toHaveBeenCalledExactlyOnceWith('/provider/verification');
+      });
+    }
+
+    for (const field of ['verificationDocuments', 'categoryLicense']) {
+      it(`opens the named verification upload for ${field} (${lang})`, () => {
+        const onOpen = vi.fn();
+        const taskId = field === 'categoryLicense' ? 'SERVICES_EXPERIENCE' : 'BASICS_IDENTITY';
+        render(
+          <ReviewFeedback
+            feedback={{ ...feedback, items: [{ ...feedback.items[0], taskId, field }] }}
+            lang={lang}
+            taskId={taskId}
+            onOpen={onOpen}
+          />,
+        );
+
+        expect(screen.getByText(uploadHint)).toBeInTheDocument();
+        expect(screen.queryByRole('button', { name: identityLabel })).not.toBeInTheDocument();
+        fireEvent.click(screen.getByRole('button', { name: verificationLabel }));
+        expect(onOpen).toHaveBeenCalledExactlyOnceWith('/provider/verification');
+      });
+    }
+
+    it(`preserves the named basic field correction and its separate verification entry (${lang})`, () => {
+      const onOpen = vi.fn();
+      render(
+        <ReviewFeedback
+          feedback={{
+            ...feedback,
+            items: [{ ...feedback.items[0], taskId: 'BASICS_IDENTITY', field: 'phoneNumber' }],
+          }}
+          lang={lang}
+          taskId="BASICS_IDENTITY"
+          onOpen={onOpen}
+        />,
+      );
+
+      expect(screen.queryByText(uploadHint)).not.toBeInTheDocument();
+      fireEvent.click(
+        screen.getByRole('button', {
+          name: lang === 'ar' ? /^مراجعة هذه المهمة:/ : /^Review this task:/,
+        }),
+      );
+      expect(onOpen).toHaveBeenLastCalledWith(
+        '/provider/onboarding/BASICS_IDENTITY?reviewField=phoneNumber',
+      );
+      fireEvent.click(
+        screen.getByRole('button', { name: REVIEW_FEEDBACK_COPY[lang].viewVerification }),
+      );
+      expect(onOpen).toHaveBeenLastCalledWith('/provider/verification');
+    });
+  }
+
   it('treats reviewer text as text, including markup', () => {
     const message = '<script>alert("unsafe")</script>';
     const { container } = render(

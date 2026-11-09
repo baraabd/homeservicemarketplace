@@ -43,7 +43,7 @@ import { VerificationAxisBadges } from './VerificationAxisBadges';
 
 const CASE_KEY = ['provider', 'verification', 'case'] as const;
 const CAPS_KEY = ['provider', 'verification', 'capabilities'] as const;
-const ACCEPTED = 'image/jpeg,image/png,image/webp,application/pdf';
+const ACCEPTED = 'image/jpeg,image/png,application/pdf';
 
 type ApplicationCorrection = 'profileRequired' | 'termsRequired' | 'profileAndTermsRequired';
 
