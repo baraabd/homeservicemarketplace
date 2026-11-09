@@ -218,7 +218,10 @@ test('C01 consent journey: policy links never toggle consent; values and returnT
   await page.getByRole('button', { name: /next/i }).click();
   await page.locator('input[type="email"]').fill(email);
   await page.locator('input[type="password"]').fill(PASSWORD);
-  const consent = page.getByRole('checkbox', { name: /Terms of Service and the Privacy Notice/ });
+  const consent = page.getByRole('checkbox', {
+    name: 'I agree to the Terms of Service and acknowledge that I have read the Privacy Notice.',
+    exact: true,
+  });
   await expect(consent).toBeEnabled();
   // While the modal is open the page behind it is aria-hidden (correct modal
   // behaviour), so the box is read by id there and by role afterwards.
