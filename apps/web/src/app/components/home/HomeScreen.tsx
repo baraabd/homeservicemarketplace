@@ -673,8 +673,8 @@ export function HomeScreen({ isOffline, onServiceSelect }: HomeScreenProps) {
     iconBg: 'bg-slate-100',
     iconColor: 'text-slate-600',
   };
-  const { data: serviceCategories } = useServiceCategories();
-  const specialties = (serviceCategories ?? []).filter((category) => category.isLeaf);
+  const catalog = useServiceCategories();
+  const specialties = (catalog.data ?? []).filter((category) => category.isLeaf);
 
   // ── Nav tabs ────────────────────────────────────────────────────────────────
   const unreadMessages = conversations.reduce((sum, c) => sum + (c.unreadCount ?? 0), 0);
@@ -770,6 +770,22 @@ export function HomeScreen({ isOffline, onServiceSelect }: HomeScreenProps) {
                   {t('services')}
                 </h3>
               </div>
+              {catalog.isPending && <p role="status">{t('servicesLoading')}</p>}
+              {catalog.isError && (
+                <div role="alert">
+                  {t('servicesUnavailable')}{' '}
+                  <button
+                    type="button"
+                    className="underline"
+                    onClick={() => void catalog.refetch()}
+                  >
+                    {t('retry')}
+                  </button>
+                </div>
+              )}
+              {catalog.isSuccess && specialties.length === 0 && (
+                <p role="status">{t('servicesEmpty')}</p>
+              )}
               <div className="grid grid-cols-3 gap-3" data-testid="service-categories-grid">
                 {specialties.map((c) => {
                   const visual = SERVICE_ICON_MAP[c.slug] ?? SERVICE_ICON_FALLBACK;

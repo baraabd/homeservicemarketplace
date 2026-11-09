@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import {
   CURRENT_LEGAL_DOCUMENTS,
   LEGAL_DOCUMENT_KINDS,
+  isApprovedLegalDocument,
   type LegalAcceptanceInput,
   type LegalDocumentsResponse,
   type LegalVersionStaleDetails,
@@ -17,11 +18,7 @@ type Tx = Prisma.TransactionClient;
 //
 // The current version of each document is code (contracts registry), not a
 // client claim. A signup that names any other version is refused with 409 so
-// the person is never recorded as accepting text they did not see. DRAFT
-// documents are refused unless LEGAL_DRAFT_ACCEPTANCE_ALLOWED resolves true.
-// Unset, that flag is false when NODE_ENV=production and true otherwise, so a
-// production deployment cannot record acceptance of unapproved text by
-// accident while local development and CI can exercise the real flow.
+// the person is never recorded as accepting text they did not see.
 @Injectable()
 export class LegalAcceptanceService {
   constructor(private readonly config: AppConfigService) {}
@@ -94,12 +91,15 @@ export class LegalAcceptanceService {
   }
 
   private acceptanceOpen(): boolean {
-    const allApproved = LEGAL_DOCUMENT_KINDS.every(
-      (kind) => CURRENT_LEGAL_DOCUMENTS[kind].status === 'APPROVED',
-    );
-    if (allApproved) return true;
+    const documents = LEGAL_DOCUMENT_KINDS.map((kind) => CURRENT_LEGAL_DOCUMENTS[kind]);
+    if (documents.every(isApprovedLegalDocument)) return true;
+    if (documents.some((doc) => doc.status === 'APPROVED' && !isApprovedLegalDocument(doc))) {
+      return false;
+    }
+    const nodeEnv = this.config.get('NODE_ENV');
+    const appEnv = this.config.get('APP_ENV');
+    if (nodeEnv === 'production' || appEnv === 'prod') return false;
     const explicit = this.config.get('LEGAL_DRAFT_ACCEPTANCE_ALLOWED');
-    if (explicit !== undefined) return explicit;
-    return this.config.get('NODE_ENV') !== 'production';
+    return explicit ?? (nodeEnv !== 'staging' && appEnv !== 'staging');
   }
 }
