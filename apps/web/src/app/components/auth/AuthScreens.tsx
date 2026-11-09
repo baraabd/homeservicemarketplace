@@ -699,7 +699,7 @@ export function SignUpScreen({
   const [email, setEmail] = useState(draft?.email ?? '');
   const [password, setPassword] = useState('');
   const [showPw, setShowPw] = useState(false);
-  const [agreed, setAgreed] = useState(false);
+  const [acceptance, setAcceptance] = useState<LegalAcceptanceInput | null>(null);
   const [policyOpen, setPolicyOpen] = useState<'terms' | 'privacy' | null>(null);
   const legalQuery = useQuery({
     queryKey: ['legal', 'documents'],
@@ -715,6 +715,15 @@ export function SignUpScreen({
     termsDoc?.version === CURRENT_LEGAL_DOCUMENTS.TERMS_OF_SERVICE.version &&
     privacyDoc?.version === CURRENT_LEGAL_DOCUMENTS.PRIVACY_NOTICE.version;
   const legalReady = samePolicies && legalDocs?.acceptanceOpen === true;
+  const agreed =
+    legalReady &&
+    acceptance !== null &&
+    acceptance.termsVersion === termsDoc?.version &&
+    acceptance.privacyVersion === privacyDoc?.version &&
+    acceptance.locale === lang;
+  useEffect(() => {
+    if (acceptance && !agreed) setAcceptance(null);
+  }, [acceptance, agreed]);
   const consentCopy = SIGNUP_CONSENT_COPY[lang === 'ar' ? 'ar' : 'en'];
 
   useEffect(() => {
@@ -754,16 +763,12 @@ export function SignUpScreen({
       setIsLoading(true);
       setSignUpError(undefined);
       try {
-        if (!canStep2 || !termsDoc || !privacyDoc) return;
+        if (!canStep2 || !acceptance) return;
         const issued = await onCredentialsSubmit({
           name,
           email: email.trim(),
           password,
-          legalAcceptance: {
-            termsVersion: termsDoc.version,
-            privacyVersion: privacyDoc.version,
-            locale: lang === 'ar' ? 'ar' : 'en',
-          },
+          legalAcceptance: acceptance,
         });
         clearSignupDraft();
         setChallenge(issued);
@@ -772,11 +777,11 @@ export function SignUpScreen({
         if (legalRefusalReason(err) === 'LEGAL_VERSION_STALE') {
           // The policy changed while the form was open: the box is cleared
           // so the person accepts the version they can now read.
-          setAgreed(false);
+          setAcceptance(null);
           void legalQuery.refetch();
           setSignUpError(consentCopy.stale);
         } else if (legalRefusalReason(err) === 'LEGAL_ACCEPTANCE_CLOSED') {
-          setAgreed(false);
+          setAcceptance(null);
           void legalQuery.refetch();
           setSignUpError(consentCopy.closed);
         } else {
@@ -1079,7 +1084,17 @@ export function SignUpScreen({
                     id="signup-consent"
                     type="checkbox"
                     checked={agreed}
-                    onChange={(event) => setAgreed(event.target.checked)}
+                    onChange={(event) =>
+                      setAcceptance(
+                        event.target.checked && legalReady && termsDoc && privacyDoc
+                          ? {
+                              termsVersion: termsDoc.version,
+                              privacyVersion: privacyDoc.version,
+                              locale: lang,
+                            }
+                          : null,
+                      )
+                    }
                     disabled={!legalReady}
                     aria-describedby="signup-consent-links"
                     className="mt-0.5 h-6 w-6 shrink-0 cursor-pointer accent-blue-600 disabled:cursor-not-allowed"

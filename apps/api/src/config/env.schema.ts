@@ -250,10 +250,7 @@ const baseEnvSchema = z.object({
   // Must be true in production. Safe to set false for local dev and QA.
   AUTH_REQUIRE_EMAIL_VERIFICATION: trueish.default(true),
 
-  // K02 — may the server record acceptance of DRAFT (unapproved) Terms /
-  // Privacy versions? Unset: false when NODE_ENV=production, true otherwise
-  // (LegalAcceptanceService). Production must leave it unset or false; set
-  // it true only for hosted rehearsal of unapproved text.
+  // Draft rehearsal requires explicit opt-in on staging. Production always requires approval.
   LEGAL_DRAFT_ACCEPTANCE_ALLOWED: trueish.optional(),
 
   COOKIE_DOMAIN: z.string().optional(),

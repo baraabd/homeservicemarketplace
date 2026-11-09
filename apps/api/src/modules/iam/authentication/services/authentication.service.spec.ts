@@ -294,7 +294,7 @@ describe('AuthenticationService', () => {
       expect(h.users.create).not.toHaveBeenCalled();
     });
 
-    it('K02: production refuses acceptance of DRAFT policy text unless explicitly allowed', async () => {
+    it('K02: production refuses acceptance of DRAFT policy text by default', async () => {
       const h = makeHarness();
       const prodConfig = {
         get: (k: string) =>

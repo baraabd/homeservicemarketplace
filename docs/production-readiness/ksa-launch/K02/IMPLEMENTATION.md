@@ -75,10 +75,10 @@ bid form now asks for the price type, takes a labelled decimal SAR field
 privacyVersion, locale }`. Validation runs **before** the account lookup,
   so stale versions answer identically for new and existing emails
   (409 `LEGAL_VERSION_STALE`); duplicates never add rows.
-- Flag `LEGAL_DRAFT_ACCEPTANCE_ALLOWED` (unset by default): resolves to
-  false when `NODE_ENV=production`, true otherwise. **Production signup is
-  closed (409 `LEGAL_ACCEPTANCE_CLOSED`) until the owner approves the text.**
-  Hosted rehearsal may set it to `true` explicitly.
+- In production, both documents must be approved, each with a
+  nonblank approval reference. Otherwise signup returns 409 `LEGAL_ACCEPTANCE_CLOSED`.
+  An explicitly labelled staging deployment can rehearse drafts only with
+  `LEGAL_DRAFT_ACCEPTANCE_ALLOWED=true`. Development and tests default to allowing drafts.
 - Provider onboarding consent (`acceptedConsentVersion`) is unchanged and
   remains a separate agreement. No marketing consent exists, none was added.
 
@@ -126,3 +126,7 @@ longer shrink and clip; wallet chart honours reduced motion; `<title>` FixNow.
 `WalletScreen.tsx` and `FinancialsSection.tsx` were last changed by R33
 (merged). K02 edits them for the amount contract only; R33's subscription
 history link and wording are preserved.
+
+### Bilingual owner review
+
+The [Terms](review-2026-11-08/terms.md) and [Privacy Notice](review-2026-11-08/privacy.md) are the review copies presented to the owner on 8 November 2026. The owner agreed to continue on 9 November. The notes identify missing operator details and business and legal decisions. Neither review identifier is offered for signup. Record the final versions and the dated approval reference after those details are supplied and the final public wording has been presented.

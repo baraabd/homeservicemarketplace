@@ -7,8 +7,8 @@
 //
 // `status` is DRAFT until the accountable owner approves the text. A DRAFT
 // document can be shown and reviewed, but production refuses to record
-// acceptance of it unless LEGAL_DRAFT_ACCEPTANCE_ALLOWED is explicitly true
-// (development/CI only). Approval is a reviewed change to this file:
+// acceptance of it regardless of the draft rehearsal flag.
+// Approval is a reviewed change to this file:
 // status → APPROVED, `approvalReference` set, and a NEW version id whenever
 // the text changes. Never edit the text of a version that users accepted.
 //

@@ -1,3 +1,4 @@
+import { LEGAL_DOCUMENT_KINDS } from '@homeservicemarketplace/contracts';
 import type {
   LegalAcceptanceInput,
   LegalDocumentsResponse,
@@ -33,13 +34,15 @@ export async function getLegalDocuments(): Promise<LegalDocumentsResponse> {
     !data ||
     !Array.isArray(data.documents) ||
     typeof data.acceptanceOpen !== 'boolean' ||
+    data.documents.length !== LEGAL_DOCUMENT_KINDS.length ||
     !data.documents.every(
       (document) =>
         document &&
         typeof document.kind === 'string' &&
         typeof document.version === 'string' &&
         typeof document.path === 'string',
-    )
+    ) ||
+    !LEGAL_DOCUMENT_KINDS.every((kind) => data.documents.some((doc) => doc.kind === kind))
   ) {
     throw new Error('Legal policy information is unavailable');
   }
