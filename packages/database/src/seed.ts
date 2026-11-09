@@ -1,3 +1,4 @@
+import { parseArgs } from 'node:util';
 import * as argon2 from 'argon2';
 
 import { grantAdminWithTx, grantProviderWithTx } from './admin-access-grant';
@@ -589,10 +590,14 @@ async function ensureProviderOnboarded(
 // TransactionClient without requiring a live Postgres connection.
 // Runtime behavior is unchanged: `seed()` still wraps this in a real
 // Prisma transaction.
-export async function seedWithTx(tx: Prisma.TransactionClient): Promise<void> {
+export async function seedWithTx(
+  tx: Prisma.TransactionClient,
+  scope: 'full' | 'access-only' = 'full',
+): Promise<void> {
   const roleIds = await upsertRoles(tx);
   const permissionIds = await upsertPermissions(tx);
   await syncRolePermissions(tx, roleIds, permissionIds);
+  if (scope === 'access-only') return;
   // The development reset restores labels and archived rows. Production
   // catalog changes belong to the audited operator CLI and admin API.
   if (!isProductionSeedTarget()) await upsertServiceCategories(tx);
@@ -676,11 +681,19 @@ async function backfillAddressSnapshotCityKey(tx: Prisma.TransactionClient): Pro
   );
 }
 
-export async function seed(): Promise<void> {
+export async function seed(scope: 'full' | 'access-only' = 'full'): Promise<void> {
   // Guard programmatic callers too — previously only the CLI main() enforced
   // the production safety check, so an import of seed() from another script
   // could bypass it. Cheap to double-check; tests still pin the guard itself.
   assertSeedProductionSafe();
+  if (scope === 'access-only' && process.env.ALLOW_PROD_SEED !== 'true') {
+    const url = process.env.DATABASE_URL;
+    if (!url) throw new Error('Set DATABASE_URL to the intended access database.');
+    const { hostname } = new URL(url);
+    if (!['127.0.0.1', 'localhost', '[::1]'].includes(hostname)) {
+      throw new Error('Initializing hosted access references requires ALLOW_PROD_SEED=true.');
+    }
+  }
   // ONE transaction, so a partial seed is impossible — but that is far more
   // work than Prisma's 5s interactive-transaction default is sized for. That
   // default is a budget for a web request; this routine upserts the roles,
@@ -692,7 +705,7 @@ export async function seed(): Promise<void> {
   // database or a slow CI runner — the seed is a CI deploy step, not only a
   // test fixture. Stating a budget appropriate to a bootstrap routine is the
   // fix; shortening the transaction would trade atomicity for it.
-  await prisma.$transaction(seedWithTx, { maxWait: 30_000, timeout: 120_000 });
+  await prisma.$transaction((tx) => seedWithTx(tx, scope), { maxWait: 30_000, timeout: 120_000 });
 }
 
 export function assertSeedProductionSafe(env: NodeJS.ProcessEnv = process.env): void {
@@ -734,6 +747,12 @@ export function isProductionSeedTarget(env: NodeJS.ProcessEnv = process.env): bo
 }
 
 async function main(): Promise<void> {
+  const { values } = parseArgs({ options: { 'access-only': { type: 'boolean' } } });
+  if (values['access-only']) {
+    await seed('access-only');
+    console.log('System roles, permissions and role-permission mappings initialized.');
+    return;
+  }
   await seed();
 
   console.log(
