@@ -618,6 +618,9 @@ describe('starting and submitting', () => {
 
       const input = screen.getByLabelText(UI_COPY.en.uploadLabel);
       expect(input).toHaveAttribute('type', 'file');
+      // Identity evidence has a narrower allowlist than the public profile photo.
+      // Advertising WebP here lets providers choose a file the upload API refuses.
+      expect(input).toHaveAttribute('accept', 'image/jpeg,image/png,application/pdf');
       expect(input).toHaveAttribute('hidden');
       expect(input).not.toBeVisible();
       const opener = screen.getByRole('button', { name: STATE_COPY.en[viewState].cta as string });
