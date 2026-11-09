@@ -98,6 +98,18 @@ describe('K02 signup consent', () => {
     expect(label.querySelector('a')).toBeNull();
   });
 
+  it('requires a fresh choice after a language change, including a switch back', async () => {
+    renderSignup();
+    const { consent } = await goToStep2();
+    fireEvent.click(consent);
+    expect(consent).toBeChecked();
+    fireEvent.click(screen.getByTestId('lang-toggle'));
+    expect(screen.getByRole('checkbox')).not.toBeChecked();
+    fireEvent.click(screen.getByTestId('lang-toggle'));
+    expect(screen.getByRole('checkbox')).not.toBeChecked();
+    expect(mock.history.post.some((request) => request.url === '/v1/auth/register')).toBe(false);
+  });
+
   it('opening a policy by pointer never toggles consent, and closing keeps every value and returnTo', async () => {
     renderSignup();
     const { email, password, consent } = await goToStep2();

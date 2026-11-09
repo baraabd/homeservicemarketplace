@@ -18,7 +18,9 @@ type Tx = Prisma.TransactionClient;
 //
 // The current version of each document is code (contracts registry), not a
 // client claim. A signup that names any other version is refused with 409 so
-// the person is never recorded as accepting text they did not see.
+// the person is never recorded as accepting text they did not see. DRAFT
+// acceptance is available only outside production. Approved documents always
+// require a nonblank approval reference and a non-draft release identifier.
 @Injectable()
 export class LegalAcceptanceService {
   constructor(private readonly config: AppConfigService) {}
@@ -91,15 +93,18 @@ export class LegalAcceptanceService {
   }
 
   private acceptanceOpen(): boolean {
-    const documents = LEGAL_DOCUMENT_KINDS.map((kind) => CURRENT_LEGAL_DOCUMENTS[kind]);
-    if (documents.every(isApprovedLegalDocument)) return true;
-    if (documents.some((doc) => doc.status === 'APPROVED' && !isApprovedLegalDocument(doc))) {
-      return false;
-    }
     const nodeEnv = this.config.get('NODE_ENV');
     const appEnv = this.config.get('APP_ENV');
-    if (nodeEnv === 'production' || appEnv === 'prod') return false;
-    const explicit = this.config.get('LEGAL_DRAFT_ACCEPTANCE_ALLOWED');
-    return explicit ?? (nodeEnv !== 'staging' && appEnv !== 'staging');
+    const rehearsal = this.config.get('LEGAL_DRAFT_ACCEPTANCE_ALLOWED');
+    // Hosted staging also uses NODE_ENV=production. Only its explicit APP_ENV
+    // identity may opt into draft rehearsal; production still fails closed.
+    const production = appEnv === 'prod' || (nodeEnv === 'production' && appEnv !== 'staging');
+    const staging = appEnv === 'staging' || nodeEnv === 'staging';
+    const allowDrafts = !production && (rehearsal ?? !staging);
+    return LEGAL_DOCUMENT_KINDS.every((kind) => {
+      const document = CURRENT_LEGAL_DOCUMENTS[kind];
+      if (document.status === 'DRAFT') return allowDrafts;
+      return isApprovedLegalDocument(document);
+    });
   }
 }

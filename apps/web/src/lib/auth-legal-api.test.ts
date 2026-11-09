@@ -21,6 +21,8 @@ describe('public legal document response', () => {
     null,
     '<html>old deployment</html>',
     { items: [] },
+    { documents: [CURRENT_LEGAL_DOCUMENTS.PRIVACY_NOTICE], acceptanceOpen: true },
+    { documents: Array(2).fill(CURRENT_LEGAL_DOCUMENTS.TERMS_OF_SERVICE), acceptanceOpen: true },
     {
       documents: [null],
       acceptanceOpen: true,
