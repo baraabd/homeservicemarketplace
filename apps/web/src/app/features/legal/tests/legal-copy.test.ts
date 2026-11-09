@@ -1,7 +1,18 @@
 import { describe, it, expect } from 'vitest';
-import { CURRENT_LEGAL_DOCUMENTS, PUBLIC_INFO_PATHS } from '@homeservicemarketplace/contracts';
+import {
+  CURRENT_LEGAL_DOCUMENTS,
+  isApprovedLegalDocument,
+  PUBLIC_INFO_PATHS,
+} from '@homeservicemarketplace/contracts';
 
-import { LEGAL_CHROME, LEGAL_PAGE_IDS, LEGAL_PAGES, legalPath } from '../copy/legal-documents.copy';
+import {
+  ACCEPTED_DOCUMENTS,
+  LEGAL_CHROME,
+  LEGAL_COPY_VERSIONS,
+  LEGAL_PAGE_IDS,
+  LEGAL_PAGES,
+  legalPath,
+} from '../copy/legal-documents.copy';
 
 // K02 — Arabic/English parity and registry agreement for the public pages.
 describe('K02 legal copy', () => {
@@ -28,13 +39,34 @@ describe('K02 legal copy', () => {
     expect(legalPath('subscriptions')).toBe(PUBLIC_INFO_PATHS.subscriptions);
   });
 
-  it('declares itself a draft while the registry says DRAFT, and invents no operator facts', () => {
-    expect(CURRENT_LEGAL_DOCUMENTS.TERMS_OF_SERVICE.status).toBe('DRAFT');
-    expect(LEGAL_CHROME.en.draftBanner).toMatch(/not yet approved/);
-    const operator = JSON.stringify(LEGAL_PAGES.operator);
-    // No registration number, VAT number or address was supplied; none may appear.
-    expect(operator).not.toMatch(/\d{6,}/);
-    expect(operator).toMatch(/Pending owner approval/);
+  it('binds both displayed translations to the registry and checks release metadata', () => {
+    for (const id of ['terms', 'privacy'] as const) {
+      const doc = CURRENT_LEGAL_DOCUMENTS[ACCEPTED_DOCUMENTS[id]];
+      expect(LEGAL_COPY_VERSIONS[id]).toBe(doc.version);
+      if (doc.status === 'APPROVED') {
+        expect(isApprovedLegalDocument(doc)).toBe(true);
+        expect(JSON.stringify(LEGAL_PAGES[id])).not.toMatch(
+          /Pending owner approval|قيد اعتماد المشغّل/,
+        );
+      } else {
+        expect(doc.approvalReference).toBeNull();
+        expect(isApprovedLegalDocument(doc)).toBe(false);
+      }
+    }
+  });
+
+  it('requires a new release ID and a nonempty reference for each approval', () => {
+    const fixture = {
+      ...CURRENT_LEGAL_DOCUMENTS.TERMS_OF_SERVICE,
+      status: 'APPROVED' as const,
+      version: 'fixture-terms-v1',
+      approvalReference: 'TEST-ONLY',
+    };
+    expect(isApprovedLegalDocument(fixture)).toBe(true);
+    expect(isApprovedLegalDocument({ ...fixture, approvalReference: ' ' })).toBe(false);
+    expect(isApprovedLegalDocument({ ...fixture, approvalReference: null })).toBe(false);
+    expect(isApprovedLegalDocument({ ...fixture, version: 'fixture.draft-1' })).toBe(false);
+    expect(isApprovedLegalDocument({ ...fixture, status: 'DRAFT' })).toBe(false);
   });
 
   it('states the launch money scope: no booking funds collected, no booking fee', () => {

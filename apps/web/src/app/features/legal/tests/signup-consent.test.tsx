@@ -90,7 +90,7 @@ describe('K02 signup consent', () => {
     renderSignup();
     const { consent } = await goToStep2();
     expect(consent).toHaveAccessibleName(
-      'I have read and agree to the Terms of Service and the Privacy Notice.',
+      'I agree to the Terms of Service and acknowledge that I have read the Privacy Notice.',
     );
     expect(consent.checked).toBe(false);
     // The policy links are NOT inside the checkbox's label.
