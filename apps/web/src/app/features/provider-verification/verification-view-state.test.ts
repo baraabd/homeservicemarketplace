@@ -95,6 +95,17 @@ describe('the account outranks everything', () => {
     ).toBe('ONBOARDING_INCOMPLETE');
   });
 
+  it('keeps a missing provider profile in setup with no completed-onboarding claim', () => {
+    const view = deriveVerificationView({
+      capabilities: CAPS({ primaryReason: 'NO_PROVIDER_PROFILE' }),
+      verificationCase: null,
+      profile: null,
+    });
+    expect(view.state).toBe('ONBOARDING_INCOMPLETE');
+    expect(view.axes.onboardingComplete).toBe(false);
+    expect(view.canManageVerification).toBe(false);
+  });
+
   it.each([
     [null, 'NOT_STARTED'],
     [kase({ state: 'DRAFT' }), 'EVIDENCE_REQUIRED'],

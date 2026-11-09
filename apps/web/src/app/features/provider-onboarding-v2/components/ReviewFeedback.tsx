@@ -48,10 +48,10 @@ export function ReviewFeedback({
                 icon={TriangleAlert}
                 title={LIFECYCLE_COPY[lang].returnedTaskLabel[item.taskId] ?? copy.title}
                 body={
-                  <div className="flex flex-col gap-1">
+                  <span className="flex flex-col gap-1">
                     {item.field && <strong>{reviewCorrectionFieldLabel(item.field, lang)}</strong>}
                     <bdi className="whitespace-pre-wrap">{item.providerMessage}</bdi>
-                  </div>
+                  </span>
                 }
                 density="compact"
               />

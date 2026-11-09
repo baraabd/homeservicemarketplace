@@ -167,7 +167,7 @@ export function deriveVerificationView(input: VerificationInput): VerificationVi
   const canManageVerification = allowed.has('MANAGE_VERIFICATION');
 
   const axes: VerificationAxes = {
-    onboardingComplete: reason !== 'ONBOARDING_INCOMPLETE',
+    onboardingComplete: reason !== 'ONBOARDING_INCOMPLETE' && reason !== 'NO_PROVIDER_PROFILE',
     identityVerified: profile?.verified ?? false,
     // The GRANT, read from the capability the grant gates. Not from
     // `verified`: a provider can be verified with no live grant, which is
@@ -209,7 +209,10 @@ export function deriveVerificationView(input: VerificationInput): VerificationVi
   // The primary reason explains work access, not every individual operation.
   // Returned applications retain MANAGE_VERIFICATION on the server so that
   // providers can supply the identity evidence requested by their reviewer.
-  if (reason === 'ONBOARDING_INCOMPLETE' && !canManageVerification) {
+  if (
+    reason === 'NO_PROVIDER_PROFILE' ||
+    (reason === 'ONBOARDING_INCOMPLETE' && !canManageVerification)
+  ) {
     return { ...base, state: 'ONBOARDING_INCOMPLETE' };
   }
 

@@ -27,6 +27,35 @@ const feedback: ProviderOnboardingFeedback = {
 };
 
 describe('requested changes in the Provider journey', () => {
+  it('renders document corrections without invalid paragraph nesting', () => {
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      const { container } = render(
+        <ReviewFeedback
+          lang="ar"
+          feedback={{
+            ...feedback,
+            items: [
+              {
+                ...feedback.items[0],
+                taskId: 'BASICS_IDENTITY',
+                field: 'identityDocument',
+                providerMessage: 'يرجى إرسال صورة واضحة للهوية.',
+              },
+            ],
+          }}
+          onOpen={vi.fn()}
+        />,
+      );
+      expect(screen.getByText('يرجى إرسال صورة واضحة للهوية.')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'رفع وثائق الهوية' })).toBeInTheDocument();
+      expect(container.querySelector('p div')).toBeNull();
+      expect(errors.mock.calls.flat().join(' ')).not.toContain('validateDOMNesting');
+    } finally {
+      errors.mockRestore();
+    }
+  });
+
   it('renders all public instructions and opens the existing task without clearing anything', () => {
     const onOpen = vi.fn();
     const onResubmit = vi.fn();
