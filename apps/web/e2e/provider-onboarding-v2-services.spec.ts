@@ -1,5 +1,7 @@
 import { expect, test, type Page } from '@playwright/test';
 
+import type { ServiceCategorySummary } from '@homeservicemarketplace/contracts';
+import { launchCatalog } from '../src/test-support/launch-catalog';
 import { expectNoHorizontalPageOverflow, htmlLangDir, seedLanguage, stubApi } from './fixtures';
 
 // Sprint 9B.18 — V2 Task 2 in a real browser.
@@ -153,7 +155,11 @@ interface Recorded {
 
 async function openTask(
   page: Page,
-  options: { lang?: 'en' | 'ar'; draftOver?: Record<string, unknown> } = {},
+  options: {
+    lang?: 'en' | 'ar';
+    draftOver?: Record<string, unknown>;
+    categories?: ServiceCategorySummary[];
+  } = {},
 ): Promise<Recorded> {
   const recorded: Recorded = { patches: [] };
 
@@ -167,7 +173,9 @@ async function openTask(
 
   await page.route('**/v1/services**', async (route) => {
     const url = route.request().url();
-    const body = url.includes('/equipment') ? { items: EQUIPMENT } : { items: CATEGORIES };
+    const body = url.includes('/equipment')
+      ? { items: EQUIPMENT }
+      : { items: options.categories ?? CATEGORIES };
     return route.fulfill({
       status: 200,
       contentType: 'application/json',
@@ -199,6 +207,51 @@ async function openTask(
 // behavioural intent they carried is preserved and two are stricter.
 
 test.describe('task 2 — the picker at catalogue scale', () => {
+  test('the Arabic launch catalog sends the same specialty ID from both applications', async ({
+    page,
+  }) => {
+    const rec = await openTask(page, { lang: 'ar', categories: launchCatalog });
+    const choices = page.getByTestId('specialty-choices');
+    await expect(choices.getByRole('checkbox')).toHaveCount(6);
+    await choices.getByTestId('specialty-choice-category-ac-repair').click();
+    await expect.poll(() => rec.patches[0]?.body.specialtyLeafIds).toEqual(['category-ac-repair']);
+
+    await page.route('**/v1/me/addresses', (route) =>
+      route.fulfill({
+        json: {
+          items: [
+            {
+              id: 'address-1',
+              label: 'Home',
+              line1: '1 Test Street',
+              city: 'Jeddah',
+              country: 'SA',
+              isDefault: true,
+            },
+          ],
+        },
+      }),
+    );
+    await page.route('**/v1/me/requests', (route) =>
+      route.request().method() === 'POST'
+        ? route.fulfill({ status: 201, json: { id: 'request-1' } })
+        : route.fallback(),
+    );
+    await page.goto('/home');
+    const grid = page.getByTestId('service-categories-grid');
+    await expect(grid.getByRole('button')).toHaveCount(6);
+    await grid.getByRole('button', { name: 'صيانة تكييف', exact: true }).click();
+    await page.getByRole('button', { name: /الخطوة التالية/ }).click();
+    const submitted = page.waitForRequest(
+      (r) => r.method() === 'POST' && new URL(r.url()).pathname === '/v1/me/requests',
+    );
+    await page.getByRole('button', { name: /تأكيد الطلب/ }).click();
+    expect((await submitted).postDataJSON()).toMatchObject({
+      categoryId: 'category-ac-repair',
+      customServiceText: null,
+    });
+  });
+
   test('offers every selectable leaf, and nothing that is not one', async ({ page }) => {
     await openTask(page);
 

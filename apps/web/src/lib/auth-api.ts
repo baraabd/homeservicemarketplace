@@ -1,4 +1,3 @@
-import { LEGAL_DOCUMENT_KINDS } from '@homeservicemarketplace/contracts';
 import type {
   LegalAcceptanceInput,
   LegalDocumentsResponse,
@@ -30,6 +29,9 @@ export interface RegisterInput {
 /** K02 — public: the current Terms/Privacy versions and whether signup is open. */
 export async function getLegalDocuments(): Promise<LegalDocumentsResponse> {
   const { data } = await api.get<LegalDocumentsResponse>('/v1/legal/documents');
+  // AuthProvider loads this module for every route. Defer runtime contracts
+  // until signup requests its policy versions so the public selector stays isolated.
+  const { LEGAL_DOCUMENT_KINDS } = await import('@homeservicemarketplace/contracts');
   if (
     !data ||
     !Array.isArray(data.documents) ||

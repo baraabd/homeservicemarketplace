@@ -15,6 +15,7 @@ import { MAIL_PORT, MailPort, type MailIntent } from '../../../../infrastructure
 import { RoleRepository } from '../../../../infrastructure/persistence/iam/role.repository';
 import { UserRepository } from '../../../../infrastructure/persistence/iam/user.repository';
 import { TransactionRunner } from '../../../../infrastructure/prisma/transaction.runner';
+import { AppError } from '../../../../shared/errors/app-error';
 import { SecurityEventsBus } from '../../../../shared/security-events/security-events.bus';
 import type { LegalAcceptanceInput } from '@homeservicemarketplace/contracts';
 
@@ -106,6 +107,14 @@ export class AuthenticationService {
 
     try {
       const result = await this.tx.run(async (trx) => {
+        const customer = await this.roles.findByName('customer', trx);
+        if (!customer) {
+          throw new AppError(
+            'DEPENDENCY_UNAVAILABLE',
+            'Registration is temporarily unavailable.',
+            503,
+          );
+        }
         const existing = await this.users.findByEmail(email, trx);
         if (existing) {
           await this.audit.record(
@@ -133,10 +142,7 @@ export class AuthenticationService {
           trx,
         );
         await this.legal.recordSignupAcceptance(user.id, input.legalAcceptance, trx);
-        const customer = await this.roles.findByName('customer', trx);
-        if (customer) {
-          await this.users.assignRole(user.id, customer.id, trx);
-        }
+        await this.users.assignRole(user.id, customer.id, trx);
 
         if (!requireVerification) {
           // Dev/QA shortcut — bypass the OTP round-trip entirely. The flag

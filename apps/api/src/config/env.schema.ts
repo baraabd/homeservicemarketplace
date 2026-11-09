@@ -250,7 +250,8 @@ const baseEnvSchema = z.object({
   // Must be true in production. Safe to set false for local dev and QA.
   AUTH_REQUIRE_EMAIL_VERIFICATION: trueish.default(true),
 
-  // Draft rehearsal requires explicit opt-in on staging. Production always requires approval.
+  // Draft rehearsal requires explicit opt-in on APP_ENV=staging, even with NODE_ENV=production.
+  // Production (APP_ENV=prod, or production without staging identity) always requires approval.
   LEGAL_DRAFT_ACCEPTANCE_ALLOWED: trueish.optional(),
 
   COOKIE_DOMAIN: z.string().optional(),

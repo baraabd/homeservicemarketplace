@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import {
   CURRENT_LEGAL_DOCUMENTS,
   LEGAL_DOCUMENT_KINDS,
+  isApprovedLegalDocument,
   type LegalAcceptanceInput,
   type LegalDocumentsResponse,
   type LegalVersionStaleDetails,
@@ -19,7 +20,7 @@ type Tx = Prisma.TransactionClient;
 // client claim. A signup that names any other version is refused with 409 so
 // the person is never recorded as accepting text they did not see. DRAFT
 // acceptance is available only outside production. Approved documents always
-// require a nonblank approval reference.
+// require a nonblank approval reference and a non-draft release identifier.
 @Injectable()
 export class LegalAcceptanceService {
   constructor(private readonly config: AppConfigService) {}
@@ -95,13 +96,15 @@ export class LegalAcceptanceService {
     const nodeEnv = this.config.get('NODE_ENV');
     const appEnv = this.config.get('APP_ENV');
     const rehearsal = this.config.get('LEGAL_DRAFT_ACCEPTANCE_ALLOWED');
+    // Hosted staging also uses NODE_ENV=production. Only its explicit APP_ENV
+    // identity may opt into draft rehearsal; production still fails closed.
     const production = appEnv === 'prod' || (nodeEnv === 'production' && appEnv !== 'staging');
     const staging = appEnv === 'staging' || nodeEnv === 'staging';
     const allowDrafts = !production && (rehearsal ?? !staging);
     return LEGAL_DOCUMENT_KINDS.every((kind) => {
       const document = CURRENT_LEGAL_DOCUMENTS[kind];
       if (document.status === 'DRAFT') return allowDrafts;
-      return document.status === 'APPROVED' && Boolean(document.approvalReference?.trim());
+      return isApprovedLegalDocument(document);
     });
   }
 }

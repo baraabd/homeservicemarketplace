@@ -65,6 +65,9 @@ export const TRANSLATIONS: Record<Lang, Record<string, string>> = {
 
     // ── Services ─────────────────────────────────────────────────────────────
     services: 'Services',
+    servicesLoading: 'Loading services…',
+    servicesUnavailable: 'The service list could not be refreshed.',
+    servicesEmpty: 'No services are currently listed.',
     viewAll: 'All',
     plumbing: 'Plumbing',
     acRepair: 'AC Repair',
@@ -291,6 +294,9 @@ export const TRANSLATIONS: Record<Lang, Record<string, string>> = {
 
     // ── Services ─────────────────────────────────────────────────────────────
     services: 'الخدمات',
+    servicesLoading: 'جارٍ تحميل الخدمات…',
+    servicesUnavailable: 'تعذّر تحديث قائمة الخدمات.',
+    servicesEmpty: 'لا توجد خدمات مدرجة حاليًا.',
     viewAll: 'الكل',
     plumbing: 'سباكة',
     acRepair: 'تكييف',

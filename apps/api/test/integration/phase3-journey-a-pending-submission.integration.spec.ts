@@ -378,7 +378,14 @@ d('Phase 3 Journey A — pending specialty permits submission (real Postgres)', 
       });
     }
     await prisma.serviceCategory.create({
-      data: { id: ROOT, slug: ROOT, labelEn: 'Electrical', labelAr: 'كهرباء', icon: 'bolt' },
+      data: {
+        id: ROOT,
+        slug: ROOT,
+        labelEn: 'Electrical',
+        labelAr: 'كهرباء',
+        icon: 'bolt',
+        isLeaf: false,
+      },
     });
     await prisma.serviceCategory.create({
       data: {

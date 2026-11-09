@@ -76,9 +76,14 @@ privacyVersion, locale }`. Validation runs **before** the account lookup,
   so stale versions answer identically for new and existing emails
   (409 `LEGAL_VERSION_STALE`); duplicates never add rows.
 - In production, both documents must be approved, each with a
-  nonblank approval reference. Otherwise signup returns 409 `LEGAL_ACCEPTANCE_CLOSED`.
-  An explicitly labelled staging deployment can rehearse drafts only with
-  `LEGAL_DRAFT_ACCEPTANCE_ALLOWED=true`. Development and tests default to allowing drafts.
+  nonblank approval reference and a new, non-draft release identifier.
+  Otherwise signup returns 409 `LEGAL_ACCEPTANCE_CLOSED`.
+  Hosted staging uses `NODE_ENV=production` with `APP_ENV=staging`, as required
+  by the deployment runtime policy, and can rehearse drafts only with
+  `LEGAL_DRAFT_ACCEPTANCE_ALLOWED=true`. `APP_ENV=prod` and production runtimes
+  without that explicit staging identity always refuse drafts. Development
+  and tests default to allowing drafts. Incomplete approved releases are
+  refused in every environment, including staging rehearsal.
 - Provider onboarding consent (`acceptedConsentVersion`) is unchanged and
   remains a separate agreement. No marketing consent exists, none was added.
 
