@@ -70,8 +70,8 @@ describe('seed() production guard', () => {
 // ── Sprint 9B.14 — what ALLOW_PROD_SEED must NOT unlock ────────────────────
 //
 // `ALLOW_PROD_SEED=true` is a legitimate operator action: roles, permissions
-// and the category catalogue are reference data production genuinely needs, and
-// this file is where they live. But the flag used to be ALL OR NOTHING, and two
+// are reference data production genuinely needs. The catalog has its own CLI.
+// The flag used to be ALL OR NOTHING, and two
 // of the blocks it unlocked are not reference data at all:
 //
 //   - four accounts whose passwords are printed in this repository, two of them

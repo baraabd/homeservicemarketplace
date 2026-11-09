@@ -674,6 +674,7 @@ export function HomeScreen({ isOffline, onServiceSelect }: HomeScreenProps) {
     iconColor: 'text-slate-600',
   };
   const { data: serviceCategories } = useServiceCategories();
+  const specialties = (serviceCategories ?? []).filter((category) => category.isLeaf);
 
   // ── Nav tabs ────────────────────────────────────────────────────────────────
   const unreadMessages = conversations.reduce((sum, c) => sum + (c.unreadCount ?? 0), 0);
@@ -770,7 +771,7 @@ export function HomeScreen({ isOffline, onServiceSelect }: HomeScreenProps) {
                 </h3>
               </div>
               <div className="grid grid-cols-3 gap-3" data-testid="service-categories-grid">
-                {(serviceCategories ?? []).map((c) => {
+                {specialties.map((c) => {
                   const visual = SERVICE_ICON_MAP[c.slug] ?? SERVICE_ICON_FALLBACK;
                   const label = lang === 'ar' ? c.labelAr : c.labelEn;
                   return (

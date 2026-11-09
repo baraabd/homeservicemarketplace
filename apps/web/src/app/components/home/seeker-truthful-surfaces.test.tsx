@@ -1,9 +1,10 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import MockAdapter from 'axios-mock-adapter';
 import { MemoryRouter } from 'react-router';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
+import { launchCatalog } from '../../../test-support/launch-catalog';
 import { api } from '../../../lib/api';
 import { AuthProvider, createAuthQueryClient } from '../../../lib/auth-provider';
 import { LanguageProvider } from '../../i18n/LanguageContext';
@@ -114,13 +115,13 @@ beforeEach(() => {
 });
 afterEach(() => mock.restore());
 
-function renderHome(path: string) {
+function renderHome(path: string, onServiceSelect = vi.fn()) {
   return render(
     <AuthProvider client={qc}>
       <LanguageProvider>
         <EcosystemProvider>
           <MemoryRouter initialEntries={[path]}>
-            <HomeScreen isOffline={false} onServiceSelect={() => {}} />
+            <HomeScreen isOffline={false} onServiceSelect={onServiceSelect} />
           </MemoryRouter>
         </EcosystemProvider>
       </LanguageProvider>
@@ -129,6 +130,24 @@ function renderHome(path: string) {
 }
 
 describe('seeker surfaces show only what the server holds', () => {
+  it.each(['en', 'ar'] as const)('opens each launch specialty by ID in %s', async (lang) => {
+    window.localStorage.setItem('hsm.lang', lang);
+    mock.onGet('/v1/services').reply(200, { items: launchCatalog });
+    const select = vi.fn();
+    renderHome('/home', select);
+    const grid = within(await screen.findByTestId('service-categories-grid'));
+    await waitFor(() => expect(grid.getAllByRole('button')).toHaveLength(6));
+    for (const item of launchCatalog) {
+      const label = lang === 'ar' ? item.labelAr : item.labelEn;
+      if (item.isLeaf) {
+        fireEvent.click(grid.getByRole('button', { name: label }));
+        expect(select).toHaveBeenLastCalledWith(label, item.id);
+      } else {
+        expect(grid.queryByRole('button', { name: label })).toBeNull();
+      }
+    }
+  });
+
   it('home: no invented marketplace stats, no pretend microphone, no dead "View all"', async () => {
     renderHome('/home');
     await screen.findByTestId('service-categories-grid');
