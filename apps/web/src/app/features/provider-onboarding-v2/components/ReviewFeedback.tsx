@@ -4,6 +4,7 @@ import type { ProviderOnboardingFeedback } from '@homeservicemarketplace/contrac
 import { ProviderButton } from '../../provider-ui';
 import { LIFECYCLE_COPY, type Lang } from '../copy/onboarding-hub-copy';
 import { REVIEW_FEEDBACK_COPY } from '../copy/review-feedback-copy';
+import { VERIFICATION_CORRECTION_COPY } from '../copy/verification-correction-copy';
 import { OnboardingAlert } from './OnboardingAlert';
 import { feedbackTaskPath } from '../feedback-task-path';
 import { reviewCorrectionFieldLabel } from '../copy/review-correction-fields';
@@ -24,6 +25,7 @@ export function ReviewFeedback({
   const items = feedback?.items.filter((item) => !taskId || item.taskId === taskId) ?? [];
   if (items.length === 0) return null;
   const copy = REVIEW_FEEDBACK_COPY[lang];
+  const verificationCopy = VERIFICATION_CORRECTION_COPY[lang];
   return (
     <section className="flex flex-col gap-4" aria-label={copy.title} data-testid="review-feedback">
       <h2 className="text-pv-input font-semibold text-pv-text">{copy.title}</h2>
@@ -32,7 +34,9 @@ export function ReviewFeedback({
           const path = feedbackTaskPath(item);
           const opensVerification = path === '/provider/verification';
           const verificationLabel =
-            item.field === 'identityDocument' ? copy.uploadIdentity : copy.uploadVerification;
+            item.field === 'identityDocument'
+              ? verificationCopy.uploadIdentity
+              : verificationCopy.uploadVerification;
           const actionLabel = opensVerification
             ? verificationLabel
             : `${copy.open}: ${LIFECYCLE_COPY[lang].returnedTaskLabel[item.taskId]}`;
@@ -52,7 +56,9 @@ export function ReviewFeedback({
                 density="compact"
               />
               {opensVerification ? (
-                <p className="text-pv-body text-pv-muted">{copy.verificationUploadHint}</p>
+                <p className="text-pv-body text-pv-muted">
+                  {verificationCopy.verificationUploadHint}
+                </p>
               ) : null}
               {onOpen && (!taskId || !!item.field || opensVerification) ? (
                 <ProviderButton

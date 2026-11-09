@@ -27,8 +27,8 @@ synthetic accounts and documents.
 | Verification documents or category license | Upload verification documents | رفع وثائق التوثيق           | `/provider/verification`           |
 | Ordinary task field                        | Existing task review action   | Existing task review action | Existing field-specific task route |
 
-Document corrections also explain that the requested files belong on the private
-verification page and are separate from the profile photo customers see. The same
+Document corrections also explain that verification files are private and
+separate from the profile photo customers see. The same
 feedback component serves the task screen and hub. Existing button components,
 typography tokens, layout, and the separate generic Basics verification link are
 preserved.
@@ -103,6 +103,29 @@ The PR's final-SHA CI result and `admin-review-real-api-evidence` artifact are t
 source of browser acceptance. Review the captured Basics and verification screens
 before marking visual verification complete. The disposable test scanner checks
 the integration lifecycle; it is not evidence of production malware detection.
+
+## Bundle acceptance
+
+The first remote candidate passed all 21 main-CI jobs and all 15 real Admin
+browser scenarios, but R27 found a 61-byte shell Brotli excess over the unchanged
+185 KiB ceiling. Shell raw size was unchanged; changed lazy-chunk references
+affected the compressed shell. The final copy is concise and lives in
+`verification-correction-copy.ts`, consumed only by the correction component,
+instead of expanding the dictionary shared with status and page-title routes.
+Route declarations and all budget definitions remain unchanged.
+
+The production bundle measurement now reports **189,408 shell Brotli bytes**
+against **189,440 bytes** allowed; all **10 bundle checks pass** locally. The
+margin is small (32 bytes), so subsequent frontend changes must retain the
+existing measurement gate. This is a transfer-size result, not a page-speed
+claim. The final-SHA remote results and screenshots remain authoritative in the
+PR.
+
+```bash
+VITE_API_URL=http://127.0.0.1:4327 node scripts/perf/post-r18/bundle-report.mjs \
+  --label identity-entry --out-json /tmp/identity-entry-bundle.json
+node scripts/perf/post-r18/check-budgets.mjs --bundle /tmp/identity-entry-bundle.json
+```
 
 ## Rollout and rollback
 

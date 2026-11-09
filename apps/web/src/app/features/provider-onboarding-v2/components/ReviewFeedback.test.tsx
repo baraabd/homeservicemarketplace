@@ -5,6 +5,7 @@ import type { ProviderOnboardingFeedback } from '@homeservicemarketplace/contrac
 import { ReviewFeedback } from './ReviewFeedback';
 import { feedbackTaskPath } from '../feedback-task-path';
 import { REVIEW_FEEDBACK_COPY } from '../copy/review-feedback-copy';
+import { VERIFICATION_CORRECTION_COPY } from '../copy/verification-correction-copy';
 
 const feedback: ProviderOnboardingFeedback = {
   requestedAt: '2026-09-15T10:00:00.000Z',
@@ -58,8 +59,8 @@ describe('requested changes in the Provider journey', () => {
     const verificationLabel = lang === 'ar' ? 'رفع وثائق التوثيق' : 'Upload verification documents';
     const uploadHint =
       lang === 'ar'
-        ? 'ارفع المستندات المطلوبة من صفحة التوثيق الخاصة. هذه الوثائق منفصلة عن الصورة الشخصية التي يراها العملاء.'
-        : 'Upload the requested documents on the private verification page. They are separate from the profile photo customers see.';
+        ? 'وثائق التوثيق خاصة ومنفصلة عن الصورة الشخصية التي يراها العملاء.'
+        : 'Verification documents are private and separate from the profile photo customers see.';
 
     for (const taskId of [undefined, 'BASICS_IDENTITY']) {
       it(`names the identity upload action and opens it from ${taskId ?? 'the hub'} (${lang})`, () => {
@@ -176,6 +177,9 @@ describe('requested changes in the Provider journey', () => {
       }),
     ).toBe('/provider/onboarding/SERVICES_EXPERIENCE?reviewField=yearsOfExperience#experience');
     expect(Object.keys(REVIEW_FEEDBACK_COPY.en)).toEqual(Object.keys(REVIEW_FEEDBACK_COPY.ar));
+    expect(Object.keys(VERIFICATION_CORRECTION_COPY.en)).toEqual(
+      Object.keys(VERIFICATION_CORRECTION_COPY.ar),
+    );
   });
 
   it('shows a named field and opens consent or gallery corrections in the exact existing sub-screen', () => {
