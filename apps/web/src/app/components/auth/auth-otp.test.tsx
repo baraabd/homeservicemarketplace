@@ -6,6 +6,7 @@ import { MemoryRouter, Route, Routes } from 'react-router';
 import type { QueryClient } from '@tanstack/react-query';
 import { api } from '../../../lib/api';
 import { AuthProvider, createAuthQueryClient } from '../../../lib/auth-provider';
+import { SIGNUP_CONSENT_COPY } from '../../features/legal/signup-consent';
 import { LanguageProvider } from '../../i18n/LanguageContext';
 import { LoginPage, SignUpPage } from '../../pages/AuthPages';
 
@@ -325,7 +326,7 @@ describe('Register → OTP → authenticated', () => {
     });
     // K02 — a real checkbox, enabled once the server's versions load.
     const consent = (await screen.findByRole('checkbox', {
-      name: /Terms of Service and the Privacy Notice/,
+      name: SIGNUP_CONSENT_COPY.en.statement,
     })) as HTMLInputElement;
     await waitFor(() => expect(consent.disabled).toBe(false));
     await act(async () => {

@@ -148,6 +148,18 @@ describe('seeker surfaces show only what the server holds', () => {
     }
   });
 
+  it('distinguishes a catalogue fetch error from a successful empty catalogue on retry', async () => {
+    window.localStorage.setItem('hsm.lang', 'en');
+    qc.setQueryDefaults(['services', 'categories'], { retry: false });
+    mock.onGet('/v1/services').replyOnce(503).onGet('/v1/services').reply(200, { items: [] });
+    renderHome('/home');
+    await screen.findByText('The service list could not be refreshed.');
+    expect(screen.queryByText('No services are currently listed.')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'RETRY' }));
+    await screen.findByText('No services are currently listed.');
+    expect(screen.queryByText('The service list could not be refreshed.')).toBeNull();
+  });
+
   it('home: no invented marketplace stats, no pretend microphone, no dead "View all"', async () => {
     renderHome('/home');
     await screen.findByTestId('service-categories-grid');

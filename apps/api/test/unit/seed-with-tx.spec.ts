@@ -160,6 +160,22 @@ function makeFakeTx() {
 }
 
 describe('seedWithTx (unit)', () => {
+  it('initializes only access references without users, services, or request backfills', async () => {
+    const tx = makeFakeTx();
+    // Expose only the three allowed delegates. Any additional read or write fails.
+    const accessTx = {
+      role: tx.role,
+      permission: tx.permission,
+      rolePermission: tx.rolePermission,
+    };
+    await seedWithTx(accessTx as never, 'access-only');
+    const first = [...tx._rolePermPairs].sort();
+    expect([...tx._rolesByName.keys()].sort()).toEqual(['admin', 'customer', 'provider']);
+    expect(first.length).toBeGreaterThan(0);
+    await seedWithTx(accessTx as never, 'access-only');
+    expect([...tx._rolePermPairs].sort()).toEqual(first);
+  });
+
   it('creates the three system roles on first run', async () => {
     const tx = makeFakeTx();
     await seedWithTx(tx as never);

@@ -183,7 +183,8 @@ try {
     // K02 — a real consent checkbox, enabled once the server's current
     // policy versions load; the policy links beside it never toggle it.
     const consent = a.page.getByRole('checkbox', {
-      name: /Terms of Service and the Privacy Notice/u,
+      name: 'I agree to the Terms of Service and acknowledge that I have read the Privacy Notice.',
+      exact: true,
     });
     await expect(consent).toBeEnabled();
     await consent.check();

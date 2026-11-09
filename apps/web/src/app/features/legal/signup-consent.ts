@@ -3,7 +3,8 @@
 
 export const SIGNUP_CONSENT_COPY = {
   en: {
-    statement: 'I have read and agree to the Terms of Service and the Privacy Notice.',
+    statement:
+      'I agree to the Terms of Service and acknowledge that I have read the Privacy Notice.',
     readTerms: 'Read the Terms of Service',
     readPrivacy: 'Read the Privacy Notice',
     loading: 'Loading the current terms…',
@@ -18,7 +19,7 @@ export const SIGNUP_CONSENT_COPY = {
     showPassword: 'Show password',
   },
   ar: {
-    statement: 'قرأت شروط الخدمة وإشعار الخصوصية وأوافق عليهما.',
+    statement: 'أوافق على شروط الخدمة وأقرّ بأنني اطّلعت على إشعار الخصوصية.',
     readTerms: 'قراءة شروط الخدمة',
     readPrivacy: 'قراءة إشعار الخصوصية',
     loading: 'جارٍ تحميل الشروط الحالية…',
