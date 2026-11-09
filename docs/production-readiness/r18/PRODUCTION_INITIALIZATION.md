@@ -5,6 +5,8 @@ Rehearsed on 2026-10-11 on a disposable local PostgreSQL 16 container
 `release/r18-closure-rc1@711fd921052a33b77102a613ccef141a0c899f75`. This is a
 local rehearsal, not a hosted one. It used no shared or production database.
 
+For the current catalog, use the [audited service catalog operator and preview](../../deployment/SERVICE_CATALOG.md). The six flat categories in the table below describe the R18 rehearsal. Current production seeding skips the service catalog.
+
 ## What production needs before the first user
 
 | Item                          | Supported path                                                                                                     | Rehearsed                                                 |
