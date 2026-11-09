@@ -34,12 +34,10 @@ jobs:
   select:
     name: Select trusted release source
     if: >-
-      vars.HSM_CD_ENABLED == 'true' &&
       github.repository == 'baraabd/homeservicemarketplace' &&
-      ((github.event_name == 'push' &&
-        (github.ref == 'refs/heads/develop' || github.ref == 'refs/heads/main')) ||
-       (github.event_name == 'workflow_dispatch' &&
-        (github.ref == 'refs/heads/develop' || github.ref == 'refs/heads/main')))
+      (github.event_name == 'push' || github.event_name == 'workflow_dispatch') &&
+      ((github.ref == 'refs/heads/develop' && vars.HSM_STAGING_CD_ENABLED == 'true') ||
+       (github.ref == 'refs/heads/main' && vars.HSM_PRODUCTION_CD_ENABLED == 'true'))
     runs-on: ubuntu-latest
     outputs:
       sha: ${{ steps.source.outputs.sha }}
