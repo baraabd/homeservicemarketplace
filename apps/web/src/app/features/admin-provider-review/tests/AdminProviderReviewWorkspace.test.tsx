@@ -44,6 +44,61 @@ afterEach(() => {
 
 describe('Admin application dossier', () => {
   it.each(['en', 'ar'] as const)(
+    'shows a returned application accurately after identity approval in %s',
+    async (lang) => {
+      localStorage.setItem('hsm.lang', lang);
+      review.provider.providerStatus = 'REJECTED';
+      review.provider.onboardingState = 'RETURNED';
+      review.provider.verificationState = 'VERIFIED';
+      review.submission!.decision = 'RETURNED';
+      review.availableActions = [];
+      review.blockers = [
+        { code: 'SUBMISSION_ALREADY_DECIDED', taskId: 'REVIEW_SUBMISSION' },
+        { code: 'SUBMITTED_CONTENT_CHANGED', taskId: 'REVIEW_SUBMISSION' },
+      ];
+      setup();
+      await screen.findByRole('heading', { name: 'Current provider' });
+      const application = within(screen.getByText(REVIEW_COPY[lang].application).parentElement!);
+      expect(application.getByText(statusLabel('RETURNED', lang))).toHaveClass('ar-badge-warning');
+      expect(application.queryByText(statusLabel('REJECTED', lang))).not.toBeInTheDocument();
+      expect(screen.queryByTestId('review-approve')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('review-request-changes')).not.toBeInTheDocument();
+    },
+  );
+
+  it('keeps rejection of identity evidence distinct from a returned joining application', async () => {
+    review.provider.providerStatus = 'REJECTED';
+    review.provider.onboardingState = 'RETURNED';
+    review.provider.verificationState = 'REJECTED';
+    setup();
+    await screen.findByRole('heading', { name: 'Current provider' });
+    const identity = within(screen.getByText(REVIEW_COPY.en.identity).parentElement!);
+    expect(identity.getByText('Rejected')).toHaveClass('ar-badge-danger');
+    const application = within(screen.getByText(REVIEW_COPY.en.application).parentElement!);
+    expect(application.getByText('Returned for changes')).toHaveClass('ar-badge-warning');
+  });
+
+  it.each([
+    ['DRAFT', 'REJECTED', 'Draft', 'neutral'],
+    ['NOT_STARTED', 'DRAFT', 'Not started', 'neutral'],
+    ['ACCEPTED', 'ACTIVE', 'Accepted', 'success'],
+    ['SUBMITTED', 'PENDING_REVIEW', 'Awaiting review', 'warning'],
+    [null, 'REJECTED', 'Rejected', 'danger'],
+    ['FUTURE_STATE', 'ACTIVE', REVIEW_COPY.en.notProvided, 'neutral'],
+  ] as const)(
+    'keeps application axis %s distinct from legacy profile status %s',
+    async (onboardingState, providerStatus, label, tone) => {
+      review.provider.onboardingState = onboardingState;
+      review.provider.providerStatus = providerStatus;
+      setup();
+      await screen.findByRole('heading', { name: 'Current provider' });
+      const application = within(screen.getByTestId('review-application-status'));
+      expect(application.getByText(label)).toHaveClass(`ar-badge-${tone}`);
+      expect(application.queryByText('FUTURE_STATE')).not.toBeInTheDocument();
+    },
+  );
+
+  it.each(['en', 'ar'] as const)(
     'explains a submitted application with received evidence and unset legacy status axes in %s',
     async (lang) => {
       localStorage.setItem('hsm.lang', lang);

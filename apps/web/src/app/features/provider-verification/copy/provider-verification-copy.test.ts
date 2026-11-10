@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   AXIS_COPY,
+  NEXT_STEP_COPY,
   REASON_COPY,
   STATE_COPY,
   UI_COPY,
@@ -18,7 +19,7 @@ import { deriveVerificationView } from '../verification-view-state';
 // can send must resolve to a sentence a person can act on.
 
 const LANGS: Lang[] = ['en', 'ar'];
-const MAPS = { STATE_COPY, REASON_COPY, AXIS_COPY, UI_COPY } as const;
+const MAPS = { STATE_COPY, NEXT_STEP_COPY, REASON_COPY, AXIS_COPY, UI_COPY } as const;
 
 describe('both languages say the same things', () => {
   it.each(Object.entries(MAPS))('%s has identical key sets', (_name, map) => {
@@ -33,6 +34,21 @@ describe('both languages say the same things', () => {
         expect(copy.title.trim(), `${lang}.${state}.title`).not.toBe('');
         expect(copy.body.trim(), `${lang}.${state}.body`).not.toBe('');
       }
+    }
+  });
+
+  it('explains the application next step in each language without claiming work is active', () => {
+    for (const key of ['resume', 'pending'] as const) {
+      const en = NEXT_STEP_COPY.en[key];
+      const ar = NEXT_STEP_COPY.ar[key];
+      for (const field of ['title', 'body', 'cta'] as const) {
+        expect(en[field]?.trim()).toBeTruthy();
+        expect(ar[field]?.trim()).toBeTruthy();
+        expect(ar[field]).toMatch(/[؀-ۿ]/);
+        expect(ar[field]).not.toBe(en[field]);
+      }
+      expect(en.body).toContain('Admin approval');
+      expect(ar.body).toContain(key === 'resume' ? 'للموافقة' : 'موافقة الإدارة');
     }
   });
 

@@ -55,7 +55,33 @@ export const REVIEW_COPY = {
     blockers: 'Approval prerequisites',
     approve: 'Approve application',
     requestChanges: 'Request changes',
-    noActions: 'No review action is available for your account on this application.',
+    noActions: 'No application decision is available in the current state.',
+    nextStep: 'Next step',
+    noDecisionPermission:
+      'You can view this file, but your account does not have permission to decide the joining application.',
+    noEvidencePermission:
+      'Your account does not have permission to view identity evidence. An administrator with that permission must review the documents.',
+    noReviewPermission:
+      'The server reports a missing permission for this review. An administrator with the required access must continue.',
+    nextOtherReviewer: 'Another authorized administrator must review this application.',
+    nextAccountRestriction:
+      'Resolve the account restriction before continuing the application review.',
+    nextProviderRestriction:
+      'Resolve the provider restriction before continuing the application review.',
+    nextFirstSubmission:
+      'The provider must complete and submit the joining application before an administrator can review it.',
+    nextDraftSubmission:
+      'The application is no longer awaiting review. The provider must resume it and submit it again before an administrator can decide.',
+    nextResubmission:
+      'The provider must review the corrections and resubmit the joining application from their account. The new submission can then be reviewed here; identity approval does not resubmit it automatically.',
+    nextUpdatedSubmission:
+      'The provider must update and resubmit the application. Review the new submission before recording a decision.',
+    applicationAlreadyApproved:
+      'Application approval is recorded. Current work access is shown below.',
+    applicationAlreadyDecided:
+      'A decision is recorded for this submission. Check the current application state before taking another action.',
+    liveGrantBlocked:
+      'A live work grant exists, but the provider does not meet the current work requirements. Review the blocker before changing the grant.',
     privateNote: 'Internal review note',
     privateHint: 'Visible to authorized administrators only. Never sent to the provider.',
     privatePlaceholder: 'Add context for the review team…',
@@ -224,7 +250,30 @@ export const REVIEW_COPY = {
     blockers: 'متطلبات الموافقة',
     approve: 'الموافقة على الطلب',
     requestChanges: 'طلب تعديلات',
-    noActions: 'لا يتوفر إجراء مراجعة لحسابك على هذا الطلب.',
+    noActions: 'لا يتوفر قرار بشأن طلب الانضمام في حالته الحالية.',
+    nextStep: 'الخطوة التالية',
+    noDecisionPermission:
+      'يمكنك الاطلاع على الملف، لكن حسابك لا يملك صلاحية اتخاذ قرار بشأن طلب الانضمام.',
+    noEvidencePermission:
+      'حسابك لا يملك صلاحية الاطلاع على وثائق الهوية. يجب أن يراجع الوثائق أدمن يملك هذه الصلاحية.',
+    noReviewPermission:
+      'يشير النظام إلى نقص صلاحية لازمة لهذه المراجعة. يجب أن يتابعها أدمن يملك الصلاحية المطلوبة.',
+    nextOtherReviewer: 'يجب أن يراجع هذا الطلب أدمن آخر يملك صلاحية المراجعة.',
+    nextAccountRestriction: 'عالج قيد الحساب قبل متابعة مراجعة طلب الانضمام.',
+    nextProviderRestriction: 'عالج القيد المفروض على المهني قبل متابعة مراجعة طلب الانضمام.',
+    nextFirstSubmission: 'على المهني استكمال طلب الانضمام وإرساله قبل أن يتمكن الأدمن من مراجعته.',
+    nextDraftSubmission:
+      'طلب الانضمام لا ينتظر المراجعة حاليًا. على المهني متابعة استكماله وإرساله مجددًا قبل أن يتمكن الأدمن من اتخاذ قرار.',
+    nextResubmission:
+      'على المهني مراجعة التعديلات وإعادة إرسال طلب الانضمام من حسابه. بعد الإرسال يصبح الطلب الجديد متاحًا للمراجعة هنا؛ توثيق الهوية لا يعيد إرسال الطلب تلقائيًا.',
+    nextUpdatedSubmission:
+      'على المهني تحديث الطلب وإرساله مجددًا. راجع النسخة الجديدة قبل تسجيل القرار.',
+    applicationAlreadyApproved:
+      'سُجلت الموافقة على طلب الانضمام. تظهر صلاحيات العمل الحالية أدناه.',
+    applicationAlreadyDecided:
+      'سُجل قرار بشأن نسخة الطلب هذه. راجع حالة الطلب الحالية قبل اتخاذ إجراء آخر.',
+    liveGrantBlocked:
+      'توجد منحة عمل سارية، لكن المهني لا يستوفي متطلبات العمل الحالية. راجع سبب المنع قبل تغيير المنحة.',
     privateNote: 'ملاحظة داخلية للمراجعة',
     privateHint: 'تظهر للمسؤولين المخوّلين فقط، ولا تُرسل إلى المهني.',
     privatePlaceholder: 'أضف ملاحظة لفريق المراجعة…',
@@ -371,6 +420,7 @@ const STATUS_LABELS: Record<ReviewLanguage, Record<string, string>> = {
     DELETED: 'Deleted',
     PENDING_VERIFICATION: 'Verification pending',
     DRAFT: 'Draft',
+    NOT_STARTED: 'Not started',
     IN_PROGRESS: 'In progress',
     PENDING_REVIEW: 'Awaiting review',
     AWAITING_REVIEW: 'Awaiting review',
@@ -410,6 +460,7 @@ const STATUS_LABELS: Record<ReviewLanguage, Record<string, string>> = {
     DELETED: 'محذوف',
     PENDING_VERIFICATION: 'بانتظار التحقق',
     DRAFT: 'مسودة',
+    NOT_STARTED: 'لم يبدأ بعد',
     IN_PROGRESS: 'قيد الإكمال',
     PENDING_REVIEW: 'بانتظار المراجعة',
     AWAITING_REVIEW: 'بانتظار المراجعة',

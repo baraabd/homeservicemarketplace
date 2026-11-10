@@ -40,8 +40,8 @@ export const STATE_COPY: Record<Lang, Record<VerificationViewState, StateCopy>> 
     },
     SUSPENDED: {
       title: 'Your account is suspended',
-      body: 'Verification is paused while your account is suspended. You can appeal this decision.',
-      cta: 'Appeal',
+      body: 'Verification is paused while your account is suspended. Contact support to ask for a review of this decision.',
+      cta: 'Contact support',
     },
     ONBOARDING_INCOMPLETE: {
       title: 'Finish your profile first',
@@ -100,7 +100,7 @@ export const STATE_COPY: Record<Lang, Record<VerificationViewState, StateCopy>> 
     },
     VERIFIED_NO_ACCESS: {
       title: 'You cannot take work right now',
-      body: 'Your documents are still accepted. What has ended is your permission to take work, which is a separate thing — sending more documents will not change it.',
+      body: 'Your identity is verified, but work access is not active. Contact support to check the remaining access requirements.',
       cta: 'Contact support',
     },
     REVERIFICATION_REQUIRED: {
@@ -117,8 +117,8 @@ export const STATE_COPY: Record<Lang, Record<VerificationViewState, StateCopy>> 
     },
     SUSPENDED: {
       title: 'حسابك موقوف',
-      body: 'التحقق متوقف مؤقتًا أثناء إيقاف حسابك. يمكنك تقديم اعتراض.',
-      cta: 'تقديم اعتراض',
+      body: 'التحقق متوقف مؤقتًا أثناء إيقاف حسابك. تواصل مع الدعم لطلب مراجعة هذا القرار.',
+      cta: 'تواصل مع الدعم',
     },
     ONBOARDING_INCOMPLETE: {
       title: 'أكمل ملفك أولاً',
@@ -177,13 +177,55 @@ export const STATE_COPY: Record<Lang, Record<VerificationViewState, StateCopy>> 
     },
     VERIFIED_NO_ACCESS: {
       title: 'لا يمكنك استلام أعمال حالياً',
-      body: 'مستنداتك ما زالت مقبولة. ما انتهى هو صلاحيتك لاستلام الأعمال، وهي أمر منفصل — إرسال مستندات إضافية لن يغيّر ذلك.',
+      body: 'هويتك موثّقة، لكن صلاحية العمل غير مفعّلة. تواصل مع الدعم لمعرفة متطلبات التفعيل المتبقية.',
       cta: 'تواصل مع الدعم',
     },
     REVERIFICATION_REQUIRED: {
       title: 'توثيقك بحاجة إلى تجديد',
       body: 'تم قبول مستنداتك سابقًا، لكن صلاحية ذلك التوثيق انتهت. أرسل مستندات حديثة للبدء من جديد.',
       cta: 'تجديد التوثيق',
+    },
+  },
+};
+
+/** The application still has its own next step after the document step ends.
+ * These messages do not grant permissions or change a verification decision. */
+export const NEXT_STEP_COPY: Record<
+  Lang,
+  Record<'resume' | 'pending' | 'workAccess', StateCopy>
+> = {
+  en: {
+    resume: {
+      title: 'Complete your joining application',
+      body: 'The document step is complete. Review the requested application changes, finish any remaining details and send your application for Admin approval.',
+      cta: 'Review and send application',
+    },
+    pending: {
+      title: 'Your application is awaiting review',
+      body: 'The document step is complete. Your joining application still needs Admin approval before you can start work. You can follow its status here.',
+      cta: 'View application status',
+    },
+    workAccess: {
+      title: 'Work access is not active',
+      body: 'No documents are required for this work. Contact support to check the remaining work-access requirements.',
+      cta: 'Contact support',
+    },
+  },
+  ar: {
+    resume: {
+      title: 'أكمل طلب انضمامك',
+      body: 'اكتملت خطوة المستندات. راجع التعديلات المطلوبة في طلب الانضمام، وأكمل أي بيانات متبقية، ثم أرسل الطلب إلى الإدارة للموافقة عليه.',
+      cta: 'مراجعة طلب الانضمام وإرساله',
+    },
+    pending: {
+      title: 'طلب انضمامك بانتظار المراجعة',
+      body: 'اكتملت خطوة المستندات. ما زال طلب انضمامك بحاجة إلى موافقة الإدارة قبل بدء العمل. يمكنك متابعة حالته من هنا.',
+      cta: 'متابعة حالة طلب الانضمام',
+    },
+    workAccess: {
+      title: 'صلاحية العمل غير مفعّلة',
+      body: 'لا تُطلب مستندات للعمل الذي اخترته. تواصل مع الدعم لمعرفة متطلبات تفعيل صلاحية العمل المتبقية.',
+      cta: 'تواصل مع الدعم',
     },
   },
 };
@@ -272,6 +314,7 @@ export const UI_COPY: Record<Lang, Record<string, string>> = {
     profileAndTermsRequired:
       'Complete the missing application details and accept the current terms, then return here to send your documents for review.',
     returnToApplication: 'Return to application',
+    openWorkspace: 'Open workspace',
     applicationNext:
       'Your identity documents are with our team. Return to your application to complete any remaining steps and send it for review.',
     uploadFailed: 'We could not upload this document. Try again.',
@@ -298,6 +341,7 @@ export const UI_COPY: Record<Lang, Record<string, string>> = {
     profileAndTermsRequired:
       'أكمل بيانات طلب الانضمام الناقصة ووافق على الشروط الحالية، ثم عد إلى هنا لإرسال مستنداتك للمراجعة.',
     returnToApplication: 'العودة إلى طلب الانضمام',
+    openWorkspace: 'فتح مساحة العمل',
     applicationNext:
       'مستندات هويتك لدى فريقنا. عد إلى طلب الانضمام لاستكمال الخطوات المتبقية وإرساله للمراجعة.',
     uploadFailed: 'تعذر رفع هذا المستند. أعد المحاولة.',

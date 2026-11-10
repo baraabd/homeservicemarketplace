@@ -64,6 +64,77 @@ beforeEach(() => {
 afterEach(() => mock.restore());
 
 describe('ProviderDirectory', () => {
+  it.each(['en', 'ar'] as const)(
+    'shows returned status and explains a live grant that cannot yet enable work in %s',
+    async (lang) => {
+      window.localStorage.setItem('hsm.lang', lang);
+      mock.onGet('/v1/admin/providers').reply(200, {
+        items: [
+          {
+            ...provider('returned', 'Returned Provider'),
+            status: 'REJECTED',
+            onboardingState: 'RETURNED',
+            verificationState: 'VERIFIED',
+            workAccess: {
+              canWork: false,
+              hasLiveGrant: true,
+              denialReason: 'ONBOARDING_INCOMPLETE',
+            },
+            attentionReasons: ['APPLICATION_RETURNED'],
+          },
+        ],
+        nextCursor: null,
+      });
+      renderDirectory();
+      const row = await screen.findByTestId('provider-row-returned');
+      const summary = within(row.querySelector('.ad-application-summary')! as HTMLElement);
+      expect(
+        summary.getByText(lang === 'ar' ? 'أُعيد للتعديل' : 'Returned for changes'),
+      ).toHaveClass('ar-badge-warning');
+      expect(
+        summary.queryByText(/Returned \/ rejected|معاد للتعديل \/ مرفوض/),
+      ).not.toBeInTheDocument();
+      expect(
+        within(row).getByText(
+          lang === 'ar'
+            ? 'المنحة سارية؛ تبقى متطلبات العمل غير مستوفاة.'
+            : 'The grant is live; other work requirements remain unmet.',
+        ),
+      ).toBeInTheDocument();
+      expect(
+        within(row).queryByText(lang === 'ar' ? 'يمكنه العمل' : 'Can take work'),
+      ).not.toBeInTheDocument();
+    },
+  );
+
+  it.each(['en', 'ar'] as const)(
+    'uses the same pending application status in both axes after identity is verified in %s',
+    async (lang) => {
+      window.localStorage.setItem('hsm.lang', lang);
+      mock.onGet('/v1/admin/providers').reply(200, {
+        items: [
+          {
+            ...provider('verified-pending', 'Verified Pending Provider'),
+            onboardingState: 'DOCUMENTS_REQUIRED',
+            verificationState: 'VERIFIED',
+            workAccess: { canWork: false, hasLiveGrant: true, denialReason: 'AWAITING_REVIEW' },
+          },
+        ],
+        nextCursor: null,
+      });
+      renderDirectory();
+      const row = await screen.findByTestId('provider-row-verified-pending');
+      const label = lang === 'ar' ? 'بانتظار المراجعة' : 'Awaiting review';
+      const summary = within(row.querySelector('.ad-application-summary')! as HTMLElement);
+      expect(summary.getByText(label)).toBeInTheDocument();
+      const axis = within(row.querySelector('.ad-axis-grid')! as HTMLElement);
+      expect(axis.getByText(label)).toBeInTheDocument();
+      expect(
+        within(row).queryByText(lang === 'ar' ? 'الوثائق مطلوبة' : 'Documents required'),
+      ).not.toBeInTheDocument();
+    },
+  );
+
   it('requests every status by default and restores account/search filters from a deep link', async () => {
     mock
       .onGet('/v1/admin/providers')
@@ -142,6 +213,7 @@ describe('ProviderDirectory', () => {
         {
           ...provider('p1', 'Ada Provider'),
           status: 'ACTIVE',
+          onboardingState: 'ACCEPTED',
           workAccess: { canWork: false, hasLiveGrant: true, denialReason: 'ACCOUNT_INELIGIBLE' },
         },
       ],
@@ -154,7 +226,13 @@ describe('ProviderDirectory', () => {
     expect(screen.getByTestId('directory-total')).toHaveTextContent('120');
     expect(screen.getByTestId('directory-count-PENDING_REVIEW')).toHaveTextContent('48');
     const row = within(screen.getByTestId('provider-row-p1'));
-    expect(row.getByText('Accepted')).toBeInTheDocument();
+    expect(
+      within(
+        screen
+          .getByTestId('provider-row-p1')
+          .querySelector('.ad-application-summary')! as HTMLElement,
+      ).getByText('Accepted'),
+    ).toHaveClass('ar-badge-success');
     expect(row.getByText('Not enabled')).toBeInTheDocument();
     expect(row.getByText('Live work grant')).toBeInTheDocument();
     expect(row.getByText('Account unavailable')).toBeInTheDocument();

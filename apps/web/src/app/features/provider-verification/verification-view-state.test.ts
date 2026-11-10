@@ -95,6 +95,17 @@ describe('the account outranks everything', () => {
     ).toBe('ONBOARDING_INCOMPLETE');
   });
 
+  it('keeps a missing provider profile in setup with no completed-onboarding claim', () => {
+    const view = deriveVerificationView({
+      capabilities: CAPS({ primaryReason: 'NO_PROVIDER_PROFILE' }),
+      verificationCase: null,
+      profile: null,
+    });
+    expect(view.state).toBe('ONBOARDING_INCOMPLETE');
+    expect(view.axes.onboardingComplete).toBe(false);
+    expect(view.canManageVerification).toBe(false);
+  });
+
   it.each([
     [null, 'NOT_STARTED'],
     [kase({ state: 'DRAFT' }), 'EVIDENCE_REQUIRED'],
@@ -119,6 +130,22 @@ describe('the account outranks everything', () => {
 });
 
 describe('before there is a case', () => {
+  it.each([
+    ['VERIFIED', false, true],
+    ['EXPIRED', true, false],
+    ['ACTION_REQUIRED', true, false],
+  ] as const)(
+    'uses the current %s case rather than a stale profile badge',
+    (state, verified, expected) => {
+      const view = deriveVerificationView({
+        capabilities: CAPS({ allowed: ['MANAGE_VERIFICATION'] }),
+        verificationCase: kase({ state }),
+        profile: { verified, topPro: false },
+      });
+      expect(view.axes.identityVerified).toBe(expected);
+    },
+  );
+
   it('is NOT_STARTED with no case at all', () => {
     expect(stateOf({ verificationCase: null })).toBe('NOT_STARTED');
   });

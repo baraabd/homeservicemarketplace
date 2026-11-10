@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { isAxiosError } from 'axios';
+import { useNavigate } from 'react-router';
 import type { VerificationDocumentKindCode } from '@homeservicemarketplace/contracts';
 
 import { useLang } from '../../../i18n/LanguageContext';
@@ -8,10 +9,10 @@ import { Button } from '../../../components/ds/Button';
 import { Badge } from '../../../components/ui/badge';
 import { Progress } from '../../../components/ui/progress';
 import { Skeleton } from '../../../components/ui/skeleton';
+import { useProviderCapabilities } from '../../../hooks/provider/useProviderCapabilities';
 import { useProviderProfile } from '../../../hooks/provider/useProviderProfile';
 import { isProviderOnboardingV2Enabled } from '../../../../lib/feature-flags';
 import {
-  getProviderCapabilities,
   getVerificationCase,
   startVerificationCase,
   submitVerificationCase,
@@ -20,6 +21,7 @@ import {
 import {
   DOCUMENT_KIND_LABELS,
   SCAN_STATE_LABELS,
+  NEXT_STEP_COPY,
   STATE_COPY,
   UI_COPY,
   reasonText,
@@ -74,27 +76,49 @@ function applicationCorrectionFrom(error: unknown): ApplicationCorrection | null
         : null;
 }
 
+const VERIFICATION_REFRESH_MS = 30_000;
+
 export function ProviderVerificationScreen() {
   const { lang, dir } = useLang();
+  const navigate = useNavigate();
   const qc = useQueryClient();
   const t = UI_COPY[lang];
-  const applicationHref = isProviderOnboardingV2Enabled()
-    ? '/provider/onboarding'
-    : '/provider/profile';
+  const onboardingV2 = isProviderOnboardingV2Enabled();
+  const applicationHref = onboardingV2 ? '/provider/onboarding' : '/provider/profile';
 
-  const capsQuery = useQuery({ queryKey: CAPS_KEY, queryFn: getProviderCapabilities });
+  const capsQuery = useProviderCapabilities();
+  // The case GET has the same MANAGE_VERIFICATION guard as its mutations.
+  // Resolve this visit's capabilities first: a new applicant needs account
+  // setup, not a forbidden case request that replaces that route with Retry.
+  const canReadCase =
+    capsQuery.isFetchedAfterMount &&
+    capsQuery.isSuccess &&
+    capsQuery.data.allowed.includes('MANAGE_VERIFICATION');
   const caseQuery = useQuery({
     queryKey: CASE_KEY,
     queryFn: getVerificationCase,
-    refetchInterval: (query) =>
-      capsQuery.data?.allowed.includes('MANAGE_VERIFICATION') &&
-      query.state.status !== 'error' &&
-      Array.isArray(query.state.data?.case?.documents) &&
-      query.state.data.case.documents.some(
-        (document) => !document.superseded && document.scanState === 'PENDING',
+    enabled: canReadCase,
+    staleTime: 0,
+    refetchOnMount: 'always',
+    refetchOnWindowFocus: 'always',
+    refetchInterval: (query) => {
+      if (!canReadCase || query.state.status === 'error') return false;
+      const currentCase = query.state.data?.case;
+      if (
+        Array.isArray(currentCase?.documents) &&
+        currentCase.documents.some(
+          (document) => !document.superseded && document.scanState === 'PENDING',
+        )
       )
-        ? 2000
-        : false,
+        return 2000;
+      // Review, revocation and expiry can happen while this tab stays open.
+      // Keep the current case in step with the server's capability poll.
+      return currentCase?.state === 'SUBMITTED' ||
+        currentCase?.state === 'IN_REVIEW' ||
+        currentCase?.state === 'VERIFIED'
+        ? VERIFICATION_REFRESH_MS
+        : false;
+    },
   });
   const profileQuery = useProviderProfile();
 
@@ -139,8 +163,11 @@ export function ProviderVerificationScreen() {
     onError: (error) => setErrorText(t[applicationCorrectionFrom(error) ?? 'submitFailed']),
   });
 
-  const loading = capsQuery.isLoading || caseQuery.isLoading;
-  const failed = capsQuery.isError || caseQuery.isError;
+  const loading =
+    !capsQuery.isFetchedAfterMount ||
+    capsQuery.isLoading ||
+    (canReadCase && (!caseQuery.isFetchedAfterMount || caseQuery.isLoading));
+  const failed = capsQuery.isError || (canReadCase && caseQuery.isError);
 
   if (loading) {
     return (
@@ -168,7 +195,9 @@ export function ProviderVerificationScreen() {
           tone="provider"
           onClick={() => {
             void capsQuery.refetch();
-            void caseQuery.refetch();
+            // refetch() can execute even a disabled query. Never turn a retry
+            // of unavailable capabilities into a forbidden evidence request.
+            if (canReadCase && caseQuery.isError) void caseQuery.refetch();
           }}
         >
           {t.retry}
@@ -177,9 +206,12 @@ export function ProviderVerificationScreen() {
     );
   }
 
+  // A disabled query retains cached data. A withheld capability must remove
+  // that data from this surface as well as stop further case requests.
+  const verificationCase = canReadCase ? (caseQuery.data?.case ?? null) : null;
   const view = deriveVerificationView({
     capabilities: capsQuery.data ?? null,
-    verificationCase: caseQuery.data?.case ?? null,
+    verificationCase,
     profile: profileQuery.data?.profile
       ? {
           verified: profileQuery.data.profile.verified,
@@ -190,7 +222,50 @@ export function ProviderVerificationScreen() {
     // than hard-coded so the badge is real the day one exists — see the doc.
     vip: false,
   });
-  const copy = STATE_COPY[lang][view.state];
+  const capabilities = capsQuery.data;
+  const needsProfile = capsQuery.data?.primaryReason === 'NO_PROVIDER_PROFILE';
+  const canResumeApplication =
+    view.state === 'ONBOARDING_INCOMPLETE' &&
+    (needsProfile
+      ? capsQuery.data?.nextActions.includes('COMPLETE_PROFILE')
+      : capsQuery.data?.allowed.includes('COMPLETE_ONBOARDING'));
+  const recoveryHref = needsProfile && onboardingV2 ? '/provider/activate' : applicationHref;
+  const documentStepComplete = view.state === 'VERIFIED_NO_ACCESS' || view.state === 'NOT_REQUIRED';
+  const applicationNext =
+    documentStepComplete && capabilities?.allowed.includes('COMPLETE_ONBOARDING')
+      ? capabilities.primaryReason === 'ONBOARDING_INCOMPLETE'
+        ? 'resume'
+        : capabilities.primaryReason === 'AWAITING_REVIEW'
+          ? 'pending'
+          : null
+      : null;
+  const canOpenWorkspace =
+    (view.state === 'VERIFIED_ACTIVE' || view.state === 'NOT_REQUIRED') &&
+    capabilities?.allowed.includes('SUBMIT_BID');
+  const noDocumentWorkAccess =
+    view.state === 'NOT_REQUIRED' && capabilities?.primaryReason === 'NO_WORK_ACCESS';
+  const canContactSupport =
+    view.state === 'VERIFIED_NO_ACCESS' ||
+    noDocumentWorkAccess ||
+    (view.state === 'ACCOUNT_LOCKED' && capabilities?.nextActions.includes('CONTACT_SUPPORT')) ||
+    (view.state === 'SUSPENDED' &&
+      capabilities?.allowed.includes('APPEAL_DECISION') &&
+      capabilities.nextActions.includes('APPEAL_DECISION'));
+  const navigationHref = canResumeApplication
+    ? recoveryHref
+    : applicationNext
+      ? applicationHref
+      : canOpenWorkspace
+        ? '/provider/jobs'
+        : canContactSupport
+          ? '/provider/support'
+          : null;
+  const copy = applicationNext
+    ? NEXT_STEP_COPY[lang][applicationNext]
+    : noDocumentWorkAccess
+      ? NEXT_STEP_COPY[lang].workAccess
+      : STATE_COPY[lang][view.state];
+  const primaryLabel = canOpenWorkspace ? t.openWorkspace : copy.cta;
 
   async function onFileChosen(file: File) {
     if (!pendingKind || !view.canManageVerification || busy || offline) return;
@@ -218,6 +293,12 @@ export function ProviderVerificationScreen() {
   }
 
   function primaryAction() {
+    // Navigation recovers the application; it is not a document mutation and
+    // must not require the very capability that application setup obtains.
+    if (navigationHref) {
+      navigate(navigationHref);
+      return;
+    }
     if (!view.canManageVerification || busy || offline) return;
     switch (view.state) {
       // Sprint 9B.24 — opening a NEW case is the answer to an expired one.
@@ -278,7 +359,15 @@ export function ProviderVerificationScreen() {
     (view.state === 'EVIDENCE_REQUIRED' ||
       view.state === 'EVIDENCE_UNUSABLE' ||
       view.state === 'CHANGES_REQUESTED');
-  const correctionRequested = caseQuery.data?.case?.state === 'ACTION_REQUIRED';
+  const canRunPrimaryAction =
+    navigationHref !== null ||
+    canUpload ||
+    (view.canManageVerification &&
+      (view.state === 'NOT_STARTED' ||
+        view.state === 'REJECTED' ||
+        view.state === 'REVERIFICATION_REQUIRED' ||
+        (view.state === 'READY_TO_SUBMIT' && canSubmitCase)));
+  const correctionRequested = verificationCase?.state === 'ACTION_REQUIRED';
   const submissionNeedsApplication =
     submitMut.isError && applicationCorrectionFrom(submitMut.error) !== null;
   const showApplicationReturn =
@@ -382,13 +471,13 @@ export function ProviderVerificationScreen() {
       {/* What has been sent, and where each file stands. */}
       <section aria-label={t.documentsHeading} className="space-y-1">
         <h3 className="text-sm font-semibold">{t.documentsHeading}</h3>
-        {(caseQuery.data?.case?.documents ?? []).length === 0 ? (
+        {(verificationCase?.documents ?? []).length === 0 ? (
           <p className="text-sm text-muted-foreground" data-testid="verification-no-documents">
             {t.noDocuments}
           </p>
         ) : (
           <ul className="space-y-2" data-testid="verification-documents">
-            {(caseQuery.data?.case?.documents ?? []).map((d) => (
+            {(verificationCase?.documents ?? []).map((d) => (
               <li key={d.id} className="flex flex-wrap items-center gap-2 text-sm">
                 <span>{DOCUMENT_KIND_LABELS[lang][d.kind]}</span>
                 <Badge
@@ -452,19 +541,17 @@ export function ProviderVerificationScreen() {
 
       {/* Submission and resubmission both use the server's action list.
           Opening a case and uploading still require MANAGE_VERIFICATION. */}
-      {copy.cta &&
-        view.canManageVerification &&
-        (view.state !== 'READY_TO_SUBMIT' || canSubmitCase) && (
-          <Button
-            variant={view.state === 'CHANGES_REQUESTED' && canSubmitCase ? 'secondary' : 'primary'}
-            tone="provider"
-            fullWidth
-            state={busy ? 'loading' : offline ? 'disabled' : 'default'}
-            onClick={primaryAction}
-          >
-            {copy.cta}
-          </Button>
-        )}
+      {primaryLabel && canRunPrimaryAction && (
+        <Button
+          variant={view.state === 'CHANGES_REQUESTED' && canSubmitCase ? 'secondary' : 'primary'}
+          tone="provider"
+          fullWidth
+          state={busy ? 'loading' : offline && !navigationHref ? 'disabled' : 'default'}
+          onClick={primaryAction}
+        >
+          {primaryLabel}
+        </Button>
+      )}
       {view.state === 'CHANGES_REQUESTED' && canSubmitCase && (
         <Button
           tone="provider"
