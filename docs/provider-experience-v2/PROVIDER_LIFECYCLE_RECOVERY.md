@@ -127,6 +127,17 @@ two Provider UI logins and at most one initial memoized Admin API login. No
 rate bucket is cleared, no limit is raised, and no failure is retried into a
 passing lifecycle result.
 
+The next candidate exposed a separate Playwright hook budget: `beforeAll`
+uses the project's 60-second timeout independently of the tests' inherited
+240-second budget. The 65-second wait therefore timed out before any new
+lifecycle body ran. That setup hook now explicitly allows 90 seconds; only
+the three lifecycle tests explicitly retain a 240-second budget. Global
+timeouts and the original 17 cases are unchanged. The history assertions use
+the public nested `submission.id` contract while retaining the exact old/new
+submission IDs, and pending navigation waits for the settled submitted hub
+instead of accepting a loading screen. These are acceptance-harness repairs;
+final execution and screenshot outcomes still belong to the PR evidence.
+
 R27's actual API origin uses port 4327. The first candidate exceeded its shell
 Brotli limit by 102 bytes there, despite passing the earlier port-4010 local
 measurement. The final correction defers only the optional Admin denial display

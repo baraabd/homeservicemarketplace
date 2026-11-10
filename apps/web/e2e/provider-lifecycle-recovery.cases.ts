@@ -258,7 +258,14 @@ async function uploadIdentityThroughBrowser(page: Page, account: Account, lang: 
 // and final approval below is a real browser action. No route mocks, injected
 // sessions, SQL state writes, manufactured grant or test-only policy overrides.
 test.describe('Independent provider lifecycle recovery', () => {
+  // These multi-actor journeys include evidence scanning and six viewport
+  // captures. Own their existing four-minute test budget within this group.
+  test.describe.configure({ timeout: 240_000 });
+
   test.beforeAll(async () => {
+    // beforeAll has a separate project-default slot (60s), not the describe
+    // test budget. Allow the 65s expiry wait plus 25s of runner scheduling.
+    test.setTimeout(90_000);
     // These cases follow the existing Admin acceptance in the same worker and
     // share its loopback login IP. Let the unchanged 10/IP/minute budget expire
     // before creating any new fixture or session; do not reset its Redis keys.
@@ -497,6 +504,7 @@ test.describe('Independent provider lifecycle recovery', () => {
         await capture(providerPage, testInfo, `lifecycle-provider-waiting-${lang}`, lang);
         await applicationStatus.click();
         await expect(providerPage).toHaveURL(/\/provider\/onboarding(?:\?|$)/);
+        await expect(providerPage.getByTestId('hub-state-SUBMITTED')).toBeVisible();
         await expect(providerPage.getByTestId('review-feedback')).toHaveCount(0);
         await expect(providerPage.getByTestId('review-submit')).toHaveCount(0);
 
@@ -530,9 +538,12 @@ test.describe('Independent provider lifecycle recovery', () => {
           expect.arrayContaining([
             expect.objectContaining({
               kind: 'CHANGES_REQUESTED',
-              submissionId: original.submission!.id,
+              submission: expect.objectContaining({ id: original.submission!.id }),
             }),
-            expect.objectContaining({ kind: 'APPROVED', submissionId: pending.submission!.id }),
+            expect.objectContaining({
+              kind: 'APPROVED',
+              submission: expect.objectContaining({ id: pending.submission!.id }),
+            }),
           ]),
         );
         expect(history.body.items.filter((item) => item.kind === 'IDENTITY_APPROVED')).toHaveLength(
