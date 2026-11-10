@@ -1236,9 +1236,9 @@ jobs:
       COOKIE_SECURE: 'false'
       COOKIE_SAMESITE: lax
       # Same disposable-stack budgets as Provider acceptance. The login route
-      # retains its hard 10/IP/minute limit. This single-worker suite performs
-      # eight Admin UI logins, one memoized Admin API login and one Provider
-      # UI login; no rate bucket is cleared or altered between tests.
+      # retains its hard 10/IP/minute limit. The independent lifecycle group
+      # waits for the natural login window after the original cases; all use
+      # fresh UI/OTP entry. No rate bucket is cleared or altered between tests.
       AUTH_REGISTER_THROTTLE_LIMIT: '200'
       AUTH_OTP_VERIFY_THROTTLE_LIMIT: '400'
       GLOBAL_THROTTLE_LIMIT: '5000'

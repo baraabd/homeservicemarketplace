@@ -116,6 +116,27 @@ idempotency keys, private evidence authorization and read-only handling during
 failed refreshes remain authoritative. Tests must keep negative cases; a
 successful happy path is not permission to bypass any of these gates.
 
+## Acceptance harness and loading boundary
+
+The first published candidate passed all 17 existing browser cases, but the
+three new cases reached the unchanged 10/IP/minute login limit during setup.
+They did not reach the lifecycle assertions. The independent lifecycle group
+now waits 65 seconds before any new fixture or session, allowing the existing
+window to expire naturally. Its successful path needs three Admin UI logins,
+two Provider UI logins and at most one initial memoized Admin API login. No
+rate bucket is cleared, no limit is raised, and no failure is retried into a
+passing lifecycle result.
+
+R27's actual API origin uses port 4327. The first candidate exceeded its shell
+Brotli limit by 102 bytes there, despite passing the earlier port-4010 local
+measurement. The final correction defers only the optional Admin denial display
+through the existing lazy-page and standalone recovery boundary in
+[route-guards.tsx](../../apps/web/src/lib/route-guards.tsx). All authentication
+and role-check branches are unchanged; denied users still cannot import the
+protected Admin page. This removes 2,604 raw shell bytes, rather than changing
+the budget. New tests cover deferred loading and English/Arabic safe recovery
+when that optional display fails to load.
+
 ## Existing evidence-safety controls, unchanged
 
 Identity evidence stays in restricted storage. The authenticated
@@ -183,19 +204,20 @@ proves workflow behavior, not the user's local ClamAV detection quality.
 
 ## Verification record at this checkpoint
 
-| Evidence                                                   | Observed result                                    | Scope / remaining work                                                                                                                 |
-| ---------------------------------------------------------- | -------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
-| Provider regression run before the new production fix      | **20 failed / 132 passed**                         | Reproduction evidence; not a passing acceptance run.                                                                                   |
-| Relevant web suites                                        | **71 files / 1,239 passed / 0 failed / 0 skipped** | Includes provider verification, Admin review/directory and onboarding.                                                                 |
-| Provider-verification subset of that web run               | **192 passed**                                     | Includes the latest expiry/current-case regressions; not additional to the 1,239 total.                                                |
-| Admin review/directory subset of that web run              | **208 passed**                                     | Includes withdrawal, permission split and consistent application presentation; not additional to the 1,239 total.                      |
-| Existing backend guard suites                              | **5 suites / 297 passed / 0 failed / 0 skipped**   | Capability service/matrix, Admin review policy/service and onboarding wizard; backend code unchanged.                                  |
-| Web lint                                                   | **0 errors / 34 existing warnings**                | Observed on the current local source.                                                                                                  |
-| E2E TypeScript check                                       | **Passed**                                         | Confirms type compatibility; it does not execute the browser cases.                                                                    |
-| Production build                                           | **Passed**                                         | TypeScript and Vite with `VITE_API_URL=http://127.0.0.1:4010` and V2 enabled; existing large-chunk warning retained.                   |
-| R27 bundle budget                                          | **10 passed / 0 failed**                           | Shell Brotli 189,430 bytes under the unchanged 189,440-byte limit. Only 10 bytes of headroom; final-head remote gate remains required. |
-| Three new real-API browser cases and screenshot inspection | **See final-commit PR evidence**                   | Require executed results and visual inspection; source and collection alone are not acceptance.                                        |
-| Required remote checks and exact-SHA acceptance            | **See final-commit PR evidence**                   | Earlier commit results do not validate a later head.                                                                                   |
+| Evidence                                                   | Observed result                                    | Scope / remaining work                                                                                                                                                  |
+| ---------------------------------------------------------- | -------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Provider regression run before the new production fix      | **20 failed / 132 passed**                         | Reproduction evidence; not a passing acceptance run.                                                                                                                    |
+| Relevant web suites                                        | **71 files / 1,239 passed / 0 failed / 0 skipped** | Includes provider verification, Admin review/directory and onboarding.                                                                                                  |
+| Provider-verification subset of that web run               | **192 passed**                                     | Includes the latest expiry/current-case regressions; not additional to the 1,239 total.                                                                                 |
+| Admin review/directory subset of that web run              | **208 passed**                                     | Includes withdrawal, permission split and consistent application presentation; not additional to the 1,239 total.                                                       |
+| Final routing, guard and provider-verification check       | **9 files / 223 passed / 0 failed / 0 skipped**    | Includes the 192 provider tests again; overlapping counts are not additive. Covers denial-chunk failure, route guards, Admin routes and onboarding layout preservation. |
+| Existing backend guard suites                              | **5 suites / 297 passed / 0 failed / 0 skipped**   | Capability service/matrix, Admin review policy/service and onboarding wizard; backend code unchanged.                                                                   |
+| Web lint                                                   | **0 errors / 34 existing warnings**                | Observed on the current local source.                                                                                                                                   |
+| E2E TypeScript check                                       | **Passed**                                         | Confirms type compatibility; it does not execute the browser cases.                                                                                                     |
+| Production build                                           | **Passed**                                         | TypeScript and Vite with `VITE_API_URL=http://127.0.0.1:4010` and V2 enabled; existing large-chunk warning retained.                                                    |
+| R27 bundle budget                                          | **10 passed / 0 failed**                           | Actual port-4327 build: shell Brotli 188,920 bytes under the unchanged 189,440-byte limit; raw shell 673,021 bytes. Final-head remote gate still required.              |
+| Three new real-API browser cases and screenshot inspection | **See final-commit PR evidence**                   | Require executed results and visual inspection; source and collection alone are not acceptance.                                                                         |
+| Required remote checks and exact-SHA acceptance            | **See final-commit PR evidence**                   | Earlier commit results do not validate a later head.                                                                                                                    |
 
 Backend command actually run:
 
