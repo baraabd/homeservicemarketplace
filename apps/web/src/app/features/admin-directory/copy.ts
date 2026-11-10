@@ -69,6 +69,7 @@ export const DIRECTORY_COPY = {
     canWork: 'Can take work',
     cannotWork: 'Not enabled',
     liveGrant: 'Live work grant',
+    liveGrantBlocked: 'The grant is live; other work requirements remain unmet.',
     noGrant: 'No live work grant',
   },
   ar: {
@@ -138,6 +139,7 @@ export const DIRECTORY_COPY = {
     canWork: 'يمكنه العمل',
     cannotWork: 'غير مفعّل للعمل',
     liveGrant: 'منحة عمل سارية',
+    liveGrantBlocked: 'المنحة سارية؛ تبقى متطلبات العمل غير مستوفاة.',
     noGrant: 'لا توجد منحة عمل سارية',
   },
 } as const;

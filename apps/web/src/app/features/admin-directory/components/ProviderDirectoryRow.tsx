@@ -4,12 +4,12 @@ import type { AdminProviderSummary } from '@homeservicemarketplace/contracts';
 import { ReviewBadge, StatusBadge } from '../../admin-provider-review/components/ReviewPrimitives';
 import { statusLabel, type ReviewLanguage } from '../../admin-provider-review/copy';
 import { formatReviewDate } from '../../admin-provider-review/format-review-date';
+import { applicationStatusValue } from '../../admin-provider-review/application-presentation';
 import {
   ACCESS_REASON_LABELS,
   ATTENTION_LABELS,
   DIRECTORY_COPY,
   EXTRA_STATE_LABELS,
-  PROVIDER_STATUS_LABELS,
 } from '../copy';
 
 function AxisState({ value, lang }: { value: string | null | undefined; lang: ReviewLanguage }) {
@@ -86,6 +86,7 @@ export function ProviderDirectoryRow({
       ATTENTION_LABELS[reason] ? [ATTENTION_LABELS[reason][lang]] : [],
     ) ?? [];
   const accountState = provider.account?.deletedAt ? 'DELETED' : provider.account?.status;
+  const applicationState = applicationStatusValue(provider.onboardingState, provider.status);
   return (
     <li
       className={`ad-provider-row${reviewQueue ? ' ad-request-row' : ''}`}
@@ -119,17 +120,7 @@ export function ProviderDirectoryRow({
           </div>
         </div>
         <div className="ad-application-summary">
-          <ReviewBadge
-            tone={
-              provider.status === 'PENDING_REVIEW'
-                ? 'warning'
-                : provider.status === 'ACTIVE'
-                  ? 'success'
-                  : 'neutral'
-            }
-          >
-            {PROVIDER_STATUS_LABELS[provider.status]?.[lang] ?? t.unknown}
-          </ReviewBadge>
+          <AxisState value={applicationState} lang={lang} />
           <ProviderSubmission provider={provider} lang={lang} checkedAt={checkedAt} />
         </div>
       </div>
@@ -148,7 +139,7 @@ export function ProviderDirectoryRow({
         <div>
           <dt>{t.onboarding}</dt>
           <dd>
-            <AxisState value={provider.onboardingState} lang={lang} />
+            <AxisState value={applicationState} lang={lang} />
           </dd>
         </div>
         <div>
@@ -217,6 +208,9 @@ export function ProviderDirectoryRow({
               <span className="ad-state-note">
                 {provider.workAccess.hasLiveGrant ? t.liveGrant : t.noGrant}
               </span>
+            ) : null}
+            {provider.workAccess?.hasLiveGrant && !provider.workAccess.canWork ? (
+              <span className="ad-state-note">{t.liveGrantBlocked}</span>
             ) : null}
           </dd>
         </div>

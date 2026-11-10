@@ -21,6 +21,7 @@ import {
 import {
   DOCUMENT_KIND_LABELS,
   SCAN_STATE_LABELS,
+  NEXT_STEP_COPY,
   STATE_COPY,
   UI_COPY,
   reasonText,
@@ -75,6 +76,8 @@ function applicationCorrectionFrom(error: unknown): ApplicationCorrection | null
         : null;
 }
 
+const VERIFICATION_REFRESH_MS = 30_000;
+
 export function ProviderVerificationScreen() {
   const { lang, dir } = useLang();
   const navigate = useNavigate();
@@ -97,15 +100,25 @@ export function ProviderVerificationScreen() {
     enabled: canReadCase,
     staleTime: 0,
     refetchOnMount: 'always',
-    refetchInterval: (query) =>
-      canReadCase &&
-      query.state.status !== 'error' &&
-      Array.isArray(query.state.data?.case?.documents) &&
-      query.state.data.case.documents.some(
-        (document) => !document.superseded && document.scanState === 'PENDING',
+    refetchOnWindowFocus: 'always',
+    refetchInterval: (query) => {
+      if (!canReadCase || query.state.status === 'error') return false;
+      const currentCase = query.state.data?.case;
+      if (
+        Array.isArray(currentCase?.documents) &&
+        currentCase.documents.some(
+          (document) => !document.superseded && document.scanState === 'PENDING',
+        )
       )
-        ? 2000
-        : false,
+        return 2000;
+      // Review, revocation and expiry can happen while this tab stays open.
+      // Keep the current case in step with the server's capability poll.
+      return currentCase?.state === 'SUBMITTED' ||
+        currentCase?.state === 'IN_REVIEW' ||
+        currentCase?.state === 'VERIFIED'
+        ? VERIFICATION_REFRESH_MS
+        : false;
+    },
   });
   const profileQuery = useProviderProfile();
 
@@ -209,7 +222,7 @@ export function ProviderVerificationScreen() {
     // than hard-coded so the badge is real the day one exists — see the doc.
     vip: false,
   });
-  const copy = STATE_COPY[lang][view.state];
+  const capabilities = capsQuery.data;
   const needsProfile = capsQuery.data?.primaryReason === 'NO_PROVIDER_PROFILE';
   const canResumeApplication =
     view.state === 'ONBOARDING_INCOMPLETE' &&
@@ -217,6 +230,42 @@ export function ProviderVerificationScreen() {
       ? capsQuery.data?.nextActions.includes('COMPLETE_PROFILE')
       : capsQuery.data?.allowed.includes('COMPLETE_ONBOARDING'));
   const recoveryHref = needsProfile && onboardingV2 ? '/provider/activate' : applicationHref;
+  const documentStepComplete = view.state === 'VERIFIED_NO_ACCESS' || view.state === 'NOT_REQUIRED';
+  const applicationNext =
+    documentStepComplete && capabilities?.allowed.includes('COMPLETE_ONBOARDING')
+      ? capabilities.primaryReason === 'ONBOARDING_INCOMPLETE'
+        ? 'resume'
+        : capabilities.primaryReason === 'AWAITING_REVIEW'
+          ? 'pending'
+          : null
+      : null;
+  const canOpenWorkspace =
+    (view.state === 'VERIFIED_ACTIVE' || view.state === 'NOT_REQUIRED') &&
+    capabilities?.allowed.includes('SUBMIT_BID');
+  const noDocumentWorkAccess =
+    view.state === 'NOT_REQUIRED' && capabilities?.primaryReason === 'NO_WORK_ACCESS';
+  const canContactSupport =
+    view.state === 'VERIFIED_NO_ACCESS' ||
+    noDocumentWorkAccess ||
+    (view.state === 'ACCOUNT_LOCKED' && capabilities?.nextActions.includes('CONTACT_SUPPORT')) ||
+    (view.state === 'SUSPENDED' &&
+      capabilities?.allowed.includes('APPEAL_DECISION') &&
+      capabilities.nextActions.includes('APPEAL_DECISION'));
+  const navigationHref = canResumeApplication
+    ? recoveryHref
+    : applicationNext
+      ? applicationHref
+      : canOpenWorkspace
+        ? '/provider/jobs'
+        : canContactSupport
+          ? '/provider/support'
+          : null;
+  const copy = applicationNext
+    ? NEXT_STEP_COPY[lang][applicationNext]
+    : noDocumentWorkAccess
+      ? NEXT_STEP_COPY[lang].workAccess
+      : STATE_COPY[lang][view.state];
+  const primaryLabel = canOpenWorkspace ? t.openWorkspace : copy.cta;
 
   async function onFileChosen(file: File) {
     if (!pendingKind || !view.canManageVerification || busy || offline) return;
@@ -246,8 +295,8 @@ export function ProviderVerificationScreen() {
   function primaryAction() {
     // Navigation recovers the application; it is not a document mutation and
     // must not require the very capability that application setup obtains.
-    if (canResumeApplication) {
-      navigate(recoveryHref);
+    if (navigationHref) {
+      navigate(navigationHref);
       return;
     }
     if (!view.canManageVerification || busy || offline) return;
@@ -311,7 +360,7 @@ export function ProviderVerificationScreen() {
       view.state === 'EVIDENCE_UNUSABLE' ||
       view.state === 'CHANGES_REQUESTED');
   const canRunPrimaryAction =
-    canResumeApplication ||
+    navigationHref !== null ||
     canUpload ||
     (view.canManageVerification &&
       (view.state === 'NOT_STARTED' ||
@@ -492,15 +541,15 @@ export function ProviderVerificationScreen() {
 
       {/* Submission and resubmission both use the server's action list.
           Opening a case and uploading still require MANAGE_VERIFICATION. */}
-      {copy.cta && canRunPrimaryAction && (
+      {primaryLabel && canRunPrimaryAction && (
         <Button
           variant={view.state === 'CHANGES_REQUESTED' && canSubmitCase ? 'secondary' : 'primary'}
           tone="provider"
           fullWidth
-          state={busy ? 'loading' : offline && !canResumeApplication ? 'disabled' : 'default'}
+          state={busy ? 'loading' : offline && !navigationHref ? 'disabled' : 'default'}
           onClick={primaryAction}
         >
-          {copy.cta}
+          {primaryLabel}
         </Button>
       )}
       {view.state === 'CHANGES_REQUESTED' && canSubmitCase && (

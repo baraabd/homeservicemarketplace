@@ -130,6 +130,22 @@ describe('the account outranks everything', () => {
 });
 
 describe('before there is a case', () => {
+  it.each([
+    ['VERIFIED', false, true],
+    ['EXPIRED', true, false],
+    ['ACTION_REQUIRED', true, false],
+  ] as const)(
+    'uses the current %s case rather than a stale profile badge',
+    (state, verified, expected) => {
+      const view = deriveVerificationView({
+        capabilities: CAPS({ allowed: ['MANAGE_VERIFICATION'] }),
+        verificationCase: kase({ state }),
+        profile: { verified, topPro: false },
+      });
+      expect(view.axes.identityVerified).toBe(expected);
+    },
+  );
+
   it('is NOT_STARTED with no case at all', () => {
     expect(stateOf({ verificationCase: null })).toBe('NOT_STARTED');
   });

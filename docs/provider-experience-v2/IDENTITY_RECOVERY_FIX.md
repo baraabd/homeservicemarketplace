@@ -13,6 +13,11 @@ Base: `9569fec8051b5227d4e11da99d78de6ad9fcc504` on `develop`, which includes
 merged PR #222. The PR body records the final tested SHA and remote evidence;
 this file does not embed its own future commit hash.
 
+For the subsequent verified-identity / returned-application report, state
+matrix and new acceptance work, see
+[Provider lifecycle recovery](PROVIDER_LIFECYCLE_RECOVERY.md). The verification
+record below remains the historical record for the initial recovery fix.
+
 The reported local page is `/provider/verification` on `localhost:5173`. It
 shows “Finish your profile first” / “أكمل ملفك أولًا”, no document picker, and a
 “Continue sign-up” / “متابعة التسجيل” action that does not navigate. The console
@@ -94,8 +99,12 @@ then `git pull --ff-only`. After the fix is merged, a clean `develop` checkout
 can instead be updated with `git pull --ff-only`. Preserve uncommitted work;
 do not use reset, clean or forced checkout to apply this repair.
 
-Stop this checkout's existing API and Vite watchers using Ctrl+C in their own
-terminals. The repository pins Node 24.21.0 and pnpm 10.32.1:
+Before running `dev:repair`, stop this checkout's existing API and Vite
+watchers using Ctrl+C in their own terminals, together with Prisma Studio or
+tests using this checkout. An API process holding the Windows Prisma DLL makes
+the repair stop before it changes anything. Stop the owning watcher rather
+than repeatedly stopping a child it can restart. The repository pins Node
+24.21.0 and pnpm 10.32.1:
 
 ```powershell
 node --version
@@ -110,11 +119,13 @@ consistently for this API. Do not kill all Node processes.
 ### 2. Repair workspace dependencies and start data services
 
 ```powershell
-pnpm dev:repair
-if ($LASTEXITCODE -ne 0) { throw "Workspace recovery failed." }
+& {
+    pnpm dev:repair
+    if ($LASTEXITCODE -ne 0) { throw "Workspace recovery failed." }
 
-pnpm docker:up
-if ($LASTEXITCODE -ne 0) { throw "Local data services did not start." }
+    pnpm docker:up
+    if ($LASTEXITCODE -ne 0) { throw "Local data services did not start." }
+}
 ```
 
 `dev:repair` installs the frozen dependency set, regenerates Prisma and checks
@@ -122,15 +133,65 @@ the workspace. It preserves environment files, uploads and database data; it
 does not reset or migrate the database. `docker:up` starts PostgreSQL, Redis
 and Mailpit, not another API process or the evidence scanner.
 
-### 3. Start the API with a real local scanner
+### 3. Check the intended local database separately
+
+Follow [the native startup database procedure](../dev-startup-recovery.md#check-the-intended-development-database-separately)
+before starting the API. Confirm the database target using the same intended
+environment as the API; the migration scripts load root `.env`, while an
+existing process `DATABASE_URL` takes precedence. Normal API startup can also
+load package-local environment files. Do not print credentials or change the
+database target merely to make a command pass.
+
+Read migration status first:
+
+```powershell
+pnpm --filter @homeservicemarketplace/database exec dotenv -e ../../.env -- prisma migrate status
+```
+
+Only when this reports a normal chain of pending migrations on the intended
+local database, take and verify a fresh backup of that database, then run:
+
+```powershell
+& {
+    pnpm --filter @homeservicemarketplace/database migrate:deploy
+    if ($LASTEXITCODE -ne 0) { throw "Migration failed; inspect the error before starting the API." }
+
+    pnpm --filter @homeservicemarketplace/database exec dotenv -e ../../.env -- prisma migrate status
+    if ($LASTEXITCODE -ne 0) { throw "Database migration status is not clean." }
+}
+```
+
+An initial nonzero status can mean pending migrations, but can also mean a
+connection failure, failed migration or diverged history. Investigate those
+other outcomes before applying anything. If status says up to date while an
+application table is missing, inspect the target and schema drift; another
+`migrate:deploy` does not recreate a migration already recorded as applied.
+Do not use reset, `db push`, seed, manual migration acknowledgements or volume
+deletion as recovery. Keep schema updates separate from API startup.
+
+The reported `EmailDelivery`, `MoneyDispatch` and `MoneyManualReview` failures
+are missing-schema errors even when TypeScript compiles and `/health/ready`
+returns 200. That endpoint checks dependency connectivity, not complete
+application schema, scanner operation or successful provider journeys.
+
+### 4. Start the API with a real local scanner
+
+For local mail tests that must survive API restarts, preserve a dedicated
+`MAIL_INTENT_ENCRYPTION_KEY` containing a random 32-byte base64 key in the
+intended private environment before starting the API. Without it, development
+uses a process-local key; queued envelopes cannot be decrypted after restart.
+Preserve an existing key rather than generating a new one on each boot, and
+never commit or share its value. See [mail envelope behavior](../production-readiness/r21/IMPLEMENTATION.md)
+and [key rotation effects](../production-readiness/r21/ROLLBACK.md#key-rotation).
+This configuration does not create a missing `EmailDelivery` table.
 
 For the existing native local setup whose intended configuration is the root
 `.env`, use the repository's existing opt-in review launcher:
 
 ```powershell
-$env:PORT = "4000"
+$env:PORT = "4010"
 $env:FRONTEND_URL = "http://localhost:5173"
-$env:PUBLIC_API_URL = "http://localhost:4000"
+$env:PUBLIC_API_URL = "http://localhost:4010"
 
 node --env-file=.env scripts/dev/review-runtime.cjs
 ```
@@ -149,23 +210,42 @@ An API that boots with those settings does not prove that uploaded evidence can
 finish scanning. Do not use the deterministic CI test scanner for manual safety
 acceptance.
 
-### 4. Check readiness and start Vite with the same API origin
+### 5. Check readiness and restart the intended Vite process
 
 In a separate PowerShell terminal at the same repository root:
 
 ```powershell
-$hsmApiOrigin = "http://localhost:4000"
-$hsmReady = Invoke-RestMethod -Uri "$hsmApiOrigin/health/ready"
-if (-not $hsmReady.ready) { throw "API dependencies are not ready." }
-
-$env:VITE_API_URL = $hsmApiOrigin
-$env:VITE_PROVIDER_ONBOARDING_V2 = "true"
-pnpm --filter @homeservicemarketplace/web dev
+$hsmViteListeners = Get-NetTCPConnection -State Listen -LocalPort 5173 -ErrorAction SilentlyContinue
+$hsmViteListeners | ForEach-Object {
+    Get-CimInstance Win32_Process -Filter "ProcessId = $($_.OwningProcess)" |
+        Select-Object ProcessId, Name, CommandLine
+}
 ```
 
-If choosing port 4010, use 4010 for `PORT`, `PUBLIC_API_URL` and
-`$hsmApiOrigin`. Open `http://localhost:5173`; use the same host spelling for
-browser and API origins. The health endpoint is `/health/ready`, not `/healthz`.
+If port 5173 is occupied by this checkout's old Vite process, stop it with
+Ctrl+C in its owning terminal before starting the replacement. Inspect an
+unfamiliar owner before stopping it; do not terminate all Node processes. The
+web command intentionally uses `--strictPort`, so starting a second Vite
+instance on 5173 fails. A still-running old instance also retains its old
+startup environment. After the intended port is free:
+
+```powershell
+& {
+    $hsmApiOrigin = "http://localhost:4010"
+    $hsmReady = Invoke-RestMethod -Uri "$hsmApiOrigin/health/ready" -ErrorAction Stop
+    if (-not $hsmReady.ready) { throw "API dependencies are not ready." }
+
+    $env:VITE_API_URL = $hsmApiOrigin
+    $env:VITE_PROVIDER_ONBOARDING_V2 = "true"
+    pnpm --filter @homeservicemarketplace/web dev
+}
+```
+
+These commands consistently select 4010 for `PORT`, `PUBLIC_API_URL` and
+`$hsmApiOrigin`. If choosing another API port, update all three together. Use
+the literal `http://localhost:4010` without a backslash before the colon.
+Open `http://localhost:5173`; use the same host spelling for browser and API
+origins. The health endpoint is `/health/ready`, not `/healthz`.
 
 The per-browser `hsm.ff.providerOnboardingV2` preference overrides the build
 environment. To return only that preference to the configured default:
@@ -179,7 +259,7 @@ This does not clear sign-in cookies or other preferences. Restart Vite after
 changing its environment. The flag chooses UI routing and cannot grant server
 permissions.
 
-### 5. Verify the complete provider/Admin journey
+### 6. Verify the complete provider/Admin journey
 
 - Sign in. Authentication requests must reach the selected API without
   `ERR_CONNECTION_REFUSED`.
@@ -199,7 +279,35 @@ permissions.
 - Open the protected document as the authorized Admin and complete review.
   Confirm that application approval and work access follow their server rules.
 
-## Verification record
+### Current case: identity already verified, application returned
+
+1. Refresh the provider verification page. Identity stays verified; effective
+   work access stays unavailable while the application is returned.
+2. Choose **مراجعة طلب الانضمام وإرساله / Review and send application**.
+   Review the existing corrections and any remaining required fields/terms,
+   then send the application again. Do not make an unrelated profile edit just
+   to trigger a new submission.
+3. Confirm the application is awaiting review and a new submission exists.
+   The previous returned decision remains in history; the verified identity,
+   its documents and existing live grant remain unchanged.
+4. Refresh the Admin dossier and review the new submission. Choose the
+   server-offered final application approval when its prerequisites are met.
+   If a blocker remains, follow its specific service, evidence, account or
+   permission instruction instead of trying to override it.
+5. Refresh the provider capabilities and verify the workspace action and work
+   access. A recorded identity approval alone is not this final acceptance.
+
+Do not request a redundant work grant when identity approval already issued a
+live one. If the application was never returned and its current submission is
+still undecided, independent identity approval does not require resubmitting
+that application; the Admin reviews the same submission when eligible.
+
+## Historical verification record: initial recovery fix
+
+The following record belongs to the initial recovery commit
+`fb2679715a3ea88483824d7ed734e82244a72f21`. Subsequent changes require their own
+checks and final-SHA evidence; these results do not certify a newer revision
+or the user's Windows environment.
 
 Before the production markup change, the new nesting regression failed:
 1 failed / 16 passed. After the scoped repair: 17 passed / 0 failed.

@@ -32,7 +32,7 @@ export interface VerificationAxes {
   onboardingComplete: boolean;
   /** Did a reviewer accept their identity documents? */
   identityVerified: boolean;
-  /** Do they hold a live work-access grant right now? */
+  /** Do the server's current capabilities allow them to take work? */
   workAccessActive: boolean;
   /** Paid tier. NEVER grants anything (ADR 0005 axis 5). */
   vip: boolean;
@@ -168,10 +168,11 @@ export function deriveVerificationView(input: VerificationInput): VerificationVi
 
   const axes: VerificationAxes = {
     onboardingComplete: reason !== 'ONBOARDING_INCOMPLETE' && reason !== 'NO_PROVIDER_PROFILE',
-    identityVerified: profile?.verified ?? false,
-    // The GRANT, read from the capability the grant gates. Not from
-    // `verified`: a provider can be verified with no live grant, which is
-    // exactly the revoked/expired state this surface has to be able to show.
+    // The current case owns this decision. The profile query can still be
+    // cached when a reviewer accepts, expires or reopens that case.
+    identityVerified: kase ? kase.state === 'VERIFIED' : (profile?.verified ?? false),
+    // Effective work eligibility, not the presence of a grant alone. A live
+    // grant still cannot unlock a returned application or a restricted account.
     workAccessActive: allowed.has('SUBMIT_BID'),
     vip: input.vip ?? false,
     featured: profile?.topPro ?? false,

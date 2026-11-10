@@ -1353,6 +1353,7 @@ jobs:
             apps/web/test-results/admin-real-api/**/identity-replaced-and-current-real-api.png
             apps/web/test-results/admin-real-api/**/portfolio-inspection-ar-light-390.png
             apps/web/test-results/admin-real-api/**/portfolio-real-revision-conflict.png
+            apps/web/test-results/admin-real-api/**/lifecycle-*.png
           retention-days: 14
           if-no-files-found: error
 

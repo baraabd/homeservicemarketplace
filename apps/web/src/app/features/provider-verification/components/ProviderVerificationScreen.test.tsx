@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import MockAdapter from 'axios-mock-adapter';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { focusManager, QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router';
 
 import { api } from '../../../../lib/api';
@@ -124,8 +124,273 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  cleanup();
   mock.restore();
   vi.restoreAllMocks();
+  vi.useRealTimers();
+  focusManager.setFocused(undefined);
+});
+
+describe('the next step after identity review', () => {
+  it.each([
+    ['en', false, 'Review and send application'],
+    ['en', true, 'Review and send application'],
+    ['ar', false, 'مراجعة طلب الانضمام وإرساله'],
+    ['ar', true, 'مراجعة طلب الانضمام وإرساله'],
+  ] as const)(
+    'returns verified identity to an editable application in %s with V2=%s',
+    async (lang, enabled, label) => {
+      window.localStorage.setItem('hsm.ff.providerOnboardingV2', String(enabled));
+      stub({
+        caps: {
+          ...caps(
+            ['MANAGE_VERIFICATION', 'COMPLETE_ONBOARDING', 'SUBMIT_FOR_REVIEW'],
+            'ONBOARDING_INCOMPLETE',
+          ),
+          nextActions: ['COMPLETE_PROFILE', 'SUBMIT_APPLICATION'],
+        },
+        kase: kase({ state: 'VERIFIED', documents: [doc()] }),
+        // Profile data can still be in the one-minute cache after Admin review.
+        profile: PROFILE({ verified: false }),
+      });
+      renderScreen(lang);
+
+      const action = await screen.findByRole('button', { name: label });
+      expect(screen.getByTestId('verification-VERIFIED_NO_ACCESS')).not.toHaveTextContent(
+        lang === 'ar' ? 'ما انتهى هو صلاحيتك' : 'What has ended is your permission',
+      );
+      expect(screen.getByTestId('axis-identityVerified')).toHaveAttribute('data-active', 'true');
+      expect(screen.getByTestId('axis-workAccessActive')).toHaveAttribute('data-active', 'false');
+      expect(screen.getByTestId('document-d1')).toBeInTheDocument();
+      expect(screen.queryByLabelText(UI_COPY[lang].uploadLabel)).not.toBeInTheDocument();
+      fireEvent.click(action);
+      expect(screen.getByTestId('verification-test-location')).toHaveTextContent(
+        enabled ? '/provider/onboarding' : '/provider/profile',
+      );
+      expect(mock.history.post).toHaveLength(0);
+    },
+  );
+
+  it.each([
+    ['en', false, 'View application status'],
+    ['en', true, 'View application status'],
+    ['ar', false, 'متابعة حالة طلب الانضمام'],
+    ['ar', true, 'متابعة حالة طلب الانضمام'],
+  ] as const)(
+    'keeps a verified, submitted application waiting for Admin in %s with V2=%s',
+    async (lang, enabled, label) => {
+      window.localStorage.setItem('hsm.ff.providerOnboardingV2', String(enabled));
+      stub({
+        caps: {
+          ...caps(['MANAGE_VERIFICATION', 'COMPLETE_ONBOARDING'], 'AWAITING_REVIEW'),
+          nextActions: ['WAIT_FOR_REVIEW'],
+        },
+        kase: kase({ state: 'VERIFIED', documents: [doc()] }),
+      });
+      renderScreen(lang);
+
+      fireEvent.click(await screen.findByRole('button', { name: label }));
+      expect(screen.getByTestId('verification-test-location')).toHaveTextContent(
+        enabled ? '/provider/onboarding' : '/provider/profile',
+      );
+      expect(mock.history.post).toHaveLength(0);
+    },
+  );
+
+  it('returns a no-document policy to the incomplete application', async () => {
+    stub({
+      caps: {
+        ...caps(['MANAGE_VERIFICATION', 'COMPLETE_ONBOARDING'], 'ONBOARDING_INCOMPLETE'),
+        nextActions: ['COMPLETE_PROFILE', 'SUBMIT_APPLICATION'],
+      },
+      kase: kase({ verificationRequired: false, requirements: [] }),
+    });
+    renderScreen();
+    fireEvent.click(await screen.findByRole('button', { name: 'Review and send application' }));
+    expect(screen.getByTestId('verification-test-location')).toHaveTextContent('/provider/profile');
+    expect(mock.history.post).toHaveLength(0);
+  });
+
+  it.each(['en', 'ar'] as const)(
+    'offers support when a no-document policy still needs work access in %s',
+    async (lang) => {
+      stub({
+        caps: {
+          ...caps(['MANAGE_VERIFICATION'], 'NO_WORK_ACCESS'),
+          nextActions: ['WAIT_FOR_REVIEW'],
+        },
+        kase: kase({ verificationRequired: false, requirements: [] }),
+      });
+      renderScreen(lang);
+      const support = await screen.findByRole('button', {
+        name: lang === 'ar' ? 'تواصل مع الدعم' : 'Contact support',
+      });
+      expect(screen.getByTestId('axis-identityVerified')).toHaveAttribute('data-active', 'false');
+      expect(screen.getByTestId('axis-workAccessActive')).toHaveAttribute('data-active', 'false');
+      expect(screen.queryByLabelText(UI_COPY[lang].uploadLabel)).not.toBeInTheDocument();
+      fireEvent.click(support);
+      expect(screen.getByTestId('verification-test-location')).toHaveTextContent(
+        '/provider/support',
+      );
+      expect(mock.history.post).toHaveLength(0);
+    },
+  );
+
+  it.each(['en', 'ar'] as const)(
+    'offers a real support route for unavailable work access in %s',
+    async (lang) => {
+      stub({
+        caps: {
+          ...caps(['MANAGE_VERIFICATION'], 'NO_WORK_ACCESS'),
+          nextActions: ['WAIT_FOR_REVIEW'],
+        },
+        kase: kase({ state: 'VERIFIED', documents: [doc()] }),
+      });
+      renderScreen(lang);
+      fireEvent.click(
+        await screen.findByRole('button', {
+          name: lang === 'ar' ? 'تواصل مع الدعم' : 'Contact support',
+        }),
+      );
+      expect(screen.getByTestId('verification-test-location')).toHaveTextContent(
+        '/provider/support',
+      );
+      expect(mock.history.post).toHaveLength(0);
+    },
+  );
+
+  it.each([
+    ['ACCOUNT_INELIGIBLE', [], ['CONTACT_SUPPORT']],
+    ['PROVIDER_TERMINATED', ['VIEW_OWN_PROFILE'], ['CONTACT_SUPPORT']],
+    ['PROVIDER_SUSPENDED', ['VIEW_OWN_PROFILE', 'APPEAL_DECISION'], ['APPEAL_DECISION']],
+  ] as const)(
+    'keeps the support route usable for %s without exposing evidence',
+    async (reason, allowed, nextActions) => {
+      stub({ caps: { ...caps([...allowed], reason), nextActions: [...nextActions] } });
+      mock.onGet(CASE_URL).reply(403);
+      renderScreen();
+      fireEvent.click(await screen.findByRole('button', { name: 'Contact support' }));
+      expect(screen.getByTestId('verification-test-location')).toHaveTextContent(
+        '/provider/support',
+      );
+      expect(mock.history.get.filter((request) => request.url === CASE_URL)).toHaveLength(0);
+      expect(mock.history.post).toHaveLength(0);
+    },
+  );
+
+  it.each(['en', 'ar'] as const)(
+    'opens the workspace only after work is authorized in %s',
+    async (lang) => {
+      stub({
+        caps: caps(['MANAGE_VERIFICATION', 'VIEW_MARKETPLACE', 'SUBMIT_BID']),
+        kase: kase({ state: 'VERIFIED', documents: [doc()] }),
+      });
+      renderScreen(lang);
+      fireEvent.click(
+        await screen.findByRole('button', {
+          name: lang === 'ar' ? 'فتح مساحة العمل' : 'Open workspace',
+        }),
+      );
+      expect(screen.getByTestId('verification-test-location')).toHaveTextContent('/provider/jobs');
+      expect(mock.history.post).toHaveLength(0);
+    },
+  );
+
+  it('refreshes the case when the provider returns after an Admin decision', async () => {
+    focusManager.setFocused(false);
+    stub({
+      caps: caps(['MANAGE_VERIFICATION', 'COMPLETE_ONBOARDING'], 'ONBOARDING_INCOMPLETE'),
+      kase: kase({ state: 'SUBMITTED', documents: [doc()] }),
+    });
+    renderScreen(
+      'en',
+      new QueryClient({
+        defaultOptions: { queries: { retry: false, refetchOnWindowFocus: false } },
+      }),
+    );
+    await screen.findByTestId('verification-PENDING_REVIEW');
+    mock.onGet(CASE_URL).reply(200, kase({ state: 'VERIFIED', documents: [doc()] }));
+    act(() => focusManager.setFocused(true));
+    expect(
+      await screen.findByRole('button', { name: 'Review and send application' }),
+    ).toBeEnabled();
+    expect(screen.getByTestId('axis-identityVerified')).toHaveAttribute('data-active', 'true');
+    expect(screen.getByTestId('axis-workAccessActive')).toHaveAttribute('data-active', 'false');
+  });
+
+  it.each(['SUBMITTED', 'IN_REVIEW'] as const)(
+    'receives the Admin decision while a %s case stays open',
+    async (state) => {
+      vi.useFakeTimers({ shouldAdvanceTime: true });
+      stub({
+        caps: caps(['MANAGE_VERIFICATION', 'COMPLETE_ONBOARDING'], 'ONBOARDING_INCOMPLETE'),
+        kase: kase({ state, documents: [doc()] }),
+      });
+      renderScreen();
+      await screen.findByTestId('verification-PENDING_REVIEW');
+      mock.onGet(CASE_URL).reply(200, kase({ state: 'VERIFIED', documents: [doc()] }));
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(30_000);
+      });
+      expect(
+        await screen.findByRole('button', { name: 'Review and send application' }),
+      ).toBeEnabled();
+      expect(screen.getByTestId('axis-identityVerified')).toHaveAttribute('data-active', 'true');
+      expect(screen.getByTestId('axis-workAccessActive')).toHaveAttribute('data-active', 'false');
+      expect(mock.history.post).toHaveLength(0);
+    },
+  );
+
+  it('does not offer application recovery without the server capability', async () => {
+    stub({
+      caps: caps(['MANAGE_VERIFICATION'], 'ONBOARDING_INCOMPLETE'),
+      kase: kase({ state: 'VERIFIED', documents: [doc()] }),
+    });
+    renderScreen();
+    await screen.findByTestId('verification-VERIFIED_NO_ACCESS');
+    expect(
+      screen.queryByRole('button', { name: 'Review and send application' }),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Open workspace' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Contact support' })).toBeEnabled();
+  });
+
+  it('offers renewal when a verified case expires while the tab stays open', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    stub({
+      caps: caps(['MANAGE_VERIFICATION', 'SUBMIT_BID']),
+      kase: kase({ state: 'VERIFIED', documents: [doc()] }),
+      profile: PROFILE({ verified: true }),
+    });
+    renderScreen();
+    await screen.findByTestId('verification-VERIFIED_ACTIVE');
+    mock.onGet(CAPS_URL).reply(200, {
+      ...caps(['MANAGE_VERIFICATION'], 'VERIFICATION_REQUIRED'),
+      nextActions: ['VERIFY_IDENTITY'],
+    });
+    mock.onGet(CASE_URL).reply(200, kase({ state: 'EXPIRED', documents: [doc()] }));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(30_000);
+    });
+    expect(await screen.findByRole('button', { name: 'Renew verification' })).toBeEnabled();
+    expect(screen.getByTestId('axis-identityVerified')).toHaveAttribute('data-active', 'false');
+    expect(screen.getByTestId('axis-workAccessActive')).toHaveAttribute('data-active', 'false');
+    expect(screen.queryByRole('button', { name: 'Open workspace' })).not.toBeInTheDocument();
+  });
+
+  it('keeps application navigation usable offline after verification', async () => {
+    vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false);
+    stub({
+      caps: caps(['MANAGE_VERIFICATION', 'COMPLETE_ONBOARDING'], 'ONBOARDING_INCOMPLETE'),
+      kase: kase({ state: 'VERIFIED', documents: [doc()] }),
+    });
+    renderScreen();
+    const action = await screen.findByRole('button', { name: 'Review and send application' });
+    expect(action).toBeEnabled();
+    fireEvent.click(action);
+    expect(screen.getByTestId('verification-test-location')).toHaveTextContent('/provider/profile');
+    expect(mock.history.post).toHaveLength(0);
+  });
 });
 
 describe('loading, failure and offline', () => {
