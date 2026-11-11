@@ -254,6 +254,11 @@ const baseEnvSchema = z.object({
   // Production (APP_ENV=prod, or production without staging identity) always requires approval.
   LEGAL_DRAFT_ACCEPTANCE_ALLOWED: trueish.optional(),
 
+  AUTH_COOKIE_PREFIX: z
+    .string()
+    .regex(/^[a-z][a-z0-9_]{0,31}$/)
+    .refine((value) => value === value.trim(), 'Cookie prefix cannot contain whitespace')
+    .default('hsm'),
   COOKIE_DOMAIN: z.string().optional(),
   COOKIE_SECURE: trueish.default(true),
   COOKIE_SAMESITE: z.enum(['lax', 'strict', 'none']).default('lax'),

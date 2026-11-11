@@ -22,7 +22,7 @@ import { AppConfigService } from '../../config/app-config.service';
 import { SecurityEventsBus } from '../../shared/security-events/security-events.bus';
 import { TokenService, AccessTokenClaims } from '../iam/authentication/services/token.service';
 import { SessionValidationService } from '../iam/authentication/services/session-validation.service';
-import { ACCESS_COOKIE } from '../iam/authentication/helpers/cookies';
+import { authCookieNames } from '../iam/authentication/helpers/cookies';
 import { ConversationParticipantGate } from './conversation-participant.gate';
 import type { ConversationReceipt } from './conversation-participant.gate';
 import {
@@ -235,7 +235,7 @@ export class RealtimeGateway
   }
 
   private async establishConnection(client: Socket): Promise<void> {
-    const token = extractAccessToken(client);
+    const token = extractAccessToken(client, authCookieNames(this.config).access);
     if (!token || token.length > 8_192) throw new Error('Invalid credential');
     const claims: AccessTokenClaims = this.tokens.verifyAccessToken(token);
     if (
@@ -576,14 +576,14 @@ function validEnvelope(room: unknown, event: unknown): room is string {
 // Existing socket transport precedence is retained: explicit native tokens,
 // then bearer, then the browser's httpOnly access cookie. Origin is separately
 // validated even if an explicit token accompanies a cookie.
-function extractAccessToken(client: Socket): string | null {
+function extractAccessToken(client: Socket, cookieName: string): string | null {
   const auth = client.handshake.auth as { token?: unknown } | undefined;
   if (typeof auth?.token === 'string' && auth.token.trim().length > 0) return auth.token.trim();
   const header = client.handshake.headers.authorization;
   if (typeof header === 'string' && header.toLowerCase().startsWith('bearer ')) {
     return header.slice('bearer '.length).trim() || null;
   }
-  return readCookie(client.handshake.headers.cookie, ACCESS_COOKIE);
+  return readCookie(client.handshake.headers.cookie, cookieName);
 }
 
 function readCookie(cookieHeader: string | string[] | undefined, name: string): string | null {

@@ -2,6 +2,9 @@ import axios from 'axios';
 import type { AxiosError, InternalAxiosRequestConfig } from 'axios';
 import { authRequestScope, isLocallySignedOut } from './auth-session-boundary';
 import { withAuthCookieLock } from './auth-cookie-lock';
+import { csrfCookieName, readCsrfCookie } from './auth-cookie-names';
+
+const CSRF_COOKIE_NAME = csrfCookieName(import.meta.env.VITE_AUTH_COOKIE_PREFIX);
 
 interface RetryableConfig extends InternalAxiosRequestConfig {
   _retry?: boolean;
@@ -42,15 +45,14 @@ export const api = axios.create({
   },
 });
 
-// ─── CSRF: read hsm_csrf cookie → echo as X-CSRF-Token on mutations ─────────
+// ─── CSRF: echo the configured environment cookie on mutations ─────────────
 // Exported so the realtime socket-client can mirror it into the
 // handshake `auth.token` field. Cookie auth carries the session over
 // `withCredentials: true`; the CSRF token is the only piece the
 // gateway needs in the handshake to bind the connection to the
 // authenticated session in the same way mutations bind it.
 export function getCsrfToken(): string | undefined {
-  const match = document.cookie.match(/(?:^|;\s*)hsm_csrf=([^;]*)/);
-  return match?.[1];
+  return readCsrfCookie(document.cookie, CSRF_COOKIE_NAME);
 }
 
 api.interceptors.request.use((config: RetryableConfig) => {
@@ -123,7 +125,9 @@ api.interceptors.response.use(
     // retry a previous account's mutation with a new account's cookies.
     const scope = authRequestScope();
     if (!refreshFlight || refreshFlight.scope !== scope) {
-      const promise = withAuthCookieLock(scope, () => api.post('/v1/auth/refresh', undefined, { timeout: 15_000 }).then(() => undefined));
+      const promise = withAuthCookieLock(scope, () =>
+        api.post('/v1/auth/refresh', undefined, { timeout: 15_000 }).then(() => undefined),
+      );
       refreshFlight = { scope, promise };
     }
     const flight = refreshFlight;

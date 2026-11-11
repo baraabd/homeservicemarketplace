@@ -244,7 +244,7 @@ jobs:
           cache: 'pnpm'
       - run: pnpm install --frozen-lockfile
       - name: Install Chromium
-        run: pnpm --filter @homeservicemarketplace/web exec playwright install --with-deps chromium
+        run: node scripts/ci/install-browser.cjs
       - name: Check native Vite development startup and recovery
         run: pnpm --filter @homeservicemarketplace/web test:dev-startup
       - name: Build the web app
@@ -338,7 +338,7 @@ jobs:
       - name: Generate Prisma for the disposable database
         run: pnpm --filter @homeservicemarketplace/database generate
       - name: Install the pinned browser
-        run: pnpm --filter @homeservicemarketplace/web exec playwright install --with-deps chromium
+        run: node scripts/ci/install-browser.cjs
       - name: Verify isolation policy
         run: node --test scripts/production/realtime/verify-replicas.test.cjs
       - name: Verify the committed source against two API processes
@@ -400,7 +400,7 @@ jobs:
       - name: Generate the frozen database client
         run: pnpm --filter @homeservicemarketplace/database generate
       - name: Install the pinned browser
-        run: pnpm --filter @homeservicemarketplace/web exec playwright install --with-deps chromium
+        run: node scripts/ci/install-browser.cjs
       - name: Verify My Plan against real persisted API state
         run: node scripts/production/subscriptions/verify-my-plan.cjs --output "${{ runner.temp }}/r31-browser"
       - name: Preserve source-bound subscription evidence
@@ -435,7 +435,7 @@ jobs:
           cache: 'pnpm'
       - run: pnpm install --frozen-lockfile
       - name: Install Chromium
-        run: pnpm --filter @homeservicemarketplace/web exec playwright install --with-deps chromium
+        run: node scripts/ci/install-browser.cjs
       - name: Build the web app
         env:
           VITE_API_URL: https://api.example.com
@@ -582,7 +582,7 @@ jobs:
           VITE_PROVIDER_ONBOARDING_V2: 'true'
         run: pnpm --filter @homeservicemarketplace/web build
       - name: Install Chromium
-        run: pnpm --filter @homeservicemarketplace/web exec playwright install --with-deps chromium
+        run: node scripts/ci/install-browser.cjs
       - name: Start the API
         run: |
           node apps/api/dist/main.js > /tmp/api.log 2>&1 &
@@ -1278,7 +1278,7 @@ jobs:
           VITE_PROVIDER_ONBOARDING_V2: 'true'
         run: pnpm --filter @homeservicemarketplace/web build
       - name: Install Chromium
-        run: pnpm --filter @homeservicemarketplace/web exec playwright install --with-deps chromium
+        run: node scripts/ci/install-browser.cjs
       - name: Start the API
         run: |
           node apps/api/dist/main.js > /tmp/api.log 2>&1 &
@@ -1478,7 +1478,7 @@ jobs:
       - name: Build the API
         run: pnpm --filter @homeservicemarketplace/api build
       - name: Install Chromium
-        run: pnpm --filter @homeservicemarketplace/web exec playwright install --with-deps chromium
+        run: node scripts/ci/install-browser.cjs
       - name: Start the API
         run: |
           node apps/api/dist/main.js > /tmp/api.log 2>&1 &
@@ -1990,7 +1990,7 @@ jobs:
       - run: pnpm --filter @homeservicemarketplace/contracts build
       - run: pnpm --filter @homeservicemarketplace/api build
       - name: Install the normal CI Chromium distribution
-        run: pnpm --filter @homeservicemarketplace/web exec playwright install --with-deps chromium
+        run: node scripts/ci/install-browser.cjs
       - name: Start the real malware scanner
         run: |
           docker run -d --name dispute-clamd -p 127.0.0.1:3310:3310 clamav/clamav:stable
@@ -2274,7 +2274,7 @@ jobs:
       - run: pnpm --filter @homeservicemarketplace/database build
       - run: pnpm --filter @homeservicemarketplace/contracts build
       - name: Install pinned Chromium
-        run: pnpm --filter @homeservicemarketplace/web exec playwright install --with-deps chromium
+        run: node scripts/ci/install-browser.cjs
       - name: Start real ClamAV with official signatures
         run: |
           docker run -d --name r30-clamd -p 127.0.0.1:3310:3310 clamav/clamav:stable
