@@ -46,17 +46,16 @@ describe('401 refresh interceptor', () => {
     expect(mock.history.post.filter((r) => r.url === '/v1/auth/refresh')).toHaveLength(1);
   });
 
-  it('does NOT attempt refresh for any auth endpoint in the exclusion list', async () => {
-    for (const path of _NO_RETRY_PATHS) {
-      mock.reset();
-      mock.onAny(path).reply(401, { error: { code: 'AUTH_INVALID_CREDENTIALS' } });
-      mock.onPost('/v1/auth/refresh').reply(200, {});
+  it.each([..._NO_RETRY_PATHS])('does NOT refresh or retry a refusal from %s', async (path) => {
+    document.cookie = 'hsm_csrf=synthetic-csrf';
+    mock.onAny(path).reply(401, { error: { code: 'AUTH_INVALID_CREDENTIALS' } });
+    if (path !== '/v1/auth/refresh') mock.onPost('/v1/auth/refresh').reply(200, {});
 
-      await api.post(path).catch(() => {});
-    }
-    // The refresh endpoint must NOT have been called for any excluded path
-    const refreshCalls = mock.history.post.filter((r) => r.url === '/v1/auth/refresh');
-    expect(refreshCalls).toHaveLength(0);
+    await expect(api.post(path)).rejects.toMatchObject({ response: { status: 401 } });
+    // Assert each endpoint before its history is discarded, including a direct
+    // refresh request: only the original call may have reached the transport.
+    expect(mock.history.post).toHaveLength(1);
+    expect(mock.history.post[0]!.url).toBe(path);
   });
 
   it('fires auth:session-expired event when refresh itself fails', async () => {

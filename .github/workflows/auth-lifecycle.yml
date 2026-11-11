@@ -73,6 +73,8 @@ jobs:
           echo "::add-mask::$secret"
           echo "JWT_ACCESS_SECRET=$secret" >> "$GITHUB_ENV"
       - run: pnpm install --frozen-lockfile
+      - name: Verify operator diagnostic input, redaction and read-only contracts
+        run: node --test scripts/diagnostics/auth-state.test.cjs
       - name: Build database and apply existing migrations to disposable database
         run: |
           set -euo pipefail
@@ -84,7 +86,7 @@ jobs:
       - name: Exercise real transaction, expiry, counter and revocation regressions
         env:
           RUN_DB_INTEGRATION: '1'
-        run: pnpm --filter @homeservicemarketplace/api exec jest test/integration/r04-auth-lifecycle.integration.spec.ts --runInBand
+        run: pnpm --filter @homeservicemarketplace/api exec jest test/integration/r04-auth-lifecycle.integration.spec.ts test/integration/auth-state-diagnostic.integration.spec.ts --runInBand
       - name: Build actual API and production browser bundle
         env:
           VITE_API_URL: http://127.0.0.1:4010

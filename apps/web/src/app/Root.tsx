@@ -242,7 +242,8 @@ function RootInner() {
           and slide the whole app up with no way back (R11). */}
       <AnimatePresence mode="wait" initial={false}>
         <motion.div
-          key={lang}
+          // Keep the routed form and OTP state mounted when its language changes.
+          key="phone-shell"
           dir={dir}
           className={`relative w-full flex flex-col overflow-clip shadow-2xl transition-colors duration-300 ${darkMode ? 'dark bg-slate-900' : 'bg-white'}`}
           style={{
