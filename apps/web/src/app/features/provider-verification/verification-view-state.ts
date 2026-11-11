@@ -41,6 +41,7 @@ export interface VerificationAxes {
 }
 
 export type VerificationViewState =
+  | 'UNAVAILABLE'
   | 'ACCOUNT_LOCKED'
   | 'SUSPENDED'
   | 'ONBOARDING_INCOMPLETE'
@@ -48,6 +49,7 @@ export type VerificationViewState =
   | 'NOT_STARTED'
   | 'EVIDENCE_REQUIRED'
   | 'SCANNING'
+  | 'SCAN_RETRY_PENDING'
   | 'EVIDENCE_UNUSABLE'
   | 'READY_TO_SUBMIT'
   | 'PENDING_REVIEW'
@@ -77,6 +79,8 @@ export interface VerificationView {
   unusable: ProviderVerificationDocument[];
   /** Documents still being scanned. */
   scanning: ProviderVerificationDocument[];
+  /** Technical scanner/storage failures are retried on the existing file. */
+  scanFailures: ProviderVerificationDocument[];
   /** The reviewer's reason code, when there is one to act on. */
   reasonCode: string | null;
   /**
@@ -108,14 +112,10 @@ function isUsable(d: ProviderVerificationDocument): boolean {
   return d.scanState === 'CLEAN' && !d.superseded;
 }
 
-/** A document the provider must replace: the scanner found malware, could not
- *  reach a verdict, or the file was refused before scanning. All three mean
- *  "act", as opposed to PENDING which means "wait". */
+/** A verdict about the file itself requires replacement. A technical scan
+ * failure is separate: the worker retries that file without another upload. */
 function isUnusable(d: ProviderVerificationDocument): boolean {
-  return (
-    !d.superseded &&
-    (d.scanState === 'QUARANTINED' || d.scanState === 'SCAN_FAILED' || d.scanState === 'REJECTED')
-  );
+  return !d.superseded && (d.scanState === 'QUARANTINED' || d.scanState === 'REJECTED');
 }
 
 function satisfies(
@@ -156,9 +156,22 @@ export function deriveVerificationView(input: VerificationInput): VerificationVi
   const outstanding = requirements.filter((r) => !satisfies(r, documents));
   const unusable = documents.filter(isUnusable);
   const scanning = documents.filter((d) => !d.superseded && d.scanState === 'PENDING');
+  const scanFailures = documents.filter((d) => !d.superseded && d.scanState === 'SCAN_FAILED');
+  // Readiness is about required slots, as on the server. Keep optional file
+  // verdicts visible below, without turning them into an extra requirement.
+  const blocksRequiredSlot = (document: ProviderVerificationDocument) =>
+    outstanding.some(
+      (requirement) =>
+        document.kind === requirement.kind &&
+        document.serviceCategoryId === requirement.serviceCategoryId,
+    );
+  const requiredUnusable = unusable.filter(blocksRequiredSlot);
+  const requiredScanning = scanning.filter(blocksRequiredSlot);
+  const requiredScanFailures = scanFailures.filter(blocksRequiredSlot);
+  const awaitingScan = [...scanning, ...scanFailures];
   const missing = outstanding.filter(
     (requirement) =>
-      !scanning.some(
+      !awaitingScan.some(
         (document) =>
           document.kind === requirement.kind &&
           document.serviceCategoryId === requirement.serviceCategoryId,
@@ -187,9 +200,10 @@ export function deriveVerificationView(input: VerificationInput): VerificationVi
     axes,
     canManageVerification,
     outstanding,
-    uploadTarget: unusable[0] ?? missing[0] ?? requirements[0] ?? null,
+    uploadTarget: requiredUnusable[0] ?? missing[0] ?? requirements[0] ?? null,
     unusable,
     scanning,
+    scanFailures,
     reasonCode,
     availableActions,
     submittedAt: kase?.submittedAt ?? null,
@@ -247,29 +261,55 @@ export function deriveVerificationView(input: VerificationInput): VerificationVi
       // provider can act on by opening a new case; a verified provider whose
       // grant lapsed is not.
       return { ...base, state: 'REVERIFICATION_REQUIRED' };
-    default:
+    case 'DRAFT':
+    case 'ACTION_REQUIRED':
       break;
+    default:
+      // A newer or malformed state is not a draft. Do not invent a submission
+      // step while the client cannot interpret the server's current decision.
+      return { ...base, state: 'UNAVAILABLE' };
   }
 
   // DRAFT or ACTION_REQUIRED — the provider is the one who has to move.
   //
-  // Unusable files come FIRST: a quarantined document is the one thing they
-  // must replace, and burying it under "3 documents required" hides the only
-  // actionable fact on the screen.
-  if (unusable.length > 0) return { ...base, state: 'EVIDENCE_UNUSABLE' };
+  // Required unusable files come FIRST: a quarantined required document must
+  // be replaced. Optional files retain their own restrictions, but cannot
+  // block sending clean evidence that satisfies every required slot.
+  if (requiredUnusable.length > 0) return { ...base, state: 'EVIDENCE_UNUSABLE' };
   if (missing.length > 0) {
     return {
       ...base,
       state: kase.state === 'ACTION_REQUIRED' ? 'CHANGES_REQUESTED' : 'EVIDENCE_REQUIRED',
     };
   }
+  // A technical failure does not ask the provider to replace a potentially
+  // healthy file. Keep submission blocked while the worker retries it.
+  if (requiredScanFailures.length > 0) return { ...base, state: 'SCAN_RETRY_PENDING' };
   // Everything supplied, but something is still being checked. "Wait" is a
   // different instruction from "act", and the difference matters to someone
   // refreshing the page.
-  if (scanning.length > 0) return { ...base, state: 'SCANNING' };
+  if (requiredScanning.length > 0) return { ...base, state: 'SCANNING' };
   // Keep the reviewer's instruction and replacement controls visible. Clean
   // scanning alone does not mean a legibility correction has been made; the
   // screen also offers the server-authorized resubmission action here.
   if (kase.state === 'ACTION_REQUIRED') return { ...base, state: 'CHANGES_REQUESTED' };
   return { ...base, state: 'READY_TO_SUBMIT' };
+}
+
+/** The application still needs its own decision after documents are accepted. */
+export function verificationApplicationStep(
+  view: VerificationView,
+  capabilities: ProviderCapabilitiesResponse | null | undefined,
+): 'resume' | 'pending' | null {
+  if (
+    (view.state !== 'VERIFIED_NO_ACCESS' && view.state !== 'NOT_REQUIRED') ||
+    !capabilities?.allowed.includes('COMPLETE_ONBOARDING')
+  ) {
+    return null;
+  }
+  return capabilities.primaryReason === 'ONBOARDING_INCOMPLETE'
+    ? 'resume'
+    : capabilities.primaryReason === 'AWAITING_REVIEW'
+      ? 'pending'
+      : null;
 }

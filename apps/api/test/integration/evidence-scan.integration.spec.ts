@@ -421,6 +421,141 @@ d('Evidence scanning (real Postgres, real bytes)', () => {
     expect(await stateOf(id)).toBe('SCAN_FAILED');
   });
 
+  it('backs off each failed retry so an older failure cannot starve a new upload', async () => {
+    const failedId = await seedAsset(`${P}retry-old`, CLEAN_PDF);
+    await prisma.mediaAsset.update({
+      where: { id: failedId },
+      data: { createdAt: new Date('2000-01-01T00:00:00Z') },
+    });
+    const calls: string[] = [];
+    const scanner = {
+      scannerId: 'retry-regression',
+      isRealScanner: true,
+      scan: async ({ assetId }: { assetId: string }) => {
+        calls.push(assetId);
+        return assetId === failedId
+          ? { state: 'FAILED', scannerId: 'retry-regression', reason: 'timeout' }
+          : { state: 'CLEAN', scannerId: 'retry-regression' };
+      },
+    };
+    const service = makeService(scanner);
+    const firstAttempt = new Date();
+    const retry = new Date(firstAttempt.getTime() + 301_000);
+
+    await service.scanPending({ limit: 1, now: firstAttempt });
+    await service.scanPending({ limit: 1, now: retry });
+    expect(await stateOf(failedId)).toBe('SCAN_FAILED');
+    expect((await prisma.mediaAsset.findUnique({ where: { id: failedId } })).scannedAt).toEqual(
+      retry,
+    );
+
+    const newId = await seedAsset(`${P}retry-new`, CLEAN_PDF);
+    await prisma.mediaAsset.update({
+      where: { id: newId },
+      data: { createdAt: new Date('2000-01-01T00:00:01Z') },
+    });
+    const next = await service.scanPending({ limit: 1, now: new Date(retry.getTime() + 1_000) });
+
+    expect(next.cleared).toBe(1);
+    expect(await stateOf(newId)).toBe('CLEAN');
+    expect(calls).toEqual([failedId, failedId, newId]);
+    expect(
+      await prisma.auditEvent.count({
+        where: { userId: OWNER, type: 'VERIFICATION_EVIDENCE_SCAN_FAILED' },
+      }),
+    ).toBe(1);
+    expect(await prisma.outboxEvent.count({ where: { aggregateId: failedId } })).toBe(1);
+  });
+
+  it('advances new uploads and rotates failed attempts even when each sweep exceeds the cooldown', async () => {
+    const firstId = await seedAsset(`${P}slow-first`, CLEAN_PDF);
+    const secondId = await seedAsset(`${P}slow-second`, CLEAN_PDF);
+    const pendingId = await seedAsset(`${P}slow-pending`, CLEAN_PDF);
+    for (const [index, id] of [firstId, secondId, pendingId].entries()) {
+      const earlier = new Date(Date.UTC(2000, 0, 1, 0, 0, index));
+      await prisma.mediaAsset.update({
+        where: { id },
+        data: {
+          createdAt: earlier,
+          ...(id === pendingId ? {} : { scanState: 'SCAN_FAILED', scannedAt: earlier }),
+        },
+      });
+    }
+    const calls: string[] = [];
+    const service = makeService({
+      scannerId: 'slow-retry',
+      isRealScanner: true,
+      scan: async ({ assetId }: { assetId: string }) => {
+        calls.push(assetId);
+        return assetId === pendingId
+          ? { state: 'CLEAN', scannerId: 'slow-retry' }
+          : { state: 'FAILED', scannerId: 'slow-retry', reason: 'timeout' };
+      },
+    });
+    const started = new Date();
+    // The previously attempted row is eligible again at EVERY tick. Creation
+    // order alone repeatedly selects firstId and strands both later rows.
+    // Advancing injected time models slow sweeps without minutes of test sleep.
+    for (let attempt = 0; attempt < 4; attempt += 1) {
+      const result = await service.scanPending({
+        limit: 1,
+        now: new Date(started.getTime() + attempt * 301_000),
+      });
+      expect(result.examined).toBe(1);
+    }
+
+    expect(calls).toEqual([pendingId, firstId, secondId, firstId]);
+    expect(await stateOf(pendingId)).toBe('CLEAN');
+    expect(await stateOf(firstId)).toBe('SCAN_FAILED');
+    expect(await stateOf(secondId)).toBe('SCAN_FAILED');
+  });
+
+  it('claims a repeated failed attempt once when two workers retry together', async () => {
+    const id = await seedAsset(`${P}retry-race`, CLEAN_PDF);
+    await prisma.mediaAsset.update({
+      where: { id },
+      data: { createdAt: new Date('2000-01-01T00:00:00Z') },
+    });
+    const failure = { state: 'FAILED', scannerId: 'retry-race', reason: 'timeout' };
+    const firstAttempt = new Date();
+    await makeService({
+      scannerId: 'retry-race',
+      isRealScanner: true,
+      scan: async () => failure,
+    }).scanPending({ limit: 1, now: firstAttempt });
+
+    let arrivals = 0;
+    let release!: () => void;
+    const bothScanning = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const service = makeService({
+      scannerId: 'retry-race',
+      isRealScanner: true,
+      scan: async () => {
+        if (++arrivals === 2) release();
+        await bothScanning;
+        return failure;
+      },
+    });
+    const retry = new Date(firstAttempt.getTime() + 301_000);
+    const [first, second] = await Promise.all([
+      service.scanPending({ limit: 1, now: retry }),
+      service.scanPending({ limit: 1, now: retry }),
+    ]);
+
+    expect(first.failed + second.failed).toBe(1);
+    expect(first.skipped + second.skipped).toBe(1);
+    expect(await stateOf(id)).toBe('SCAN_FAILED');
+    expect((await prisma.mediaAsset.findUnique({ where: { id } })).scannedAt).toEqual(retry);
+    expect(
+      await prisma.auditEvent.count({
+        where: { userId: OWNER, type: 'VERIFICATION_EVIDENCE_SCAN_FAILED' },
+      }),
+    ).toBe(1);
+    expect(await prisma.outboxEvent.count({ where: { aggregateId: id } })).toBe(1);
+  });
+
   it('never releases a quarantined document, however often a scanner clears it', async () => {
     const id = await seedAsset(`${P}a7`, EICAR_PDF);
     await scanService.scanPending();

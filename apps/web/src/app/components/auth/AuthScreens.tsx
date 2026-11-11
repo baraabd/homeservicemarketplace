@@ -47,6 +47,8 @@ import {
   extractAuthError,
   loginErrorMessage,
   otpErrorMessage,
+  otpRecoveryAction,
+  type OtpRecoveryAction,
   registrationErrorMessage,
   recoveryRequestErrorMessage,
 } from '../../../lib/auth-errors';
@@ -111,6 +113,7 @@ interface EmailOtpPanelProps {
   isResending?: boolean;
   verifyError?: string;
   resendNotice?: string;
+  recovery?: OtpRecoveryAction;
   onRestart?: () => void;
   restartLabel?: string;
   // Experience-aware theming (Sprint 5.1.1). Defaults to seeker so any
@@ -128,13 +131,15 @@ export function EmailOtpPanel({
   isResending,
   verifyError,
   resendNotice,
+  recovery = null,
   onRestart,
   restartLabel,
   experience = AUTH_EXPERIENCES[DEFAULT_EXPERIENCE_ID],
 }: EmailOtpPanelProps) {
   const { lang } = useLang();
   const [code, setCode] = useState('');
-  const canSubmit = code.length === codeLength && !isVerifying && !isResending;
+  const canSubmit =
+    code.length === codeLength && !isVerifying && !isResending && recovery !== 'restart';
   // Ref so any tap/click on the visual boxes can programmatically focus the
   // visually-hidden <input>. Without this, mobile users literally cannot
   // bring up the numeric keyboard (the input is sr-only — offscreen), and
@@ -160,7 +165,7 @@ export function EmailOtpPanel({
           {email ? (
             <>
               {' '}
-              to{' '}
+              {lang === 'ar' ? 'إلى' : 'to'}{' '}
               <span className="text-slate-700" style={{ fontWeight: 600 }}>
                 {email}
               </span>
@@ -221,7 +226,7 @@ export function EmailOtpPanel({
             void onVerify(code);
           }
         }}
-        disabled={isVerifying || isResending}
+        disabled={isVerifying || isResending || recovery === 'restart'}
         aria-invalid={!!verifyError}
         aria-describedby={verifyError ? 'otp-verification-error' : undefined}
         aria-label={`${codeLength}-digit verification code`}
@@ -262,7 +267,7 @@ export function EmailOtpPanel({
       <button
         type="button"
         onClick={() => void onResend()}
-        disabled={isResending || isVerifying}
+        disabled={isResending || isVerifying || recovery !== null}
         className={`${experience.classes.accentText} active:opacity-70 disabled:opacity-50`}
         style={{ fontSize: '13px', fontWeight: 600 }}
       >
@@ -408,7 +413,8 @@ export function LoginScreen({
   const [challenge, setChallenge] = useState<LoginOtpChallenge | null>(null);
   const [isVerifying, setIsVerifying] = useState(false);
   const [isResending, setIsResending] = useState(false);
-  const [otpError, setOtpError] = useState<string | undefined>();
+  const [otpError, setOtpError] = useState<Record<'en' | 'ar', string> | undefined>();
+  const [otpRecovery, setOtpRecovery] = useState<OtpRecoveryAction>(null);
   const [resendNotice, setResendNotice] = useState<string | undefined>();
   const requestFlight = useRef(false);
   const credentialsRevision = useRef(0);
@@ -429,6 +435,9 @@ export function LoginScreen({
       // draft must not offer recovery or an OTP challenge for the new draft.
       if (revision !== credentialsRevision.current) return;
       setChallenge(out);
+      setOtpRecovery(null);
+      setOtpError(undefined);
+      setResendNotice(undefined);
     } catch (err: unknown) {
       if (revision !== credentialsRevision.current) return;
       // Map the backend's stable error CODE to user copy here — never
@@ -442,7 +451,7 @@ export function LoginScreen({
   };
 
   const handleOtpVerify = async (code: string) => {
-    if (!challenge || requestFlight.current) return;
+    if (!challenge || requestFlight.current || otpRecovery === 'restart') return;
     requestFlight.current = true;
     setIsVerifying(true);
     setOtpError(undefined);
@@ -451,7 +460,12 @@ export function LoginScreen({
       // Success is surfaced by the parent (which navigates to /home or
       // the saved returnTo path). No further UI change needed here.
     } catch (err: unknown) {
-      setOtpError(otpErrorMessage(err, 'verify'));
+      setOtpError({
+        en: otpErrorMessage(err, 'verify', 'en'),
+        ar: otpErrorMessage(err, 'verify', 'ar'),
+      });
+      const recovery = otpRecoveryAction(err, 'verify');
+      if (recovery) setOtpRecovery(recovery);
     } finally {
       requestFlight.current = false;
       setIsVerifying(false);
@@ -459,7 +473,7 @@ export function LoginScreen({
   };
 
   const handleOtpResend = async () => {
-    if (!challenge || requestFlight.current) return;
+    if (!challenge || requestFlight.current || otpRecovery !== null) return;
     requestFlight.current = true;
     setIsResending(true);
     setResendNotice(undefined);
@@ -472,7 +486,12 @@ export function LoginScreen({
           : 'Request received. Check your inbox and use the most recent code.',
       );
     } catch (err: unknown) {
-      setOtpError(otpErrorMessage(err, 'resend'));
+      setOtpError({
+        en: otpErrorMessage(err, 'resend', 'en'),
+        ar: otpErrorMessage(err, 'resend', 'ar'),
+      });
+      const recovery = otpRecoveryAction(err, 'resend');
+      if (recovery) setOtpRecovery(recovery);
     } finally {
       requestFlight.current = false;
       setIsResending(false);
@@ -565,11 +584,13 @@ export function LoginScreen({
             onResend={handleOtpResend}
             isVerifying={isVerifying}
             isResending={isResending}
-            verifyError={otpError}
+            verifyError={otpError?.[lang]}
+            recovery={otpRecovery}
             resendNotice={resendNotice}
             experience={experience}
             onRestart={() => {
               setChallenge(null);
+              setOtpRecovery(null);
               setPassword('');
               setLoginError(undefined);
               credentialsRevision.current += 1;
@@ -752,7 +773,8 @@ export function SignUpScreen({
   const [challenge, setChallenge] = useState<LoginOtpChallenge | null>(null);
   const [isVerifying, setIsVerifying] = useState(false);
   const [isResending, setIsResending] = useState(false);
-  const [otpError, setOtpError] = useState<string | undefined>();
+  const [otpError, setOtpError] = useState<Record<'en' | 'ar', string> | undefined>();
+  const [otpRecovery, setOtpRecovery] = useState<OtpRecoveryAction>(null);
   const [resendNotice, setResendNotice] = useState<string | undefined>();
   const requestFlight = useRef(false);
 
@@ -789,6 +811,9 @@ export function SignUpScreen({
         });
         clearSignupDraft();
         setChallenge(issued);
+        setOtpRecovery(null);
+        setOtpError(undefined);
+        setResendNotice(undefined);
         setStep(3);
       } catch (err: unknown) {
         if (legalRefusalReason(err) === 'LEGAL_VERSION_STALE') {
@@ -819,7 +844,7 @@ export function SignUpScreen({
   };
 
   const handleOtpVerify = async (code: string) => {
-    if (!challenge || requestFlight.current) return;
+    if (!challenge || requestFlight.current || otpRecovery === 'restart') return;
     requestFlight.current = true;
     setIsVerifying(true);
     setOtpError(undefined);
@@ -827,7 +852,12 @@ export function SignUpScreen({
       await onOtpVerify(challenge.challengeId, code);
       // Parent takes over (navigation to /home / returnTo).
     } catch (err: unknown) {
-      setOtpError(otpErrorMessage(err, 'verify'));
+      setOtpError({
+        en: otpErrorMessage(err, 'verify', 'en'),
+        ar: otpErrorMessage(err, 'verify', 'ar'),
+      });
+      const recovery = otpRecoveryAction(err, 'verify');
+      if (recovery) setOtpRecovery(recovery);
     } finally {
       requestFlight.current = false;
       setIsVerifying(false);
@@ -835,7 +865,7 @@ export function SignUpScreen({
   };
 
   const handleOtpResend = async () => {
-    if (!challenge || requestFlight.current) return;
+    if (!challenge || requestFlight.current || otpRecovery !== null) return;
     requestFlight.current = true;
     setIsResending(true);
     setResendNotice(undefined);
@@ -848,7 +878,12 @@ export function SignUpScreen({
           : 'Request received. Check your inbox and use the most recent code.',
       );
     } catch (err: unknown) {
-      setOtpError(otpErrorMessage(err, 'resend'));
+      setOtpError({
+        en: otpErrorMessage(err, 'resend', 'en'),
+        ar: otpErrorMessage(err, 'resend', 'ar'),
+      });
+      const recovery = otpRecoveryAction(err, 'resend');
+      if (recovery) setOtpRecovery(recovery);
     } finally {
       requestFlight.current = false;
       setIsResending(false);
@@ -1191,7 +1226,8 @@ export function SignUpScreen({
               onResend={handleOtpResend}
               isVerifying={isVerifying}
               isResending={isResending}
-              verifyError={otpError}
+              verifyError={otpError?.[lang]}
+              recovery={otpRecovery}
               resendNotice={resendNotice}
               experience={experience}
               onRestart={() =>

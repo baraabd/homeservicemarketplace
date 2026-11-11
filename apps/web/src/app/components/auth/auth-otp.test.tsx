@@ -575,3 +575,225 @@ describe('Register → OTP → authenticated', () => {
     });
   });
 });
+
+// These exercise the real page, shared panel, request client and recovery
+// navigation. Only HTTP is mocked; no real accounts or email are involved.
+describe.each(['en', 'ar'] as const)('OTP challenge recovery (%s)', (lang) => {
+  const resendLabel = lang === 'ar' ? 'إعادة طلب الرمز' : 'Resend code';
+  const confirmLabel = lang === 'ar' ? 'تأكيد' : 'Confirm';
+  const restartLabel = lang === 'ar' ? 'بدء تسجيل الدخول مجدداً' : 'Start sign-in again';
+
+  async function openOtp(path: '/login' | '/signup' = '/login') {
+    localStorage.setItem('hsm.lang', lang);
+    mock.onGet('/v1/auth/me').reply(401, {});
+    mock.onPost('/v1/auth/refresh').reply(401, {});
+    mock.onPost('/v1/auth/login').reply(200, OTP_CHALLENGE);
+    mock.onPost('/v1/auth/register').reply(202, OTP_CHALLENGE);
+    mock.onGet('/v1/legal/documents').reply(200, {
+      documents: Object.values(CURRENT_LEGAL_DOCUMENTS),
+      acceptanceOpen: true,
+    });
+    renderAuth(path);
+    if (path === '/login') await submitLoginCredentials();
+    else {
+      fireEvent.change(document.querySelectorAll('input')[0]!, {
+        target: { value: 'Ada Lovelace' },
+      });
+      fireEvent.click(screen.getByRole('button', { name: lang === 'ar' ? 'التالي' : 'Next' }));
+      fireEvent.change(document.querySelector('input[type="email"]')!, {
+        target: { value: 'ada@example.com' },
+      });
+      fireEvent.change(document.querySelector('input[type="password"]')!, {
+        target: { value: 'a-reasonable-passphrase' },
+      });
+      const consent = await screen.findByRole('checkbox', {
+        name: SIGNUP_CONSENT_COPY[lang].statement,
+      });
+      await waitFor(() => expect(consent).toBeEnabled());
+      fireEvent.click(consent);
+      fireEvent.click(
+        screen.getByRole('button', { name: lang === 'ar' ? 'إنشاء الحساب' : 'Create Account' }),
+      );
+    }
+    await screen.findByTestId('otp-input');
+    await waitFor(() => expect(qc.getQueryState(['auth', 'me'])?.fetchStatus).toBe('idle'));
+  }
+
+  it.each([
+    [400, 'AUTH_OTP_EXPIRED'],
+    [400, 'AUTH_OTP_INVALID'],
+    [403, 'AUTH_OTP_LOCKED'],
+  ] as const)(
+    'stops repeat resend after %s %s and restarts sign-in without an extra request',
+    async (status, code) => {
+      mock
+        .onPost('/v1/auth/resend-otp')
+        .reply(status, { error: { code, message: 'private-server-detail' } });
+      await openOtp();
+      const requestsBefore = mock.history.post.map((request) => request.url);
+      fireEvent.click(screen.getByRole('button', { name: resendLabel }));
+      const alert = await screen.findByRole('alert');
+      expect(alert).toHaveTextContent(lang === 'ar' ? 'خيار الاستعادة' : 'recovery option');
+      expect(alert).not.toHaveTextContent('private-server-detail');
+      expect(screen.getByRole('button', { name: resendLabel })).toBeDisabled();
+      expect(screen.getByRole('button', { name: confirmLabel })).toBeDisabled();
+      expect(screen.getByTestId('otp-input')).toBeDisabled();
+      fireEvent.click(screen.getByRole('button', { name: resendLabel }));
+      expect(
+        mock.history.post.filter((request) => request.url === '/v1/auth/resend-otp'),
+      ).toHaveLength(1);
+      fireEvent.click(screen.getByRole('button', { name: restartLabel }));
+      expect(screen.queryByTestId('otp-input')).not.toBeInTheDocument();
+      expect(document.querySelector('input[type="email"]')).toHaveValue('ada@example.com');
+      expect(document.querySelector('input[type="password"]')).toHaveValue('');
+      expect(mock.history.post.map((request) => request.url)).toEqual([
+        ...requestsBefore,
+        '/v1/auth/resend-otp',
+      ]);
+    },
+  );
+
+  it('recovers an expired signup challenge through the existing verification-link page', async () => {
+    mock.onPost('/v1/auth/resend-otp').reply(400, { error: { code: 'AUTH_OTP_EXPIRED' } });
+    await openOtp('/signup');
+    const requestsBefore = mock.history.post.map((request) => request.url);
+    fireEvent.click(screen.getByRole('button', { name: resendLabel }));
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      lang === 'ar' ? 'خيار الاستعادة' : 'recovery option',
+    );
+    expect(screen.getByRole('button', { name: resendLabel })).toBeDisabled();
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: lang === 'ar' ? 'طلب رابط تحقق بدلاً من الرمز' : 'Use a verification link instead',
+      }),
+    );
+    await screen.findByTestId('check-email-page');
+    expect(document.querySelector('input[type="email"]')).toHaveValue('ada@example.com');
+    expect(mock.history.post.map((request) => request.url)).toEqual([
+      ...requestsBefore,
+      '/v1/auth/resend-otp',
+    ]);
+  });
+
+  it('retains verification after the resend limit, including after a wrong-code attempt', async () => {
+    mock.onPost('/v1/auth/resend-otp').reply(403, { error: { code: 'AUTH_OTP_RESEND_EXCEEDED' } });
+    mock.onPost('/v1/auth/verify-otp').reply(400, { error: { code: 'AUTH_OTP_INVALID' } });
+    await openOtp();
+    fireEvent.click(screen.getByRole('button', { name: resendLabel }));
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      lang === 'ar' ? 'أحدث رمز' : 'most recent code',
+    );
+    expect(screen.getByRole('button', { name: resendLabel })).toBeDisabled();
+    expect(screen.getByTestId('otp-input')).toBeEnabled();
+    fireEvent.change(screen.getByTestId('otp-input'), { target: { value: '123456' } });
+    fireEvent.click(screen.getByRole('button', { name: confirmLabel }));
+    await waitFor(() =>
+      expect(screen.getByRole('alert')).toHaveTextContent(
+        lang === 'ar' ? 'الرمز غير صحيح' : 'Incorrect code',
+      ),
+    );
+    expect(screen.getByRole('button', { name: resendLabel })).toBeDisabled();
+    expect(screen.getByRole('button', { name: confirmLabel })).toBeEnabled();
+    expect(
+      mock.history.post.filter((request) => request.url === '/v1/auth/verify-otp'),
+    ).toHaveLength(1);
+  });
+
+  it.each([
+    [400, 'AUTH_OTP_EXPIRED'],
+    [403, 'AUTH_OTP_LOCKED'],
+  ] as const)(
+    'recovers a terminal verification response %s %s instead of sending the same code again',
+    async (status, code) => {
+      mock.onPost('/v1/auth/verify-otp').reply(status, { error: { code } });
+      await openOtp();
+      fireEvent.change(screen.getByTestId('otp-input'), { target: { value: '123456' } });
+      fireEvent.click(screen.getByRole('button', { name: confirmLabel }));
+      expect(await screen.findByRole('alert')).toHaveTextContent(
+        lang === 'ar' ? 'خيار الاستعادة' : 'recovery option',
+      );
+      expect(screen.getByRole('button', { name: confirmLabel })).toBeDisabled();
+      expect(screen.getByRole('button', { name: resendLabel })).toBeDisabled();
+      fireEvent.keyDown(screen.getByTestId('otp-input'), { key: 'Enter' });
+      expect(
+        mock.history.post.filter((request) => request.url === '/v1/auth/verify-otp'),
+      ).toHaveLength(1);
+      expect(screen.getByRole('button', { name: restartLabel })).toBeEnabled();
+    },
+  );
+
+  it('keeps localized recovery and entered digits on a language switch, then resets for a new challenge', async () => {
+    mock.onPost('/v1/auth/resend-otp').reply(400, { error: { code: 'AUTH_OTP_EXPIRED' } });
+    await openOtp();
+    fireEvent.change(screen.getByTestId('otp-input'), { target: { value: '123456' } });
+    fireEvent.click(screen.getByRole('button', { name: resendLabel }));
+    await screen.findByRole('alert');
+    fireEvent.click(screen.getByTestId('lang-toggle'));
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      lang === 'en' ? 'خيار الاستعادة' : 'recovery option',
+    );
+    expect(screen.getByTestId('otp-input')).toHaveValue('123456');
+    expect(screen.getByTestId('otp-input')).toBeDisabled();
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: lang === 'en' ? 'بدء تسجيل الدخول مجدداً' : 'Start sign-in again',
+      }),
+    );
+    const nextChallenge = 'synthetic-fresh-login-challenge';
+    mock.onPost('/v1/auth/login').reply(200, { ...OTP_CHALLENGE, challengeId: nextChallenge });
+    mock.onPost('/v1/auth/resend-otp').reply(202, { success: true, expiresInSeconds: 300 });
+    await submitLoginCredentials();
+    expect(await screen.findByTestId('otp-input')).toBeEnabled();
+    expect(screen.getByTestId('otp-input')).toHaveValue('');
+    const resend = screen.getByRole('button', {
+      name: lang === 'en' ? 'إعادة طلب الرمز' : 'Resend code',
+    });
+    expect(resend).toBeEnabled();
+    fireEvent.click(resend);
+    await waitFor(() => {
+      const requests = mock.history.post.filter((request) => request.url === '/v1/auth/resend-otp');
+      expect(requests).toHaveLength(2);
+      expect(JSON.parse(requests[1]!.data)).toEqual({ challengeId: nextChallenge });
+    });
+  });
+
+  it('allows retrying a wrong verification code and resending a still-live challenge', async () => {
+    mock.onPost('/v1/auth/verify-otp').reply(400, { error: { code: 'AUTH_OTP_INVALID' } });
+    mock.onPost('/v1/auth/resend-otp').reply(202, { success: true, expiresInSeconds: 300 });
+    await openOtp();
+    fireEvent.change(screen.getByTestId('otp-input'), { target: { value: '123456' } });
+    fireEvent.click(screen.getByRole('button', { name: confirmLabel }));
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      lang === 'ar' ? 'الرمز غير صحيح' : 'Incorrect code',
+    );
+    expect(screen.getByRole('button', { name: confirmLabel })).toBeEnabled();
+    expect(screen.getByRole('button', { name: resendLabel })).toBeEnabled();
+    fireEvent.click(screen.getByRole('button', { name: resendLabel }));
+    await waitFor(() =>
+      expect(
+        mock.history.post.filter((request) => request.url === '/v1/auth/resend-otp'),
+      ).toHaveLength(1),
+    );
+  });
+
+  it.each([429, 503, null] as const)(
+    'keeps %s resend failures retryable with localized copy',
+    async (status) => {
+      if (status === null) mock.onPost('/v1/auth/resend-otp').networkError();
+      else
+        mock.onPost('/v1/auth/resend-otp').reply(status, {
+          error: {
+            code: status === 429 ? 'RATE_LIMITED' : 'UNAVAILABLE',
+            message: 'private-server-detail',
+          },
+        });
+      await openOtp();
+      fireEvent.click(screen.getByRole('button', { name: resendLabel }));
+      const alert = await screen.findByRole('alert');
+      expect(alert).not.toHaveTextContent('private-server-detail');
+      if (lang === 'ar') expect(alert.textContent).not.toMatch(/[A-Za-z]/);
+      expect(screen.getByRole('button', { name: resendLabel })).toBeEnabled();
+      expect(screen.getByTestId('otp-input')).toBeEnabled();
+    },
+  );
+});

@@ -98,6 +98,34 @@ describe('loginErrorMessage', () => {
 });
 
 describe('otpErrorMessage', () => {
+  it.each(['en', 'ar'] as const)(
+    'resend explains expired and unusable challenges in %s',
+    (lang) => {
+      for (const code of ['AUTH_OTP_EXPIRED', 'AUTH_OTP_INVALID', 'AUTH_OTP_LOCKED']) {
+        const msg = otpErrorMessage(
+          axiosErr(400, { error: { code, message: 'private-detail' } }),
+          'resend',
+          lang,
+        );
+        expect(msg).toContain(lang === 'ar' ? 'خيار الاستعادة' : 'recovery option');
+        expect(msg).not.toContain('private-detail');
+        if (lang === 'ar') expect(msg).not.toMatch(/[A-Za-z]/);
+      }
+    },
+  );
+
+  it.each(['en', 'ar'] as const)(
+    'resend-limit copy keeps the most recent code usable in %s',
+    (lang) => {
+      const msg = otpErrorMessage(
+        axiosErr(403, { error: { code: 'AUTH_OTP_RESEND_EXCEEDED' } }),
+        'resend',
+        lang,
+      );
+      expect(msg).toContain(lang === 'ar' ? 'أحدث رمز' : 'most recent code');
+    },
+  );
+
   it('verify: AUTH_OTP_LOCKED', () => {
     const msg = otpErrorMessage(axiosErr(400, { error: { code: 'AUTH_OTP_LOCKED' } }), 'verify');
     expect(msg.toLowerCase()).toContain('too many');

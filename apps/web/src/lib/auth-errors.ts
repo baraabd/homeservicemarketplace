@@ -64,32 +64,75 @@ export function loginErrorMessage(err: unknown): string {
   return "Couldn't sign in. Please try again.";
 }
 
-// OTP-panel copy. Covers verify-otp + resend-otp outcomes. Unknown codes
-// collapse to a generic "try again".
-export function otpErrorMessage(err: unknown, kind: 'verify' | 'resend'): string {
+export type OtpRecoveryAction = 'restart' | 'use-latest-code' | null;
+
+/** A wrong code can be retried, but an invalid resend challenge cannot. The
+ * latest code remains usable when only the resend budget has been exhausted. */
+export function otpRecoveryAction(err: unknown, kind: 'verify' | 'resend'): OtpRecoveryAction {
   const { code, status } = extractAuthError(err);
-  if (status === 429) return 'Too many requests. Please wait a moment and try again.';
-  if ((status === null && code === null) || (status !== null && status >= 500)) return 'The server could not confirm this request. Please try again.';
+  if (status === 429 || (status !== null && status >= 500)) return null;
+  if (
+    code === 'AUTH_OTP_EXPIRED' ||
+    code === 'AUTH_OTP_LOCKED' ||
+    (kind === 'resend' && code === 'AUTH_OTP_INVALID')
+  )
+    return 'restart';
+  if (kind === 'resend' && code === 'AUTH_OTP_RESEND_EXCEEDED') return 'use-latest-code';
+  return null;
+}
+
+const OTP_ERROR_COPY = {
+  en: {
+    rateLimited: 'Too many requests. Please wait a moment and try again.',
+    unavailable: 'The server could not confirm this request. Please try again.',
+    locked: 'Too many attempts. Use the recovery option below to start again.',
+    expired: 'This verification request has expired. Use the recovery option below to start again.',
+    invalidCode: 'Incorrect code. Please try again.',
+    invalidChallenge:
+      'This verification request is no longer available. Use the recovery option below to continue.',
+    resendLimit:
+      'Resend limit reached. Enter the most recent code or use the recovery option below.',
+    resendFailed: 'Could not resend the code. Please try again.',
+  },
+  ar: {
+    rateLimited: 'طلبات كثيرة. انتظر قليلًا ثم حاول مجددًا.',
+    unavailable: 'تعذّر تأكيد الطلب من الخادم. حاول مجددًا.',
+    locked: 'بلغت الحد الأقصى للمحاولات. استخدم خيار الاستعادة أدناه للبدء مجددًا.',
+    expired: 'انتهت صلاحية طلب التحقق. استخدم خيار الاستعادة أدناه للبدء مجددًا.',
+    invalidCode: 'الرمز غير صحيح. تحقق منه وحاول مجددًا.',
+    invalidChallenge: 'لم يعد طلب التحقق هذا متاحًا. استخدم خيار الاستعادة أدناه للمتابعة.',
+    resendLimit: 'تم بلوغ حد إعادة طلب الرمز. أدخل أحدث رمز وصلك، أو استخدم خيار الاستعادة أدناه.',
+    resendFailed: 'تعذّرت إعادة طلب الرمز. حاول مجددًا.',
+  },
+} as const;
+
+// Only stable error codes determine copy. A refusal does not reveal whether
+// an address exists; the existing recovery routes retain that same boundary.
+export function otpErrorMessage(
+  err: unknown,
+  kind: 'verify' | 'resend',
+  lang: 'en' | 'ar' = 'en',
+): string {
+  const { code, status } = extractAuthError(err);
+  const copy = OTP_ERROR_COPY[lang];
+  if (status === 429) return copy.rateLimited;
+  if ((status === null && code === null) || (status !== null && status >= 500))
+    return copy.unavailable;
+  if (code === 'AUTH_OTP_LOCKED') return copy.locked;
+  if (code === 'AUTH_OTP_EXPIRED') return copy.expired;
   if (kind === 'verify') {
-    switch (code) {
-      case 'AUTH_OTP_LOCKED':
-        return 'Too many attempts. Please sign in again to get a new code.';
-      case 'AUTH_OTP_EXPIRED':
-        return 'This code has expired. Please request a new one.';
-      case 'AUTH_OTP_INVALID':
-        return 'Incorrect code. Please try again.';
-      default:
-        return 'Incorrect code. Please try again.';
-    }
+    return code === 'RATE_LIMITED' ? copy.rateLimited : copy.invalidCode;
   }
   // kind === 'resend'
   switch (code) {
+    case 'AUTH_OTP_INVALID':
+      return copy.invalidChallenge;
     case 'AUTH_OTP_RESEND_EXCEEDED':
-      return 'Resend limit reached. Please sign in again.';
+      return copy.resendLimit;
     case 'RATE_LIMITED':
-      return 'Too many requests. Please wait a moment and try again.';
+      return copy.rateLimited;
     default:
-      return 'Could not resend the code. Please try again.';
+      return copy.resendFailed;
   }
 }
 
@@ -107,7 +150,8 @@ export function resetPasswordErrorMessage(err: unknown): string {
 // Registration never renders raw driver/provider messages or exposes existence.
 export function registrationErrorMessage(err: unknown): string {
   const { code, status } = extractAuthError(err);
-  if (code === 'VALIDATION_ERROR' || status === 400) return 'Please check your account details and try again.';
+  if (code === 'VALIDATION_ERROR' || status === 400)
+    return 'Please check your account details and try again.';
   if (status === 429) return 'Too many requests. Please wait before trying again.';
   return 'Registration could not be confirmed. Please try again.';
 }

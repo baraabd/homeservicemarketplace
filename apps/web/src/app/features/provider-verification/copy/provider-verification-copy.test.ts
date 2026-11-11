@@ -90,6 +90,7 @@ describe('a state cannot exist without copy', () => {
     // reachable one has something to say — a screen that renders `undefined`
     // is worse than one that renders nothing.
     const reachable = [
+      'UNAVAILABLE',
       'REVERIFICATION_REQUIRED',
       'ACCOUNT_LOCKED',
       'SUSPENDED',
@@ -98,6 +99,7 @@ describe('a state cannot exist without copy', () => {
       'NOT_STARTED',
       'EVIDENCE_REQUIRED',
       'SCANNING',
+      'SCAN_RETRY_PENDING',
       'EVIDENCE_UNUSABLE',
       'READY_TO_SUBMIT',
       'PENDING_REVIEW',
@@ -120,7 +122,9 @@ describe('a state cannot exist without copy', () => {
     // teaches people to tap and hope.
     for (const lang of LANGS) {
       for (const state of [
+        'UNAVAILABLE',
         'SCANNING',
+        'SCAN_RETRY_PENDING',
         'PENDING_REVIEW',
         'VERIFIED_ACTIVE',
         'NOT_REQUIRED',

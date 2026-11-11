@@ -71,33 +71,57 @@ export interface CaseActionsPanelProps {
    *  this panel can tell a 409 from a 403 — two very different things to show
    *  a reviewer. */
   onRun: (input: {
+    caseId: string;
     action: VerificationCaseActionCode;
     reasonCode?: string;
     note?: string;
     expectedState: string;
   }) => Promise<unknown>;
   pending?: boolean;
+  /** Stale data can remain visible during recovery, but cannot authorize a decision. */
+  readOnly?: boolean;
+  /** Manual recovery starts a new review even if the lifecycle state stayed the same. */
+  reviewVersion?: number;
   /** HTTP status of the last failure, if any. */
   errorStatus?: number | null;
-  onReload?: () => void;
+  onReload?: () => Promise<unknown> | void;
 }
 
 export function CaseActionsPanel({
   verificationCase: kase,
   onRun,
   pending = false,
+  readOnly = false,
+  reviewVersion = 0,
   errorStatus = null,
   onReload,
 }: CaseActionsPanelProps) {
   const { lang, dir } = useLang();
   const t = UI[lang];
 
-  const [chosen, setChosen] = useState<VerificationCaseActionCode | null>(null);
+  const [chosen, setChosen] = useState<{
+    caseId: string;
+    action: VerificationCaseActionCode;
+    expectedState: string;
+    reviewVersion: number;
+  } | null>(null);
   const [reasonCode, setReasonCode] = useState('');
   const [note, setNote] = useState('');
   const [validationError, setValidationError] = useState<string | null>(null);
   const dialogRef = useRef<HTMLDivElement>(null);
   const openerRef = useRef<HTMLButtonElement | null>(null);
+  const requestFlight = useRef(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [reloading, setReloading] = useState(false);
+  const actions = kase.availableActions ?? [];
+  const selectionCurrent =
+    !!chosen &&
+    chosen.caseId === kase.id &&
+    chosen.expectedState === kase.state &&
+    chosen.reviewVersion === reviewVersion &&
+    actions.includes(chosen.action);
+  const busy = pending || submitting || reloading;
+  const decisionBlocked = readOnly || busy || errorStatus !== null;
 
   // Focus moves INTO the dialog when it opens and BACK to the button that
   // opened it when it closes. Without the return, a keyboard reviewer who
@@ -116,26 +140,47 @@ export function CaseActionsPanel({
   }
 
   async function confirm() {
-    if (!chosen) return;
-    if (NEEDS_REASON.has(chosen) && !reasonCode) {
+    if (!chosen || !selectionCurrent || decisionBlocked || requestFlight.current) return;
+    if (NEEDS_REASON.has(chosen.action) && !reasonCode) {
       setValidationError(t.reasonRequired);
       return;
     }
+    requestFlight.current = true;
+    setSubmitting(true);
     try {
       await onRun({
-        action: chosen,
+        caseId: chosen.caseId,
+        action: chosen.action,
         reasonCode: reasonCode || undefined,
         note: note || undefined,
         // The state the reviewer was LOOKING at. The server refuses with 409
         // if the case has moved on, which is what stops two reviewers with the
         // same case open from both deciding it.
-        expectedState: kase.state,
+        expectedState: chosen.expectedState,
       });
       close();
     } catch {
       // The failure is rendered from `errorStatus` by the parent, which owns
       // the request. Swallowing here keeps the dialog open so the reviewer can
       // see what happened next to what they were doing.
+    } finally {
+      requestFlight.current = false;
+      setSubmitting(false);
+    }
+  }
+
+  async function reload() {
+    if (!onReload || reloading || requestFlight.current) return;
+    setReloading(true);
+    try {
+      await onReload();
+      // A successful read requires a fresh decision. A failed one keeps the
+      // original reason and note available while the reviewer recovers.
+      close();
+    } catch {
+      // The workspace keeps the error visible and remains read-only.
+    } finally {
+      setReloading(false);
     }
   }
 
@@ -152,8 +197,6 @@ export function CaseActionsPanel({
     );
   }
 
-  const actions = kase.availableActions ?? [];
-
   return (
     <section aria-label={t.caseActions} dir={dir} data-testid="case-actions" className="space-y-2">
       <h4 className="text-sm font-semibold">{t.caseActions}</h4>
@@ -168,13 +211,30 @@ export function CaseActionsPanel({
           {onReload && (
             <button
               type="button"
-              onClick={onReload}
+              disabled={busy}
+              onClick={() => void reload()}
               className="mt-1 text-sm font-semibold underline"
             >
               {t.reload}
             </button>
           )}
         </div>
+      )}
+
+      {errorStatus !== null && errorStatus !== 409 && (
+        <p role="alert" data-testid="case-actions-failed" className="text-sm text-red-600">
+          {t.decisionFailed}
+        </p>
+      )}
+
+      {readOnly && (
+        <p
+          role="status"
+          data-testid="case-actions-paused"
+          className="text-sm text-slate-600 dark:text-slate-300"
+        >
+          {t.decisionPaused}
+        </p>
       )}
 
       {actions.length === 0 ? (
@@ -196,10 +256,14 @@ export function CaseActionsPanel({
               key={action}
               type="button"
               data-testid={`case-action-${action}`}
-              disabled={pending}
+              disabled={decisionBlocked}
               onClick={(e) => {
+                if (decisionBlocked) return;
                 openerRef.current = e.currentTarget;
-                setChosen(action);
+                setChosen({ caseId: kase.id, action, expectedState: kase.state, reviewVersion });
+                setReasonCode('');
+                setNote('');
+                setValidationError(null);
               }}
               className="rounded-lg border px-3 py-1.5 text-sm font-semibold disabled:opacity-50"
             >
@@ -222,15 +286,21 @@ export function CaseActionsPanel({
           className="rounded-lg border p-3 space-y-2"
           onKeyDown={(e) => {
             // Escape closes. A modal a keyboard user cannot dismiss is a trap.
-            if (e.key === 'Escape') close();
+            if (e.key === 'Escape' && !busy) close();
           }}
         >
           <h5 className="text-sm font-semibold">{t.confirmTitle}</h5>
           <p className="text-sm text-slate-600 dark:text-slate-300">
-            {t[CONFIRM_COPY[chosen] ?? 'confirmGeneric']}
+            {t[CONFIRM_COPY[chosen.action] ?? 'confirmGeneric']}
           </p>
 
-          {NEEDS_REASON.has(chosen) && (
+          {!selectionCurrent && (
+            <p role="alert" data-testid="case-action-stale" className="text-sm text-red-600">
+              {t.decisionChanged}
+            </p>
+          )}
+
+          {NEEDS_REASON.has(chosen.action) && (
             <>
               <label className="block text-sm" htmlFor="case-action-reason">
                 {t.reasonLabel}
@@ -239,6 +309,7 @@ export function CaseActionsPanel({
                 id="case-action-reason"
                 data-testid="case-action-reason"
                 value={reasonCode}
+                disabled={busy}
                 onChange={(e) => {
                   setReasonCode(e.target.value);
                   setValidationError(null);
@@ -246,7 +317,7 @@ export function CaseActionsPanel({
                 className="w-full rounded-lg border px-2 py-1.5 text-sm"
               >
                 <option value="">—</option>
-                {(REASON_CHOICES[chosen] ?? ['OTHER']).map((code) => (
+                {(REASON_CHOICES[chosen.action] ?? ['OTHER']).map((code) => (
                   <option key={code} value={code}>
                     {verificationReasonLabel(code, lang)}
                   </option>
@@ -260,6 +331,7 @@ export function CaseActionsPanel({
                 id="case-action-note"
                 data-testid="case-action-note"
                 value={note}
+                disabled={busy}
                 onChange={(e) => setNote(e.target.value)}
                 className="w-full rounded-lg border px-2 py-1.5 text-sm"
               />
@@ -280,7 +352,7 @@ export function CaseActionsPanel({
             <button
               type="button"
               data-testid="case-action-confirm"
-              disabled={pending}
+              disabled={decisionBlocked || !selectionCurrent}
               onClick={() => void confirm()}
               className="rounded-lg bg-slate-900 px-3 py-1.5 text-sm font-semibold text-white disabled:opacity-50"
             >
@@ -289,6 +361,7 @@ export function CaseActionsPanel({
             <button
               type="button"
               data-testid="case-action-cancel"
+              disabled={busy}
               onClick={close}
               className="rounded-lg border px-3 py-1.5 text-sm font-semibold"
             >

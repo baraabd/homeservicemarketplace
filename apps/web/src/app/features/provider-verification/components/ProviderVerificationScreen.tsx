@@ -26,7 +26,8 @@ import {
   UI_COPY,
   reasonText,
 } from '../copy/provider-verification-copy';
-import { deriveVerificationView } from '../verification-view-state';
+import { deriveVerificationView, verificationApplicationStep } from '../verification-view-state';
+import { VERIFICATION_CASE_QUERY_KEY, verificationRefreshInterval } from '../verification-query';
 import { VerificationAxisBadges } from './VerificationAxisBadges';
 
 // Sprint 9B.11 — the provider's verification screen.
@@ -43,7 +44,7 @@ import { VerificationAxisBadges } from './VerificationAxisBadges';
 // corners, Cairo for Arabic — is lifted from ProviderStatusState so this screen
 // belongs to the same app rather than looking like a bolt-on.
 
-const CASE_KEY = ['provider', 'verification', 'case'] as const;
+const CASE_KEY = VERIFICATION_CASE_QUERY_KEY;
 const CAPS_KEY = ['provider', 'verification', 'capabilities'] as const;
 const ACCEPTED = 'image/jpeg,image/png,application/pdf';
 
@@ -76,8 +77,6 @@ function applicationCorrectionFrom(error: unknown): ApplicationCorrection | null
         : null;
 }
 
-const VERIFICATION_REFRESH_MS = 30_000;
-
 export function ProviderVerificationScreen() {
   const { lang, dir } = useLang();
   const navigate = useNavigate();
@@ -103,21 +102,7 @@ export function ProviderVerificationScreen() {
     refetchOnWindowFocus: 'always',
     refetchInterval: (query) => {
       if (!canReadCase || query.state.status === 'error') return false;
-      const currentCase = query.state.data?.case;
-      if (
-        Array.isArray(currentCase?.documents) &&
-        currentCase.documents.some(
-          (document) => !document.superseded && document.scanState === 'PENDING',
-        )
-      )
-        return 2000;
-      // Review, revocation and expiry can happen while this tab stays open.
-      // Keep the current case in step with the server's capability poll.
-      return currentCase?.state === 'SUBMITTED' ||
-        currentCase?.state === 'IN_REVIEW' ||
-        currentCase?.state === 'VERIFIED'
-        ? VERIFICATION_REFRESH_MS
-        : false;
+      return verificationRefreshInterval(query.state.data?.case);
     },
   });
   const profileQuery = useProviderProfile();
@@ -230,15 +215,7 @@ export function ProviderVerificationScreen() {
       ? capsQuery.data?.nextActions.includes('COMPLETE_PROFILE')
       : capsQuery.data?.allowed.includes('COMPLETE_ONBOARDING'));
   const recoveryHref = needsProfile && onboardingV2 ? '/provider/activate' : applicationHref;
-  const documentStepComplete = view.state === 'VERIFIED_NO_ACCESS' || view.state === 'NOT_REQUIRED';
-  const applicationNext =
-    documentStepComplete && capabilities?.allowed.includes('COMPLETE_ONBOARDING')
-      ? capabilities.primaryReason === 'ONBOARDING_INCOMPLETE'
-        ? 'resume'
-        : capabilities.primaryReason === 'AWAITING_REVIEW'
-          ? 'pending'
-          : null
-      : null;
+  const applicationNext = verificationApplicationStep(view, capabilities);
   const canOpenWorkspace =
     (view.state === 'VERIFIED_ACTIVE' || view.state === 'NOT_REQUIRED') &&
     capabilities?.allowed.includes('SUBMIT_BID');
@@ -347,8 +324,6 @@ export function ProviderVerificationScreen() {
     view.canManageVerification &&
     (view.state === 'READY_TO_SUBMIT' || view.state === 'CHANGES_REQUESTED') &&
     view.outstanding.length === 0 &&
-    view.scanning.length === 0 &&
-    view.unusable.length === 0 &&
     view.availableActions.includes('submit');
 
   /** Mount the programmatic picker only where uploading is permitted.
@@ -484,7 +459,7 @@ export function ProviderVerificationScreen() {
                   variant={
                     d.scanState === 'CLEAN'
                       ? 'default'
-                      : d.scanState === 'PENDING'
+                      : d.scanState === 'PENDING' || d.scanState === 'SCAN_FAILED'
                         ? 'secondary'
                         : 'destructive'
                   }
@@ -494,21 +469,31 @@ export function ProviderVerificationScreen() {
                   {SCAN_STATE_LABELS[lang][d.scanState]}
                 </Badge>
                 {d.superseded && <span className="text-xs text-muted-foreground">↺</span>}
-                {canUpload && !d.superseded && d.scanState !== 'PENDING' && (
-                  <Button
-                    variant="secondary"
-                    tone="provider"
-                    state={busy || offline ? 'disabled' : 'default'}
-                    onClick={() => {
-                      setPendingKind(d.kind);
-                      setPendingCategory(d.serviceCategoryId);
-                      fileInput.current?.click();
-                    }}
-                  >
-                    {t.replace}
-                    <span className="sr-only">: {DOCUMENT_KIND_LABELS[lang][d.kind]}</span>
-                  </Button>
-                )}
+                {!d.superseded &&
+                  d.scanState === 'SCAN_FAILED' &&
+                  view.state !== 'SCAN_RETRY_PENDING' && (
+                    <span className="basis-full text-xs text-muted-foreground">
+                      {t.scanRetryNote}
+                    </span>
+                  )}
+                {canUpload &&
+                  !d.superseded &&
+                  d.scanState !== 'PENDING' &&
+                  d.scanState !== 'SCAN_FAILED' && (
+                    <Button
+                      variant="secondary"
+                      tone="provider"
+                      state={busy || offline ? 'disabled' : 'default'}
+                      onClick={() => {
+                        setPendingKind(d.kind);
+                        setPendingCategory(d.serviceCategoryId);
+                        fileInput.current?.click();
+                      }}
+                    >
+                      {t.replace}
+                      <span className="sr-only">: {DOCUMENT_KIND_LABELS[lang][d.kind]}</span>
+                    </Button>
+                  )}
               </li>
             ))}
           </ul>
@@ -561,6 +546,41 @@ export function ProviderVerificationScreen() {
         >
           {t.resubmit}
         </Button>
+      )}
+      {(view.state === 'SCANNING' ||
+        view.state === 'SCAN_RETRY_PENDING' ||
+        view.state === 'PENDING_REVIEW' ||
+        view.state === 'UNAVAILABLE') && (
+        <div className="space-y-2">
+          <Button
+            variant="secondary"
+            tone="provider"
+            fullWidth
+            state={
+              caseQuery.isFetching || capsQuery.isFetching
+                ? 'loading'
+                : offline
+                  ? 'disabled'
+                  : 'default'
+            }
+            onClick={() => {
+              void capsQuery.refetch();
+              if (canReadCase) void caseQuery.refetch();
+            }}
+          >
+            {t.refresh}
+          </Button>
+          {(view.state === 'SCANNING' || view.state === 'SCAN_RETRY_PENDING') && (
+            <Button
+              variant="secondary"
+              tone="provider"
+              fullWidth
+              onClick={() => navigate('/provider/support')}
+            >
+              {t.contactSupport}
+            </Button>
+          )}
+        </div>
       )}
     </section>
   );

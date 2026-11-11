@@ -107,10 +107,12 @@ function DocumentRow({
   doc,
   lang,
   onView,
+  readOnly = false,
 }: {
   doc: AdminVerificationDocument;
   lang: Lang;
   onView?: (documentId: string) => void;
+  readOnly?: boolean;
 }) {
   const copy = UI[lang];
   const kind = DOCUMENT_KIND_LABELS[lang][doc.kind];
@@ -160,7 +162,7 @@ function DocumentRow({
           every future scan state viewable by default. */}
       <button
         type="button"
-        disabled={!doc.viewable}
+        disabled={readOnly || !doc.viewable}
         onClick={() => onView?.(doc.id)}
         // 44x44 minimum touch target (WCAG 2.2 AA target size).
         className="shrink-0 inline-flex items-center justify-center gap-1 px-3 rounded-2xl bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200 disabled:opacity-40 disabled:cursor-not-allowed"
@@ -180,12 +182,14 @@ export function VerificationEvidencePanel({
   isLoading,
   isError,
   onView,
+  readOnly = false,
 }: {
   verificationCase: AdminVerificationCase | null | undefined;
   lang: Lang;
   isLoading?: boolean;
   isError?: boolean;
   onView?: (documentId: string) => void;
+  readOnly?: boolean;
 }) {
   const copy = UI[lang];
 
@@ -257,7 +261,13 @@ export function VerificationEvidencePanel({
 
             <ul className="flex flex-col">
               {verificationCase.documents.map((doc) => (
-                <DocumentRow key={doc.id} doc={doc} lang={lang} onView={onView} />
+                <DocumentRow
+                  key={doc.id}
+                  doc={doc}
+                  lang={lang}
+                  onView={onView}
+                  readOnly={readOnly}
+                />
               ))}
             </ul>
 

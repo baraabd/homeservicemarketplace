@@ -33,6 +33,11 @@ export interface StateCopy {
 /** What the provider is told in each state, and what they can do about it. */
 export const STATE_COPY: Record<Lang, Record<VerificationViewState, StateCopy>> = {
   en: {
+    UNAVAILABLE: {
+      title: 'Verification status is unavailable',
+      body: 'Refresh your status to check the next step. Your saved documents have not been changed.',
+      cta: null,
+    },
     ACCOUNT_LOCKED: {
       title: 'Your account is closed',
       body: 'You cannot use the marketplace with this account. Contact support if you think this is wrong.',
@@ -64,8 +69,13 @@ export const STATE_COPY: Record<Lang, Record<VerificationViewState, StateCopy>> 
       cta: 'Add a document',
     },
     SCANNING: {
-      title: 'Checking your files',
-      body: 'We are checking the files you sent. This usually takes a moment — you do not need to do anything.',
+      title: 'Files awaiting a security check',
+      body: 'Your files are waiting for the security check. This page updates automatically. After the check succeeds, send your documents for review. If the status does not change, contact support.',
+      cta: null,
+    },
+    SCAN_RETRY_PENDING: {
+      title: 'The security check could not finish',
+      body: 'Your file is saved. Automatic retries run when the scanning service is available. You do not need to upload it again. Sending for review stays unavailable until the check succeeds. Refresh the status, or contact support if it stays unchanged.',
       cta: null,
     },
     EVIDENCE_UNUSABLE: {
@@ -110,6 +120,11 @@ export const STATE_COPY: Record<Lang, Record<VerificationViewState, StateCopy>> 
     },
   },
   ar: {
+    UNAVAILABLE: {
+      title: 'حالة التوثيق غير متاحة',
+      body: 'حدّث الحالة لمعرفة الخطوة التالية. لم تتغير مستنداتك المحفوظة.',
+      cta: null,
+    },
     ACCOUNT_LOCKED: {
       title: 'حسابك مغلق',
       body: 'لا يمكنك استخدام المنصة بهذا الحساب. تواصل مع الدعم إذا كنت تعتقد أن هذا خطأ.',
@@ -141,8 +156,13 @@ export const STATE_COPY: Record<Lang, Record<VerificationViewState, StateCopy>> 
       cta: 'إضافة مستند',
     },
     SCANNING: {
-      title: 'نتحقق من ملفاتك',
-      body: 'نقوم بفحص الملفات التي أرسلتها. عادةً ما يستغرق ذلك لحظات — لا حاجة لفعل أي شيء.',
+      title: 'ملفاتك بانتظار فحص الأمان',
+      body: 'ملفاتك بانتظار فحص الأمان. تُحدّث هذه الصفحة تلقائيًا. بعد نجاح الفحص، أرسل مستنداتك للمراجعة. إذا لم تتغير الحالة، تواصل مع الدعم.',
+      cta: null,
+    },
+    SCAN_RETRY_PENDING: {
+      title: 'تعذر إكمال فحص الأمان',
+      body: 'ملفك محفوظ. تُعاد محاولة فحصه تلقائيًا عند توفر خدمة الفحص. لا حاجة إلى رفعه مجددًا. يبقى الإرسال للمراجعة غير متاح حتى نجاح الفحص. حدّث الحالة أو تواصل مع الدعم إذا استمر التعثر.',
       cta: null,
     },
     EVIDENCE_UNUSABLE: {
@@ -320,6 +340,10 @@ export const UI_COPY: Record<Lang, Record<string, string>> = {
     uploadFailed: 'We could not upload this document. Try again.',
     resubmit: 'Send updates for review',
     retry: 'Try again',
+    refresh: 'Refresh status',
+    contactSupport: 'Contact support',
+    scanRetryNote:
+      'This file is saved. Automatic retries run when the scanning service is available; this technical failure does not require a replacement.',
     offline: 'You are offline. Reconnect to continue verification.',
     documentsHeading: 'Your documents',
     requirementsHeading: 'What we need',
@@ -347,6 +371,10 @@ export const UI_COPY: Record<Lang, Record<string, string>> = {
     uploadFailed: 'تعذر رفع هذا المستند. أعد المحاولة.',
     resubmit: 'إرسال التعديلات للمراجعة',
     retry: 'أعد المحاولة',
+    refresh: 'تحديث الحالة',
+    contactSupport: 'تواصل مع الدعم',
+    scanRetryNote:
+      'هذا الملف محفوظ. تُعاد محاولة فحص الأمان تلقائيًا عند توفر خدمة الفحص؛ لا يلزم استبداله بسبب تعذر الفحص.',
     offline: 'أنت غير متصل. أعد الاتصال لمتابعة التوثيق.',
     documentsHeading: 'مستنداتك',
     requirementsHeading: 'ما نحتاجه',
