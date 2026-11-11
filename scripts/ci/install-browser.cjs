@@ -1,6 +1,7 @@
 'use strict';
 
 const fs = require('node:fs/promises');
+const { constants } = require('node:fs');
 const path = require('node:path');
 const { spawn } = require('node:child_process');
 
@@ -23,6 +24,34 @@ const INSTALL_ARGS = [
 const UBUNTU_URL =
   /https?:\/\/(?:azure\.archive\.ubuntu\.com|archive\.ubuntu\.com|security\.ubuntu\.com)\/ubuntu\/?(?=\s|$)/gu;
 const RUNNER_MIRROR_URI = /mirror\+file:\/etc\/apt\/apt-mirrors\.txt(?=\s|$)/gu;
+const MAX_SOURCE_BYTES = 128 * 1024;
+
+async function readRegularSource(file) {
+  // Open once before checking the same descriptor. On the eligible Linux
+  // runner, O_NOFOLLOW rejects symlinks and O_NONBLOCK avoids waiting on FIFOs.
+  const flags = constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0) | (constants.O_NONBLOCK ?? 0);
+  const handle = await fs.open(file, flags).catch((error) => {
+    if (error.code === 'ELOOP') throw new Error('Refusing a non-regular apt source');
+    throw error;
+  });
+  try {
+    const stat = await handle.stat();
+    if (!stat.isFile() || stat.size > MAX_SOURCE_BYTES)
+      throw new Error('Refusing a non-regular or oversized apt source');
+    // Limit the read too, in case the opened regular file grows after fstat.
+    const buffer = Buffer.alloc(MAX_SOURCE_BYTES + 1);
+    let used = 0;
+    while (used < buffer.length) {
+      const { bytesRead } = await handle.read(buffer, used, buffer.length - used, used);
+      if (!bytesRead) break;
+      used += bytesRead;
+    }
+    if (used > MAX_SOURCE_BYTES) throw new Error('Refusing an oversized apt source');
+    return buffer.toString('utf8', 0, used);
+  } finally {
+    await handle.close();
+  }
+}
 
 function validateRunnerMirrorList(text) {
   const entries = text
@@ -107,23 +136,17 @@ async function readMirrorPlan(aptRoot = '/etc/apt') {
   const plan = [];
   let runnerMirrorListVerified = false;
   for (const file of files) {
-    const stat = await fs.lstat(file).catch((error) => {
+    const original = await readRegularSource(file).catch((error) => {
       if (error.code === 'ENOENT') return null;
       throw error;
     });
-    if (!stat) continue;
-    if (!stat.isFile() || stat.size > 128 * 1024)
-      throw new Error('Refusing a non-regular or oversized apt source');
-    const original = await fs.readFile(file, 'utf8');
+    if (original === null) continue;
     if (original.includes('mirror+file:/etc/apt/apt-mirrors.txt') && !runnerMirrorListVerified) {
       // GitHub's hosted Ubuntu image uses this exact local mirror list. Do not
       // follow arbitrary mirror+file paths or replace non-Ubuntu repositories.
       // https://github.com/actions/runner-images/blob/main/images/ubuntu/scripts/build/configure-apt-sources.sh
       const mirrorFile = path.join(aptRoot, 'apt-mirrors.txt');
-      const mirrorStat = await fs.lstat(mirrorFile);
-      if (!mirrorStat.isFile() || mirrorStat.size > 128 * 1024)
-        throw new Error('Refusing a non-regular or oversized runner mirror list');
-      validateRunnerMirrorList(await fs.readFile(mirrorFile, 'utf8'));
+      validateRunnerMirrorList(await readRegularSource(mirrorFile));
       runnerMirrorListVerified = true;
     }
     const updated = rewriteSources(original, file, runnerMirrorListVerified);
@@ -252,6 +275,7 @@ module.exports = {
   hasUbuntuDnsFailure,
   validateRunnerMirrorList,
   rewriteSources,
+  readRegularSource,
   readMirrorPlan,
   runCommand,
   installBrowser,

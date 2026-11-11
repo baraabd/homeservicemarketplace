@@ -11,6 +11,7 @@ const {
   hasUbuntuDnsFailure,
   validateRunnerMirrorList,
   rewriteSources,
+  readRegularSource,
   readMirrorPlan,
   runCommand,
   installBrowser,
@@ -124,6 +125,50 @@ test('source planning rejects an empty fallback plan', async (t) => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'hsm-browser-empty-'));
   t.after(() => fs.rm(root, { recursive: true, force: true }));
   await assert.rejects(readMirrorPlan(root), /No supported Ubuntu/u);
+});
+
+test('regular source reads remain on the opened file when its pathname changes', async (t) => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'hsm-browser-descriptor-'));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const file = path.join(root, 'ubuntu.sources');
+  await fs.writeFile(file, 'the opened source');
+  const open = fs.open;
+  t.mock.method(fs, 'open', async (...args) => {
+    const handle = await open(...args);
+    await fs.rename(file, path.join(root, 'original.sources'));
+    await fs.writeFile(file, 'a replacement pathname');
+    return handle;
+  });
+  assert.equal(await readRegularSource(file), 'the opened source');
+  assert.equal(await fs.readFile(file, 'utf8'), 'a replacement pathname');
+});
+
+test('regular source reads refuse oversized files and directories', async (t) => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'hsm-browser-source-size-'));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const file = path.join(root, 'ubuntu.sources');
+  await fs.writeFile(file, Buffer.alloc(128 * 1024 + 1));
+  await assert.rejects(readRegularSource(file), /oversized/u);
+  await assert.rejects(readRegularSource(root));
+});
+
+test('regular source reads stay bounded if the open file grows after its size check', async (t) => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'hsm-browser-source-growth-'));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const file = path.join(root, 'ubuntu.sources');
+  await fs.writeFile(file, 'initial source');
+  const open = fs.open;
+  t.mock.method(fs, 'open', async (...args) => {
+    const handle = await open(...args);
+    const stat = handle.stat.bind(handle);
+    t.mock.method(handle, 'stat', async () => {
+      const initial = await stat();
+      await fs.appendFile(file, Buffer.alloc(128 * 1024 + 1));
+      return initial;
+    });
+    return handle;
+  });
+  await assert.rejects(readRegularSource(file), /oversized/u);
 });
 
 test('GitHub mirror list accepts only its known Ubuntu archives', () => {

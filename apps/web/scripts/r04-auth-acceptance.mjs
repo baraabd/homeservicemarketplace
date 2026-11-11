@@ -434,6 +434,9 @@ try {
     assert.equal(unverifiedResponse.status(), 403);
     assert.equal((await unverifiedResponse.json()).error.code, 'AUTH_ACCOUNT_UNVERIFIED');
     await expect(recoveryButton).toBeVisible();
+    await expect(
+      b.page.getByText('يرجى التحقق من بريدك الإلكتروني قبل تسجيل الدخول.', { exact: true }),
+    ).toBeVisible();
     recoveryStep = 'arabic-recovery-visible';
     await expect(b.page.getByTestId('otp-input')).toHaveCount(0);
     assert.equal(loginRequests, 2);
@@ -459,7 +462,9 @@ try {
     await expect(b.page.getByRole('status')).toContainText('تم استلام الطلب');
     const target = await link(address, 'verify-email');
     await b.page.goto(target);
-    await expect(b.page.getByRole('heading', { name: 'Email verified' })).toBeVisible();
+    await expect(
+      b.page.getByRole('heading', { name: 'تم التحقق من البريد الإلكتروني', exact: true }),
+    ).toBeVisible();
     assert.equal((await call(b.page, '/v1/auth/me')).status, 401);
     const size = await b.page.evaluate(() => ({
       width: globalThis.document.documentElement.clientWidth,
@@ -593,7 +598,9 @@ try {
     );
     await page.goto(target);
     assert.equal((await verification).status(), 200);
-    await expect(page.getByRole('heading', { name: 'Email verified' })).toBeVisible();
+    await expect(
+      page.getByRole('heading', { name: 'تم التحقق من البريد الإلكتروني', exact: true }),
+    ).toBeVisible();
     const activated = await ownUser(address);
     assert.equal(activated.id, user.id);
     assert.equal(activated.status, 'ACTIVE');

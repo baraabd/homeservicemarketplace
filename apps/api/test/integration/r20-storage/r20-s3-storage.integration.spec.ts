@@ -5,6 +5,7 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import type { S3Client } from '@aws-sdk/client-s3';
+import { makeTestSecret } from '../../support/test-secrets';
 
 import {
   adapterConfig,
@@ -109,6 +110,47 @@ d('R20 storage adapters — real S3-compatible service', () => {
   });
 
   // ── 1. browser-direct upload contract (public namespace) ────────────────
+
+  it('API-mediated uploads keep origin private and enforce real create-only S3 writes', async () => {
+    const base = adapterConfig(buckets);
+    const overrides: Record<string, unknown> = {
+      S3_UPLOAD_TRANSPORT: 'api',
+      PUBLIC_API_URL: 'https://api.example.test',
+      S3_PUBLIC_BASE_URL: 'https://api.example.test/v1/media/files',
+      JWT_ACCESS_SECRET: makeTestSecret('r20-api-upload'),
+    };
+    const adapter = publicAdapter({
+      get: (key: string) => (key in overrides ? overrides[key] : base.get(key)),
+    });
+    const key = `avatars/r20ref/${randomUUID()}.png`;
+    const grant = await adapter.presignUpload({
+      key,
+      contentType: 'image/png',
+      sizeBytes: PNG.length,
+    });
+    const url = new URL(grant.uploadUrl);
+    expect(url.origin).toBe('https://api.example.test');
+    expect(grant.uploadUrl).not.toContain(endpoint());
+    const input = {
+      key,
+      contentType: 'image/png',
+      sizeBytes: PNG.length,
+      body: PNG,
+      actualContentType: 'image/png',
+      sig: url.searchParams.get('sig'),
+      exp: Number(url.searchParams.get('exp')),
+    };
+    await adapter.acceptUpload(input);
+    expect(await readAll(await adapter.readObjectStream(key))).toEqual(PNG);
+    expect(await anonymousGet(PUB, key)).toBe(403);
+    await expect(
+      adapter.acceptUpload({ ...input, body: Buffer.alloc(PNG.length) }),
+    ).rejects.toMatchObject({ code: 'EEXIST' });
+    await expect(
+      adapter.acceptUpload({ ...input, key: `avatars/r20ref/${randomUUID()}.png` }),
+    ).rejects.toThrow('signature-mismatch');
+    expect(await readAll(await adapter.readObjectStream(key))).toEqual(PNG);
+  });
 
   describe('presigned upload contract', () => {
     const requestKey = () => `requests/r20ref/${randomUUID()}.png`;

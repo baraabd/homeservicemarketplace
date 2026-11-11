@@ -409,7 +409,10 @@ export function LoginScreen({
   const [password, setPassword] = useState('');
   const [showPw, setShowPw] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-  const [loginError, setLoginError] = useState<{ message: string; code: string | null }>();
+  const [loginError, setLoginError] = useState<{
+    messages: Record<'en' | 'ar', string>;
+    code: string | null;
+  }>();
   const [challenge, setChallenge] = useState<LoginOtpChallenge | null>(null);
   const [isVerifying, setIsVerifying] = useState(false);
   const [isResending, setIsResending] = useState(false);
@@ -423,7 +426,13 @@ export function LoginScreen({
     if (requestFlight.current) return;
     setLoginError(undefined);
     if (!email || !password) {
-      setLoginError({ message: t('emailAddress') + ' / ' + t('password'), code: null });
+      setLoginError({
+        messages: {
+          en: 'Email Address / Password',
+          ar: 'البريد الإلكتروني / كلمة المرور',
+        },
+        code: null,
+      });
       return;
     }
     requestFlight.current = true;
@@ -443,7 +452,13 @@ export function LoginScreen({
       // Map the backend's stable error CODE to user copy here — never
       // render response.data.error.message verbatim. That used to leak raw
       // framework text like "Unauthorized Exception" onto the login form.
-      setLoginError({ message: loginErrorMessage(err), code: extractAuthError(err).code });
+      setLoginError({
+        messages: {
+          en: loginErrorMessage(err, 'en'),
+          ar: loginErrorMessage(err, 'ar'),
+        },
+        code: extractAuthError(err).code,
+      });
     } finally {
       requestFlight.current = false;
       setIsLoading(false);
@@ -610,7 +625,7 @@ export function LoginScreen({
                 setLoginError(undefined);
                 credentialsRevision.current += 1;
               }}
-              error={loginError?.message}
+              error={loginError?.messages[lang]}
               leadingIcon={<Mail size={16} />}
             />
 

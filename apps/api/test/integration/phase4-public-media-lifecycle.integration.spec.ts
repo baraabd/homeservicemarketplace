@@ -312,6 +312,40 @@ d('Phase 4 — public media reservation, claim and sweep (real Postgres, real fi
   // ── sweep ─────────────────────────────────────────────────────────────────
 
   describe('sweep', () => {
+    it('keeps retired bytes sweepable until the upload capability expires, including a replay', async () => {
+      const now = new Date();
+      const k = key('retired-before-upload-expiry');
+      await ledger.reserve(
+        { userId: OWNER, storageKey: k, contentType: 'image/jpeg', sizeBytes: 17 },
+        now,
+      );
+      putObject(k);
+      expect(await ledger.claim({ userId: OWNER, storageKey: k }, now)).not.toBeNull();
+      await ledger.retire({ userId: OWNER, storageKey: k, reason: 'PROVIDER_REMOVED_AVATAR' }, now);
+      const retired = await prisma.mediaAsset.findUnique({ where: { storageKey: k } });
+      expect(retired.retainUntil).toEqual(now);
+
+      await cleanup.sweep({ limit: 50, reservationGraceMs: GRACE_MS, now });
+      expect(objectExists(k)).toBe(true);
+      expect(
+        (await prisma.mediaAsset.findUnique({ where: { storageKey: k } })).deletedAt,
+      ).toBeNull();
+
+      // Simulate the still-valid grant writing the same key after retirement.
+      // Once that grant's reservation window closes, one sweep removes the
+      // replayed bytes as well and only then records physical deletion.
+      putObject(k);
+      await cleanup.sweep({
+        limit: 50,
+        reservationGraceMs: GRACE_MS,
+        now: retired.uploadExpiresAt,
+      });
+      expect(objectExists(k)).toBe(false);
+      expect(
+        (await prisma.mediaAsset.findUnique({ where: { storageKey: k } })).deletedAt,
+      ).not.toBeNull();
+    });
+
     /** A row plus its bytes, in whatever lifecycle state a test needs. */
     async function asset(
       name: string,

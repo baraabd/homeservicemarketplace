@@ -12,6 +12,7 @@ import express from 'express';
 jest.setTimeout(30_000);
 
 import { MediaController } from '../../src/modules/media/media.controller';
+import { PublicMediaReadService } from '../../src/modules/media/public-media-read.service';
 import { RequestMediaService } from '../../src/modules/media/request-media.service';
 import { PublicMediaLedgerService } from '../../src/modules/media/public-media-ledger.service';
 import { LocalDiskStorageAdapter } from '../../src/infrastructure/storage/local-disk-storage.adapter';
@@ -70,6 +71,14 @@ async function bootApp(): Promise<INestApplication> {
   const moduleRef = await Test.createTestingModule({
     controllers: [MediaController],
     providers: [
+      {
+        provide: PublicMediaReadService,
+        useValue: {
+          openPublic: jest
+            .fn()
+            .mockRejectedValue(new Error('S3 read is not configured in this local fixture.')),
+        },
+      },
       {
         provide: PortfolioMediaService,
         useValue: { openPublic: portfolioOpenPublic },

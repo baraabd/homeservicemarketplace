@@ -119,6 +119,14 @@ export const CONSENT_VERSION_KEY = 'provider_consent_policy_version';
 const MAX_SERVICE_AREAS_KEY = 'provider_onboarding_max_service_areas';
 const MAX_SPECIALTIES_KEY = 'provider_onboarding_max_specialties';
 
+/** Server-owned related writes that must commit with the versioned step.
+ * Never populated from a request body; callers may only persist database
+ * changes through the supplied transaction, not external storage effects. */
+export type OnboardingStepPersistenceEffect = (
+  trx: PrismaTx,
+  previous: Readonly<{ profileImageUrl: string | null }>,
+) => Promise<void>;
+
 /** Which fields each step is ALLOWED to write.
  *
  *  The step comes from the route, and a PATCH that carries a field belonging
@@ -214,6 +222,7 @@ export class ProviderOnboardingWizardService {
     userId: string,
     step: ProviderOnboardingStep,
     body: PatchOnboardingStepRequest,
+    persistRelated?: OnboardingStepPersistenceEffect,
   ): Promise<ProviderOnboardingDraftView> {
     // Cheap, deterministic rejections BEFORE opening a transaction: a wrong
     // field on the wrong step is a client bug, and a transaction is a lock.
@@ -306,6 +315,9 @@ export class ProviderOnboardingWizardService {
         // Another writer landed between the check above and this update.
         throw await this.conflict(userId, draft.version + 1, body.version);
       }
+      // Related media changes run only after the edit lock and optimistic
+      // version write succeed, and roll back with the profile on any failure.
+      await persistRelated?.(trx, { profileImageUrl: ctx.profile.profileImageUrl ?? null });
     });
 
     return this.view(userId);

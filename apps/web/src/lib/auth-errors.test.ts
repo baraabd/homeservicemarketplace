@@ -54,6 +54,27 @@ describe('loginErrorMessage', () => {
     expect(loginErrorMessage(e).toLowerCase()).toContain('verify');
   });
 
+  it('localizes Arabic login refusals without displaying server messages', () => {
+    const codes = [
+      'AUTH_INVALID_CREDENTIALS',
+      'AUTH_ACCOUNT_LOCKED',
+      'AUTH_ACCOUNT_SUSPENDED',
+      'AUTH_ACCOUNT_UNVERIFIED',
+      'VALIDATION_ERROR',
+      'RATE_LIMITED',
+      'UNKNOWN',
+    ];
+    for (const code of codes) {
+      const error = axiosErr(403, { error: { code, message: 'private-server-detail' } });
+      expect(loginErrorMessage(error, 'ar')).toMatch(/[\u0600-\u06ff]/);
+      expect(loginErrorMessage(error, 'ar')).not.toMatch(/[A-Za-z]/);
+    }
+    for (const error of [axiosErr(429), axiosErr(503), new Error('private-network-detail')]) {
+      expect(loginErrorMessage(error, 'ar')).toMatch(/[\u0600-\u06ff]/);
+      expect(loginErrorMessage(error, 'ar')).not.toMatch(/[A-Za-z]/);
+    }
+  });
+
   it('AUTH_ACCOUNT_SUSPENDED — tells the user the account is suspended', () => {
     const e = axiosErr(403, { error: { code: 'AUTH_ACCOUNT_SUSPENDED' } });
     expect(loginErrorMessage(e).toLowerCase()).toContain('suspended');

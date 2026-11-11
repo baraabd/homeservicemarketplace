@@ -37,6 +37,7 @@ import {
   extensionForContentType,
 } from '../../src/infrastructure/storage/content-type';
 import { MediaController } from '../../src/modules/media/media.controller';
+import { PublicMediaReadService } from '../../src/modules/media/public-media-read.service';
 import { PublicMediaLedgerService } from '../../src/modules/media/public-media-ledger.service';
 import { RequestMediaService } from '../../src/modules/media/request-media.service';
 import { CsrfGuard } from '../../src/modules/iam/authentication/guards/csrf.guard';
@@ -132,6 +133,14 @@ async function bootApp(): Promise<INestApplication> {
   @Module({
     controllers: [MediaController],
     providers: [
+      {
+        provide: PublicMediaReadService,
+        useValue: {
+          openPublic: jest
+            .fn()
+            .mockRejectedValue(new Error('S3 read is not configured in this local fixture.')),
+        },
+      },
       {
         provide: PortfolioMediaService,
         useValue: {

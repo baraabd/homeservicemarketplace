@@ -304,32 +304,65 @@ describe.each(['en', 'ar'] as const)('Login verification recovery (%s)', (lang) 
   );
 
   it.each([
-    ['wrong credentials', 401, 'AUTH_INVALID_CREDENTIALS', 'Incorrect email or password.'],
+    [
+      'wrong credentials',
+      401,
+      'AUTH_INVALID_CREDENTIALS',
+      'Incorrect email or password.',
+      'البريد الإلكتروني أو كلمة المرور غير صحيحة.',
+    ],
     [
       'locked account',
       401,
       'AUTH_ACCOUNT_LOCKED',
       'Account temporarily locked due to too many failed attempts. Try again later or reset your password.',
+      'تم قفل الحساب مؤقتًا لكثرة المحاولات غير الناجحة. حاول لاحقًا أو أعد تعيين كلمة المرور.',
     ],
     [
       'suspended account',
       403,
       'AUTH_ACCOUNT_SUSPENDED',
       'This account has been suspended. Contact support.',
+      'تم تعليق هذا الحساب. تواصل مع الدعم.',
     ],
-    ['rate limit', 429, 'RATE_LIMITED', 'Too many attempts. Please wait a moment and try again.'],
-    ['validation', 400, 'VALIDATION_ERROR', 'Please check your email and password and try again.'],
+    [
+      'rate limit',
+      429,
+      'RATE_LIMITED',
+      'Too many attempts. Please wait a moment and try again.',
+      'محاولات كثيرة. انتظر قليلًا ثم حاول مجددًا.',
+    ],
+    [
+      'validation',
+      400,
+      'VALIDATION_ERROR',
+      'Please check your email and password and try again.',
+      'تحقق من البريد الإلكتروني وكلمة المرور ثم حاول مجددًا.',
+    ],
     [
       'server unavailable',
       503,
       'DEPENDENCY_UNAVAILABLE',
       "We couldn't reach the server. Please try again.",
+      'تعذّر الاتصال بالخادم. حاول مجددًا.',
     ],
-    ['network failure', null, null, "Couldn't sign in. Please try again."],
-    ['unrecognized refusal', 403, 'UNRECOGNIZED', 'Incorrect email or password.'],
+    [
+      'network failure',
+      null,
+      null,
+      "Couldn't sign in. Please try again.",
+      'تعذّر تسجيل الدخول. حاول مجددًا.',
+    ],
+    [
+      'unrecognized refusal',
+      403,
+      'UNRECOGNIZED',
+      'Incorrect email or password.',
+      'البريد الإلكتروني أو كلمة المرور غير صحيحة.',
+    ],
   ] as const)(
     '%s does not suggest email verification and preserves password recovery',
-    async (_label, status, code, message) => {
+    async (_label, status, code, message, arabicMessage) => {
       if (status === null) mock.onPost('/v1/auth/login').networkError();
       else {
         mock.onPost('/v1/auth/login').reply(status, {
@@ -339,7 +372,7 @@ describe.each(['en', 'ar'] as const)('Login verification recovery (%s)', (lang) 
       renderAuth('/login');
       await submitLoginCredentials();
 
-      expect(await screen.findByText(message)).toBeInTheDocument();
+      expect(await screen.findByText(lang === 'ar' ? arabicMessage : message)).toBeInTheDocument();
       expect(screen.queryByRole('button', { name: recoveryLabel })).toBeNull();
       expect(screen.queryByText('synthetic-private-server-detail')).toBeNull();
       expect(screen.queryByTestId('otp-input')).toBeNull();
@@ -448,9 +481,15 @@ it('switches the verification action language without losing the entered credent
 
   fireEvent.click(screen.getByTestId('lang-toggle'));
   expect(screen.getByRole('button', { name: 'طلب رابط للتحقق من البريد' })).toBeInTheDocument();
+  expect(screen.getByText('يرجى التحقق من بريدك الإلكتروني قبل تسجيل الدخول.')).toBeVisible();
+  expect(screen.queryByText('Please verify your email before signing in.')).toBeNull();
   expect(document.documentElement).toHaveAttribute('dir', 'rtl');
   expect(document.querySelector('input[type="email"]')).toHaveValue('ada@example.com');
   expect(document.querySelector('input[type="password"]')).toHaveValue('a-reasonable-passphrase');
+  expect(mock.history.post).toHaveLength(1);
+
+  fireEvent.click(screen.getByTestId('lang-toggle'));
+  expect(screen.getByText('Please verify your email before signing in.')).toBeVisible();
   expect(mock.history.post).toHaveLength(1);
 });
 

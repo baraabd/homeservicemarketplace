@@ -40,28 +40,54 @@ export function extractAuthError(err: unknown): ExtractedAuthError {
 // Login-screen copy. Narrow set — we only show the cases the login form can
 // meaningfully surface. Unknown codes collapse to a generic, non-alarming
 // fallback; never fall through to the backend's raw message.
-export function loginErrorMessage(err: unknown): string {
+const LOGIN_ERROR_COPY = {
+  en: {
+    invalid: 'Incorrect email or password.',
+    locked:
+      'Account temporarily locked due to too many failed attempts. Try again later or reset your password.',
+    suspended: 'This account has been suspended. Contact support.',
+    unverified: 'Please verify your email before signing in.',
+    validation: 'Please check your email and password and try again.',
+    rateLimited: 'Too many attempts. Please wait a moment and try again.',
+    unavailable: "We couldn't reach the server. Please try again.",
+    failed: "Couldn't sign in. Please try again.",
+  },
+  ar: {
+    invalid: 'البريد الإلكتروني أو كلمة المرور غير صحيحة.',
+    locked:
+      'تم قفل الحساب مؤقتًا لكثرة المحاولات غير الناجحة. حاول لاحقًا أو أعد تعيين كلمة المرور.',
+    suspended: 'تم تعليق هذا الحساب. تواصل مع الدعم.',
+    unverified: 'يرجى التحقق من بريدك الإلكتروني قبل تسجيل الدخول.',
+    validation: 'تحقق من البريد الإلكتروني وكلمة المرور ثم حاول مجددًا.',
+    rateLimited: 'محاولات كثيرة. انتظر قليلًا ثم حاول مجددًا.',
+    unavailable: 'تعذّر الاتصال بالخادم. حاول مجددًا.',
+    failed: 'تعذّر تسجيل الدخول. حاول مجددًا.',
+  },
+} as const;
+
+export function loginErrorMessage(err: unknown, lang: 'en' | 'ar' = 'en'): string {
   const { code, status } = extractAuthError(err);
+  const copy = LOGIN_ERROR_COPY[lang];
   switch (code) {
     case 'AUTH_INVALID_CREDENTIALS':
-      return 'Incorrect email or password.';
+      return copy.invalid;
     case 'AUTH_ACCOUNT_LOCKED':
-      return 'Account temporarily locked due to too many failed attempts. Try again later or reset your password.';
+      return copy.locked;
     case 'AUTH_ACCOUNT_SUSPENDED':
-      return 'This account has been suspended. Contact support.';
+      return copy.suspended;
     case 'AUTH_ACCOUNT_UNVERIFIED':
-      return 'Please verify your email before signing in.';
+      return copy.unverified;
     case 'VALIDATION_ERROR':
-      return 'Please check your email and password and try again.';
+      return copy.validation;
     case 'RATE_LIMITED':
-      return 'Too many attempts. Please wait a moment and try again.';
+      return copy.rateLimited;
     default:
       break;
   }
-  if (status === 401 || status === 403) return 'Incorrect email or password.';
-  if (status === 429) return 'Too many attempts. Please wait a moment and try again.';
-  if (status && status >= 500) return "We couldn't reach the server. Please try again.";
-  return "Couldn't sign in. Please try again.";
+  if (status === 401 || status === 403) return copy.invalid;
+  if (status === 429) return copy.rateLimited;
+  if (status && status >= 500) return copy.unavailable;
+  return copy.failed;
 }
 
 export type OtpRecoveryAction = 'restart' | 'use-latest-code' | null;

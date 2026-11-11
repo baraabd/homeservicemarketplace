@@ -5,6 +5,7 @@ import { MemoryRouter, Route, Routes } from 'react-router';
 import type { QueryClient } from '@tanstack/react-query';
 import { api } from '../../lib/api';
 import { AuthProvider, createAuthQueryClient } from '../../lib/auth-provider';
+import { LangToggle, LanguageProvider } from '../i18n/LanguageContext';
 import {
   CheckEmailPage,
   ForgotPasswordPage,
@@ -28,18 +29,29 @@ afterEach(() => {
   mock.restore();
 });
 
-function renderAt(initialEntry: string) {
+function renderAt(initialEntry: string, language?: 'ar') {
+  if (language) localStorage.setItem('hsm.lang', language);
+  const page = (
+    <MemoryRouter initialEntries={[initialEntry]}>
+      <Routes>
+        <Route path="/login" element={<div data-testid="login-stub">login</div>} />
+        <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+        <Route path="/check-email" element={<CheckEmailPage />} />
+        <Route path="/verify-email" element={<VerifyEmailPage />} />
+        <Route path="/reset-password" element={<ResetPasswordPage />} />
+      </Routes>
+    </MemoryRouter>
+  );
   return render(
     <AuthProvider client={qc}>
-      <MemoryRouter initialEntries={[initialEntry]}>
-        <Routes>
-          <Route path="/login" element={<div data-testid="login-stub">login</div>} />
-          <Route path="/forgot-password" element={<ForgotPasswordPage />} />
-          <Route path="/check-email" element={<CheckEmailPage />} />
-          <Route path="/verify-email" element={<VerifyEmailPage />} />
-          <Route path="/reset-password" element={<ResetPasswordPage />} />
-        </Routes>
-      </MemoryRouter>
+      {language ? (
+        <LanguageProvider>
+          <LangToggle />
+          {page}
+        </LanguageProvider>
+      ) : (
+        page
+      )}
     </AuthProvider>,
   );
 }
@@ -150,6 +162,78 @@ describe('CheckEmailPage — resend verification', () => {
 });
 
 describe('VerifyEmailPage — consumes token from URL', () => {
+  it('waits for delayed guest bootstrap, renders Arabic success and never repeats verification on language changes', async () => {
+    let finishBootstrap!: (response: [number, object]) => void;
+    mock.onGet('/v1/auth/me').reply(
+      () =>
+        new Promise<[number, object]>((resolve) => {
+          finishBootstrap = resolve;
+        }),
+    );
+    let finish!: (response: [number, object]) => void;
+    mock.onPost('/v1/auth/verify-email').reply(
+      () =>
+        new Promise<[number, object]>((resolve) => {
+          finish = resolve;
+        }),
+    );
+    renderAt('/verify-email?token=arabic-token', 'ar');
+    expect(screen.getByRole('heading', { name: 'جارٍ التحقق من بريدك الإلكتروني…' })).toBeVisible();
+    await waitFor(() => expect(finishBootstrap).toBeDefined());
+    expect(mock.history.post.filter((r) => r.url === '/v1/auth/verify-email')).toHaveLength(0);
+    await act(async () => {
+      finishBootstrap([401, {}]);
+    });
+    await waitFor(() => expect(finish).toBeDefined());
+    await act(async () => {
+      finish([200, { success: true }]);
+    });
+    await screen.findByRole('heading', { name: 'تم التحقق من البريد الإلكتروني' });
+    expect(screen.getByText('حسابك نشط الآن. يمكنك تسجيل الدخول.')).toBeVisible();
+    expect(document.documentElement).toHaveAttribute('dir', 'rtl');
+    expect(screen.getByRole('button', { name: 'الانتقال إلى تسجيل الدخول' })).toBeVisible();
+    fireEvent.click(screen.getByTestId('lang-toggle'));
+    expect(screen.getByRole('heading', { name: 'Email verified' })).toBeVisible();
+    expect(mock.history.post.filter((r) => r.url === '/v1/auth/verify-email')).toHaveLength(1);
+    fireEvent.click(screen.getByRole('button', { name: 'Go to sign in' }));
+    expect(screen.getByTestId('login-stub')).toBeInTheDocument();
+  });
+
+  it.each([
+    ['/verify-email', 'رمز التحقق غير موجود', 0],
+    ['/verify-email?token=expired-arabic-token', 'الرابط غير صالح أو منتهي الصلاحية', 1],
+  ] as const)('localizes the refused Arabic link at %s', async (route, heading, requests) => {
+    mock.onGet('/v1/auth/me').reply(401, {});
+    mock
+      .onPost('/v1/auth/verify-email')
+      .reply(400, { error: { message: 'private-server-detail' } });
+    renderAt(route, 'ar');
+    await screen.findByRole('heading', { name: heading });
+    expect(screen.getByRole('button', { name: 'العودة إلى تسجيل الدخول' })).toBeVisible();
+    expect(screen.getByRole('button', { name: 'طلب رابط تحقق جديد' })).toBeVisible();
+    expect(screen.queryByText('private-server-detail')).toBeNull();
+    expect(mock.history.post.filter((r) => r.url === '/v1/auth/verify-email')).toHaveLength(
+      requests,
+    );
+  });
+
+  it('localizes an Arabic server failure and retries verification only after the recovery action', async () => {
+    mock.onGet('/v1/auth/me').reply(401, {});
+    mock
+      .onPost('/v1/auth/verify-email')
+      .replyOnce(503, { error: { message: 'private-server-detail' } });
+    mock.onPost('/v1/auth/verify-email').reply(200, { success: true });
+    renderAt('/verify-email?token=retry-arabic-token', 'ar');
+    await screen.findByRole('heading', { name: 'تعذّر إتمام التحقق' });
+    expect(screen.getByText('تعذّر الاتصال بالخادم. انتظر قليلًا ثم حاول مجددًا.')).toBeVisible();
+    expect(mock.history.post.filter((r) => r.url === '/v1/auth/verify-email')).toHaveLength(1);
+    fireEvent.click(screen.getByRole('button', { name: 'إعادة محاولة التحقق' }));
+    await screen.findByRole('heading', { name: 'تم التحقق من البريد الإلكتروني' });
+    const requests = mock.history.post.filter((r) => r.url === '/v1/auth/verify-email');
+    expect(requests).toHaveLength(2);
+    expect(requests.every((r) => JSON.parse(r.data).token === 'retry-arabic-token')).toBe(true);
+  });
+
   it('POSTs /v1/auth/verify-email on mount and shows success', async () => {
     mock.onGet('/v1/auth/me').reply(401, {});
     mock.onPost('/v1/auth/verify-email').reply(200, { success: true });
