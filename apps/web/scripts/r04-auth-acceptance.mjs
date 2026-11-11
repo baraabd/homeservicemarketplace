@@ -50,7 +50,10 @@ async function newPage(width = 390, language = 'en') {
     serviceWorkers: 'block',
   });
   contexts.push(context);
-  await context.addInitScript((lang) => localStorage.setItem('hsm.lang', lang), language);
+  await context.addInitScript((lang) => {
+    // Seed a new context once; real language changes must survive full reloads.
+    if (localStorage.getItem('hsm.lang') === null) localStorage.setItem('hsm.lang', lang);
+  }, language);
   const page = await context.newPage();
   page.setDefaultTimeout(15000);
   page.on('pageerror', () => errors.push('browser-page-error'));
@@ -135,8 +138,17 @@ async function submitOtp(page, value, expected = 200) {
   await page.getByTestId('otp-input').press('Enter');
   assert.equal((await response).status(), expected, 'OTP HTTP status');
 }
-async function signIn(page, address, password = pwd) {
-  await page.goto(`${WEB}/login`);
+async function signIn(page, address, password = pwd, returnTo = '') {
+  const target = returnTo ? `?${new URLSearchParams({ returnTo })}` : '';
+  await page.goto(`${WEB}/login${target}`);
+  if (returnTo) {
+    await expect(
+      page.getByRole('heading', {
+        name: returnTo === '/admin' ? 'FixNow Admin' : 'FixNow Pro',
+        exact: true,
+      }),
+    ).toBeVisible();
+  }
   await page.getByLabel('Email Address', { exact: true }).fill(address);
   await page.getByLabel('Password', { exact: true }).fill(password);
   const response = page.waitForResponse(
@@ -327,7 +339,7 @@ try {
     },
   );
   await phase('cold-verification-recovery-and-arabic-narrow-viewport', async () => {
-    const b = await newPage(320, 'ar');
+    const b = await newPage(320, 'en');
     const address = `r04-${randomUUID()}@example.test`;
     await b.page.goto(`${WEB}/signup`);
     const result = await call(b.page, '/v1/auth/register', {
@@ -340,6 +352,70 @@ try {
     assert.equal(result.status, 202);
     await ownUser(address);
     await code(address);
+    await b.page.goto(`${WEB}/login?returnTo=%2Fadmin`);
+    await expect(b.page.getByRole('heading', { name: 'FixNow Admin', exact: true })).toBeVisible();
+    await b.page.getByLabel('Email Address', { exact: true }).fill(address);
+    await b.page.getByLabel('Password', { exact: true }).fill(`${pwd}-incorrect`);
+    let loginRequests = 0;
+    let refreshRequests = 0;
+    const countRequests = (request) => {
+      if (request.method() !== 'POST') return;
+      if (request.url() === `${API}/v1/auth/login`) loginRequests += 1;
+      if (request.url() === `${API}/v1/auth/refresh`) refreshRequests += 1;
+    };
+    b.page.on('request', countRequests);
+    const invalidLogin = b.page.waitForResponse(
+      (response) =>
+        response.url() === `${API}/v1/auth/login` && response.request().method() === 'POST',
+    );
+    await b.page.getByRole('button', { name: 'Log In', exact: true }).click();
+    const invalidResponse = await invalidLogin;
+    assert.equal(invalidResponse.status(), 401);
+    assert.equal((await invalidResponse.json()).error.code, 'AUTH_INVALID_CREDENTIALS');
+    await expect(b.page.getByText('Incorrect email or password.', { exact: true })).toBeVisible();
+    await expect(
+      b.page.getByRole('button', { name: 'Request email verification', exact: true }),
+    ).toHaveCount(0);
+    await expect(
+      b.page.getByRole('button', { name: 'Forgot Password?', exact: true }),
+    ).toBeVisible();
+    await expect(b.page.getByTestId('otp-input')).toHaveCount(0);
+    assert.equal(loginRequests, 1, 'A refused login is not replayed');
+    assert.equal(refreshRequests, 0, 'A refused login does not refresh a session');
+    await b.page.screenshot({
+      path: path.join(OUT, 'login-invalid-credentials-en-320.png'),
+      fullPage: true,
+    });
+
+    await b.page.getByTestId('lang-toggle').click();
+    await expect(b.page.getByLabel('البريد الإلكتروني', { exact: true })).toHaveValue(address);
+    await b.page.getByLabel('كلمة المرور', { exact: true }).fill(pwd);
+    const recoveryButton = b.page.getByRole('button', {
+      name: 'طلب رابط للتحقق من البريد',
+      exact: true,
+    });
+    await expect(recoveryButton).toHaveCount(0);
+    const unverifiedLogin = b.page.waitForResponse(
+      (response) =>
+        response.url() === `${API}/v1/auth/login` && response.request().method() === 'POST',
+    );
+    await b.page.getByRole('button', { name: 'دخول', exact: true }).click();
+    const unverifiedResponse = await unverifiedLogin;
+    assert.equal(unverifiedResponse.status(), 403);
+    assert.equal((await unverifiedResponse.json()).error.code, 'AUTH_ACCOUNT_UNVERIFIED');
+    await expect(recoveryButton).toBeVisible();
+    await expect(b.page.getByTestId('otp-input')).toHaveCount(0);
+    assert.equal(loginRequests, 2);
+    assert.equal(refreshRequests, 0);
+    b.page.off('request', countRequests);
+    await b.page.screenshot({
+      path: path.join(OUT, 'login-unverified-ar-320.png'),
+      fullPage: true,
+    });
+    await recoveryButton.click();
+    await expect(b.page).toHaveURL(/\/check-email$/u);
+    await expect(b.page.getByLabel('البريد الإلكتروني', { exact: true })).toHaveValue(address);
+    // Reopen without router state: recovery must also work from a cold page.
     await b.page.goto(`${WEB}/check-email`);
     await expect(b.page.getByTestId('auth-logout-notice')).toHaveCount(0);
     await b.page.getByLabel('البريد الإلكتروني', { exact: true }).fill(address);
@@ -394,7 +470,7 @@ try {
         [user.id, role],
       );
       assert.equal((await call(c.page, '/v1/auth/logout', {})).status, 204);
-      await signIn(c.page, address);
+      await signIn(c.page, address, pwd, `/${role}`);
       const me = (await call(c.page, '/v1/auth/me')).body;
       assert.ok(me.roles.includes(role));
       await c.page.goto(`${WEB}/${role === 'admin' ? 'admin' : 'provider'}`);
