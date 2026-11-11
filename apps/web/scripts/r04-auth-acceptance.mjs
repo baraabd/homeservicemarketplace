@@ -32,6 +32,7 @@ const users = [];
 const contexts = [];
 const errors = [];
 let stage = 'initialize';
+let loginRecoveryCheckpoint = () => null;
 let browser;
 const db = new pg.Client({ connectionString: process.env.DATABASE_URL });
 const pwd = randomBytes(24).toString('base64url');
@@ -358,6 +359,8 @@ try {
     await b.page.getByLabel('Password', { exact: true }).fill(`${pwd}-incorrect`);
     let loginRequests = 0;
     let refreshRequests = 0;
+    let recoveryStep = 'invalid-login-ready';
+    loginRecoveryCheckpoint = () => ({ recoveryStep, loginRequests, refreshRequests });
     const countRequests = (request) => {
       if (request.method() !== 'POST') return;
       if (request.url() === `${API}/v1/auth/login`) loginRequests += 1;
@@ -387,23 +390,50 @@ try {
       fullPage: true,
     });
 
+    recoveryStep = 'invalid-login-refused';
     await b.page.getByTestId('lang-toggle').click();
-    await expect(b.page.getByLabel('البريد الإلكتروني', { exact: true })).toHaveValue(address);
-    await b.page.getByLabel('كلمة المرور', { exact: true }).fill(pwd);
+    const arabicEmail = b.page.getByLabel('البريد الإلكتروني', { exact: true });
+    const arabicPassword = b.page.getByLabel('كلمة المرور', { exact: true });
+    await expect(arabicEmail).toBeVisible();
+    assert.equal(
+      (await arabicEmail.inputValue()) === address,
+      true,
+      'The language change preserves the entered email',
+    );
+    await arabicPassword.fill(pwd);
     const recoveryButton = b.page.getByRole('button', {
       name: 'طلب رابط للتحقق من البريد',
       exact: true,
     });
     await expect(recoveryButton).toHaveCount(0);
-    const unverifiedLogin = b.page.waitForResponse(
-      (response) =>
-        response.url() === `${API}/v1/auth/login` && response.request().method() === 'POST',
+    const arabicLogin = b.page.getByRole('button', { name: 'دخول', exact: true });
+    await expect(arabicLogin).toBeVisible();
+    await expect(arabicLogin).toBeEnabled();
+    assert.equal(
+      (await arabicPassword.inputValue()) === pwd,
+      true,
+      'The Arabic retry retains the intended password',
     );
-    await b.page.getByRole('button', { name: 'دخول', exact: true }).click();
-    const unverifiedResponse = await unverifiedLogin;
+    recoveryStep = 'arabic-fields-ready';
+    const unverifiedLogin = b.page
+      .waitForResponse(
+        (response) =>
+          response.url() === `${API}/v1/auth/login` && response.request().method() === 'POST',
+      )
+      .then(
+        (response) => ({ response }),
+        () => ({ response: null }),
+      );
+    recoveryStep = 'arabic-click-start';
+    await arabicLogin.click();
+    recoveryStep = 'arabic-click-returned';
+    const { response: unverifiedResponse } = await unverifiedLogin;
+    assert.ok(unverifiedResponse, 'The Arabic login response must arrive');
+    recoveryStep = 'arabic-response-received';
     assert.equal(unverifiedResponse.status(), 403);
     assert.equal((await unverifiedResponse.json()).error.code, 'AUTH_ACCOUNT_UNVERIFIED');
     await expect(recoveryButton).toBeVisible();
+    recoveryStep = 'arabic-recovery-visible';
     await expect(b.page.getByTestId('otp-input')).toHaveCount(0);
     assert.equal(loginRequests, 2);
     assert.equal(refreshRequests, 0);
@@ -507,6 +537,7 @@ try {
       stage,
       completed: phases.map((p) => p.name),
       logoutCheckpoint: offlineLogoutCheckpoint(),
+      loginRecoveryCheckpoint: loginRecoveryCheckpoint(),
       codeLocation: /r04-[a-z-]+\.mjs:\d+:\d+/u.exec(error?.stack ?? '')?.[0] ?? null,
     }),
   ).catch(() => undefined);

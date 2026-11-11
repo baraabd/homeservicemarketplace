@@ -55,6 +55,17 @@ an authorized read of the affected database or the actual structured response.
 
 ## Changes in this repair
 
+The new browser acceptance case reproduced another existing UI defect. The phone
+container in `Root.tsx` used `key={lang}` inside an exit animation. Switching language
+therefore destroyed and recreated the routed screen after the animation, losing
+entered credentials or an in-memory OTP challenge. The outgoing form could still
+receive input before it disappeared, making a retry seem unresponsive. The shell
+now keeps a stable key while its text, direction and font update in place. A
+regression test includes the real root shell, and browser acceptance keeps the
+real Arabic retry click and its exact request/response assertions. This UI defect
+is independently reproduced; it does not identify why a particular production
+credential request returned `401`.
+
 1. `LoginScreen` offers **Request email verification** only for
    `AUTH_ACCOUNT_UNVERIFIED`. Previously any form error, including an incorrect
    password, connection failure or temporary lock, displayed this unrelated
@@ -71,6 +82,12 @@ an authorized read of the affected database or the actual structured response.
 5. [The QA checklist](auth-qa-checklist.md) now describes the actual legal
    acceptance, password → OTP → session flow and environment boundaries.
    Obsolete direct-token and SQL-activation instructions were removed.
+6. The full and production dependency audits discovered four Mongoose advisories
+   published on 10 November. The API dependency and lockfile move from 8.24.4 to
+   8.24.7, with mquery 5.0.1, the smallest fixed 8.x versions. Unrelated locked
+   resolutions are retained and no audit rule is relaxed. See the
+   [official Mongoose release](https://github.com/Automattic/mongoose/releases/tag/8.24.7).
+   This audit finding does not establish the cause of the production login refusal.
 
 ## First identify the failing boundary
 

@@ -295,7 +295,7 @@ support context and exclude passwords, OTPs, cookies, tokens and reset URLs.
 | Login **200**, no email                     | A challenge response is not SMTP delivery proof. Check the correct mailbox and delivery diagnostics; use permitted resend.                                                                                     |
 | OTP **400/403 `AUTH_OTP_*`**                | Inspect expiry, invalid code, replay, attempts or resend limits at the OTP stage.                                                                                                                              |
 | OTP succeeds, then `/me` fails              | Check cookie rejection reasons, host/domain/Secure/SameSite/CORS and current session/account state.                                                                                                            |
-| **400 `AUTH_CSRF_FAILED`**                  | Inspect the browser cookie/header contract on that mutation.                                                                                                                                                   |
+| **400/403 `AUTH_CSRF_FAILED`**              | Inspect the browser cookie/header contract: refresh returns 400; guarded mutations return 403.                                                                                                                 |
 | `/me` succeeds, destination denied          | Inspect current roles and route/API authorization; this is not a password failure.                                                                                                                             |
 
 For one intentionally failing login on an isolated account, verify **one POST →
