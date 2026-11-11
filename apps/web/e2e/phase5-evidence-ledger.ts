@@ -109,7 +109,17 @@ export const MAX_DIFF_PIXEL_RATIO = 0.005;
  * cells earn revised presentation acceptance, not prototype pixel parity.
  * There is deliberately no environment switch or artifact-controlled allowlist. */
 export const ONBOARDING_REPAIR_REVISION = 'USER_REQUEST_2026_09_ONBOARDING_REPAIR';
-export const REVISED_PRESENTATION_STATES = Object.freeze([6, 7, 8, 9] as const);
+// D5-02 records the renewed owner repair directive after review of the status
+// controls. This identity names its state-only presentation acceptance; it
+// does not turn the measured prototype difference into pixel parity.
+export const STATUS_RECOVERY_REVISION = 'STATUS_RECOVERY_2026_11';
+export const REVISED_PRESENTATION_STATES = Object.freeze([6, 7, 8, 9, 14] as const);
+
+export function revisionIdForState(stateId: number): string | null {
+  if ([6, 7, 8, 9].includes(stateId)) return ONBOARDING_REPAIR_REVISION;
+  if (stateId === 14) return STATUS_RECOVERY_REVISION;
+  return null;
+}
 
 export interface RevisionCheck {
   readonly key: string;
@@ -118,6 +128,7 @@ export interface RevisionCheck {
   readonly count: number;
   readonly minWidth: number;
   readonly minHeight: number;
+  readonly region?: 'main' | 'footer';
 }
 
 /** Expected words are owned by acceptance, not imported from component copy. */
@@ -216,6 +227,63 @@ export function revisionChecks(stateId: number, locale: Locale): readonly Revisi
         minHeight: 20,
       },
     ];
+  if (stateId === 14)
+    return [
+      {
+        key: 'status-review-title',
+        selector: '[data-testid="status-waiting-alert"] [data-part="title"]',
+        texts: [ar ? 'نراجع طلبك' : 'We are reviewing your application'],
+        count: 1,
+        minWidth: 40,
+        minHeight: 10,
+        region: 'main',
+      },
+      {
+        key: 'status-review-guidance',
+        selector: '[data-testid="status-waiting-alert"] [data-part="body"]',
+        texts: [
+          ar
+            ? 'لا تحتاج إلى إجراء الآن. سنطلب منك شيئاً فقط إذا ظهرت ملاحظة محددة.'
+            : 'No action is needed now. We will only contact you if a specific item needs attention.',
+        ],
+        count: 1,
+        minWidth: 280,
+        minHeight: 20,
+        region: 'main',
+      },
+      {
+        ...target(
+          'status-documents',
+          '[data-testid="status-view-verification"]',
+          ar ? 'عرض وثائق التوثيق ومراجعتها' : 'View and review verification documents',
+        ),
+        region: 'main',
+      },
+      {
+        ...target(
+          'status-application',
+          '[data-testid="status-view-application"]',
+          ar ? 'عرض طلبك' : 'View your application',
+        ),
+        region: 'main',
+      },
+      {
+        ...target(
+          'status-refresh',
+          '[data-testid="status-refresh"]',
+          ar ? 'تحديث الحالة' : 'Refresh status',
+        ),
+        region: 'main',
+      },
+      {
+        ...target(
+          'status-withdraw',
+          '[data-testid="status-withdraw"]',
+          ar ? 'سحب الطلب للتعديل' : 'Withdraw application to edit',
+        ),
+        region: 'footer',
+      },
+    ];
   return [];
 }
 
@@ -243,7 +311,7 @@ export function revisionProblems(
   if (!revisionChecks(state.id, locale).length) return [];
   if (!parsed) return ['revision.json missing or unparseable'];
   const problems: string[] = [];
-  if (parsed.revision !== ONBOARDING_REPAIR_REVISION)
+  if (parsed.revision !== revisionIdForState(state.id))
     problems.push('unknown presentation revision');
   if (!runId || parsed.runId !== runId)
     problems.push('revision belongs to a different or missing run');
@@ -280,6 +348,21 @@ export function revisionProblems(
     footer.y + footer.height > 845
   )
     problems.push('revision footer covers the scrollable content');
+  if (
+    state.id === 14 &&
+    (!measuredRect(shell) ||
+      Math.abs(shell.y) > 1 ||
+      !measuredRect(main) ||
+      Math.abs(main.x) > 1 ||
+      Math.abs(main.width - 390) > 1 ||
+      main.y < 0 ||
+      !measuredRect(footer) ||
+      Math.abs(footer.x) > 1 ||
+      Math.abs(footer.width - 390) > 1 ||
+      Math.abs(footer.y + footer.height - 844) > 1 ||
+      Math.abs(main.y + main.height - footer.y) > 1)
+  )
+    problems.push('status recovery shell, main and sticky footer bounds are incorrect');
   const elements = Array.isArray(parsed.elements) ? parsed.elements : [];
   for (const check of revisionChecks(state.id, locale)) {
     const matches = elements.filter(
@@ -306,6 +389,25 @@ export function revisionProblems(
         (check.key !== 'map-pane' && (rect.x < -1 || rect.x + rect.width > 391))
       )
         problems.push(`revision ${check.key}: missing, clipped or undersized geometry`);
+      if (check.region) {
+        const region = check.region === 'main' ? main : footer;
+        if (
+          !measuredRect(rect) ||
+          !measuredRect(region) ||
+          rect.y < region.y - 1 ||
+          rect.y + rect.height > region.y + region.height + 1
+        )
+          problems.push(`revision ${check.key}: outside visible ${check.region}`);
+      }
+    }
+  }
+  if (state.id === 14) {
+    const controls = ['status-documents', 'status-application', 'status-refresh'];
+    for (let i = 1; i < controls.length; i += 1) {
+      const above = elements.find((item) => item?.key === controls[i - 1])?.rects?.[0];
+      const below = elements.find((item) => item?.key === controls[i])?.rects?.[0];
+      if (!measuredRect(above) || !measuredRect(below) || above.y + above.height > below.y)
+        problems.push('status recovery controls overlap or are out of order');
     }
   }
   return problems;
@@ -404,7 +506,7 @@ export interface CanonicalCellEvidence {
   readonly recomputedRatio: number | null;
   /** Every check in the image verifier passed. */
   readonly imageOk: boolean;
-  /** A scoped, validated repair brief replaces parity only for states 6–9. */
+  /** A state-specific revision replaces parity only for its declared cells. */
   readonly revisedPresentationAccepted?: boolean;
   readonly problems: readonly string[];
 }
@@ -460,6 +562,8 @@ export function canonicalCellEvidence(
   }
 
   const revised = revisionChecks(state.id, locale).length > 0;
+  if (revised && metrics?.acceptance !== revisionIdForState(state.id))
+    problems.push('metrics acceptance does not identify this state presentation revision');
   const revisionIssues = revised
     ? revisionProblems(
         readJson(join(dir, 'revision.json')),
@@ -471,7 +575,8 @@ export function canonicalCellEvidence(
   problems.push(...revisionIssues);
   const revisedPresentationAccepted = revised && revisionIssues.length === 0;
   // The old prototype still supplies an honest measured diff. Only its ratio
-  // budget is superseded by the explicit user brief; malformed PNGs, geometry,
+  // budget is superseded by the scoped revision recorded in D5-02.
+  // Malformed PNGs, geometry,
   // forged metrics and a false diff remain fatal. No threshold is widened.
   const imageProblems = image.problems.filter(
     (problem) =>
@@ -516,7 +621,7 @@ export function canonicalCellEvidence(
  * The rule now is the one the evidence design always intended. A cell passes
  * only when the verifier is clean, NOTHING was reported against it, the
  * difference was genuinely RECOMPUTED, and that recomputed difference is
- * within budget for the immutable screens. The four explicitly revised states
+ * within budget for the thirteen immutable screens. The five revised states
  * additionally require the repair's semantic and geometry observations even
  * when their ratio is zero. The stored ratio can establish nothing on its own;
  * it is checked against the measurement rather than trusted instead of it.
