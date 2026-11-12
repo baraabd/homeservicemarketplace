@@ -1,7 +1,14 @@
-import { CanActivate, ExecutionContext, ForbiddenException, Injectable } from '@nestjs/common';
+import {
+  CanActivate,
+  ExecutionContext,
+  ForbiddenException,
+  Injectable,
+  Optional,
+} from '@nestjs/common';
 import type { Request } from 'express';
 
-import { CSRF_COOKIE } from '../helpers/cookies';
+import { authCookieNames } from '../helpers/cookies';
+import { AppConfigService } from '../../../../config/app-config.service';
 
 const STATE_CHANGING = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 
@@ -13,13 +20,17 @@ const STATE_CHANGING = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 // Mobile / Bearer-header flows are skipped.
 @Injectable()
 export class CsrfGuard implements CanActivate {
+  constructor(@Optional() private readonly config?: AppConfigService) {}
+
   canActivate(ctx: ExecutionContext): boolean {
     const req = ctx.switchToHttp().getRequest<Request>();
     const method = req.method.toUpperCase();
     if (!STATE_CHANGING.has(method)) return true;
     if (req.authTransport !== 'cookie') return true;
 
-    const cookie = (req as Request & { cookies?: Record<string, string> }).cookies?.[CSRF_COOKIE];
+    const cookie = (req as Request & { cookies?: Record<string, string> }).cookies?.[
+      authCookieNames(this.config).csrf
+    ];
     const header = req.header('x-csrf-token');
     if (!cookie || !header || cookie !== header) {
       throw new ForbiddenException({ code: 'AUTH_CSRF_FAILED' });

@@ -27,6 +27,9 @@ import { EVIDENCE_KEY_PREFIX } from '../../portfolio/portfolio-policy';
  *  namespace by convenience is how a portfolio sweep deletes people's faces. */
 export const AVATAR_KEY_PREFIX = 'avatars/';
 
+/** Maximum validated avatar size, shared by finalize and public delivery. */
+export const AVATAR_MAX_BYTES = 5 * 1024 * 1024;
+
 /**
  * The owner segment of an avatar storage key.
  *

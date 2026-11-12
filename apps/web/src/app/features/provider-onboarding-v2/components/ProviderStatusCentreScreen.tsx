@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router';
-import { BadgeCheck, Clock } from 'lucide-react';
+import { BadgeCheck, Clock, AlertTriangle } from 'lucide-react';
 
 import { getVerificationCase } from '../../../../lib/provider/provider-verification-api';
 import { useProviderProfile } from '../../../hooks/provider/useProviderProfile';
@@ -16,6 +16,19 @@ import { ProviderButton, ProviderSkeleton } from '../../provider-ui';
 import type { ProviderTone } from '../../provider-ui/status';
 import { STATUS_CENTRE_COPY, type Lang } from '../copy/status-centre-copy';
 import { REVIEW_FEEDBACK_COPY } from '../copy/review-feedback-copy';
+import {
+  deriveVerificationView,
+  verificationApplicationStep,
+} from '../../provider-verification/verification-view-state';
+import {
+  NEXT_STEP_COPY,
+  STATE_COPY,
+  UI_COPY,
+} from '../../provider-verification/copy/provider-verification-copy';
+import {
+  VERIFICATION_CASE_QUERY_KEY,
+  verificationRefreshInterval,
+} from '../../provider-verification/verification-query';
 import { OnboardingAlert } from './OnboardingAlert';
 import { OnboardingAxisPanel, type OnboardingAxisRow } from './OnboardingAxisPanel';
 import { OnboardingShell } from './OnboardingShell';
@@ -62,7 +75,7 @@ import { OnboardingShell } from './OnboardingShell';
 /** The two approved screens this surface is, chosen by work access. */
 type Screen = 'waiting' | 'active';
 
-const CASE_KEY = ['provider', 'verification', 'case'] as const;
+const CASE_KEY = VERIFICATION_CASE_QUERY_KEY;
 
 export function ProviderStatusCentreScreen() {
   const { lang: rawLang } = useLang();
@@ -84,7 +97,21 @@ export function ProviderStatusCentreScreen() {
   // waiting for nothing.
   //
   // Same key the verification screen uses, so the two share one answer.
-  const caseQuery = useQuery({ queryKey: CASE_KEY, queryFn: getVerificationCase, retry: 1 });
+  const capabilitiesReady = capsQuery.isFetchedAfterMount && capsQuery.isSuccess;
+  const canReadCase = capabilitiesReady && capsQuery.data.allowed.includes('MANAGE_VERIFICATION');
+  const caseQuery = useQuery({
+    queryKey: CASE_KEY,
+    queryFn: getVerificationCase,
+    enabled: canReadCase,
+    retry: false,
+    staleTime: 0,
+    refetchOnMount: 'always',
+    refetchOnWindowFocus: 'always',
+    refetchInterval: (query) =>
+      canReadCase && query.state.status !== 'error'
+        ? verificationRefreshInterval(query.state.data?.case)
+        : false,
+  });
 
   // The withdraw command and the server's verdict on whether it would succeed.
   //
@@ -114,7 +141,8 @@ export function ProviderStatusCentreScreen() {
 
   const profile = profileQuery.data?.profile;
   const hub = hubQuery.data;
-  const allowed = capsQuery.isError ? [] : (capsQuery.data?.allowed ?? []);
+  const capabilities = capabilitiesReady ? capsQuery.data : null;
+  const allowed = capabilities?.allowed ?? [];
 
   // Work access, and nothing else, decides which screen this is. Not
   // `status === 'ACTIVE'`: the whole point of the capability service is that
@@ -127,7 +155,16 @@ export function ProviderStatusCentreScreen() {
   const screen: Screen = hasWorkAccess ? 'active' : 'waiting';
 
   const settled =
-    profileQuery.isFetched && hubQuery.isFetched && capsQuery.isFetched && caseQuery.isFetched;
+    profileQuery.isFetched &&
+    hubQuery.isFetched &&
+    capsQuery.isFetchedAfterMount &&
+    (!canReadCase || caseQuery.isFetchedAfterMount);
+  const caseAvailable = canReadCase && caseQuery.isSuccess && caseQuery.isFetchedAfterMount;
+  const verificationView = deriveVerificationView({
+    capabilities,
+    verificationCase: caseAvailable ? (caseQuery.data?.case ?? null) : null,
+    profile: profile ?? null,
+  });
 
   // ── The axes ──────────────────────────────────────────────────────────────
 
@@ -139,40 +176,46 @@ export function ProviderStatusCentreScreen() {
 
   const specialtiesPending = (profile?.pendingCategories?.length ?? 0) > 0;
 
-  /**
-   * The verification axis, from the case's own state machine.
-   *
-   * `profile.verified` is still consulted, but only as the confirmation that a
-   * VERIFIED case really did grant the badge — it is never the source of the
-   * word shown, because it cannot distinguish "not started" from "refused".
-   */
+  // Use the same document-aware projection as the verification route. A draft
+  // with a file awaiting its scan is not an identity check that never started.
   const verificationAxis = ((): {
     status: string;
     tone: ProviderTone;
     needsProviderAttention: boolean;
   } => {
-    if (caseQuery.isError || !caseQuery.isFetched) {
+    if (!caseAvailable) {
       return { status: copy.valueUnknown, tone: 'todo', needsProviderAttention: false };
     }
 
-    const state = caseQuery.data?.case?.state ?? null;
-    switch (state) {
-      case 'VERIFIED':
+    switch (verificationView.state) {
+      case 'VERIFIED_ACTIVE':
+      case 'VERIFIED_NO_ACCESS':
         return { status: copy.valueVerified, tone: 'done', needsProviderAttention: false };
-      case 'SUBMITTED':
-      case 'IN_REVIEW':
+      case 'NOT_REQUIRED':
+        return { status: copy.valueNotRequired, tone: 'done', needsProviderAttention: false };
+      case 'PENDING_REVIEW':
         return { status: copy.valueInReview, tone: 'waiting', needsProviderAttention: false };
-      case 'ACTION_REQUIRED':
-        // Blocked, not waiting. The provider has something to do and the row
-        // has to say so — this is the case the old inference read as "In
-        // review", leaving somebody waiting for a queue they were not in.
+      case 'SCANNING':
+        return { status: copy.valueScanning, tone: 'waiting', needsProviderAttention: false };
+      case 'SCAN_RETRY_PENDING':
+        return { status: copy.valueScanRetry, tone: 'waiting', needsProviderAttention: false };
+      case 'READY_TO_SUBMIT':
+        return { status: copy.valueReadyToSubmit, tone: 'blocked', needsProviderAttention: true };
+      case 'EVIDENCE_REQUIRED':
+        return {
+          status: copy.valueDocumentsRequired,
+          tone: 'blocked',
+          needsProviderAttention: true,
+        };
+      case 'EVIDENCE_UNUSABLE':
+        return { status: copy.valueFileUnusable, tone: 'danger', needsProviderAttention: true };
+      case 'CHANGES_REQUESTED':
         return { status: copy.valueActionRequired, tone: 'blocked', needsProviderAttention: true };
       case 'REJECTED':
         return { status: copy.valueRejected, tone: 'danger', needsProviderAttention: true };
-      case 'EXPIRED':
+      case 'REVERIFICATION_REQUIRED':
         return { status: copy.valueExpired, tone: 'blocked', needsProviderAttention: true };
-      case 'DRAFT':
-      case null:
+      case 'NOT_STARTED':
         return { status: copy.valueNotStarted, tone: 'todo', needsProviderAttention: true };
       default:
         // A state this bundle has never heard of. Saying "unavailable" is the
@@ -181,6 +224,73 @@ export function ProviderStatusCentreScreen() {
         return { status: copy.valueUnknown, tone: 'todo', needsProviderAttention: false };
     }
   })();
+
+  const applicationNext = verificationApplicationStep(verificationView, capabilities);
+  const noDocumentWorkAccess =
+    verificationView.state === 'NOT_REQUIRED' && capabilities?.primaryReason === 'NO_WORK_ACCESS';
+  const applicationNeedsAction =
+    applicationNext === 'resume' ||
+    (verificationView.state === 'PENDING_REVIEW' &&
+      capabilities?.primaryReason === 'ONBOARDING_INCOMPLETE' &&
+      allowed.includes('COMPLETE_ONBOARDING'));
+  const knownAccountState =
+    verificationView.state === 'ACCOUNT_LOCKED' ||
+    verificationView.state === 'SUSPENDED' ||
+    verificationView.state === 'ONBOARDING_INCOMPLETE';
+  const unavailable =
+    !capabilitiesReady ||
+    (!caseAvailable && !knownAccountState) ||
+    verificationView.state === 'UNAVAILABLE';
+  const guidance = unavailable
+    ? STATE_COPY[lang].UNAVAILABLE
+    : applicationNext
+      ? NEXT_STEP_COPY[lang][applicationNext]
+      : noDocumentWorkAccess
+        ? NEXT_STEP_COPY[lang].workAccess
+        : applicationNeedsAction
+          ? { title: copy.applicationActionTitle, body: copy.applicationActionBody }
+          : verificationView.state === 'PENDING_REVIEW'
+            ? { title: copy.waitingAlertTitle, body: copy.waitingAlertBody }
+            : STATE_COPY[lang][verificationView.state];
+  const documentGuidance = {
+    EVIDENCE_REQUIRED: copy.documentsRequiredBody,
+    EVIDENCE_UNUSABLE: copy.documentsUnusableBody,
+    CHANGES_REQUESTED: copy.changesRequiredBody,
+    REJECTED: copy.rejectedBody,
+    REVERIFICATION_REQUIRED: copy.expiredBody,
+  };
+  const guidanceBody =
+    !unavailable && !applicationNext && verificationView.state in documentGuidance
+      ? documentGuidance[verificationView.state as keyof typeof documentGuidance]
+      : guidance.body;
+  const providerAction =
+    !unavailable && (verificationAxis.needsProviderAttention || applicationNeedsAction);
+  const supportNeeded =
+    !unavailable &&
+    (verificationView.state === 'SCANNING' ||
+      verificationView.state === 'SCAN_RETRY_PENDING' ||
+      noDocumentWorkAccess ||
+      (verificationView.state === 'VERIFIED_NO_ACCESS' && !applicationNext) ||
+      capabilities?.nextActions.includes('CONTACT_SUPPORT') ||
+      capabilities?.nextActions.includes('APPEAL_DECISION'));
+  const refreshing =
+    capsQuery.isFetching ||
+    caseQuery.isFetching ||
+    hubQuery.isFetching ||
+    profileQuery.isFetching ||
+    review.isFetching;
+
+  async function refreshStatus() {
+    // Refetch can execute disabled queries, so re-read authority before evidence.
+    const freshCapabilities = await capsQuery.refetch();
+    if (
+      freshCapabilities.isSuccess &&
+      freshCapabilities.data.allowed.includes('MANAGE_VERIFICATION')
+    ) {
+      await caseQuery.refetch();
+    }
+    await Promise.allSettled([profileQuery.refetch(), hubQuery.refetch(), review.refetch()]);
+  }
   // Standing is only a question once the application is no longer one. A
   // suspended or terminated provider does not reach this screen with work
   // access, so "Good" is the honest answer beside an active account.
@@ -326,7 +436,7 @@ export function ProviderStatusCentreScreen() {
           tone="secondary"
           shape="onboarding"
           size="block"
-          disabled={review.data?.canWithdraw !== true || withdraw.isPending}
+          disabled={!review.isSuccess || review.data.canWithdraw !== true || withdraw.isPending}
           onClick={() =>
             withdraw.mutate(undefined, {
               // Straight to the application, because editing it is the entire
@@ -344,45 +454,65 @@ export function ProviderStatusCentreScreen() {
     >
       <div className="flex flex-col gap-[18px]" data-testid="provider-status-centre">
         <OnboardingAlert
-          tone="waiting"
-          icon={Clock}
-          title={copy.waitingAlertTitle}
-          body={copy.waitingAlertBody}
+          tone={unavailable || providerAction ? 'warning' : 'waiting'}
+          icon={unavailable || providerAction ? AlertTriangle : Clock}
+          title={guidance.title}
+          body={guidanceBody}
           density="compact"
           data-testid="status-waiting-alert"
         />
 
         <OnboardingAxisPanel rows={rows} data-testid="provider-status-axes" />
 
-        {/* The pending-review surface stays focused on waiting. A document
-            entry is needed when the case asks the provider to act, while the
-            dedicated verification route remains reachable in every state.
+        {/* Keep the uploaded documents reachable during scanning and review.
+            A provider task gets primary emphasis; viewing progress is quiet.
             The destination's API still owns upload and renewal permissions. */}
-        {verificationAxis.needsProviderAttention ? (
+        {caseAvailable && verificationView.canManageVerification ? (
           <ProviderButton
-            tone="secondary"
+            tone={verificationAxis.needsProviderAttention ? 'primary' : 'secondary'}
             shape="onboarding"
             size="block"
             onClick={() => navigate('/provider/verification')}
             data-testid="status-view-verification"
           >
-            {REVIEW_FEEDBACK_COPY[lang].viewVerification}
+            {verificationAxis.needsProviderAttention
+              ? copy.continueVerification
+              : REVIEW_FEEDBACK_COPY[lang].viewVerification}
           </ProviderButton>
         ) : null}
 
-        {/* The reference's second button. In the prototype it jumps to the
-            action-required screen; here it does the real equivalent — reopens
-            the application the provider handed in, which is the only thing on
-            this screen they can actually go and look at. */}
+        {/* The application's own correction or approval can still be pending
+            after the independent identity decision. */}
         <ProviderButton
-          tone="secondary"
+          tone={applicationNeedsAction ? 'primary' : 'secondary'}
           shape="onboarding"
           size="block"
           onClick={() => navigate('/provider/onboarding')}
           data-testid="status-view-application"
         >
-          {copy.viewApplication}
+          {applicationNeedsAction ? copy.reviewApplication : copy.viewApplication}
         </ProviderButton>
+        <ProviderButton
+          tone="secondary"
+          shape="onboarding"
+          size="block"
+          disabled={refreshing}
+          onClick={() => void refreshStatus()}
+          data-testid="status-refresh"
+        >
+          {UI_COPY[lang].refresh}
+        </ProviderButton>
+        {supportNeeded && (
+          <ProviderButton
+            tone="secondary"
+            shape="onboarding"
+            size="block"
+            onClick={() => navigate('/provider/support')}
+            data-testid="status-contact-support"
+          >
+            {UI_COPY[lang].contactSupport}
+          </ProviderButton>
+        )}
       </div>
     </OnboardingShell>
   );

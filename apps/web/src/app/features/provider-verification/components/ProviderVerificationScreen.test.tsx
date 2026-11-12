@@ -610,13 +610,15 @@ describe('verification entry recovery', () => {
 
 describe('each state gets its own screen', () => {
   it.each([
+    ['UNAVAILABLE', { kase: kase({ state: 'FUTURE_STATE' }) }],
     ['ACCOUNT_LOCKED', { caps: caps([], 'ACCOUNT_INELIGIBLE') }],
     ['SUSPENDED', { caps: caps([], 'PROVIDER_SUSPENDED') }],
     ['ONBOARDING_INCOMPLETE', { caps: caps([], 'ONBOARDING_INCOMPLETE') }],
     ['NOT_STARTED', { kase: { case: null } }],
     ['NOT_REQUIRED', { kase: kase({ verificationRequired: false, requirements: [] }) }],
     ['EVIDENCE_REQUIRED', { kase: kase({ documents: [] }) }],
-    ['SCANNING', { kase: kase({ requirements: [], documents: [doc({ scanState: 'PENDING' })] }) }],
+    ['SCANNING', { kase: kase({ documents: [doc({ scanState: 'PENDING' })] }) }],
+    ['SCAN_RETRY_PENDING', { kase: kase({ documents: [doc({ scanState: 'SCAN_FAILED' })] }) }],
     ['EVIDENCE_UNUSABLE', { kase: kase({ documents: [doc({ scanState: 'QUARANTINED' })] }) }],
     ['READY_TO_SUBMIT', { kase: kase({ documents: [doc()] }) }],
     ['PENDING_REVIEW', { kase: kase({ state: 'SUBMITTED' }) }],
@@ -640,13 +642,15 @@ describe('each state gets its own screen', () => {
     expect(await screen.findByTestId('verification-VERIFIED_ACTIVE')).toBeInTheDocument();
   });
 
-  it('offers no action where nothing can be done', async () => {
-    // Offering a button that cannot help teaches people to tap and hope.
+  it('offers a status refresh without offering a document mutation during review', async () => {
     stub({ kase: kase({ state: 'SUBMITTED' }) });
     renderScreen();
     await screen.findByTestId('verification-PENDING_REVIEW');
 
-    expect(screen.queryByRole('button')).not.toBeInTheDocument();
+    expect(screen.getAllByRole('button')).toHaveLength(1);
+    expect(screen.getByRole('button', { name: UI_COPY.en.refresh })).toBeEnabled();
+    expect(screen.queryByLabelText(UI_COPY.en.uploadLabel)).not.toBeInTheDocument();
+    expect(mock.history.post).toHaveLength(0);
   });
 
   it('never offers an upload to a suspended provider', async () => {
@@ -793,6 +797,30 @@ describe('documents and what the reviewer said', () => {
 });
 
 describe('starting and submitting', () => {
+  it.each([
+    ['REJECTED', 'REJECTED'],
+    ['EXPIRED', 'REVERIFICATION_REQUIRED'],
+  ] as const)(
+    'creates a fresh case after %s and reaches the document upload step',
+    async (state, viewState) => {
+      stub({ kase: kase({ state, documents: [doc()] }) });
+      mock.onPost(CASE_URL).reply(() => {
+        mock.onGet(CASE_URL).reply(200, kase({ id: 'renewed-case' }));
+        return [201, { ...kase({ id: 'renewed-case' }), created: true }];
+      });
+      renderScreen();
+      fireEvent.click(
+        await screen.findByRole('button', { name: STATE_COPY.en[viewState].cta as string }),
+      );
+      await screen.findByTestId('verification-EVIDENCE_REQUIRED');
+      expect(screen.getByLabelText(UI_COPY.en.uploadLabel)).toBeInTheDocument();
+      expect(mock.history.post.map((request) => request.url)).toEqual([CASE_URL]);
+      expect(
+        screen.queryByRole('button', { name: UI_COPY.en.contactSupport }),
+      ).not.toBeInTheDocument();
+    },
+  );
+
   it('starts missing identity verification after an admin returns the application for correction', async () => {
     stub({
       caps: caps(['MANAGE_VERIFICATION', 'COMPLETE_ONBOARDING'], 'ONBOARDING_INCOMPLETE'),
@@ -896,6 +924,92 @@ describe('starting and submitting', () => {
       expect(screen.getByRole('link', { name: UI_COPY[lang].returnToApplication })).toHaveAttribute(
         'href',
         '/provider/profile',
+      );
+    },
+  );
+
+  describe.each(['DRAFT', 'ACTION_REQUIRED'] as const)(
+    'required-slot submission from %s',
+    (state) => {
+      it.each(['PENDING', 'SCAN_FAILED', 'QUARANTINED', 'REJECTED'] as const)(
+        'submits required clean evidence while keeping an optional %s file restricted',
+        async (scanState) => {
+          const documents = [
+            doc(),
+            doc({
+              id: 'optional',
+              kind: 'CATEGORY_LICENSE',
+              serviceCategoryId: 'optional-category',
+              scanState,
+            }),
+          ];
+          stub({ kase: kase({ state, documents }) });
+          mock.onPost(`${CASE_URL}/submit`).reply(() => {
+            mock.onGet(CASE_URL).reply(200, kase({ state: 'SUBMITTED', documents }));
+            return [200, {}];
+          });
+          renderScreen();
+          await screen.findByTestId('verification-axes');
+          expect(screen.getByTestId('document-optional')).toHaveAttribute('data-scan', scanState);
+          const submit = screen.queryByRole('button', {
+            name:
+              state === 'DRAFT'
+                ? (STATE_COPY.en.READY_TO_SUBMIT.cta as string)
+                : UI_COPY.en.resubmit,
+          });
+          expect(submit).toBeEnabled();
+          fireEvent.click(submit!);
+          await screen.findByTestId('verification-PENDING_REVIEW');
+          expect(
+            mock.history.post.filter((request) => request.url === `${CASE_URL}/submit`),
+          ).toHaveLength(1);
+          expect(screen.getByTestId('document-optional')).toHaveAttribute('data-scan', scanState);
+          expect(screen.getByTestId('axis-workAccessActive')).toHaveAttribute(
+            'data-active',
+            'false',
+          );
+        },
+      );
+
+      it.each(['PENDING', 'SCAN_FAILED', 'QUARANTINED', 'REJECTED'] as const)(
+        'keeps required %s evidence blocked even when submit appears in a stale action list',
+        async (scanState) => {
+          stub({
+            kase: kase({ state, availableActions: ['submit'], documents: [doc({ scanState })] }),
+          });
+          renderScreen();
+          await screen.findByTestId('verification-axes');
+          expect(
+            screen.queryByRole('button', { name: STATE_COPY.en.READY_TO_SUBMIT.cta as string }),
+          ).not.toBeInTheDocument();
+          expect(
+            screen.queryByRole('button', { name: UI_COPY.en.resubmit }),
+          ).not.toBeInTheDocument();
+          expect(screen.getByTestId('document-d1')).toHaveAttribute('data-scan', scanState);
+          expect(mock.history.post).toHaveLength(0);
+        },
+      );
+
+      it.each([
+        ['superseded', doc({ superseded: true })],
+        [
+          'another category',
+          doc({ kind: 'CATEGORY_LICENSE', serviceCategoryId: 'optional-category' }),
+        ],
+      ])(
+        'does not substitute %s clean evidence for the current requirement',
+        async (_label, document) => {
+          stub({ kase: kase({ state, availableActions: ['submit'], documents: [document] }) });
+          renderScreen();
+          await screen.findByTestId('verification-axes');
+          expect(
+            screen.queryByRole('button', { name: STATE_COPY.en.READY_TO_SUBMIT.cta as string }),
+          ).not.toBeInTheDocument();
+          expect(
+            screen.queryByRole('button', { name: UI_COPY.en.resubmit }),
+          ).not.toBeInTheDocument();
+          expect(mock.history.post).toHaveLength(0);
+        },
       );
     },
   );
@@ -1039,6 +1153,130 @@ describe('starting and submitting', () => {
     ).toBeInTheDocument();
   });
 
+  it('explains the security check without a time promise and provides refresh and support', async () => {
+    stub({ kase: kase({ documents: [doc({ scanState: 'PENDING' })] }) });
+    renderScreen('ar');
+    const section = await screen.findByTestId('verification-SCANNING');
+    expect(section).toHaveTextContent(STATE_COPY.ar.SCANNING.body);
+    expect(section).not.toHaveTextContent('لحظات');
+    expect(section).not.toHaveTextContent('لا حاجة لفعل أي شيء');
+    expect(screen.queryByLabelText(UI_COPY.ar.uploadLabel)).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: STATE_COPY.ar.READY_TO_SUBMIT.cta as string }),
+    ).not.toBeInTheDocument();
+
+    mock.onGet(CASE_URL).reply(200, kase({ documents: [doc()] }));
+    fireEvent.click(screen.getByRole('button', { name: UI_COPY.ar.refresh }));
+    await screen.findByTestId('verification-READY_TO_SUBMIT');
+    expect(mock.history.post).toHaveLength(0);
+  });
+
+  it('opens support for a pending scan without altering or submitting the document', async () => {
+    stub({ kase: kase({ documents: [doc({ scanState: 'PENDING' })] }) });
+    renderScreen();
+    fireEvent.click(await screen.findByRole('button', { name: UI_COPY.en.contactSupport }));
+    expect(screen.getByTestId('verification-test-location')).toHaveTextContent('/provider/support');
+    expect(mock.history.post).toHaveLength(0);
+  });
+
+  it.each([
+    ['en', 'DRAFT', 'READY_TO_SUBMIT'],
+    ['ar', 'DRAFT', 'READY_TO_SUBMIT'],
+    ['en', 'ACTION_REQUIRED', 'CHANGES_REQUESTED'],
+    ['ar', 'ACTION_REQUIRED', 'CHANGES_REQUESTED'],
+  ] as const)(
+    'recovers the same document from a technical scan failure in %s/%s without another upload',
+    async (lang, state, recoveredState) => {
+      const upload = vi.spyOn(verificationApi, 'uploadEvidence').mockResolvedValue({} as never);
+      stub({ kase: kase({ state, documents: [doc({ scanState: 'SCAN_FAILED' })] }) });
+      renderScreen(lang);
+      const section = await screen.findByTestId('verification-SCAN_RETRY_PENDING');
+      expect(section).toHaveTextContent(STATE_COPY[lang].SCAN_RETRY_PENDING.body);
+      expect(screen.getByTestId('document-d1')).toHaveAttribute('data-scan', 'SCAN_FAILED');
+      expect(screen.getByRole('button', { name: UI_COPY[lang].refresh })).toBeEnabled();
+      expect(screen.getByRole('button', { name: UI_COPY[lang].contactSupport })).toBeEnabled();
+      expect(screen.queryByLabelText(UI_COPY[lang].uploadLabel)).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole('button', { name: STATE_COPY[lang].EVIDENCE_UNUSABLE.cta as string }),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole('button', { name: STATE_COPY[lang].READY_TO_SUBMIT.cta as string }),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole('button', { name: UI_COPY[lang].resubmit }),
+      ).not.toBeInTheDocument();
+      expect(mock.history.post).toHaveLength(0);
+
+      mock.onGet(CASE_URL).reply(200, kase({ state, documents: [doc()] }));
+      fireEvent.click(screen.getByRole('button', { name: UI_COPY[lang].refresh }));
+      await screen.findByTestId(`verification-${recoveredState}`);
+      expect(screen.getByTestId('document-d1')).toHaveAttribute('data-scan', 'CLEAN');
+      expect(
+        screen.getByRole('button', {
+          name:
+            state === 'DRAFT'
+              ? (STATE_COPY[lang].READY_TO_SUBMIT.cta as string)
+              : UI_COPY[lang].resubmit,
+        }),
+      ).toBeEnabled();
+      expect(upload).not.toHaveBeenCalled();
+      expect(mock.history.post).toHaveLength(0);
+    },
+  );
+
+  it('observes an automatic scan retry completing while the provider keeps the page open', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('visible');
+    stub({ kase: kase({ documents: [doc({ scanState: 'SCAN_FAILED' })] }) });
+    renderScreen();
+    await screen.findByTestId('verification-SCAN_RETRY_PENDING');
+    mock.onGet(CASE_URL).reply(200, kase({ documents: [doc()] }));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(30_000);
+    });
+    await screen.findByTestId('verification-READY_TO_SUBMIT');
+    expect(screen.getByTestId('document-d1')).toHaveAttribute('data-scan', 'CLEAN');
+    expect(mock.history.post).toHaveLength(0);
+  });
+
+  it('explains a technical failure while allowing an unrelated missing document to be added', async () => {
+    stub({
+      kase: kase({
+        requirements: [
+          { kind: 'INDIVIDUAL_IDENTITY', serviceCategoryId: null },
+          { kind: 'BUSINESS_REGISTRATION', serviceCategoryId: null },
+        ],
+        documents: [doc({ scanState: 'SCAN_FAILED' })],
+      }),
+    });
+    renderScreen();
+    await screen.findByTestId('verification-EVIDENCE_REQUIRED');
+    expect(screen.getByTestId('verification-documents')).toHaveTextContent(
+      UI_COPY.en.scanRetryNote,
+    );
+    expect(
+      within(screen.getByTestId('verification-documents')).queryByRole('button'),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: STATE_COPY.en.EVIDENCE_REQUIRED.cta as string }),
+    ).toBeEnabled();
+    expect(
+      screen.queryByRole('button', { name: STATE_COPY.en.READY_TO_SUBMIT.cta as string }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('does not invent an evidence or submit operation for an unknown case state', async () => {
+    stub({
+      kase: kase({ state: 'FUTURE_STATE', documents: [doc()], availableActions: ['submit'] }),
+    });
+    renderScreen();
+    await screen.findByTestId('verification-UNAVAILABLE');
+    expect(screen.getAllByRole('button')).toHaveLength(1);
+    expect(screen.getByRole('button', { name: UI_COPY.en.refresh })).toBeEnabled();
+    expect(screen.queryByLabelText(UI_COPY.en.uploadLabel)).not.toBeInTheDocument();
+    expect(mock.history.post).toHaveLength(0);
+  });
+
   it('replaces the selected business document using its real kind', async () => {
     const upload = vi.spyOn(verificationApi, 'uploadEvidence').mockResolvedValue({} as never);
     stub({
@@ -1139,13 +1377,14 @@ describe('Arabic', () => {
 
 describe('the file picker exists only where it can be used', () => {
   it.each([
+    ['SCAN_RETRY_PENDING', { kase: kase({ documents: [doc({ scanState: 'SCAN_FAILED' })] }) }],
     ['PENDING_REVIEW', { kase: kase({ state: 'SUBMITTED' }) }],
     [
       'VERIFIED_ACTIVE',
       { caps: caps(['SUBMIT_BID', 'MANAGE_VERIFICATION']), kase: kase({ state: 'VERIFIED' }) },
     ],
     ['SUSPENDED', { caps: caps([], 'PROVIDER_SUSPENDED') }],
-    ['SCANNING', { kase: kase({ requirements: [], documents: [doc({ scanState: 'PENDING' })] }) }],
+    ['SCANNING', { kase: kase({ documents: [doc({ scanState: 'PENDING' })] }) }],
   ])('is absent in %s', async (state, options) => {
     // A file input is exposed as a BUTTON to assistive technology. Leaving it
     // mounted puts a "choose a file" control in the tab order of a screen

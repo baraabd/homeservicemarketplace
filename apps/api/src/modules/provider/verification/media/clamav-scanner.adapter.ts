@@ -35,6 +35,10 @@ import { MalwareScannerPort, type ScanVerdict } from './malware-scanner.port';
  *  enormous frame after it has been streamed this far. */
 const CHUNK_BYTES = 64 * 1024;
 
+/** One INSTREAM response needs a short verdict and optional signature. Bound
+ * the wire response before buffering it, including responses from a broken peer. */
+const MAX_REPLY_BYTES = 4096;
+
 const DEFAULT_PORT = 3310;
 const DEFAULT_TIMEOUT_MS = 30_000;
 
@@ -121,28 +125,45 @@ export class ClamAvMalwareScanner extends MalwareScannerPort {
     return new Promise<string>((resolve, reject) => {
       const socket: Socket = connect({ host: this.host, port: this.port });
       const out: Buffer[] = [];
+      let receivedBytes = 0;
       let settled = false;
 
       const done = (fn: () => void): void => {
         if (settled) return;
         settled = true;
+        clearTimeout(deadline);
         socket.destroy();
         fn();
       };
 
+      // Socket timeouts measure inactivity. A peer sending occasional bytes
+      // must not hold a whole evidence sweep open indefinitely.
+      const deadline = setTimeout(() => done(() => reject(new TimeoutError())), this.timeoutMs);
+      deadline.unref();
       socket.setTimeout(this.timeoutMs);
       socket.on('timeout', () => done(() => reject(new TimeoutError())));
       socket.on('error', (e) => done(() => reject(e)));
-      socket.on('data', (d: Buffer) => out.push(d));
+      socket.on('data', (d: Buffer) => {
+        if (settled) return;
+        receivedBytes += d.length;
+        if (receivedBytes > MAX_REPLY_BYTES) {
+          done(() => reject(new Error('reply-too-large')));
+          return;
+        }
+        out.push(d);
+      });
       socket.on('close', () =>
         done(() => {
-          const text = Buffer.concat(out).toString('utf8').replace(/\0/g, '').trim();
+          // Preserve record framing. Removing embedded NULs can turn an invalid
+          // response into the apparent positive reply "stream: OK".
+          const text = Buffer.concat(out).toString('utf8');
           if (text === '') reject(new Error('empty-reply'));
           else resolve(text);
         }),
       );
 
       socket.on('connect', () => {
+        if (settled) return;
         socket.write(Buffer.from('zINSTREAM\0'));
         for (let at = 0; at < bytes.length; at += CHUNK_BYTES) {
           const slice = bytes.subarray(at, Math.min(at + CHUNK_BYTES, bytes.length));
@@ -182,7 +203,11 @@ export class ClamAvMalwareScanner extends MalwareScannerPort {
       return { state: 'FAILED', scannerId: this.scannerId, reason: 'scanner-error' };
     }
 
-    if (/\bOK\b/.test(reply)) {
+    // We send one zINSTREAM command, so its only positive clean answer is this
+    // complete NUL-terminated record. An arbitrary sentence containing "OK",
+    // truncated record, extra record or newline-framed reply is not evidence.
+    // https://docs.clamav.net/manual/Usage/ClamdProtocol.html#reading-replies
+    if (reply === 'stream: OK\0') {
       return { state: 'CLEAN', scannerId: this.scannerId };
     }
 
@@ -213,6 +238,8 @@ function classify(err: unknown): string {
     case 'EPIPE':
       return 'connection-reset';
     default:
-      return e?.message === 'empty-reply' ? 'empty-reply' : 'transport-error';
+      return e?.message === 'empty-reply' || e?.message === 'reply-too-large'
+        ? e.message
+        : 'transport-error';
   }
 }

@@ -17,6 +17,10 @@ import { VerificationQueuePanel } from './VerificationQueuePanel';
 import { WorkAccessPanel } from './WorkAccessPanel';
 import { verificationReasonLabel } from '../../admin-provider-review/evidence/verification-reason-labels';
 import { statusLabel } from '../../admin-provider-review/copy';
+import {
+  hasPendingIdentityScan,
+  IDENTITY_SCAN_REFRESH_MS,
+} from '../../admin-provider-review/identity-review-guidance';
 
 // Sprint 9B.12 — the reviewer's workspace: queue on one side, the open case on
 // the other.
@@ -51,13 +55,22 @@ export function AdminVerificationCaseWorkspace({
   const [localCaseId, setLocalCaseId] = useState<string | null>(null);
   const openCaseId = selectedCaseId === undefined ? localCaseId : selectedCaseId;
   const setOpenCaseId = onSelectCase ?? setLocalCaseId;
-  const [errorStatus, setErrorStatus] = useState<number | null>(null);
+  const [commandError, setCommandError] = useState<{ caseId: string; status: number } | null>(null);
+  const [reviewVersions, setReviewVersions] = useState<Record<string, number>>({});
+  const errorStatus = commandError?.caseId === openCaseId ? commandError.status : null;
   const evidence = useEvidenceDownload();
 
   const caseQuery = useQuery({
     queryKey: openCaseId ? caseKey(openCaseId) : ['admin', 'verification', 'case', 'none'],
     queryFn: () => getVerificationCase(openCaseId as string),
     enabled: openCaseId !== null,
+    // The application cache keeps ordinary reads for five minutes; review
+    // permissions must be revalidated whenever a cached case is reopened.
+    staleTime: 0,
+    refetchInterval: (query) =>
+      query.state.status !== 'error' && hasPendingIdentityScan(query.state.data)
+        ? IDENTITY_SCAN_REFRESH_MS
+        : false,
   });
 
   const auditQuery = useQuery({
@@ -67,32 +80,50 @@ export function AdminVerificationCaseWorkspace({
   });
 
   const commandMut = useMutation({
-    mutationFn: (input: Omit<CaseCommandInput, 'caseId'>) =>
-      runCaseCommand({ ...input, caseId: openCaseId as string }),
-    onSuccess: () => {
-      setErrorStatus(null);
+    mutationFn: (input: CaseCommandInput) => runCaseCommand(input),
+    onSuccess: (_result, input) => {
+      setCommandError((current) => (current?.caseId === input.caseId ? null : current));
       // Refetch rather than patch: a command can move the case somewhere the
       // client did not predict — a reject from IN_REVIEW, an approve that also
       // opened a grant — and the reviewer must see where it actually landed.
-      if (openCaseId) {
-        void qc.invalidateQueries({ queryKey: caseKey(openCaseId) });
-        void qc.invalidateQueries({ queryKey: auditKey(openCaseId) });
-      }
+      void qc.invalidateQueries({ queryKey: caseKey(input.caseId) });
+      void qc.invalidateQueries({ queryKey: auditKey(input.caseId) });
       void qc.invalidateQueries({ queryKey: ['admin', 'verification', 'queue'] });
     },
-    onError: (err) => {
+    onError: (err, input) => {
       // 409 (someone else decided first) and 403 (you may not) are different
       // things to tell a reviewer, and only the status distinguishes them.
-      setErrorStatus((err as { response?: { status?: number } })?.response?.status ?? 500);
+      setCommandError({
+        caseId: input.caseId,
+        status: (err as { response?: { status?: number } })?.response?.status ?? 500,
+      });
     },
   });
 
   function openCase(item: AdminVerificationQueueItem) {
-    setErrorStatus(null);
     setOpenCaseId(item.id);
   }
 
   const kase = caseQuery.data ?? null;
+  const readOnly = caseQuery.isFetching || caseQuery.isError;
+  const readDenied =
+    caseQuery.isError &&
+    [401, 403, 404].includes(
+      (caseQuery.error as { response?: { status?: number } })?.response?.status ?? 0,
+    );
+  async function refreshCase() {
+    const refreshedCaseId = openCaseId;
+    const response = await caseQuery.refetch();
+    if (response.isError) throw response.error;
+    if (refreshedCaseId) {
+      setReviewVersions((current) => ({
+        ...current,
+        [refreshedCaseId]: (current[refreshedCaseId] ?? 0) + 1,
+      }));
+    }
+    setCommandError((current) => (current?.caseId === refreshedCaseId ? null : current));
+    return response.data;
+  }
 
   return (
     <div dir={dir} data-testid="admin-verification-workspace" className="space-y-6">
@@ -117,6 +148,17 @@ export function AdminVerificationCaseWorkspace({
           data-testid="admin-case-detail"
           className="ar-card ar-stack"
         >
+          <div>
+            <button
+              type="button"
+              className="ar-button"
+              data-testid="case-refresh"
+              disabled={caseQuery.isFetching || commandMut.isPending}
+              onClick={() => void refreshCase().catch(() => undefined)}
+            >
+              {t.reload}
+            </button>
+          </div>
           {caseQuery.isLoading && (
             <p aria-busy="true" data-testid="case-loading" className="text-sm">
               {t.loading}
@@ -131,7 +173,7 @@ export function AdminVerificationCaseWorkspace({
             </p>
           )}
 
-          {kase && !caseQuery.isError && (
+          {kase && !readDenied && (
             <>
               <header className="flex flex-wrap items-center gap-2">
                 <h3 className="text-base font-semibold">{CASE_STATE_LABELS[lang][kase.state]}</h3>
@@ -165,7 +207,8 @@ export function AdminVerificationCaseWorkspace({
                 lang={lang}
                 isLoading={caseQuery.isLoading}
                 isError={caseQuery.isError}
-                onView={evidence.open}
+                readOnly={readOnly}
+                onView={readOnly ? undefined : evidence.open}
               />
 
               {evidence.failed && (
@@ -175,13 +218,13 @@ export function AdminVerificationCaseWorkspace({
               )}
 
               <CaseActionsPanel
+                key={kase.id}
                 verificationCase={kase}
                 pending={commandMut.isPending}
+                readOnly={readOnly}
+                reviewVersion={reviewVersions[kase.id] ?? 0}
                 errorStatus={errorStatus}
-                onReload={() => {
-                  setErrorStatus(null);
-                  void caseQuery.refetch();
-                }}
+                onReload={refreshCase}
                 onRun={(input) => commandMut.mutateAsync(input)}
               />
 

@@ -13,11 +13,14 @@ import { PublicMediaLedgerService } from '../../../media/public-media-ledger.ser
 import { ProviderOnboardingWizardService } from '../provider-onboarding-wizard.service';
 import {
   AVATAR_KEY_PREFIX,
+  AVATAR_MAX_BYTES,
   AvatarPolicyError,
   assertAvatarKey,
   assertAvatarWithinLimit,
   avatarOwnerRef,
 } from './avatar-policy';
+
+export { AVATAR_MAX_BYTES } from './avatar-policy';
 
 // Sprint 9B.17 — FINALIZE, the only point at which an uploaded avatar becomes
 // a provider's avatar.
@@ -46,16 +49,6 @@ import {
 //   bytes disagree      a file declared PNG that is not a PNG is either a
 //                       spoof or a corruption, and neither should be served
 //                       from a public, year-cached URL
-
-/** The ceiling for a stored avatar.
- *
- *  A constant rather than an operator setting, unlike the portfolio's: an
- *  avatar is one small square image that the client already downscales and
- *  re-encodes before upload, so there is no operational reason to tune it, and
- *  a settings row nobody changes is a migration and an admin screen for
- *  nothing. Generous enough that a phone photo that skipped compression still
- *  lands. */
-export const AVATAR_MAX_BYTES = 5 * 1024 * 1024;
 
 @Injectable()
 export class ProviderAvatarService {
@@ -134,42 +127,38 @@ export class ProviderAvatarService {
       return current;
     }
 
-    // Sprint 09B.29 Phase 4 — CLAIM THE RESERVATION.
-    //
-    // The row was created at presign, before the upload URL existed. Claiming
-    // it here is what turns an abandoned-upload candidate into an attached
-    // asset, and the claim is conditional on owner + key + PUBLIC + unclaimed:
-    // a client cannot finalize a key it was never issued, cannot claim another
-    // provider's reservation, and two concurrent finalizations produce one
-    // winner.
-    //
-    // A refusal is NOT fatal to the link. The bytes passed every check above
-    // and the provider's photo should appear; what a missing claim means is
-    // that the ledger row is absent or already used, and the sweep's job is to
-    // find objects nobody claimed — not to hold up a valid upload. It is
-    // logged so the case is visible rather than silent.
-    const claimed = await this.ledger.claim({ userId, storageKey: input.key });
-    if (!claimed) {
-      this.log.warn({ msg: 'provider.avatar.finalize.unclaimed_reservation', userId });
-    }
-
-    // The photo being REPLACED becomes eligible for byte deletion. Intent
-    // only — `retainUntil`, never `deletedAt`, which the cleanup sweep writes
-    // after storage confirms the object is gone. Without this, every
-    // replacement left its predecessor in the bucket for ever (O-2).
-    const previousKey = keyFromPublicUrl(current.data.profileImageUrl ?? null);
-    if (previousKey && previousKey !== input.key) {
-      await this.ledger.retire({
-        userId,
-        storageKey: previousKey,
-        reason: AVATAR_REPLACED_REASON,
-      });
-    }
-
-    const view = await this.wizard.patchStep(userId, 'IDENTITY', {
-      version: input.version,
-      profileImageUrl: fileUrl,
-    });
+    // Claim, link and retirement are one database commit. In particular, a
+    // stale version or review lock must never retire the still-current photo.
+    // Storage validation stays outside this transaction; no byte deletion is
+    // performed here, only the cleanup intent after a successful replacement.
+    const view = await this.wizard.patchStep(
+      userId,
+      'IDENTITY',
+      { version: input.version, profileImageUrl: fileUrl },
+      async (trx, previous) => {
+        const claimed = await this.ledger.claim({ userId, storageKey: input.key }, new Date(), trx);
+        if (!claimed) {
+          throw new AppError(
+            'VALIDATION_ERROR',
+            'That upload is no longer available. Please upload it again.',
+            400,
+            {
+              reason: 'UPLOAD_UNAVAILABLE',
+            },
+          );
+        }
+        // Read the predecessor from the versioned transaction, never the
+        // earlier snapshot used solely for idempotent retry detection.
+        const previousKey = keyFromPublicUrl(previous.profileImageUrl);
+        if (previousKey && previousKey !== input.key) {
+          await this.ledger.retire(
+            { userId, storageKey: previousKey, reason: AVATAR_REPLACED_REASON },
+            new Date(),
+            trx,
+          );
+        }
+      },
+    );
     this.log.log({ msg: 'provider.avatar.finalize.linked', userId, bytes: stored.sizeBytes });
     return view;
   }
@@ -180,26 +169,21 @@ export class ProviderAvatarService {
     const current = await this.wizard.get(userId);
     if (current.data.profileImageUrl === null) return current;
 
-    // Sprint 09B.29 Phase 4 — retire the bytes as well as the pointer (O-3).
-    //
-    // Clearing `profileImageUrl` used to be the whole operation, so the object
-    // stayed in the bucket permanently and stayed readable at its URL. The
-    // provider had asked for their photo to be gone; only the reference went.
-    //
-    // Intent only. `PublicMediaCleanupService` writes `deletedAt`, after
-    // storage has confirmed the object is actually absent — and the retirement
-    // is scoped to a PUBLIC asset owned by this user, so it can never reach
-    // another provider's media or an evidence row.
-    //
-    // Ordered BEFORE the patch so a failure to record the intent fails the
-    // whole operation, rather than clearing the pointer and losing the only
-    // handle on the bytes.
-    const key = keyFromPublicUrl(current.data.profileImageUrl);
-    if (key) {
-      await this.ledger.retire({ userId, storageKey: key, reason: AVATAR_REMOVED_REASON });
-    }
-
-    return this.wizard.patchStep(userId, 'IDENTITY', { version, profileImageUrl: null });
+    return this.wizard.patchStep(
+      userId,
+      'IDENTITY',
+      { version, profileImageUrl: null },
+      async (trx, previous) => {
+        const key = keyFromPublicUrl(previous.profileImageUrl);
+        if (key) {
+          await this.ledger.retire(
+            { userId, storageKey: key, reason: AVATAR_REMOVED_REASON },
+            new Date(),
+            trx,
+          );
+        }
+      },
+    );
   }
 
   private toHttp(err: unknown): AppError {

@@ -63,11 +63,97 @@ entry reserves and authorises the deviation; it does not claim it is delivered.
 
 ---
 
+## D5-02 — Status recovery actions on state 14
+
+| Field                        | Value                                                                                                                  |
+| ---------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| **Status**                   | Functional repair authorized; fresh revised-source acceptance remains required                                         |
+| **Authority**                | Product-owner follow-up on 2026-11-11, after the status-screen controls and deployment scope were presented for review |
+| **Affected reference state** | Only 14 (`status-centre`, `/provider/status`)                                                                          |
+| **Revision identity**        | `STATUS_RECOVERY_2026_11`                                                                                              |
+| **Reference modified?**      | No. Frozen prototype files and expected captures remain unchanged                                                      |
+| **Acceptance**               | State-specific presentation checks, with the original prototype difference still measured                              |
+
+### Recorded repair directive and scope
+
+The preceding review presented the updated state-14 screen and identified
+three functional actions: review verification documents, open the application,
+and refresh its current status. It explained that the old prototype's
+presentation-only action prevented the visual gate from accepting these
+functional controls. The owner then renewed the instruction:
+
+> المطلوب إصلاح جميع طلبات السحب حتى اتمكن من دمجها بشكل صحيح.
+
+The same follow-up requested:
+
+> أريدك أن تقوم بإصلاح النشر على Railway بالكامل بحيث يمكنني تجربة التطبيقات أونلاين!
+
+That follow-up, read with the immediately preceding concrete screen and scope,
+is the implementation authority for completing this functional repair. This
+entry records that context; it does **not** invent a separate owner statement
+that the screen has pixel parity with the old prototype or that a release has
+already passed acceptance. The authorized implementation replaces only the
+state-14 pixel ceiling with the presentation checks below. It does not authorize
+an unrelated redesign or a general relaxation of the evidence rules.
+
+### Required presentation
+
+| Action                 | English                                | Arabic                      |
+| ---------------------- | -------------------------------------- | --------------------------- |
+| Review documents       | View and review verification documents | عرض وثائق التوثيق ومراجعتها |
+| Open application       | View your application                  | عرض طلبك                    |
+| Refresh status         | Refresh status                         | تحديث الحالة                |
+| Existing sticky footer | Withdraw application to edit           | سحب الطلب للتعديل           |
+
+All four controls must measure at least 44 × 44 px. The three main actions must
+be visible inside the scrollable main area, in order without overlapping;
+withdrawal remains inside the sticky footer. The shell stays 390 × 844, main
+and footer retain full width and adjacent bounds, and the footer ends at the
+viewport bottom. Exact review guidance remains required. The four independent
+lifecycle axes retain their existing canonical answers and tones.
+
+The gate keeps `expected.png`, `actual.png`, `diff.png` and the honestly
+recomputed pixel ratio for every cell. For state 14 alone, the old ratio ceiling
+is replaced by same-run, state/route/locale-specific observations in
+`revision.json`, with the matching revision identity in `metrics.json`.
+Missing or stale evidence, incorrect labels, invalid geometry, forged ratios,
+malformed images and incorrect revision identities remain failures.
+
+States 6–9 retain their existing September revision and identity. The other
+**13 states, including state 17**, retain the unchanged **0.005** pixel budget.
+No axes, Axe rules/tags, responsive cells, reference files, masks, fonts,
+viewports, real-API assertions or functional acceptance are removed or relaxed.
+The read-only refresh action remains covered by the browser tests that require
+a successful status read without submitting or mutating the application.
+
+### Reviewed evidence and remaining verification
+
+The reviewed source is `0838a61dab15be7ea42cd82839680367fa8242c9`, with tree
+`df58a3fbc7ba39a2e32689acba14d2fb723e8e12`, in
+[PR 228](https://github.com/baraabd/homeservicemarketplace/pull/228). Its
+[CI run 43066903106](https://github.com/baraabd/homeservicemarketplace/actions/runs/43066903106)
+provides the corrected EN/AR state-14 captures and real provider/Admin recovery
+evidence:
+
+- Phase 5 artifact `13875973970`, SHA-256
+  `0095d77027fda15286dd05658cd687d3e97ec88cda2828459cc0a8db7adbd5ce`.
+- Admin visual artifact `13878275032`, SHA-256
+  `9ec162fd2c8db5fcdc9164130d6d052c15572f3b36e91e3564c82bc28823b5d5`.
+- State-14 axes, copy, accessibility and responsive checks passed. The original
+  measured ratios remain EN `0.012914691943127962` and AR
+  `0.009344999392392757`; they exceed the old `0.005` ceiling and are not
+  relabelled as pixel parity.
+- State 17 retains its canonical answers and original pixel threshold. Its
+  earlier incomplete verification fixture was corrected separately and is
+  outside this deviation's scope.
+
+That evidence reviewed the repaired screen before this acceptance update.
+The new source must still pass the full browser, accessibility, responsive and
+real-API acceptance. Neither the prior evidence nor this entry claims those
+new-source checks have already passed, that the dependent release gates are
+accepted, or that staging or production has been deployed successfully.
+
 ## Entries requiring authority that does not yet exist
 
-None. No other difference from the approved prototype is planned or shipped.
-
-If implementation reveals that a state cannot reach pixel parity without
-altering the reference, the threshold, a mask or the application's semantics,
-that is a **hard stop** under the original mandate — it is reported, not entered
-here.
+None. Any further difference outside the recorded revisions must be reported
+for a concrete decision; it cannot be inferred from D5-02.

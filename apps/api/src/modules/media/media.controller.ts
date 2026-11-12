@@ -47,6 +47,7 @@ import { CurrentUser } from '../iam/authentication/decorators/current-user.decor
 import type { AuthenticatedUser } from '../iam/authentication/types/authenticated-user';
 import { Public } from '../iam/authentication/decorators/public.decorator';
 import { AppError } from '../../shared/errors/app-error';
+import { StorageFaultError } from '../../infrastructure/storage/storage-diagnostics';
 import { PresignUploadRequestDto } from './dto/presign-upload.dto';
 import { isRestrictedKey } from '../provider/verification/media/evidence-keys';
 import {
@@ -55,6 +56,8 @@ import {
 } from '../../infrastructure/storage/portfolio-storage-policy';
 import { PortfolioMediaService } from './portfolio-media.service';
 import { servePortfolioMedia } from './serve-portfolio-media';
+import { PublicMediaReadService } from './public-media-read.service';
+import { servePublicMedia } from './serve-public-media';
 import { assertPublishableContentType } from '../provider/portfolio/portfolio-policy';
 import { FinalizeRequestAttachmentsDto } from './dto/finalize-request-attachments.dto';
 import {
@@ -86,9 +89,9 @@ import {
 //     Public read of the uploaded blob. ServiceRequest.mediaUrls[] is a
 //     server-written projection of claimed MediaAsset rows (R06); its
 //     values resolve here for the local backend.
-//     S3 URLs resolve to S3 directly. Both backends produce URLs the
-//     provider's UI can drop into an <img> tag without any extra
-//     header / token handshake.
+//     S3_PUBLIC_BASE_URL can point here to read published avatars/requests
+//     from a private S3 origin after checking their live publication records.
+//     Both backends produce URLs usable by the provider's <img> tag.
 //
 // Size cap + content-type whitelist come from
 // apps/api/src/infrastructure/storage/content-type.ts (single source
@@ -105,6 +108,7 @@ export class MediaController {
     private readonly ledger: PublicMediaLedgerService,
     private readonly portfolioMedia: PortfolioMediaService,
     private readonly requestMedia: RequestMediaService,
+    private readonly publicMedia: PublicMediaReadService,
   ) {}
 
   // ─── Presign batch ───────────────────────────────────────────────────────
@@ -270,7 +274,13 @@ export class MediaController {
     const prefix = '/v1/media/uploads/';
     const idx = req.path.indexOf(prefix);
     const rawKey = idx >= 0 ? req.path.slice(idx + prefix.length) : '';
-    const key = decodeURIComponent(rawKey);
+    let key: string;
+    try {
+      key = decodeURIComponent(rawKey);
+      validateKey(key);
+    } catch {
+      throw new AppError('VALIDATION_ERROR', 'Upload rejected.', 400);
+    }
 
     // Sprint 9B — the write half of the same boundary (docs/adr/0009 §3).
     //
@@ -298,9 +308,14 @@ export class MediaController {
     if (!(ALLOWED_CONTENT_TYPES as readonly string[]).includes(ct)) {
       throw new AppError('VALIDATION_ERROR', 'Disallowed content type.', 400);
     }
-    const sizeBytes = Number.parseInt(sz, 10);
-    const expSeconds = Number.parseInt(exp, 10);
-    if (!Number.isFinite(sizeBytes) || !Number.isFinite(expSeconds)) {
+    const sizeBytes = Number(sz);
+    const expSeconds = Number(exp);
+    if (
+      !/^\d+$/u.test(sz) ||
+      !/^\d+$/u.test(exp) ||
+      !Number.isSafeInteger(sizeBytes) ||
+      !Number.isSafeInteger(expSeconds)
+    ) {
       throw new AppError('VALIDATION_ERROR', 'Invalid presign parameters.', 400);
     }
 
@@ -310,7 +325,9 @@ export class MediaController {
     }
 
     try {
-      await this.local.acceptUpload({
+      const target = this.config.get('STORAGE_DRIVER') === 's3' ? this.storage : this.local;
+      if (!target.acceptUpload) throw new StorageFaultError('misconfigured');
+      await target.acceptUpload({
         key,
         sig,
         exp: expSeconds,
@@ -320,6 +337,12 @@ export class MediaController {
         actualContentType: actualContentType ?? null,
       });
     } catch (err) {
+      if (err instanceof StorageFaultError)
+        throw new AppError(
+          'DEPENDENCY_UNAVAILABLE',
+          'Upload storage is temporarily unavailable.',
+          503,
+        );
       const reason = (err as Error).message;
       // Map adapter signals to safe HTTP shapes. Internals never reach
       // the wire.
@@ -342,7 +365,7 @@ export class MediaController {
     }
   }
 
-  // ─── Local-disk GET serve ───────────────────────────────────────────────
+  // ─── Public media GET serve ────────────────────────────────────────────
 
   @Public()
   @Get('files/*')
@@ -358,9 +381,9 @@ export class MediaController {
       throw new AppError('NOT_FOUND', 'File not found.', 404);
     }
 
-    // Sprint 9B — this route is @Public(), unauthenticated, and sets
-    // `Cache-Control: public, immutable`. Identity evidence must therefore be
-    // unreachable from it (docs/adr/0009 §3).
+    // This route is @Public(), unauthenticated. The legacy local-disk path
+    // also caches immutable bytes. Identity evidence must be unreachable
+    // through either storage backend (docs/adr/0009 §3).
     //
     // Restricted objects already live in a separate bucket/root, so in a
     // correctly configured deployment this branch is unreachable. It exists
@@ -382,6 +405,11 @@ export class MediaController {
         throw new AppError('NOT_FOUND', 'File not found.', 404);
       }
       await servePortfolioMedia(res, await this.portfolioMedia.openPublic(key));
+      return;
+    }
+
+    if (this.config.get('STORAGE_DRIVER') === 's3') {
+      await servePublicMedia(res, await this.publicMedia.openPublic(key));
       return;
     }
 

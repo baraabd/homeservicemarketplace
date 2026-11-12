@@ -114,6 +114,20 @@ test('explicit inputs fail closed instead of compiling a default product', () =>
   );
 });
 
+test('cookie namespace validation is identical for image and Vite builds', () => {
+  assert.equal(publicWebConfig(declared).authCookiePrefix, 'hsm');
+  assert.equal(
+    publicWebConfig({ ...declared, VITE_AUTH_COOKIE_PREFIX: 'hsm_staging' }).authCookiePrefix,
+    'hsm_staging',
+  );
+  for (const value of ['', 'HSM', 'hsm\n', 'hsm;other', 'x'.repeat(33)]) {
+    assert.throws(
+      () => publicWebConfig({ ...declared, VITE_AUTH_COOKIE_PREFIX: value }),
+      /VITE_AUTH_COOKIE_PREFIX/u,
+    );
+  }
+});
+
 test('errors never echo supplied values', () => {
   try {
     publicWebConfig({ ...declared, VITE_CSP_MEDIA_ORIGINS: 'https://user:private@cdn.test' });
@@ -127,6 +141,7 @@ test('optional inputs default to the behavior compiled before K03', () => {
   const config = publicWebConfig(declared);
   assert.deepEqual(
     {
+      authCookiePrefix: config.authCookiePrefix,
       disputeIntakeV1: config.disputeIntakeV1,
       realtimeSocketIo: config.realtimeSocketIo,
       realtimeTransports: config.realtimeTransports,
@@ -134,6 +149,7 @@ test('optional inputs default to the behavior compiled before K03', () => {
       cspUploadOrigins: config.cspUploadOrigins,
     },
     {
+      authCookiePrefix: 'hsm',
       disputeIntakeV1: false,
       realtimeSocketIo: false,
       realtimeTransports: 'websocket',
@@ -148,6 +164,7 @@ test('every public input changes the fingerprint; equivalent spellings do not', 
   assert.match(base, /^[a-f0-9]{64}$/u);
   const variants = {
     VITE_API_URL: 'https://api2.example.test',
+    VITE_AUTH_COOKIE_PREFIX: 'hsm_staging',
     VITE_PROVIDER_ONBOARDING_V2: 'true',
     VITE_STRIPE_SANDBOX_ENABLED: 'true',
     VITE_DISPUTE_INTAKE_V1: 'true',

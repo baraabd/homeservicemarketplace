@@ -33,6 +33,7 @@ const contexts = [];
 const errors = [];
 let stage = 'initialize';
 let loginRecoveryCheckpoint = () => null;
+let signupRecoveryCheckpoint = () => null;
 let browser;
 const db = new pg.Client({ connectionString: process.env.DATABASE_URL });
 const pwd = randomBytes(24).toString('base64url');
@@ -433,6 +434,9 @@ try {
     assert.equal(unverifiedResponse.status(), 403);
     assert.equal((await unverifiedResponse.json()).error.code, 'AUTH_ACCOUNT_UNVERIFIED');
     await expect(recoveryButton).toBeVisible();
+    await expect(
+      b.page.getByText('يرجى التحقق من بريدك الإلكتروني قبل تسجيل الدخول.', { exact: true }),
+    ).toBeVisible();
     recoveryStep = 'arabic-recovery-visible';
     await expect(b.page.getByTestId('otp-input')).toHaveCount(0);
     assert.equal(loginRequests, 2);
@@ -458,7 +462,9 @@ try {
     await expect(b.page.getByRole('status')).toContainText('تم استلام الطلب');
     const target = await link(address, 'verify-email');
     await b.page.goto(target);
-    await expect(b.page.getByRole('heading', { name: 'Email verified' })).toBeVisible();
+    await expect(
+      b.page.getByRole('heading', { name: 'تم التحقق من البريد الإلكتروني', exact: true }),
+    ).toBeVisible();
     assert.equal((await call(b.page, '/v1/auth/me')).status, 401);
     const size = await b.page.evaluate(() => ({
       width: globalThis.document.documentElement.clientWidth,
@@ -469,6 +475,146 @@ try {
       path: path.join(OUT, 'arabic-link-recovery-320.png'),
       fullPage: true,
     });
+  });
+  await phase('signup-expired-resend-recovers-through-real-link-in-arabic', async () => {
+    const { page } = await newPage(320);
+    const address = `r04-${randomUUID()}@example.test`;
+    const requests = { register: 0, resendOtp: 0, verifyOtp: 0, verificationLink: 0 };
+    let recoveryStep = 'signup';
+    signupRecoveryCheckpoint = () => ({ recoveryStep, ...requests });
+    const countRequests = (request) => {
+      if (request.method() !== 'POST') return;
+      if (request.url() === `${API}/v1/auth/register`) requests.register += 1;
+      if (request.url() === `${API}/v1/auth/resend-otp`) requests.resendOtp += 1;
+      if (request.url() === `${API}/v1/auth/verify-otp`) requests.verifyOtp += 1;
+      if (request.url() === `${API}/v1/auth/resend-verification`) requests.verificationLink += 1;
+    };
+    page.on('request', countRequests);
+    await page.goto(`${WEB}/signup`);
+    await page.getByLabel('Full Name', { exact: true }).fill('R04 Expiry Recovery');
+    await page.getByRole('button', { name: 'Next', exact: true }).click();
+    await page.getByLabel('Email Address', { exact: true }).fill(address);
+    await page.getByLabel('Password', { exact: true }).fill(pwd);
+    const consent = page.getByRole('checkbox', {
+      name: 'I agree to the Terms of Service and acknowledge that I have read the Privacy Notice.',
+      exact: true,
+    });
+    await expect(consent).toBeEnabled();
+    await consent.check();
+    const registration = page.waitForResponse(
+      (response) =>
+        response.url() === `${API}/v1/auth/register` && response.request().method() === 'POST',
+    );
+    await page.getByRole('button', { name: 'Create Account', exact: true }).click();
+    const registered = await registration;
+    assert.equal(registered.status(), 202);
+    const { challengeId } = await registered.json();
+    assert.equal(typeof challengeId, 'string');
+    const user = await ownUser(address);
+    assert.equal(user.status, 'PENDING_VERIFICATION');
+    assert.equal(user.emailVerifiedAt, null);
+    // Exercise SMTP delivery but never enter or photograph the secret code.
+    await code(address);
+    await expect(page.getByTestId('otp-input')).toBeEnabled();
+    await page.getByTestId('lang-toggle').click();
+    await expect(page.locator('html')).toHaveAttribute('lang', 'ar');
+    await expect(page.locator('html')).toHaveAttribute('dir', 'rtl');
+
+    // Only this process's newly registered challenge in guarded r04_auth_ci
+    // is expired. Do not change account state, counters, hashes or permissions.
+    assert.ok(users.includes(user.id));
+    const expired = await db.query(
+      `UPDATE "VerificationToken" SET "expiresAt" = NOW() - INTERVAL '1 second'
+       WHERE "challengeId"=$1 AND "userId"=$2
+         AND "purpose"='REGISTRATION_OTP' AND "usedAt" IS NULL`,
+      [challengeId, user.id],
+    );
+    assert.equal(expired.rowCount, 1, 'Only the owned registration challenge is expired');
+    recoveryStep = 'challenge-expired';
+    const resendButton = page.getByRole('button', { name: 'إعادة طلب الرمز', exact: true });
+    await expect(resendButton).toBeEnabled();
+    const resend = page.waitForResponse(
+      (response) =>
+        response.url() === `${API}/v1/auth/resend-otp` && response.request().method() === 'POST',
+    );
+    await resendButton.click();
+    const refused = await resend;
+    assert.equal(refused.status(), 400);
+    assert.equal((await refused.json()).error.code, 'AUTH_OTP_EXPIRED');
+    const alert = page.getByRole('alert');
+    await expect(alert).toHaveText(
+      'انتهت صلاحية طلب التحقق. استخدم خيار الاستعادة أدناه للبدء مجددًا.',
+    );
+    await expect(page.getByTestId('otp-input')).toBeDisabled();
+    await expect(page.getByRole('button', { name: 'تأكيد', exact: true })).toBeDisabled();
+    await expect(resendButton).toBeDisabled();
+    const recover = page.getByRole('button', {
+      name: 'طلب رابط تحقق بدلاً من الرمز',
+      exact: true,
+    });
+    await expect(recover).toBeEnabled();
+    const unchanged = await db.query(
+      'SELECT "attemptCount", "resendCount", "usedAt" FROM "VerificationToken" WHERE "challengeId"=$1 AND "userId"=$2',
+      [challengeId, user.id],
+    );
+    assert.deepEqual(unchanged.rows, [{ attemptCount: 0, resendCount: 0, usedAt: null }]);
+    recoveryStep = 'arabic-terminal-recovery';
+    for (const width of [320, 390, 430, 768, 1024, 1440]) {
+      await page.setViewportSize({ width, height: 900 });
+      await page.evaluate(() => globalThis.document.fonts.ready.then(() => undefined));
+      await recover.scrollIntoViewIfNeeded();
+      await expect(alert).toBeInViewport();
+      await expect(recover).toBeInViewport();
+      const overflow = await page.evaluate(
+        () =>
+          globalThis.document.documentElement.scrollWidth -
+          globalThis.document.documentElement.clientWidth,
+      );
+      assert.ok(overflow <= 1, `No horizontal overflow in Arabic recovery at ${width}px`);
+      await page.screenshot({
+        path: path.join(OUT, `signup-expired-resend-ar-${width}.png`),
+        fullPage: true,
+      });
+    }
+    await page.setViewportSize({ width: 320, height: 900 });
+    await recover.click();
+    await expect(page).toHaveURL(/\/check-email$/u);
+    await expect(page.getByLabel('البريد الإلكتروني', { exact: true })).toHaveValue(address);
+    assert.deepEqual(requests, { register: 1, resendOtp: 1, verifyOtp: 0, verificationLink: 0 });
+    recoveryStep = 'verification-link-ready';
+    const linkRequest = page.waitForResponse(
+      (response) =>
+        response.url() === `${API}/v1/auth/resend-verification` &&
+        response.request().method() === 'POST',
+    );
+    await page.getByRole('button', { name: 'طلب رابط تحقق', exact: true }).click();
+    assert.equal((await linkRequest).status(), 202);
+    await expect(page.getByRole('status')).toContainText('تم استلام الطلب');
+    const target = await link(address, 'verify-email');
+    recoveryStep = 'verification-link-delivered';
+    const verification = page.waitForResponse(
+      (response) =>
+        response.url() === `${API}/v1/auth/verify-email` && response.request().method() === 'POST',
+    );
+    await page.goto(target);
+    assert.equal((await verification).status(), 200);
+    await expect(
+      page.getByRole('heading', { name: 'تم التحقق من البريد الإلكتروني', exact: true }),
+    ).toBeVisible();
+    const activated = await ownUser(address);
+    assert.equal(activated.id, user.id);
+    assert.equal(activated.status, 'ACTIVE');
+    assert.ok(activated.emailVerifiedAt);
+    assert.equal((await call(page, '/v1/auth/me')).status, 401);
+    assert.equal(
+      (await db.query('SELECT count(*)::int AS n FROM "Session" WHERE "userId"=$1', [user.id]))
+        .rows[0].n,
+      0,
+      'Email recovery activates only the owned account without creating a session',
+    );
+    assert.deepEqual(requests, { register: 1, resendOtp: 1, verifyOtp: 0, verificationLink: 1 });
+    page.off('request', countRequests);
+    recoveryStep = 'complete';
   });
   await phase('roles-are-server-provisioned-and-all-three-roles-use-real-otp-login', async () => {
     // Only fixture accounts in this isolated database are provisioned; the public
@@ -538,6 +684,7 @@ try {
       completed: phases.map((p) => p.name),
       logoutCheckpoint: offlineLogoutCheckpoint(),
       loginRecoveryCheckpoint: loginRecoveryCheckpoint(),
+      signupRecoveryCheckpoint: signupRecoveryCheckpoint(),
       codeLocation: /r04-[a-z-]+\.mjs:\d+:\d+/u.exec(error?.stack ?? '')?.[0] ?? null,
     }),
   ).catch(() => undefined);

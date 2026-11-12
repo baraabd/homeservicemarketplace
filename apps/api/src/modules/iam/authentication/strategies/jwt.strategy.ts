@@ -4,7 +4,7 @@ import { Strategy } from 'passport-jwt';
 import type { Request } from 'express';
 
 import { AppConfigService } from '../../../../config/app-config.service';
-import { ACCESS_COOKIE } from '../helpers/cookies';
+import { ACCESS_COOKIE, authCookieNames } from '../helpers/cookies';
 import { SessionValidationService } from '../services/session-validation.service';
 import type { AuthenticatedUser } from '../types/authenticated-user';
 // The global Express.Request augmentation in ../types/express.d.ts is
@@ -31,7 +31,7 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
   ) {
     super({
       // Single authoritative extractor. See precedence rules in docs/iam.md.
-      jwtFromRequest: (req: Request) => resolveAccessToken(req),
+      jwtFromRequest: (req: Request) => resolveAccessToken(req, authCookieNames(config).access),
       ignoreExpiration: false,
       secretOrKey: config.get('JWT_ACCESS_SECRET'),
       issuer: config.get('JWT_ISSUER'),
@@ -78,8 +78,8 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
 }
 
 // Exported for reuse by the refresh guard + tests.
-export function resolveAccessToken(req: Request): string | null {
-  const cookieToken = readAccessCookie(req);
+export function resolveAccessToken(req: Request, cookieName = ACCESS_COOKIE): string | null {
+  const cookieToken = readAccessCookie(req, cookieName);
   const headerToken = readBearer(req);
 
   if (cookieToken && headerToken) {
@@ -98,9 +98,9 @@ export function resolveAccessToken(req: Request): string | null {
   return null;
 }
 
-function readAccessCookie(req: Request): string | null {
+function readAccessCookie(req: Request, cookieName: string): string | null {
   const cookies = (req as Request & { cookies?: Record<string, string> }).cookies;
-  const v = cookies?.[ACCESS_COOKIE];
+  const v = cookies?.[cookieName];
   return typeof v === 'string' && v.length > 0 ? v : null;
 }
 

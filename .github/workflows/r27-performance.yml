@@ -142,7 +142,7 @@ jobs:
           set -euo pipefail
           pnpm --filter @homeservicemarketplace/web build
           pnpm --filter @homeservicemarketplace/web exec tsc -p r27-tests/tsconfig.json --noEmit
-          pnpm --filter @homeservicemarketplace/web exec playwright install --with-deps chromium
+          node ../harness/scripts/ci/install-browser.cjs
       - name: Production bundle browser measurements and fault recovery
         env:
           R27_BROWSER_MODE: production

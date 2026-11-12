@@ -25,6 +25,15 @@ export interface StatusCentreCopy {
   waitingAlertBody: string;
   /** The quiet way back into a saved application. */
   viewApplication: string;
+  reviewApplication: string;
+  applicationActionTitle: string;
+  applicationActionBody: string;
+  continueVerification: string;
+  documentsRequiredBody: string;
+  documentsUnusableBody: string;
+  changesRequiredBody: string;
+  rejectedBody: string;
+  expiredBody: string;
   withdraw: string;
 
   // ── The activation handoff ────────────────────────────────────────────────
@@ -47,6 +56,12 @@ export interface StatusCentreCopy {
   valueNotActive: string;
   valueActive: string;
   valueNotStarted: string;
+  valueDocumentsRequired: string;
+  valueScanning: string;
+  valueScanRetry: string;
+  valueReadyToSubmit: string;
+  valueFileUnusable: string;
+  valueNotRequired: string;
   /** The case was sent back — the provider has something to do. */
   valueActionRequired: string;
   /** Refused. Distinct from "not started", which invites an upload. */
@@ -70,6 +85,21 @@ const EN: StatusCentreCopy = {
   waitingAlertBody:
     'No action is needed now. We will only contact you if a specific item needs attention.',
   viewApplication: 'View your application',
+  reviewApplication: 'Review and send application',
+  applicationActionTitle: 'Complete your joining application',
+  applicationActionBody:
+    'Your identity documents are with our team. Complete the remaining application details or requested corrections, then send your application for approval.',
+  continueVerification: 'Continue identity verification',
+  documentsRequiredBody:
+    'Add the required identity documents, then send them for review after the security check succeeds.',
+  documentsUnusableBody:
+    'Open your documents to see which file cannot be used. Replace it and send your documents for review after the security check succeeds.',
+  changesRequiredBody:
+    'Read the reviewer’s instructions, correct your documents and send the updates for review.',
+  rejectedBody:
+    'Open your verification to read the reason and start a new verification request with the required corrections.',
+  expiredBody:
+    'Open your verification to renew it with current documents. Work access remains separate from this document step.',
   withdraw: 'Withdraw application to edit',
 
   activeTitle: 'Account activated',
@@ -91,6 +121,12 @@ const EN: StatusCentreCopy = {
   valueNotActive: 'Not active',
   valueActive: 'Active',
   valueNotStarted: 'Not started',
+  valueDocumentsRequired: 'Documents needed',
+  valueScanning: 'Security check pending',
+  valueScanRetry: 'Security check will retry',
+  valueReadyToSubmit: 'Ready to send for review',
+  valueFileUnusable: 'Document needs replacement',
+  valueNotRequired: 'Not required',
   valueActionRequired: 'Action needed',
   valueRejected: 'Not accepted',
   valueExpired: 'Expired',
@@ -103,6 +139,18 @@ const AR: StatusCentreCopy = {
   waitingAlertTitle: 'نراجع طلبك',
   waitingAlertBody: 'لا تحتاج إلى إجراء الآن. سنطلب منك شيئاً فقط إذا ظهرت ملاحظة محددة.',
   viewApplication: 'عرض طلبك',
+  reviewApplication: 'مراجعة طلب الانضمام وإرساله',
+  applicationActionTitle: 'أكمل طلب انضمامك',
+  applicationActionBody:
+    'مستندات هويتك لدى فريقنا. أكمل بيانات طلب الانضمام المتبقية أو التعديلات المطلوبة، ثم أرسل الطلب للموافقة عليه.',
+  continueVerification: 'متابعة توثيق الهوية',
+  documentsRequiredBody: 'أضف وثائق الهوية المطلوبة، ثم أرسلها للمراجعة بعد نجاح فحص الأمان.',
+  documentsUnusableBody:
+    'افتح مستنداتك لمعرفة الملف غير القابل للاستخدام. استبدله وأرسل مستنداتك للمراجعة بعد نجاح فحص الأمان.',
+  changesRequiredBody: 'اقرأ ملاحظات المراجع، وصحّح مستنداتك، ثم أرسل التعديلات للمراجعة.',
+  rejectedBody: 'افتح التوثيق لقراءة سبب الرفض وبدء طلب توثيق جديد يتضمن التصحيحات المطلوبة.',
+  expiredBody:
+    'افتح التوثيق لتجديده بمستندات سارية. تبقى صلاحية العمل خطوة مستقلة عن توثيق المستندات.',
   withdraw: 'سحب الطلب للتعديل',
 
   activeTitle: 'تم تفعيل الحساب',
@@ -123,6 +171,12 @@ const AR: StatusCentreCopy = {
   valueNotActive: 'غير مفعّل',
   valueActive: 'مفعّل',
   valueNotStarted: 'لم تبدأ',
+  valueDocumentsRequired: 'مستندات مطلوبة',
+  valueScanning: 'بانتظار فحص الأمان',
+  valueScanRetry: 'بانتظار إعادة فحص الأمان',
+  valueReadyToSubmit: 'جاهزة للإرسال للمراجعة',
+  valueFileUnusable: 'يلزم استبدال مستند',
+  valueNotRequired: 'غير مطلوب',
   valueActionRequired: 'مطلوب إجراء',
   valueRejected: 'غير مقبول',
   valueExpired: 'منتهية',

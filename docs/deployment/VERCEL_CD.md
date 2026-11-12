@@ -22,6 +22,21 @@ migrations. إكمال CD للـAPI يتطلب ربط حساب الاستضاف�
 يبقى `git.deploymentEnabled=false` مقصودًا لمنع نشر Git أصلي مكرر.
 هذا الإعداد لا يمنع نشر Vercel CLI.
 
+تثبّت أوامر `installCommand` و`buildCommand` في `apps/web/vercel.json`
+الإصدار نفسه عبر `--config.use-node-version=24.21.0`. ينزّل pnpm الإصدار
+الدقيق ويستخدمه في lifecycle scripts والبناء، حتى لو غيّر Vercel إصدار
+`24.x` المضيف. يبقى فحص `preinstall` الصارم مفعّلًا، وكذلك
+`--frozen-lockfile`. الصيغة `--use-node-version` وحدها لا يقبلها أمر
+`pnpm install`؛ يجب استخدام السابقة `--config.`. يتحقق فحص toolchain من
+الأمرين لمنع عودة اختلاف الإصدار.
+
+إذا استُخدم إعداد `npm_config_use_node_version` أو
+`ENABLE_EXPERIMENTAL_COREPACK` في لوحة Vercel، فهدف المتغير هو هدف Vercel
+الفعلي (`Preview` أو `Production`)، وليس اسم المشروع. تسمية المشروع
+`hsm-staging-web` لا تجعل نشره إلى `Production` يقرأ متغيرات `Preview`.
+يستمر Corepack في اختيار pnpm من `packageManager` المثبّت بالمستودع؛ لا
+تُعطّل فحص Node أو scripts لتجاوز فشل التثبيت.
+
 يتحكم متغيران على مستوى المستودع في النشر. للبدء على التجهيز اضبط
 `HSM_STAGING_CD_ENABLED=true` بعد تجهيز API وPreview وتقييد GitHub Environment
 إلى `develop`. يتطلب النشر من `main` موافقة منفصلة وضبط
@@ -67,16 +82,16 @@ migrations. إكمال CD للـAPI يتطلب ربط حساب الاستضاف�
 2. تحقق من ربط `baraabd/homeservicemarketplace`.
 3. طابق الإعدادات التالية:
 
-| الإعداد                                     | القيمة                                            |
-| ------------------------------------------- | ------------------------------------------------- |
-| Framework                                   | Vite                                              |
-| Root Directory                              | `apps/web`                                        |
-| Include source files outside Root Directory | مفعّل لحزم workspace                              |
-| Install Command                             | `pnpm install --frozen-lockfile`                  |
-| Build Command                               | `pnpm --filter @homeservicemarketplace/web build` |
-| Output Directory                            | `dist`                                            |
-| Node major في اللوحة                        | `24.x`؛ Actions يختار `24.21.0` بالضبط            |
-| Production Branch                           | `main`                                            |
+| الإعداد                                     | القيمة                                                                                          |
+| ------------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| Framework                                   | Vite                                                                                            |
+| Root Directory                              | `apps/web`                                                                                      |
+| Include source files outside Root Directory | مفعّل لحزم workspace                                                                            |
+| Install Command                             | `pnpm --config.use-node-version=24.21.0 install --frozen-lockfile`                              |
+| Build Command                               | `pnpm --config.use-node-version=24.21.0 exec node ../../scripts/deploy/vercel-hosted-build.mjs` |
+| Output Directory                            | `dist`                                                                                          |
+| Node major في اللوحة                        | `24.x`؛ Actions يختار `24.21.0` بالضبط                                                          |
+| Production Branch                           | `main`                                                                                          |
 
 4. افحص Ignored Build Step وأي إيقاف قديم في اللوحة. لا تُفعّل Native Git
    deployment بالتوازي مع المسار الجديد.
@@ -321,3 +336,24 @@ gh workflow run cd-vercel.yml --repo baraabd/homeservicemarketplace \
 - [Project domain API](https://vercel.com/docs/rest-api/projects/get-a-project-domain)
 - [Public Suffix List](https://publicsuffix.org/list/)
 - [Railway pre-deploy](https://docs.railway.com/deployments/pre-deploy-command)
+
+## البناء المباشر من Vercel
+
+يستخدم البناء المباشر نفس فحص مصدر الـAPI والجاهزية وCORS قبل البناء وبعده،
+ويكتب `deployment.json` بالحقول العامة فقط. لا تعني علامة READY أن رحلات
+المستخدم أو البريد أو الملفات قد اختُبرت.
+
+يضبط المشغّل `DEPLOY_TARGET` و`HSM_WEB_ORIGIN` و`HSM_API_ORIGIN`
+و`HSM_COOKIE_DOMAIN` في نطاق متغيرات البيئة المستخدم فعليًا. يجب أن يطابق
+`VITE_API_URL` عنوان الـAPI، وتبقى أعلام الواجهة صريحة. يستمد البناء SHA
+من checkout أو من `VERCEL_GIT_COMMIT_SHA`، ويرفض أي تعارض مع SHA المعلن.
+
+- التجهيز: `DEPLOY_TARGET=staging`، فرع `develop`، هدف Vercel هو Preview.
+- الإنتاج: `DEPLOY_TARGET=production`، فرع `main`، هدف Vercel هو Production.
+
+يظل نشر Git التلقائي معطّلًا في إعداد المشروع لمنع وجود مسارين يتنافسان
+على النطاق. يمكن إصدار بناء مباشر للـSHA المختبر عبر واجهة Vercel بعد
+مراجعة فحوصه، مع نشر الـAPI المطابق أولًا. في الإنتاج يُنشأ البناء دون نقل
+النطاق، ويُفحص عنوانه الثابت ثم يُرقّى. تبقى دورة CD الموجودة خاضعة
+للمتغيرين `HSM_STAGING_CD_ENABLED` و`HSM_PRODUCTION_CD_ENABLED` وأسرار
+GitHub Environments؛ إصلاح إعدادات Vercel وحده لا يفعّلها.

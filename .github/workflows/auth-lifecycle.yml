@@ -95,7 +95,7 @@ jobs:
           pnpm --filter @homeservicemarketplace/api build
           pnpm --filter @homeservicemarketplace/web build
       - name: Install browser
-        run: pnpm --filter @homeservicemarketplace/web exec playwright install --with-deps chromium
+        run: node scripts/ci/install-browser.cjs
       - name: Start isolated real API and built SPA
         run: |
           set -euo pipefail

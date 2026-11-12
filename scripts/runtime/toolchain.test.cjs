@@ -5,7 +5,12 @@ const fs = require('node:fs/promises');
 const path = require('node:path');
 const os = require('node:os');
 const { NODE_VERSION, ROOT, DECLARATIONS, toolchainProblems } = require('./toolchain.cjs');
-const files = ['package.json', '.devcontainer/devcontainer.json', ...Object.keys(DECLARATIONS)];
+const files = [
+  'package.json',
+  '.devcontainer/devcontainer.json',
+  'apps/web/vercel.json',
+  ...Object.keys(DECLARATIONS),
+];
 
 test('all checked-in declarations agree with the candidate runtime', async () => {
   // This tests declaration consistency, not a claim about this process version.
@@ -28,11 +33,37 @@ for (const file of files) {
       assert.deepEqual(await toolchainProblems(root, NODE_VERSION), []);
       const target = path.join(root, file);
       const text = await fs.readFile(target, 'utf8');
-      await fs.writeFile(target, file.endsWith('devcontainer.json') ? '{}' : text.replaceAll(NODE_VERSION, '20.18.1'));
+      await fs.writeFile(
+        target,
+        file.endsWith('devcontainer.json') ? '{}' : text.replaceAll(NODE_VERSION, '20.18.1'),
+      );
       assert.ok((await toolchainProblems(root, NODE_VERSION)).length);
       await fs.unlink(target);
       assert.ok((await toolchainProblems(root, NODE_VERSION)).length);
-    } finally { await fs.rm(root, { recursive: true, force: true }); }
+    } finally {
+      await fs.rm(root, { recursive: true, force: true });
+    }
+  });
+}
+
+for (const command of ['installCommand', 'buildCommand']) {
+  test(`Vercel ${command} cannot silently use the hosted Node patch`, async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'hsm-vercel-toolchain-'));
+    try {
+      for (const name of files) {
+        await fs.mkdir(path.dirname(path.join(root, name)), { recursive: true });
+        await fs.copyFile(path.join(ROOT, name), path.join(root, name));
+      }
+      const target = path.join(root, 'apps/web/vercel.json');
+      const vercel = JSON.parse(await fs.readFile(target, 'utf8'));
+      vercel[command] = vercel[command].replace(` --config.use-node-version=${NODE_VERSION}`, '');
+      await fs.writeFile(target, JSON.stringify(vercel));
+      assert.deepEqual(await toolchainProblems(root, NODE_VERSION), [
+        `Vercel exact runtime command drift: ${command}`,
+      ]);
+    } finally {
+      await fs.rm(root, { recursive: true, force: true });
+    }
   });
 }
 

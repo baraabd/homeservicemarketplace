@@ -20,6 +20,7 @@ import {
   capabilitiesOf,
   EVIDENCE_PNG,
   providerApplicationReview,
+  supplyEvidence,
   waitForEvidenceClean,
 } from './phase3-activation';
 import {
@@ -269,7 +270,7 @@ test.describe('Independent provider lifecycle recovery', () => {
     // These cases follow the existing Admin acceptance in the same worker and
     // share its loopback login IP. Let the unchanged 10/IP/minute budget expire
     // before creating any new fixture or session; do not reset its Redis keys.
-    // The group uses three Admin UI logins, two Provider UI logins and at most
+    // The group uses four Admin UI logins, three Provider UI logins and at most
     // one initial memoized Admin API login (provider registration uses OTP).
     await delay(65_000);
   });
@@ -630,5 +631,173 @@ test.describe('Independent provider lifecycle recovery', () => {
     });
     expect(accepted.canWork).toBe(true);
     expect((await api(account.jar, '/v1/provider/bids')).status).toBe(200);
+  });
+
+  test('guided provider verification: a clean draft leads to submission and one final Admin decision opens work', async ({
+    page,
+    browser,
+  }, testInfo) => {
+    const account = await submittedProvider();
+    await approveCategoriesFor(account);
+    const evidence = await supplyEvidence(account, 'guided-identity.png');
+    await waitForEvidenceClean(account);
+    const before = await providerApplicationReview(account);
+    expect(before.verification).toMatchObject({ id: evidence.caseId, state: 'DRAFT' });
+    expect(before.availableActions).not.toContain('approve');
+    expect(before.canWork).toBe(false);
+    expect((await api(account.jar, '/v1/provider/bids')).status).toBe(403);
+
+    await enterAdmin(page);
+    await openSubmittedProvider(page, account);
+    await openReviewTask(page, 'BASICS_IDENTITY');
+    const nextStep = page.getByTestId('review-identity-next-step');
+    await expect(nextStep).toHaveAttribute('data-step', 'submit');
+    await expect(page.getByTestId('review-case-approve')).toHaveCount(0);
+    await expect(page.getByTestId('review-approve')).toHaveCount(0);
+
+    const context = await browser.newContext({ baseURL: testInfo.project.use.baseURL });
+    const providerPage = await context.newPage();
+    const errors: string[] = [];
+    observeRuntimeErrors(page, errors);
+    observeRuntimeErrors(providerPage, errors);
+    try {
+      await providerPage.goto('/provider/status');
+      await expect(providerPage).toHaveURL(/\/login(?:\?|$)/);
+      await loginViaUi(providerPage, account);
+      await expect(providerPage).toHaveURL(/\/provider\/status(?:\?|$)/);
+      for (const lang of ['en', 'ar'] as const) {
+        // Persist the real preference once per reload. Multiple addInitScript
+        // setters on the same page have no defined execution order.
+        await providerPage.evaluate((value) => localStorage.setItem('hsm.lang', value), lang);
+        await page.evaluate((value) => localStorage.setItem('hsm.lang', value), lang);
+        await providerPage.reload();
+        await page.reload();
+        await openReviewTask(page, 'BASICS_IDENTITY');
+        await expect(providerPage.getByTestId('axis-verification')).toContainText(
+          lang === 'ar' ? 'جاهزة للإرسال للمراجعة' : 'Ready to send for review',
+        );
+        await expect(providerPage.getByTestId('status-view-verification')).toBeEnabled();
+        await expect(nextStep).toHaveAttribute('data-step', 'submit');
+        for (const width of WIDTHS) {
+          await providerPage.setViewportSize({ width, height: 900 });
+          await page.setViewportSize({ width, height: 900 });
+          await capture(
+            providerPage,
+            testInfo,
+            `lifecycle-guided-provider-ready-${lang}-${width}`,
+            lang,
+          );
+          await capture(page, testInfo, `lifecycle-guided-admin-next-step-${lang}-${width}`, lang);
+        }
+      }
+      await providerPage.setViewportSize({ width: 390, height: 900 });
+      await page.setViewportSize({ width: 1440, height: 900 });
+      const accessibility = await new AxeBuilder({ page: providerPage })
+        .include('[data-testid="provider-status-centre"]')
+        .withTags(['wcag2a', 'wcag2aa', 'wcag21aa', 'wcag22aa'])
+        .analyze();
+      expect(accessibility.violations).toEqual([]);
+      await testInfo.attach('lifecycle-guided-status-accessibility.json', {
+        contentType: 'application/json',
+        body: JSON.stringify(accessibility.violations),
+      });
+
+      await providerPage.getByTestId('status-view-verification').click();
+      await expect(providerPage).toHaveURL(/\/provider\/verification(?:\?|$)/);
+      await expect(providerPage.getByTestId('verification-READY_TO_SUBMIT')).toBeVisible();
+      const sent = providerPage.waitForResponse(
+        (response) =>
+          response.url() === `${REAL_API}${CASE_PATH}/submit` &&
+          response.request().method() === 'POST',
+      );
+      await providerPage.getByRole('button', { name: COPY.ar.submit, exact: true }).click();
+      expect((await sent).status()).toBe(200);
+      await expect(providerPage.getByTestId('verification-PENDING_REVIEW')).toBeVisible();
+
+      await page.getByTestId('review-refresh').click();
+      await expect(nextStep).toHaveAttribute('data-step', 'review');
+      const submitted = await providerApplicationReview(account);
+      expect(submitted.verification).toMatchObject({ id: evidence.caseId, state: 'SUBMITTED' });
+      expect(submitted.submission?.id).toBe(before.submission!.id);
+      expect(submitted.availableActions).toContain('approve');
+      const doc = submitted.verification!.documents.find(
+        (item) => item.id === evidence.documentId,
+      )!;
+      expect(doc.viewable).toBe(true);
+      const content = page.waitForResponse(
+        (response) =>
+          response.url() === `${REAL_API}/v1/verification/documents/${doc.id}/content` &&
+          response.request().method() === 'GET',
+      );
+      await page.getByTestId(`review-evidence-${doc.id}`).click();
+      expect((await content).status()).toBe(200);
+      await expect
+        .poll(() =>
+          page
+            .getByTestId('identity-evidence-image')
+            .evaluate((image) => (image as HTMLImageElement).naturalWidth),
+        )
+        .toBeGreaterThan(0);
+      await page.keyboard.press('Escape');
+
+      // The normal final application command atomically verifies this submitted
+      // case and creates work access. Do not issue a separate identity command.
+      const decisions: string[] = [];
+      page.on('request', (request) => {
+        if (
+          request.method() === 'POST' &&
+          request.url().startsWith(REAL_API) &&
+          /\/(review|verification\/cases\/[^/]+)\/approve$/.test(new URL(request.url()).pathname)
+        ) {
+          decisions.push(new URL(request.url()).pathname);
+        }
+      });
+      await approveApplicationThroughBrowser(page, submitted);
+      expect(decisions).toEqual([`/v1/admin/providers/${account.profileId}/review/approve`]);
+      const accepted = await providerApplicationReview(account);
+      expect(accepted.submission).toMatchObject({
+        id: before.submission!.id,
+        decision: 'ACCEPTED',
+      });
+      expect(accepted.verification).toMatchObject({
+        id: evidence.caseId,
+        state: 'VERIFIED',
+        workAccess: { active: true, source: 'VERIFIED_DOCUMENTS' },
+      });
+      expect(
+        accepted.verification!.decisions.filter((item) => item.toState === 'VERIFIED'),
+      ).toHaveLength(1);
+      expect(accepted.canWork).toBe(true);
+      expect((await capabilitiesOf(account.jar)).allowed).toContain('SUBMIT_BID');
+      expect((await api(account.jar, '/v1/provider/bids')).status).toBe(200);
+      await providerPage.goto('/provider/status');
+      await expect(providerPage.getByTestId('provider-workspace-unlocked')).toBeVisible();
+      await capture(providerPage, testInfo, 'lifecycle-guided-provider-unlocked-ar', 'ar');
+      const jobs = providerPage.waitForResponse(
+        (response) =>
+          response.url().startsWith(`${REAL_API}/v1/provider/available-requests`) &&
+          response.request().method() === 'GET',
+      );
+      await providerPage.getByTestId('workspace-enter').click();
+      await expect(providerPage).toHaveURL(/\/provider\/jobs(?:\?|$)/);
+      expect((await jobs).status()).toBe(200);
+      await testInfo.attach('lifecycle-guided-outcome.json', {
+        contentType: 'application/json',
+        body: JSON.stringify({
+          source: 'FINAL_REAL_API',
+          commit: process.env.GITHUB_SHA ?? null,
+          caseId: evidence.caseId,
+          submissionId: before.submission!.id,
+          cleanDraftRequiredExplicitSubmit: true,
+          finalApprovalCommands: decisions.length,
+          identityDecisionCount: 1,
+          applicationAccepted: true,
+          workAccessAllowed: accepted.canWork,
+        }),
+      });
+      expect(errors).toEqual([]);
+    } finally {
+      await context.close();
+    }
   });
 });

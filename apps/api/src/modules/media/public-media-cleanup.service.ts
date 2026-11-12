@@ -35,7 +35,7 @@ import { STORAGE_PORT, StoragePort } from '../../infrastructure/storage/storage.
 export interface PublicMediaSweepResult {
   examined: number;
   deleted: number;
-  /** Claimed by a concurrent worker between our delete and our write. */
+  /** A conditional fence or deletion record lost to a concurrent writer. */
   raced: number;
   /** Storage refused. The row is left eligible for the next pass. */
   failed: number;
@@ -97,7 +97,16 @@ export class PublicMediaCleanupService {
         // branch below, whatever else is true of the row.
         serviceRequestId: null,
         OR: [
-          { retainUntil: { not: null, lte: now } },
+          {
+            retainUntil: { not: null, lte: now },
+            // Retirement hides the object immediately, but its issued PUT
+            // grant can still be replayed. Wait for the reservation deadline
+            // (one hour, longer than the five-minute upload grant), otherwise
+            // a replay can recreate bytes after deletedAt makes them unsweepable.
+            // Legacy null deadlines retain immediate cleanup eligibility once
+            // retired; new reservations always record an upload deadline.
+            OR: [{ uploadExpiresAt: null }, { uploadExpiresAt: { lte: now } }],
+          },
           { uploadCompletedAt: null, uploadExpiresAt: { not: null, lte: abandonedCutoff } },
           // R06 — a request attachment that was finalized but never
           // attached, or whose request has since been deleted.
@@ -138,14 +147,35 @@ export class PublicMediaCleanupService {
           result.raced += 1;
           continue;
         }
+      } else if (asset.retainUntil === null) {
+        // Avatar/portfolio reservations need the same fence. A candidate read
+        // is only a snapshot: a finalizer may have claimed or refreshed the
+        // reservation since then. Only the winner may delete its bytes.
+        const fenced = await this.prisma.client.mediaAsset.updateMany({
+          where: {
+            id: asset.id,
+            visibility: 'PUBLIC',
+            purpose: null,
+            serviceRequestId: null,
+            retainUntil: null,
+            deletedAt: null,
+            uploadCompletedAt: null,
+            uploadExpiresAt: { not: null, lte: abandonedCutoff },
+          },
+          data: { retainUntil: now, deletionReason: 'PUBLIC_UPLOAD_ABANDONED' },
+        });
+        if (fenced.count !== 1) {
+          result.raced += 1;
+          continue;
+        }
       }
       try {
         // 1. The bytes. Idempotent, so a second worker doing the same thing at
         //    the same time is not a conflict.
         await this.objects.deleteObject(asset.storageKey);
       } catch {
-        // The object is still there. Leaving the row untouched keeps it
-        // eligible for the next pass, which is the whole retry mechanism —
+        // The object is still there. Keeping the retirement intent without
+        // recording deletion makes it eligible for the next pass —
         // there is no dead-letter state to get stuck in.
         //
         // No key and no error detail in the log line: this runs on every pass

@@ -8,7 +8,7 @@ import {
   LOCALES,
   PROVISIONAL_ROOT,
   REQUIRED_AXE_TAGS,
-  ONBOARDING_REPAIR_REVISION,
+  revisionIdForState,
   revisionChecks,
   revisionProblems,
   type Locale,
@@ -120,7 +120,7 @@ async function captureRevision(page: Page, state: Phase5State, locale: Locale) {
     };
   }, checks);
   return {
-    revision: ONBOARDING_REPAIR_REVISION,
+    revision: revisionIdForState(state.id),
     runId: RUN_ID,
     stateId: state.id,
     locale,
@@ -260,9 +260,7 @@ test.describe('Phase 5A — approved states, EN and AR at 390x844', () => {
               diffPixelRatio: outcome.diffPixelRatio,
               comparable: outcome.comparable,
               note: outcome.note,
-              acceptance: revision
-                ? ONBOARDING_REPAIR_REVISION
-                : 'IMMUTABLE_PROTOTYPE_PIXEL_PARITY',
+              acceptance: revision ? revision.revision : 'IMMUTABLE_PROTOTYPE_PIXEL_PARITY',
             },
             null,
             2,

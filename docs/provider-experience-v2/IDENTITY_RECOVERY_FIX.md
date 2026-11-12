@@ -18,6 +18,12 @@ matrix and new acceptance work, see
 [Provider lifecycle recovery](PROVIDER_LIFECYCLE_RECOVERY.md). The verification
 record below remains the historical record for the initial recovery fix.
 
+For the 11 November follow-up on pending security scans, explicit identity
+submission, current Admin decisions and a single final approval that opens work,
+see [دليل رحلة المهني والتحقق والموافقة](PROVIDER_VERIFICATION_JOURNEY_AR.md).
+That guide also explains the local scanner startup and the separate email-code
+recovery issue. Its PR records the final source SHA and acceptance evidence.
+
 The reported local page is `/provider/verification` on `localhost:5173`. It
 shows “Finish your profile first” / “أكمل ملفك أولًا”, no document picker, and a
 “Continue sign-up” / “متابعة التسجيل” action that does not navigate. The console

@@ -54,6 +54,27 @@ describe('loginErrorMessage', () => {
     expect(loginErrorMessage(e).toLowerCase()).toContain('verify');
   });
 
+  it('localizes Arabic login refusals without displaying server messages', () => {
+    const codes = [
+      'AUTH_INVALID_CREDENTIALS',
+      'AUTH_ACCOUNT_LOCKED',
+      'AUTH_ACCOUNT_SUSPENDED',
+      'AUTH_ACCOUNT_UNVERIFIED',
+      'VALIDATION_ERROR',
+      'RATE_LIMITED',
+      'UNKNOWN',
+    ];
+    for (const code of codes) {
+      const error = axiosErr(403, { error: { code, message: 'private-server-detail' } });
+      expect(loginErrorMessage(error, 'ar')).toMatch(/[\u0600-\u06ff]/);
+      expect(loginErrorMessage(error, 'ar')).not.toMatch(/[A-Za-z]/);
+    }
+    for (const error of [axiosErr(429), axiosErr(503), new Error('private-network-detail')]) {
+      expect(loginErrorMessage(error, 'ar')).toMatch(/[\u0600-\u06ff]/);
+      expect(loginErrorMessage(error, 'ar')).not.toMatch(/[A-Za-z]/);
+    }
+  });
+
   it('AUTH_ACCOUNT_SUSPENDED — tells the user the account is suspended', () => {
     const e = axiosErr(403, { error: { code: 'AUTH_ACCOUNT_SUSPENDED' } });
     expect(loginErrorMessage(e).toLowerCase()).toContain('suspended');
@@ -98,6 +119,34 @@ describe('loginErrorMessage', () => {
 });
 
 describe('otpErrorMessage', () => {
+  it.each(['en', 'ar'] as const)(
+    'resend explains expired and unusable challenges in %s',
+    (lang) => {
+      for (const code of ['AUTH_OTP_EXPIRED', 'AUTH_OTP_INVALID', 'AUTH_OTP_LOCKED']) {
+        const msg = otpErrorMessage(
+          axiosErr(400, { error: { code, message: 'private-detail' } }),
+          'resend',
+          lang,
+        );
+        expect(msg).toContain(lang === 'ar' ? 'خيار الاستعادة' : 'recovery option');
+        expect(msg).not.toContain('private-detail');
+        if (lang === 'ar') expect(msg).not.toMatch(/[A-Za-z]/);
+      }
+    },
+  );
+
+  it.each(['en', 'ar'] as const)(
+    'resend-limit copy keeps the most recent code usable in %s',
+    (lang) => {
+      const msg = otpErrorMessage(
+        axiosErr(403, { error: { code: 'AUTH_OTP_RESEND_EXCEEDED' } }),
+        'resend',
+        lang,
+      );
+      expect(msg).toContain(lang === 'ar' ? 'أحدث رمز' : 'most recent code');
+    },
+  );
+
   it('verify: AUTH_OTP_LOCKED', () => {
     const msg = otpErrorMessage(axiosErr(400, { error: { code: 'AUTH_OTP_LOCKED' } }), 'verify');
     expect(msg.toLowerCase()).toContain('too many');
