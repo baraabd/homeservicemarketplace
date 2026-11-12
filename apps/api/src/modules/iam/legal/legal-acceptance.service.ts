@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import {
   CURRENT_LEGAL_DOCUMENTS,
   LEGAL_DOCUMENT_KINDS,
+  isApprovedLegalDocument,
   type LegalAcceptanceInput,
   type LegalDocumentsResponse,
   type LegalVersionStaleDetails,
@@ -18,10 +19,8 @@ type Tx = Prisma.TransactionClient;
 // The current version of each document is code (contracts registry), not a
 // client claim. A signup that names any other version is refused with 409 so
 // the person is never recorded as accepting text they did not see. DRAFT
-// documents are refused unless LEGAL_DRAFT_ACCEPTANCE_ALLOWED resolves true.
-// Unset, that flag is false when NODE_ENV=production and true otherwise, so a
-// production deployment cannot record acceptance of unapproved text by
-// accident while local development and CI can exercise the real flow.
+// acceptance is available only outside production. Approved documents always
+// require a nonblank approval reference and a non-draft release identifier.
 @Injectable()
 export class LegalAcceptanceService {
   constructor(private readonly config: AppConfigService) {}
@@ -94,12 +93,18 @@ export class LegalAcceptanceService {
   }
 
   private acceptanceOpen(): boolean {
-    const allApproved = LEGAL_DOCUMENT_KINDS.every(
-      (kind) => CURRENT_LEGAL_DOCUMENTS[kind].status === 'APPROVED',
-    );
-    if (allApproved) return true;
-    const explicit = this.config.get('LEGAL_DRAFT_ACCEPTANCE_ALLOWED');
-    if (explicit !== undefined) return explicit;
-    return this.config.get('NODE_ENV') !== 'production';
+    const nodeEnv = this.config.get('NODE_ENV');
+    const appEnv = this.config.get('APP_ENV');
+    const rehearsal = this.config.get('LEGAL_DRAFT_ACCEPTANCE_ALLOWED');
+    // Hosted staging also uses NODE_ENV=production. Only its explicit APP_ENV
+    // identity may opt into draft rehearsal; production still fails closed.
+    const production = appEnv === 'prod' || (nodeEnv === 'production' && appEnv !== 'staging');
+    const staging = appEnv === 'staging' || nodeEnv === 'staging';
+    const allowDrafts = !production && (rehearsal ?? !staging);
+    return LEGAL_DOCUMENT_KINDS.every((kind) => {
+      const document = CURRENT_LEGAL_DOCUMENTS[kind];
+      if (document.status === 'DRAFT') return allowDrafts;
+      return isApprovedLegalDocument(document);
+    });
   }
 }

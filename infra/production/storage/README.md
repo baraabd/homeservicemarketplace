@@ -23,6 +23,13 @@ serves approved portfolio bytes only after `moderationState = APPROVED` is
 re-checked (`portfolio-media.service.ts openPublic`). A bucket or CDN grant on
 `portfolio/*` would keep serving an item after it was unpublished.
 
+An API-mediated alternative also serves published `avatars/` and `requests/`
+from private buckets, without the CDN/OAC reader grant. Set
+`S3_PUBLIC_BASE_URL=${PUBLIC_API_URL}/v1/media/files` and follow
+[Private S3 media](../../../docs/deployment/PRIVATE_S3_MEDIA.md) for publication
+checks, upload-transport requirements, and migration of existing references.
+All three buckets remain inaccessible to anonymous object reads.
+
 Each bucket carries a root marker `.hsm-storage-root.json`
 (`apps/api/src/infrastructure/storage/storage-root.ts`) naming its namespace.
 Provision it once per bucket; adapters refuse a bucket marked for another
@@ -83,8 +90,12 @@ public.
 ## Emulator vs hosted evidence
 
 `apps/api/test/integration/r20-storage` proves the adapters and these role
-policies against real MinIO. MinIO does **not** implement, so the suite cannot
-prove: KMS, `aws:SecureTransport` / `aws:PrincipalArn` conditions, public
-access blocks, `GetBucketPolicyStatus`, CDN/OAC, Object Ownership/ACL
-behaviour, or the `AbortIncompleteMultipartUpload` rule. Those are hosted
-acceptance items (`docs/production-readiness/r20/ACCEPTANCE.md`).
+policies against real MinIO. The suite cannot prove AWS KMS,
+`aws:SecureTransport` / `aws:PrincipalArn` conditions, public access blocks,
+AWS `GetBucketPolicyStatus` semantics, CDN/OAC, Object Ownership/ACL behaviour,
+or the `AbortIncompleteMultipartUpload` rule. Those are hosted acceptance
+items (`docs/production-readiness/r20/ACCEPTANCE.md`).
+
+For the explicit MinIO portfolio privacy contract and its read-only permission,
+see [minio/README.md](minio/README.md). The default AWS checks remain strict;
+an unsupported API or access denial never activates the MinIO path.

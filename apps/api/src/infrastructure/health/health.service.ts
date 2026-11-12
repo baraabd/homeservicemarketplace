@@ -21,15 +21,16 @@ export interface ReadinessReport {
 // ambiguous failure modes instead of a clean 503.
 const PING_TIMEOUT_MS = 2_000;
 
-// R18-O3 — the source revision this process was built from. The runner image
-// copies its SOURCE_SHA build argument into HSM_SOURCE_SHA, so an operator can
-// confirm which build answers on an origin. Anything but a full lowercase Git
-// SHA (an unset variable, the Dockerfile's "unknown" default, a local run)
-// reports null: an unknown revision is never presented as an identity.
+// Prefer the revision baked into the image. Railway Git deployments also
+// expose the exact revision when the Docker build argument is omitted.
 const SOURCE_SHA = /^[0-9a-f]{40}$/u;
 
-export function runtimeSourceSha(value = process.env.HSM_SOURCE_SHA): string | null {
-  return value && SOURCE_SHA.test(value) ? value : null;
+export function runtimeSourceSha(
+  imageSha = process.env.HSM_SOURCE_SHA,
+  railwaySha = process.env.RAILWAY_GIT_COMMIT_SHA,
+): string | null {
+  if (imageSha && imageSha !== 'unknown') return SOURCE_SHA.test(imageSha) ? imageSha : null;
+  return railwaySha && SOURCE_SHA.test(railwaySha) ? railwaySha : null;
 }
 
 @Injectable()

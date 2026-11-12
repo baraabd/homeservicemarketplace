@@ -6,6 +6,7 @@ import type { Request } from 'express';
 
 import { CSRF_COOKIE } from '../helpers/cookies';
 import { CsrfGuard } from './csrf.guard';
+import type { AppConfigService } from '../../../../config/app-config.service';
 
 function ctxFor(
   req: Partial<Request> & { cookies?: Record<string, string>; authTransport?: 'cookie' | 'header' },
@@ -26,6 +27,31 @@ function ctxFor(
 }
 
 describe('CsrfGuard', () => {
+  it('isolates staging CSRF even when production cookies arrive in the same request', () => {
+    const config = { get: () => 'hsm_staging' } as unknown as AppConfigService;
+    const guard = new CsrfGuard(config);
+    const request = {
+      method: 'POST',
+      authTransport: 'cookie' as const,
+      cookies: { hsm_csrf: 'production', hsm_staging_csrf: 'staging' },
+    };
+    expect(guard.canActivate(ctxFor({ ...request, headers: { 'x-csrf-token': 'staging' } }))).toBe(
+      true,
+    );
+    expect(() =>
+      guard.canActivate(ctxFor({ ...request, headers: { 'x-csrf-token': 'production' } })),
+    ).toThrow(ForbiddenException);
+    expect(() =>
+      guard.canActivate(
+        ctxFor({
+          ...request,
+          cookies: { hsm_csrf: 'production' },
+          headers: { 'x-csrf-token': 'production' },
+        }),
+      ),
+    ).toThrow(ForbiddenException);
+  });
+
   it('allows GET requests regardless of transport', () => {
     const g = new CsrfGuard();
     expect(g.canActivate(ctxFor({ method: 'GET', authTransport: 'cookie' }))).toBe(true);

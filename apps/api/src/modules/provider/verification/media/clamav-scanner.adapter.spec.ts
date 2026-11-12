@@ -16,6 +16,12 @@ import { ClamAvMalwareScanner } from './clamav-scanner.adapter';
 /** Reads an INSTREAM conversation and replies with `reply`. */
 function fakeClamd(options: {
   reply?: string;
+  /** Exact wire bytes, including deliberately invalid framing. */
+  rawReply?: Buffer;
+  /** A reply split across socket writes must still be parsed as one record. */
+  fragmented?: boolean;
+  /** Keep delivering bytes so an inactivity timeout alone cannot bound the scan. */
+  slowReply?: boolean;
   /** Never answer, to exercise the timeout. */
   silent?: boolean;
   /** Close the connection mid-conversation. */
@@ -48,7 +54,24 @@ function fakeClamd(options: {
         if (len === 0) {
           buffer = buffer.subarray(4);
           options.onChunks?.(chunks);
-          if (!options.silent) socket.end(Buffer.from(`${options.reply ?? 'stream: OK'}\0`));
+          if (options.slowReply) {
+            socket.write('stream: ');
+            let ticks = 0;
+            const timer = setInterval(() => {
+              if (++ticks < 20) socket.write(' ');
+              else {
+                clearInterval(timer);
+                socket.end('OK\0');
+              }
+            }, 40);
+            socket.once('close', () => clearInterval(timer));
+          } else if (!options.silent) {
+            const reply = options.rawReply ?? Buffer.from(`${options.reply ?? 'stream: OK'}\0`);
+            if (options.fragmented) {
+              socket.write(reply.subarray(0, 5));
+              setImmediate(() => socket.end(reply.subarray(5)));
+            } else socket.end(reply);
+          }
           return;
         }
         if (buffer.length < 4 + len) return;
@@ -108,12 +131,63 @@ describe('ClamAvMalwareScanner', () => {
     });
   });
 
+  it('accepts a complete positive reply split across socket writes', async () => {
+    const port = await start({ reply: 'stream: OK', fragmented: true });
+    await expect(scanner(port).scan({ bytes: BYTES, assetId: 'a1' })).resolves.toEqual({
+      state: 'CLEAN',
+      scannerId: 'clamav',
+    });
+  });
+
+  it.each([
+    'OK',
+    'stream: NOT OK',
+    'unrelated: OK',
+    'stream: OK trailing text',
+    'stream: O\0K',
+    'stream: OK\0unrelated record',
+    'stream: OK\n',
+  ])('does not clear evidence for malformed positive text %j', async (reply) => {
+    const port = await start({ reply });
+    const verdict = await scanner(port).scan({ bytes: BYTES, assetId: 'a1' });
+    expect(verdict.state).toBe('FAILED');
+  });
+
+  it('requires the NUL record terminator requested by zINSTREAM', async () => {
+    const port = await start({ rawReply: Buffer.from('stream: OK') });
+    const verdict = await scanner(port).scan({ bytes: BYTES, assetId: 'a1' });
+    expect(verdict.state).toBe('FAILED');
+  });
+
+  it('rejects an oversized response before interpreting any apparent clean verdict', async () => {
+    const port = await start({ reply: `${'x'.repeat(64 * 1024)} OK` });
+    await expect(scanner(port).scan({ bytes: BYTES, assetId: 'a1' })).resolves.toMatchObject({
+      state: 'FAILED',
+      reason: 'reply-too-large',
+    });
+  });
+
+  it('bounds the whole scan even when the peer keeps sending bytes', async () => {
+    const port = await start({ slowReply: true });
+    await expect(
+      scanner(port, { CLAMAV_TIMEOUT_MS: 150 }).scan({ bytes: BYTES, assetId: 'a1' }),
+    ).resolves.toMatchObject({ state: 'FAILED', reason: 'timeout' });
+  });
+
   it('returns INFECTED with the signature clamd named', async () => {
     const port = await start({ reply: 'stream: Eicar-Test-Signature FOUND' });
     await expect(scanner(port).scan({ bytes: BYTES, assetId: 'a1' })).resolves.toEqual({
       state: 'INFECTED',
       scannerId: 'clamav',
       signature: 'Eicar-Test-Signature',
+    });
+  });
+
+  it('keeps malware identification restrictive when its signature contains OK', async () => {
+    const port = await start({ reply: 'stream: Test.OK-Signature FOUND' });
+    await expect(scanner(port).scan({ bytes: BYTES, assetId: 'a1' })).resolves.toMatchObject({
+      state: 'INFECTED',
+      signature: 'Test.OK-Signature',
     });
   });
 

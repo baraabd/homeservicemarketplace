@@ -13,6 +13,7 @@ import {
 } from '@homeservicemarketplace/contracts';
 
 import { adminJar, api, loginViaUi, REAL_API, type Account } from './real-api';
+import { completeBookingAfterApproval } from './booking-fixtures';
 import { capabilitiesOf, providerApplicationReview } from './phase3-activation';
 import { seedLanguage } from './fixtures';
 import {
@@ -262,6 +263,7 @@ test('reviewing protected identity then approving in the Admin UI persists accep
   expect(persisted.canWork).toBe(true);
   expect((await capabilitiesOf(account.jar)).allowed).toContain('SUBMIT_BID');
   expect((await api(account.jar, '/v1/provider/bids')).status).toBe(200);
+  await completeBookingAfterApproval(account);
 });
 
 test('inspecting and approving a real portfolio image persists its revision without granting work', async ({

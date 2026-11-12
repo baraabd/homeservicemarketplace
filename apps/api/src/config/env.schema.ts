@@ -250,12 +250,15 @@ const baseEnvSchema = z.object({
   // Must be true in production. Safe to set false for local dev and QA.
   AUTH_REQUIRE_EMAIL_VERIFICATION: trueish.default(true),
 
-  // K02 — may the server record acceptance of DRAFT (unapproved) Terms /
-  // Privacy versions? Unset: false when NODE_ENV=production, true otherwise
-  // (LegalAcceptanceService). Production must leave it unset or false; set
-  // it true only for hosted rehearsal of unapproved text.
+  // Draft rehearsal requires explicit opt-in on APP_ENV=staging, even with NODE_ENV=production.
+  // Production (APP_ENV=prod, or production without staging identity) always requires approval.
   LEGAL_DRAFT_ACCEPTANCE_ALLOWED: trueish.optional(),
 
+  AUTH_COOKIE_PREFIX: z
+    .string()
+    .regex(/^[a-z][a-z0-9_]{0,31}$/)
+    .refine((value) => value === value.trim(), 'Cookie prefix cannot contain whitespace')
+    .default('hsm'),
   COOKIE_DOMAIN: z.string().optional(),
   COOKIE_SECURE: trueish.default(true),
   COOKIE_SAMESITE: z.enum(['lax', 'strict', 'none']).default('lax'),
@@ -479,8 +482,13 @@ const baseEnvSchema = z.object({
   // Private portfolio staging: distinct from public media and identity evidence.
   // Required only when creating portfolio uploads with the S3 driver.
   S3_PORTFOLIO_BUCKET: z.string().optional(),
+  // MinIO has no public ACLs or AWS public-access-block API. Explicit opt-in
+  // requires an authenticated proof that its anonymous bucket policy is absent.
+  S3_PORTFOLIO_PRIVACY_MODE: z.enum(['aws', 'minio']).default('aws'),
   S3_REGION: z.string().default('us-east-1'),
   S3_ENDPOINT: z.string().optional(),
+  // API mode keeps the S3 endpoint private; browsers PUT signed capabilities to the API.
+  S3_UPLOAD_TRANSPORT: z.enum(['direct', 'api']).default('direct'),
   S3_FORCE_PATH_STYLE: trueish.default(false),
   S3_ACCESS_KEY_ID: z.string().optional(),
   S3_SECRET_ACCESS_KEY: z.string().optional(),
@@ -503,6 +511,44 @@ const baseEnvSchema = z.object({
 export const envSchema = baseEnvSchema.superRefine((env, ctx) => {
   const issue = (path: string, message: string) =>
     ctx.addIssue({ code: z.ZodIssueCode.custom, path: [path], message });
+  if (env.S3_PORTFOLIO_PRIVACY_MODE === 'minio') {
+    let validEndpoint = false;
+    try {
+      const endpoint = new URL(env.S3_ENDPOINT ?? '');
+      validEndpoint =
+        ['http:', 'https:'].includes(endpoint.protocol) &&
+        !endpoint.username &&
+        !endpoint.password &&
+        !endpoint.search &&
+        !endpoint.hash;
+    } catch {
+      // An absent or malformed endpoint must not select AWS with MinIO checks.
+    }
+    if (!validEndpoint)
+      issue('S3_ENDPOINT', 'MinIO privacy mode requires an explicit HTTP(S) endpoint');
+  }
+  if (env.STORAGE_DRIVER === 's3' && env.S3_UPLOAD_TRANSPORT === 'api') {
+    let valid = false;
+    try {
+      const url = new URL(env.PUBLIC_API_URL ?? '');
+      valid =
+        ['http:', 'https:'].includes(url.protocol) &&
+        !url.username &&
+        !url.password &&
+        !url.search &&
+        !url.hash &&
+        url.pathname === '/' &&
+        env.PUBLIC_API_URL === env.PUBLIC_API_URL?.trim() &&
+        (env.NODE_ENV !== 'production' || url.protocol === 'https:');
+    } catch {
+      /* Invalid public origins fail at boot, before any upload is issued. */
+    }
+    if (!valid)
+      issue(
+        'PUBLIC_API_URL',
+        'API-mediated S3 uploads require a valid public API origin (HTTPS in production)',
+      );
+  }
   if (env.OUTBOX_DELIVERY_DEADLINE_MS <= env.OUTBOX_DELIVERY_TX_TIMEOUT_MS)
     issue('OUTBOX_DELIVERY_DEADLINE_MS', 'Must exceed the delivery transaction timeout');
   if (env.OUTBOX_DELIVERY_TX_TIMEOUT_MS >= env.OUTBOX_CLAIM_TIMEOUT_MS)

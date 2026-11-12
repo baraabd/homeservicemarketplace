@@ -145,7 +145,10 @@ dbDescribe('Restricted verification policy settings (real HTTP and PostgreSQL)',
     const { RedisService } = require('../../src/infrastructure/redis/redis.service');
     const { JwtAuthGuard } = require('../../src/modules/iam/authentication/guards/jwt-auth.guard');
     const { AllExceptionsFilter } = require('../../src/infrastructure/http/all-exceptions.filter');
-    const config = { isProduction: false, get: () => false };
+    const config = {
+      isProduction: false,
+      get: (key: string) => (key === 'AUTH_COOKIE_PREFIX' ? 'hsm' : false),
+    };
     const module = await Test.createTestingModule({
       controllers: [AdminVerificationPolicyController],
       providers: [

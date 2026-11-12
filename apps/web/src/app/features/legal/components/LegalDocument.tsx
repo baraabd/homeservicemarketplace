@@ -1,6 +1,11 @@
+import {
+  CURRENT_LEGAL_DOCUMENTS,
+  isApprovedLegalDocument,
+} from '@homeservicemarketplace/contracts';
 import { Link } from 'react-router';
 
 import {
+  ACCEPTED_DOCUMENTS,
   LEGAL_CHROME,
   LEGAL_COPY_VERSIONS,
   LEGAL_PAGE_IDS,
@@ -29,6 +34,10 @@ export function LegalDocument({
   const page = LEGAL_PAGES[id][lang];
   const chrome = LEGAL_CHROME[lang];
   const version = id === 'terms' || id === 'privacy' ? LEGAL_COPY_VERSIONS[id] : null;
+  const approved =
+    (id === 'terms' || id === 'privacy') &&
+    CURRENT_LEGAL_DOCUMENTS[ACCEPTED_DOCUMENTS[id]].version === version &&
+    isApprovedLegalDocument(CURRENT_LEGAL_DOCUMENTS[ACCEPTED_DOCUMENTS[id]]);
   const Heading = headingLevel === 1 ? 'h1' : 'h2';
   const Section = headingLevel === 1 ? 'h2' : 'h3';
   return (
@@ -42,14 +51,16 @@ export function LegalDocument({
           {page.title}
         </Heading>
         <p style={{ fontSize: '16px', lineHeight: 1.6 }}>{page.summary}</p>
-        <p
-          role="note"
-          className="rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-amber-900 dark:border-amber-600 dark:bg-amber-950 dark:text-amber-100"
-          style={{ fontSize: '15px', lineHeight: 1.5 }}
-          data-testid="legal-draft-banner"
-        >
-          {chrome.draftBanner}
-        </p>
+        {!approved && (
+          <p
+            role="note"
+            className="rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-amber-900 dark:border-amber-600 dark:bg-amber-950 dark:text-amber-100"
+            style={{ fontSize: '15px', lineHeight: 1.5 }}
+            data-testid="legal-draft-banner"
+          >
+            {chrome.draftBanner}
+          </p>
+        )}
         {version ? (
           <p className="text-slate-600 dark:text-slate-300" style={{ fontSize: '14px' }}>
             {chrome.version}:{' '}

@@ -256,6 +256,10 @@ fi
 ok "the api runtime image ships no Prisma CLI"
 
 # ---------------------------------------------------------------------------
+step "Initialize signup access data on the disposable Compose database"
+"${DC[@]}" exec -T -e ALLOW_PROD_SEED=true api node node_modules/@homeservicemarketplace/database/dist/seed.js --access-only
+ok "system roles and permissions are ready for registration"
+
 step "7. OTP flow through real SMTP (Mailpit)"
 STAMP="$(date +%s)-$RANDOM"
 EMAIL="smoke-$STAMP@example.test"

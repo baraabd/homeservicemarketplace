@@ -483,7 +483,14 @@ d('Phase 3 Journey C — legacy admin approval compatibility (real Postgres)', (
     const adminRole = await prisma.role.findUniqueOrThrow({ where: { name: 'admin' } });
     await prisma.userRole.create({ data: { userId: ADMIN, roleId: adminRole.id } });
     await prisma.serviceCategory.create({
-      data: { id: ROOT, slug: ROOT, labelEn: 'Electrical', labelAr: 'كهرباء', icon: 'bolt' },
+      data: {
+        id: ROOT,
+        slug: ROOT,
+        labelEn: 'Electrical',
+        labelAr: 'كهرباء',
+        icon: 'bolt',
+        isLeaf: false,
+      },
     });
     await prisma.serviceCategory.create({
       data: {

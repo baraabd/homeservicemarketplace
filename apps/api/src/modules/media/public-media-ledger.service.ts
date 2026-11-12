@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import type { PrismaTx } from '@homeservicemarketplace/database';
 
 import { PrismaService } from '../../infrastructure/prisma/prisma.service';
 
@@ -120,8 +121,10 @@ export class PublicMediaLedgerService {
   async claim(
     input: { userId: string; storageKey: string },
     now = new Date(),
+    tx?: PrismaTx,
   ): Promise<{ id: string } | null> {
-    const claimed = await this.prisma.client.mediaAsset.updateMany({
+    const db = tx ?? this.prisma.client;
+    const claimed = await db.mediaAsset.updateMany({
       where: {
         storageKey: input.storageKey,
         ownerUserId: input.userId,
@@ -129,7 +132,11 @@ export class PublicMediaLedgerService {
         // R06 — request attachments have their own finalize and claim path.
         purpose: null,
         uploadCompletedAt: null,
+        uploadExpiresAt: { gt: now },
         deletedAt: null,
+        retainUntil: null,
+        erasureStartedAt: null,
+        scanState: { in: ['PENDING', 'CLEAN'] },
       },
       data: { uploadCompletedAt: now },
     });
@@ -137,7 +144,7 @@ export class PublicMediaLedgerService {
       this.log.warn({ msg: 'public.media.claim.refused', userId: input.userId });
       return null;
     }
-    const asset = await this.prisma.client.mediaAsset.findUnique({
+    const asset = await db.mediaAsset.findUnique({
       where: { storageKey: input.storageKey },
       select: { id: true },
     });
@@ -155,8 +162,9 @@ export class PublicMediaLedgerService {
   async retire(
     input: { userId: string; storageKey: string; reason: string },
     now = new Date(),
+    tx?: PrismaTx,
   ): Promise<void> {
-    await this.prisma.client.mediaAsset.updateMany({
+    await (tx ?? this.prisma.client).mediaAsset.updateMany({
       where: {
         storageKey: input.storageKey,
         ownerUserId: input.userId,

@@ -90,12 +90,24 @@ describe('K02 signup consent', () => {
     renderSignup();
     const { consent } = await goToStep2();
     expect(consent).toHaveAccessibleName(
-      'I have read and agree to the Terms of Service and the Privacy Notice.',
+      'I agree to the Terms of Service and acknowledge that I have read the Privacy Notice.',
     );
     expect(consent.checked).toBe(false);
     // The policy links are NOT inside the checkbox's label.
     const label = document.querySelector('label[for="signup-consent"]')!;
     expect(label.querySelector('a')).toBeNull();
+  });
+
+  it('requires a fresh choice after a language change, including a switch back', async () => {
+    renderSignup();
+    const { consent } = await goToStep2();
+    fireEvent.click(consent);
+    expect(consent).toBeChecked();
+    fireEvent.click(screen.getByTestId('lang-toggle'));
+    expect(screen.getByRole('checkbox')).not.toBeChecked();
+    fireEvent.click(screen.getByTestId('lang-toggle'));
+    expect(screen.getByRole('checkbox')).not.toBeChecked();
+    expect(mock.history.post.some((request) => request.url === '/v1/auth/register')).toBe(false);
   });
 
   it('opening a policy by pointer never toggles consent, and closing keeps every value and returnTo', async () => {
@@ -216,13 +228,21 @@ describe('K02 signup consent', () => {
   it('cannot proceed when the server says acceptance is closed (production with draft text)', async () => {
     mock.onGet('/v1/legal/documents').reply(200, { ...DOCS, acceptanceOpen: false });
     renderSignup();
-    await waitFor(() => expect(document.querySelector('input[type="tel"]')).toBeTruthy());
-    const name = document.querySelectorAll('input')[0] as HTMLInputElement;
-    await act(async () => fireEvent.change(name, { target: { value: 'Noura Alharbi' } }));
-    const next = screen.getAllByRole('button').find((b) => /next/i.test(b.textContent ?? ''))!;
-    await act(async () => next.click());
     expect(await screen.findByText(/Sign-up opens once the terms/)).toBeInTheDocument();
-    expect((screen.getByRole('checkbox') as HTMLInputElement).disabled).toBe(true);
+    expect(screen.queryByRole('textbox')).toBeNull();
+    expect(screen.getByRole('button', { name: /log in/i })).toBeEnabled();
+    expect(mock.history.post.some((req) => req.url === '/v1/auth/register')).toBe(false);
+  });
+
+  it('requires the displayed policy versions to match the API before collecting credentials', async () => {
+    mock.onGet('/v1/legal/documents').reply(200, {
+      ...DOCS,
+      documents: DOCS.documents.map((doc) => ({ ...doc, version: 'newer-server-version' })),
+    });
+    renderSignup();
+    expect(await screen.findByRole('button', { name: 'Reload this page' })).toBeEnabled();
+    expect(screen.queryByRole('textbox')).toBeNull();
+    expect(mock.history.post.some((req) => req.url === '/v1/auth/register')).toBe(false);
   });
 
   it('restores the non-secret draft after a reload, without the password or consent', async () => {

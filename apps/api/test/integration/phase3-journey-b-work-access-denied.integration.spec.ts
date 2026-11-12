@@ -469,7 +469,14 @@ d('Phase 3 Journey B — pending moderation denies work access (real Postgres)',
       });
     }
     await prisma.serviceCategory.create({
-      data: { id: ROOT, slug: ROOT, labelEn: 'Electrical', labelAr: 'كهرباء', icon: 'bolt' },
+      data: {
+        id: ROOT,
+        slug: ROOT,
+        labelEn: 'Electrical',
+        labelAr: 'كهرباء',
+        icon: 'bolt',
+        isLeaf: false,
+      },
     });
     await prisma.serviceCategory.create({
       data: {

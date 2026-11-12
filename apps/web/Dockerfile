@@ -10,6 +10,7 @@ ARG SOURCE_SHA
 # different product (e.g. a Stripe sandbox release whose CSP blocked Stripe.js).
 # The list is owned by scripts/production/security-app/web-build-identity.cjs.
 ARG VITE_API_URL
+ARG VITE_AUTH_COOKIE_PREFIX=hsm
 ARG VITE_PROVIDER_ONBOARDING_V2
 ARG VITE_STRIPE_SANDBOX_ENABLED
 ARG VITE_DISPUTE_INTAKE_V1=false
@@ -21,6 +22,7 @@ ARG VITE_CSP_UPLOAD_ORIGINS
 # unless the configuration actually compiled here produces the same value.
 ARG WEB_CONFIG_FINGERPRINT
 ENV VITE_API_URL=${VITE_API_URL} \
+    VITE_AUTH_COOKIE_PREFIX=${VITE_AUTH_COOKIE_PREFIX} \
     VITE_PROVIDER_ONBOARDING_V2=${VITE_PROVIDER_ONBOARDING_V2} \
     VITE_STRIPE_SANDBOX_ENABLED=${VITE_STRIPE_SANDBOX_ENABLED} \
     VITE_DISPUTE_INTAKE_V1=${VITE_DISPUTE_INTAKE_V1} \

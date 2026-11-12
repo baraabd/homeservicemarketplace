@@ -606,7 +606,7 @@ test('server blocker links select hidden panels and the decision anchor preserve
   const review = fixture();
   review.availableActions = ['requestChanges'];
   review.blockers = [{ code: 'CATEGORY_REVIEW_REQUIRED', taskId: 'SERVICES_EXPERIENCE' }];
-  await open(page, 'en', { review });
+  const state = await open(page, 'en', { review });
   const link = page.locator('#review-decision-panel a[href="#review-section-SERVICES_EXPERIENCE"]');
   await link.click();
   await expect(page.getByTestId('review-tab-SERVICES_EXPERIENCE')).toHaveAttribute(
@@ -620,11 +620,15 @@ test('server blocker links select hidden panels and the decision anchor preserve
   await expect(page.getByTestId('review-panel-SERVICES_EXPERIENCE')).toBeVisible();
   // The mobile shortcut is a normal anchor, not a tab change or an approval command.
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.locator('a[href="#review-decision-panel"]').click();
+  const mobileDecision = page.getByRole('link', { name: 'Review decision', exact: true });
+  await expect(mobileDecision).toHaveAttribute('href', '#review-decision-panel');
+  await mobileDecision.click();
   await expect(page.getByTestId('review-tab-SERVICES_EXPERIENCE')).toHaveAttribute(
     'aria-selected',
     'true',
   );
+  await expect(page.getByTestId('review-approve')).toHaveCount(0);
+  expect(state.decisions).toHaveLength(0);
 });
 
 test('a 409 keeps correction instructions and private notes until a refreshed decision is confirmed', async ({

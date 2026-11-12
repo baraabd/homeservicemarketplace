@@ -29,6 +29,8 @@ type Row = {
   retainUntil: Date | null;
   deletionReason: string | null;
   deletedAt: Date | null;
+  erasureStartedAt: Date | null;
+  scanState: 'PENDING' | 'CLEAN' | 'QUARANTINED' | 'SCAN_FAILED' | 'REJECTED';
 };
 
 const NOW = new Date('2026-09-09T12:00:00.000Z');
@@ -43,10 +45,12 @@ function row(over: Partial<Row> = {}): Row {
     declaredMimeType: 'image/jpeg',
     sizeBytes: 1024,
     uploadCompletedAt: null,
-    uploadExpiresAt: null,
+    uploadExpiresAt: new Date(NOW.getTime() + RESERVATION_TTL_MS),
     retainUntil: null,
     deletionReason: null,
     deletedAt: null,
+    erasureStartedAt: null,
+    scanState: 'PENDING',
     ...over,
   };
 }
@@ -65,6 +69,12 @@ function harness(rows: Row[] = []) {
     Object.entries(where).every(([field, expected]) => {
       const actual = (r as unknown as Record<string, unknown>)[field];
       if (expected === null) return actual === null;
+      if (typeof expected === 'object' && 'in' in expected) {
+        return (expected as { in: unknown[] }).in.includes(actual);
+      }
+      if (typeof expected === 'object' && 'gt' in expected) {
+        return actual instanceof Date && actual > (expected as { gt: Date }).gt;
+      }
       return actual === expected;
     });
 
@@ -209,6 +219,15 @@ describe('PublicMediaLedgerService — reserve', () => {
 });
 
 describe('PublicMediaLedgerService — claim', () => {
+  it.each([null, new Date(NOW.getTime() - 1), NOW])(
+    'refuses a missing or expired reservation deadline (%s)',
+    async (uploadExpiresAt) => {
+      const h = harness([row({ storageKey: 'k.jpg', uploadExpiresAt })]);
+      expect(await h.service.claim({ userId: 'user-a', storageKey: 'k.jpg' }, NOW)).toBeNull();
+      expect(h.rows[0].uploadCompletedAt).toBeNull();
+    },
+  );
+
   it('claims the reservation the server issued to this user', async () => {
     const h = harness([row({ storageKey: 'avatars/refA/one.jpg', ownerUserId: 'user-a' })]);
     const claimed = await h.service.claim(
@@ -271,6 +290,35 @@ describe('PublicMediaLedgerService — claim', () => {
     const claimed = await h.service.claim({ userId: 'user-a', storageKey: 'k.jpg' }, NOW);
 
     expect(claimed).toBeNull();
+  });
+
+  it.each([
+    { retainUntil: NOW },
+    { erasureStartedAt: NOW },
+    { scanState: 'QUARANTINED' as const },
+    { scanState: 'SCAN_FAILED' as const },
+    { scanState: 'REJECTED' as const },
+  ])('REFUSES a fenced or unsafe reservation: %j', async (state) => {
+    const h = harness([row({ storageKey: 'k.jpg', ...state })]);
+    expect(await h.service.claim({ userId: 'user-a', storageKey: 'k.jpg' }, NOW)).toBeNull();
+    expect(h.rows[0].uploadCompletedAt).toBeNull();
+  });
+
+  it('claims and retires through the supplied transaction, without escaping to the root client', async () => {
+    const root = harness();
+    const tx = harness([row({ storageKey: 'k.jpg' })]);
+    const trx = { mediaAsset: tx.mediaAsset };
+    expect(
+      await root.service.claim({ userId: 'user-a', storageKey: 'k.jpg' }, NOW, trx as never),
+    ).not.toBeNull();
+    await root.service.retire(
+      { userId: 'user-a', storageKey: 'k.jpg', reason: 'REMOVED' },
+      NOW,
+      trx as never,
+    );
+    expect(tx.rows[0]).toMatchObject({ uploadCompletedAt: NOW, retainUntil: NOW });
+    expect(root.mediaAsset.updateMany).not.toHaveBeenCalled();
+    expect(root.mediaAsset.findUnique).not.toHaveBeenCalled();
   });
 
   it('two concurrent finalizations produce ONE winner', async () => {

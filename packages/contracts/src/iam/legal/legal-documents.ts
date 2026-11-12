@@ -6,9 +6,9 @@
 // accepted text they were not shown.
 //
 // `status` is DRAFT until the accountable owner approves the text. A DRAFT
-// document can be shown and reviewed, but production refuses to record
-// acceptance of it unless LEGAL_DRAFT_ACCEPTANCE_ALLOWED is explicitly true
-// (development/CI only). Approval is a reviewed change to this file:
+// document can be shown and reviewed. Production requires an approved pair
+// with recorded references, regardless of the draft rehearsal flag.
+// Approval is a reviewed change to this file:
 // status → APPROVED, `approvalReference` set, and a NEW version id whenever
 // the text changes. Never edit the text of a version that users accepted.
 //
@@ -29,6 +29,16 @@ export interface LegalDocumentVersion {
   approvalReference: string | null;
   /** Public route that renders this document in Arabic and English. */
   path: string;
+}
+
+/** A draft identifier cannot be promoted in place to a binding release. */
+export function isApprovedLegalDocument(document: LegalDocumentVersion): boolean {
+  return (
+    document.status === 'APPROVED' &&
+    Boolean(document.approvalReference?.trim()) &&
+    document.version.trim().length > 0 &&
+    !/(?:^|[._-])draft(?:$|[._-])/i.test(document.version)
+  );
 }
 
 export const CURRENT_LEGAL_DOCUMENTS: Readonly<Record<LegalDocumentKind, LegalDocumentVersion>> =

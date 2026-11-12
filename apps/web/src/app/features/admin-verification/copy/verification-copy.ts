@@ -62,7 +62,7 @@ export const SCAN_STATE_LABELS: Record<Lang, Record<MediaScanStateCode, string>>
     PENDING: 'Awaiting security scan',
     CLEAN: 'Scanned',
     QUARANTINED: 'Quarantined — not viewable',
-    SCAN_FAILED: 'Scan failed — retrying',
+    SCAN_FAILED: 'Safety check could not finish',
     // Says what to DO about it. "Rejected" alone reads as a verdict on the
     // provider; the fault is usually a failed upload, and the fix is to send
     // the file again.
@@ -72,7 +72,7 @@ export const SCAN_STATE_LABELS: Record<Lang, Record<MediaScanStateCode, string>>
     PENDING: 'بانتظار الفحص الأمني',
     CLEAN: 'تم الفحص',
     QUARANTINED: 'محجوز — غير قابل للعرض',
-    SCAN_FAILED: 'فشل الفحص — إعادة المحاولة',
+    SCAN_FAILED: 'تعذّر إكمال فحص الأمان',
     REJECTED: 'مرفوض — الملف غير صالح، يرجى رفعه من جديد',
   },
 };
@@ -149,6 +149,12 @@ export const UI: Record<Lang, Record<string, string>> = {
     reload: 'Reload',
     forbiddenTitle: 'You do not have permission',
     forbiddenBody: 'Your account cannot decide verification cases. Ask an administrator.',
+    decisionFailed:
+      'Could not record the decision. Your note is kept. Reload the case before trying again.',
+    decisionPaused:
+      'Decisions are paused until the latest case data loads successfully. Your note is kept.',
+    decisionChanged:
+      'This confirmation no longer matches the case or your available actions. Cancel and review the current case before choosing a new decision.',
 
     // ── work access ──────────────────────────────────────────────────────
     workAccess: 'Work grant',
@@ -245,6 +251,10 @@ export const UI: Record<Lang, Record<string, string>> = {
     reload: 'إعادة التحميل',
     forbiddenTitle: 'ليس لديك صلاحية',
     forbiddenBody: 'لا يمكن لحسابك البتّ في ملفات التحقق. راجع أحد المسؤولين.',
+    decisionFailed: 'تعذّر تسجيل القرار. احتُفظ بملاحظتك. أعد تحميل الملف قبل المحاولة مجددًا.',
+    decisionPaused: 'أُوقفت القرارات حتى ينجح تحميل أحدث بيانات الملف. احتُفظ بملاحظتك.',
+    decisionChanged:
+      'لم يعد هذا التأكيد يطابق الملف أو الإجراءات المتاحة لك. ألغِ التأكيد وراجع الملف الحالي قبل اختيار قرار جديد.',
 
     workAccess: 'منحة العمل',
     workAccessActive: 'نشطة',

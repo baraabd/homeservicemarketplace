@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter, useLocation } from 'react-router';
 import MockAdapter from 'axios-mock-adapter';
@@ -8,6 +8,10 @@ import { api } from '../../../../lib/api';
 import { LanguageProvider } from '../../../i18n/LanguageContext';
 import { ProviderStatusCentreScreen } from './ProviderStatusCentreScreen';
 import { STATUS_CENTRE_COPY } from '../copy/status-centre-copy';
+import {
+  NEXT_STEP_COPY,
+  STATE_COPY,
+} from '../../provider-verification/copy/provider-verification-copy';
 
 // Sprint 09B.29 Phase 5A — approved screens 14 and 17.
 //
@@ -62,15 +66,36 @@ const HUB = (over: Record<string, unknown> = {}) => ({
 });
 
 /** The capability service's own shape. `allowed` is what the screen reads. */
-const CAPS = (allowed: string[]) => ({
+const CAPS = (allowed: string[], primaryReason: string | null = null) => ({
   capabilities: allowed.map((capability) => ({ capability, allowed: true, reason: null })),
   allowed,
   nextActions: [],
-  primaryReason: null,
+  primaryReason,
 });
 
-const WAITING_CAPS = ['VIEW_OWN_PROFILE', 'EDIT_OWN_PROFILE'];
+const WAITING_CAPS = [
+  'VIEW_OWN_PROFILE',
+  'EDIT_OWN_PROFILE',
+  'MANAGE_VERIFICATION',
+  'COMPLETE_ONBOARDING',
+];
 const ACTIVE_CAPS = [...WAITING_CAPS, 'VIEW_MARKETPLACE', 'SUBMIT_BID'];
+
+const DOCUMENT = (scanState: string) => ({
+  id: 'document-1',
+  kind: 'INDIVIDUAL_IDENTITY',
+  serviceCategoryId: null,
+  scanState,
+  superseded: false,
+});
+const CASE = (state: string, documents: ReturnType<typeof DOCUMENT>[] = []) => ({
+  id: 'vc-1',
+  state,
+  verificationRequired: true,
+  requirements: [{ kind: 'INDIVIDUAL_IDENTITY', serviceCategoryId: null }],
+  documents,
+  availableActions: state === 'DRAFT' || state === 'ACTION_REQUIRED' ? ['submit'] : [],
+});
 
 let mock: MockAdapter;
 
@@ -80,6 +105,7 @@ beforeEach(() => {
 
 afterEach(() => {
   mock.restore();
+  vi.restoreAllMocks();
   window.localStorage.clear();
 });
 
@@ -92,8 +118,12 @@ function renderScreen(
     profile?: ReturnType<typeof PROFILE>;
     hub?: ReturnType<typeof HUB>;
     caps?: string[];
+    primaryReason?: string | null;
+    client?: QueryClient;
     /** The verification case's own state, or null when never started. */
     caseState?: string | null;
+    caseDocuments?: ReturnType<typeof DOCUMENT>[];
+    verificationRequired?: boolean;
     /** Make the case read fail, to prove the axis admits it does not know. */
     caseFails?: boolean;
     /** The server's verdict on whether the withdraw command would succeed. */
@@ -108,7 +138,9 @@ function renderScreen(
   mock.reset();
   mock.onGet(PROFILE_URL).reply(200, options.profile ?? PROFILE());
   mock.onGet(HUB_URL).reply(200, options.hub ?? HUB());
-  mock.onGet(CAPS_URL).reply(200, CAPS(options.caps ?? WAITING_CAPS));
+  mock
+    .onGet(CAPS_URL)
+    .reply(200, CAPS(options.caps ?? WAITING_CAPS, options.primaryReason ?? null));
   if (options.caseFails) {
     mock.onGet(CASE_URL).reply(500);
   } else {
@@ -116,7 +148,10 @@ function renderScreen(
       case:
         options.caseState === undefined || options.caseState === null
           ? null
-          : { id: 'vc-1', state: options.caseState, documents: [], requirements: [] },
+          : {
+              ...CASE(options.caseState, options.caseDocuments),
+              verificationRequired: options.verificationRequired ?? true,
+            },
     });
   }
   mock.onGet(REVIEW_URL).reply(200, {
@@ -151,7 +186,8 @@ function renderScreen(
   }
 
   window.localStorage.setItem('hsm.lang', options.lang ?? 'en');
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const client =
+    options.client ?? new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <MemoryRouter initialEntries={['/provider/status']}>
       <QueryClientProvider client={client}>
@@ -182,11 +218,13 @@ describe('document entry follows the verification task', () => {
   );
 
   it.each(['SUBMITTED', 'IN_REVIEW', 'VERIFIED'])(
-    'keeps the approved waiting layout focused while there is no document task: %s',
+    'keeps submitted documents reachable without presenting an upload task: %s',
     async (caseState) => {
       renderScreen({ caseState });
       await screen.findByTestId('provider-status-axes');
-      expect(screen.queryByTestId('status-view-verification')).not.toBeInTheDocument();
+      expect(screen.getByTestId('status-view-verification')).not.toHaveTextContent(
+        EN.continueVerification,
+      );
       expect(screen.getByTestId('status-view-application')).toBeEnabled();
     },
   );
@@ -282,9 +320,214 @@ describe('the four axes are answered separately', () => {
   });
 });
 
+describe('the next actor and document step', () => {
+  it.each([
+    ['missing', [], EN.valueDocumentsRequired, 'EVIDENCE_REQUIRED'],
+    ['pending scan', [DOCUMENT('PENDING')], EN.valueScanning, 'SCANNING'],
+    ['clean but not submitted', [DOCUMENT('CLEAN')], EN.valueReadyToSubmit, 'READY_TO_SUBMIT'],
+    ['failed scan', [DOCUMENT('SCAN_FAILED')], EN.valueScanRetry, 'SCAN_RETRY_PENDING'],
+    ['quarantined file', [DOCUMENT('QUARANTINED')], EN.valueFileUnusable, 'EVIDENCE_UNUSABLE'],
+  ] as const)(
+    'explains a draft with %s documents without pretending review has started',
+    async (_name, documents, label, state) => {
+      renderScreen({ caseState: 'DRAFT', caseDocuments: [...documents] });
+      expect(await axisValue('verification')).toContain(label);
+      expect(screen.getByTestId('status-waiting-alert')).toHaveTextContent(
+        STATE_COPY.en[state].title,
+      );
+      expect(screen.getByTestId('status-waiting-alert')).not.toHaveTextContent(EN.waitingAlertBody);
+      expect(screen.getByTestId('status-view-verification')).toBeEnabled();
+      expect(screen.queryByTestId('provider-workspace-unlocked')).not.toBeInTheDocument();
+    },
+  );
+
+  it.each([
+    ['ACTION_REQUIRED', EN.valueActionRequired, EN.changesRequiredBody],
+    ['REJECTED', EN.valueRejected, EN.rejectedBody],
+    ['EXPIRED', EN.valueExpired, EN.expiredBody],
+  ])('offers the correction or renewal path for %s', async (caseState, label, body) => {
+    renderScreen({ caseState, caseDocuments: [DOCUMENT('CLEAN')] });
+    expect(await axisValue('verification')).toContain(label);
+    expect(screen.getByTestId('status-waiting-alert')).toHaveTextContent(body);
+    fireEvent.click(screen.getByTestId('status-view-verification'));
+    expect(screen.getByTestId('status-current-route')).toHaveTextContent('/provider/verification');
+    expect(mock.history.post).toHaveLength(0);
+  });
+
+  it('automatically follows a security check and asks the provider to send the clean document', async () => {
+    vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('visible');
+    renderScreen({ caseState: 'DRAFT', caseDocuments: [DOCUMENT('PENDING')] });
+    expect(await axisValue('verification')).toContain(EN.valueScanning);
+    expect(screen.getByTestId('status-waiting-alert')).toHaveTextContent(
+      STATE_COPY.en.SCANNING.body,
+    );
+    expect(screen.getByTestId('status-contact-support')).toBeEnabled();
+    mock.onGet(CASE_URL).reply(200, { case: CASE('DRAFT', [DOCUMENT('CLEAN')]) });
+
+    await waitFor(
+      () =>
+        expect(screen.getByTestId('axis-verification')).toHaveTextContent(EN.valueReadyToSubmit),
+      { timeout: 3500 },
+    );
+    expect(screen.getByTestId('status-view-verification')).toHaveTextContent(
+      EN.continueVerification,
+    );
+    expect(mock.history.post).toHaveLength(0);
+  });
+
+  it('refreshes unavailable evidence without replacing it with a not-started instruction', async () => {
+    renderScreen({ caseFails: true });
+    expect(await axisValue('verification')).toContain(EN.valueUnknown);
+    expect(screen.getByTestId('status-waiting-alert')).toHaveTextContent(
+      STATE_COPY.en.UNAVAILABLE.title,
+    );
+    expect(screen.queryByTestId('status-view-verification')).not.toBeInTheDocument();
+    mock.onGet(CASE_URL).reply(200, { case: CASE('DRAFT', [DOCUMENT('CLEAN')]) });
+    fireEvent.click(screen.getByTestId('status-refresh'));
+    await waitFor(() =>
+      expect(screen.getByTestId('axis-verification')).toHaveTextContent(EN.valueReadyToSubmit),
+    );
+  });
+
+  it('keeps the existing file after a technical scan failure and refreshes to ready when the retry clears it', async () => {
+    renderScreen({ caseState: 'DRAFT', caseDocuments: [DOCUMENT('SCAN_FAILED')] });
+    expect(await axisValue('verification')).toContain(EN.valueScanRetry);
+    expect(screen.getByTestId('status-waiting-alert')).toHaveTextContent(
+      STATE_COPY.en.SCAN_RETRY_PENDING.body,
+    );
+    expect(screen.getByTestId('status-waiting-alert')).not.toHaveTextContent(
+      EN.documentsUnusableBody,
+    );
+    expect(screen.getByTestId('status-view-verification')).not.toHaveTextContent(
+      EN.continueVerification,
+    );
+    expect(screen.getByTestId('status-contact-support')).toBeEnabled();
+    mock.onGet(CASE_URL).reply(200, { case: CASE('DRAFT', [DOCUMENT('CLEAN')]) });
+    fireEvent.click(screen.getByTestId('status-refresh'));
+    await waitFor(() =>
+      expect(screen.getByTestId('axis-verification')).toHaveTextContent(EN.valueReadyToSubmit),
+    );
+    expect(mock.history.post).toHaveLength(0);
+  });
+
+  it('directs a verified provider with a returned application to review and resubmit it', async () => {
+    renderScreen({
+      caseState: 'VERIFIED',
+      primaryReason: 'ONBOARDING_INCOMPLETE',
+      canWithdraw: false,
+    });
+    expect(await axisValue('verification')).toContain(EN.valueVerified);
+    expect(await axisValue('work-access')).toContain(EN.valueNotActive);
+    expect(screen.getByTestId('status-waiting-alert')).toHaveTextContent(
+      NEXT_STEP_COPY.en.resume.body,
+    );
+    fireEvent.click(screen.getByTestId('status-view-application'));
+    expect(screen.getByTestId('status-current-route')).toHaveTextContent('/provider/onboarding');
+    expect(mock.history.post).toHaveLength(0);
+  });
+
+  it('explains remaining application approval even when identity was already approved', async () => {
+    renderScreen({ caseState: 'VERIFIED', primaryReason: 'AWAITING_REVIEW' });
+    expect(await axisValue('verification')).toContain(EN.valueVerified);
+    expect(screen.getByTestId('status-waiting-alert')).toHaveTextContent(
+      NEXT_STEP_COPY.en.pending.body,
+    );
+    expect(screen.queryByTestId('status-contact-support')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('provider-workspace-unlocked')).not.toBeInTheDocument();
+  });
+
+  it('keeps application corrections actionable while identity is with the reviewer', async () => {
+    renderScreen({
+      caseState: 'IN_REVIEW',
+      primaryReason: 'ONBOARDING_INCOMPLETE',
+      canWithdraw: false,
+    });
+    expect(await axisValue('verification')).toContain(EN.valueInReview);
+    expect(screen.getByTestId('status-waiting-alert')).toHaveTextContent(EN.applicationActionBody);
+    expect(screen.getByTestId('status-view-application')).toHaveTextContent(EN.reviewApplication);
+  });
+
+  it('sends a verified provider with no work access to support without asking for another identity', async () => {
+    renderScreen({
+      caseState: 'VERIFIED',
+      primaryReason: 'NO_WORK_ACCESS',
+      caps: ['VIEW_OWN_PROFILE', 'MANAGE_VERIFICATION'],
+    });
+    expect(await axisValue('verification')).toContain(EN.valueVerified);
+    expect(screen.getByTestId('status-waiting-alert')).toHaveTextContent(
+      STATE_COPY.en.VERIFIED_NO_ACCESS.body,
+    );
+    expect(screen.getByTestId('status-view-verification')).not.toHaveTextContent(
+      EN.continueVerification,
+    );
+    fireEvent.click(screen.getByTestId('status-contact-support'));
+    expect(screen.getByTestId('status-current-route')).toHaveTextContent('/provider/support');
+    expect(mock.history.post).toHaveLength(0);
+  });
+
+  it('does not request evidence when fresh capabilities withhold access', async () => {
+    renderScreen({ caps: ['VIEW_OWN_PROFILE'], primaryReason: 'PROVIDER_SUSPENDED' });
+    expect(await axisValue('verification')).toContain(EN.valueUnknown);
+    expect(screen.getByTestId('status-waiting-alert')).toHaveTextContent(
+      STATE_COPY.en.SUSPENDED.title,
+    );
+    expect(screen.queryByTestId('status-view-verification')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('status-refresh'));
+    await waitFor(() => expect(screen.getByTestId('status-refresh')).toBeEnabled());
+    expect(mock.history.get.filter((request) => CASE_URL.test(request.url ?? ''))).toHaveLength(0);
+  });
+
+  it('explains missing work access even when the evidence policy requires no documents', async () => {
+    renderScreen({
+      caseState: 'DRAFT',
+      verificationRequired: false,
+      primaryReason: 'NO_WORK_ACCESS',
+    });
+    expect(await axisValue('verification')).toContain(EN.valueNotRequired);
+    expect(screen.getByTestId('status-waiting-alert')).toHaveTextContent(
+      NEXT_STEP_COPY.en.workAccess.body,
+    );
+    expect(screen.getByTestId('status-contact-support')).toBeEnabled();
+    expect(screen.queryByTestId('provider-workspace-unlocked')).not.toBeInTheDocument();
+  });
+
+  it('requires fresh authority before displaying cached work access', async () => {
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false, staleTime: 60_000 } },
+    });
+    client.setQueryData(['provider', 'verification', 'capabilities'], CAPS(ACTIVE_CAPS));
+    renderScreen({ client, caps: WAITING_CAPS, caseState: 'VERIFIED' });
+    expect(screen.queryByTestId('provider-workspace-unlocked')).not.toBeInTheDocument();
+    expect(await axisValue('work-access')).toContain(EN.valueNotActive);
+  });
+
+  it('withholds document actions if a capability refresh fails', async () => {
+    renderScreen({ caseState: 'DRAFT', caseDocuments: [DOCUMENT('CLEAN')] });
+    await screen.findByTestId('status-view-verification');
+    mock.onGet(CAPS_URL).reply(503);
+    fireEvent.click(screen.getByTestId('status-refresh'));
+    await waitFor(() =>
+      expect(screen.queryByTestId('status-view-verification')).not.toBeInTheDocument(),
+    );
+    expect(screen.getByTestId('status-waiting-alert')).toHaveTextContent(
+      STATE_COPY.en.UNAVAILABLE.title,
+    );
+    expect(screen.queryByTestId('provider-workspace-unlocked')).not.toBeInTheDocument();
+  });
+
+  it('renders the pending scan and required follow-up in Arabic', async () => {
+    renderScreen({ lang: 'ar', caseState: 'DRAFT', caseDocuments: [DOCUMENT('PENDING')] });
+    expect(await axisValue('verification')).toContain(AR.valueScanning);
+    expect(screen.getByTestId('status-waiting-alert')).toHaveTextContent(
+      STATE_COPY.ar.SCANNING.body,
+    );
+    expect(screen.getByTestId('status-waiting-alert')).not.toHaveTextContent(AR.waitingAlertBody);
+  });
+});
+
 describe('the waiting screen', () => {
   it('says no action is needed, and offers the application rather than a dead end', async () => {
-    renderScreen();
+    renderScreen({ caseState: 'SUBMITTED' });
 
     expect(await screen.findByTestId('status-waiting-alert')).toHaveTextContent(
       EN.waitingAlertTitle,
@@ -314,6 +557,15 @@ describe('the waiting screen', () => {
     // `canWithdraw` is scoped to the same states the write is. Offering the
     // control anyway is how a client earns a 409 it caused itself.
     await waitFor(() => expect(screen.getByTestId('status-withdraw')).toBeDisabled());
+  });
+
+  it('withholds a cached withdrawal permission when its review refresh fails', async () => {
+    renderScreen({ caseState: 'SUBMITTED' });
+    await waitFor(() => expect(screen.getByTestId('status-withdraw')).toBeEnabled());
+    mock.onGet(REVIEW_URL).reply(403);
+    fireEvent.click(screen.getByTestId('status-refresh'));
+    await waitFor(() => expect(screen.getByTestId('status-withdraw')).toBeDisabled());
+    expect(mock.history.post).toHaveLength(0);
   });
 
   it('timestamps in the PROVIDER zone, not the reader device zone', async () => {

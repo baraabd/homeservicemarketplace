@@ -28,8 +28,8 @@ export type BucketRootState =
 
 export class S3BucketRootGuard {
   private readonly log = new Logger(S3BucketRootGuard.name);
-  /** Settled answers per bucket. Unverifiable answers are NOT cached: they are
-   *  a transient fault, and the next call deserves a fresh look. */
+  /** Verified answers per bucket. Absent and unverifiable roots are retried:
+   * a bootstrap may finish after the first request reached this replica. */
   private readonly settled = new Map<string, Promise<BucketRootState>>();
   private readonly warned = new Set<string>();
 
@@ -52,7 +52,7 @@ export class S3BucketRootGuard {
       this.settled.delete(bucket);
       throw err;
     }
-    if (result.state === 'unverifiable') this.settled.delete(bucket);
+    if (result.state !== 'verified') this.settled.delete(bucket);
     if (result.state === 'verified' && result.marker.namespace !== expected) {
       this.log.error({ msg: 'storage.root.mismatch', expected, found: result.marker.namespace });
       throw new StorageRootMismatchError();

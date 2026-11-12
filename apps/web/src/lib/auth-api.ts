@@ -29,17 +29,22 @@ export interface RegisterInput {
 /** K02 — public: the current Terms/Privacy versions and whether signup is open. */
 export async function getLegalDocuments(): Promise<LegalDocumentsResponse> {
   const { data } = await api.get<LegalDocumentsResponse>('/v1/legal/documents');
+  // AuthProvider loads this module for every route. Defer runtime contracts
+  // until signup requests its policy versions so the public selector stays isolated.
+  const { LEGAL_DOCUMENT_KINDS } = await import('@homeservicemarketplace/contracts');
   if (
     !data ||
     !Array.isArray(data.documents) ||
     typeof data.acceptanceOpen !== 'boolean' ||
+    data.documents.length !== LEGAL_DOCUMENT_KINDS.length ||
     !data.documents.every(
       (document) =>
         document &&
         typeof document.kind === 'string' &&
         typeof document.version === 'string' &&
         typeof document.path === 'string',
-    )
+    ) ||
+    !LEGAL_DOCUMENT_KINDS.every((kind) => data.documents.some((doc) => doc.kind === kind))
   ) {
     throw new Error('Legal policy information is unavailable');
   }

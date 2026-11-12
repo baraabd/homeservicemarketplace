@@ -3,7 +3,16 @@ import { useAuth } from './auth-provider';
 import { getIntendedApp } from './intended-app';
 import { resolvePostAuthDestination } from './auth-experience';
 import { selectAuthReturnTo } from './auth-return-to';
-import { AdminAccessRequired } from '../app/components/admin/AdminAccessRequired';
+import { lazyPage } from '../app/lazy-page';
+
+// The denial view is needed only after RequireAdmin has refused dashboard access.
+const AdminAccessRequired = lazyPage(
+  () =>
+    import('../app/components/admin/AdminAccessRequired').then((module) => ({
+      default: module.AdminAccessRequired,
+    })),
+  { standalone: true },
+);
 
 // ─── Loading spinner ─────────────────────────────────────────────────────────
 function AuthLoadingScreen() {

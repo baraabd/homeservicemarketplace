@@ -160,6 +160,22 @@ function makeFakeTx() {
 }
 
 describe('seedWithTx (unit)', () => {
+  it('initializes only access references without users, services, or request backfills', async () => {
+    const tx = makeFakeTx();
+    // Expose only the three allowed delegates. Any additional read or write fails.
+    const accessTx = {
+      role: tx.role,
+      permission: tx.permission,
+      rolePermission: tx.rolePermission,
+    };
+    await seedWithTx(accessTx as never, 'access-only');
+    const first = [...tx._rolePermPairs].sort();
+    expect([...tx._rolesByName.keys()].sort()).toEqual(['admin', 'customer', 'provider']);
+    expect(first.length).toBeGreaterThan(0);
+    await seedWithTx(accessTx as never, 'access-only');
+    expect([...tx._rolePermPairs].sort()).toEqual(first);
+  });
+
   it('creates the three system roles on first run', async () => {
     const tx = makeFakeTx();
     await seedWithTx(tx as never);
@@ -264,7 +280,7 @@ describe('seedWithTx (unit)', () => {
     }
   });
 
-  it('never seeds the development provider pool in production (R18)', async () => {
+  it('keeps the production catalog and provider pool outside the general seed', async () => {
     const previous = process.env.NODE_ENV;
     const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
     try {
@@ -273,6 +289,7 @@ describe('seedWithTx (unit)', () => {
       await seedWithTx(tx as never);
       // Reference data still lands; invented sellers do not.
       expect([...tx._rolesByName.keys()].sort()).toEqual(['admin', 'customer', 'provider']);
+      expect(tx.serviceCategory.upsert).not.toHaveBeenCalled();
       expect(tx._calls.providerProfile).toHaveLength(0);
       expect(tx._providerProfilesById.size).toBe(0);
     } finally {
