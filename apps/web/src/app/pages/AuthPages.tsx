@@ -11,6 +11,8 @@ import { resolveAuthExperience, resolvePostAuthDestination } from '../../lib/aut
 import { LoginScreen, SignUpScreen, ForgotPasswordScreen } from '../components/auth/AuthScreens';
 import { Button } from '../components/ds/Button';
 import { TextField } from '../components/ds/TextField';
+import { AuthConfigurationGate } from '../components/auth/AuthConfigurationGate';
+import { WhatsAppPasswordRecovery } from '../components/auth/WhatsAppPasswordRecovery';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // LOGIN PAGE  /login
@@ -55,56 +57,60 @@ export function LoginPage() {
   });
 
   return (
-    <LoginScreen
-      experience={experience}
-      onLogin={async (email: string, password: string) => {
-        const challenge = await login({ email, password });
-        return {
-          challengeId: challenge.challengeId,
-          codeLength: challenge.codeLength,
-          expiresInSeconds: challenge.expiresInSeconds,
-        };
-      }}
-      onOtpVerify={async (challengeId: string, code: string) => {
-        await verifyOtp(challengeId, code);
-        // After OTP verify the auth provider has refetched /me. The
-        // destination resolver applies the full precedence chain;
-        // experienceId is the load-bearing fallback when no intent
-        // is present (e.g., a direct /login deep-link without a prior
-        // /select bounce).
-        //
-        // Sprint 7.x — DO NOT call clearIntendedApp() here. The intent
-        // is per-tab sessionStorage; the canonical consumption point
-        // is `useAuth().logout`. Clearing it in-flight introduced a
-        // render race where GuestOnly re-rendered after /me populated
-        // but before navigate landed, found intent already null, fell
-        // through to customer role inference, and sent the user to
-        // /home instead of the intended /provider.
-        const dest = resolvePostAuthDestination({
-          returnTo,
-          intentApp: getIntendedApp(),
-          experienceId: experience.id,
-          userRoles: user?.roles ?? null,
-        });
-        navigate(dest, { replace: true });
-      }}
-      onOtpResend={async (challengeId: string) => {
-        await resendOtp(challengeId);
-      }}
-      onRecoverVerification={(email) =>
-        navigate('/check-email', { state: { app: experience.id, returnTo, email } })
-      }
-      onSignUp={() =>
-        // Forward the resolved experience explicitly so the Sign-up
-        // screen keeps the SAME theme — react-router state is otherwise
-        // dropped through this navigation.
-        navigate('/signup', { state: { app: experience.id, returnTo } })
-      }
-      onForgotPassword={() =>
-        navigate('/forgot-password', { state: { app: experience.id, returnTo } })
-      }
-      banner={justRegistered ? 'Your account is ready. Sign in to continue.' : undefined}
-    />
+    <AuthConfigurationGate>
+      {(channel, whatsappAvailable) => (
+        <LoginScreen
+          channel={channel}
+          whatsappAvailable={whatsappAvailable}
+          experience={experience}
+          onLogin={async (identity, password, selectedChannel) => {
+            return login({
+              ...(selectedChannel === 'whatsapp' ? { phoneNumber: identity } : { email: identity }),
+              password,
+            });
+          }}
+          onOtpVerify={async (challengeId: string, code: string) => {
+            await verifyOtp(challengeId, code);
+            // After OTP verify the auth provider has refetched /me. The
+            // destination resolver applies the full precedence chain;
+            // experienceId is the load-bearing fallback when no intent
+            // is present (e.g., a direct /login deep-link without a prior
+            // /select bounce).
+            //
+            // Sprint 7.x — DO NOT call clearIntendedApp() here. The intent
+            // is per-tab sessionStorage; the canonical consumption point
+            // is `useAuth().logout`. Clearing it in-flight introduced a
+            // render race where GuestOnly re-rendered after /me populated
+            // but before navigate landed, found intent already null, fell
+            // through to customer role inference, and sent the user to
+            // /home instead of the intended /provider.
+            const dest = resolvePostAuthDestination({
+              returnTo,
+              intentApp: getIntendedApp(),
+              experienceId: experience.id,
+              userRoles: user?.roles ?? null,
+            });
+            navigate(dest, { replace: true });
+          }}
+          onOtpResend={async (challengeId: string) => {
+            await resendOtp(challengeId);
+          }}
+          onRecoverVerification={(email) =>
+            navigate('/check-email', { state: { app: experience.id, returnTo, email } })
+          }
+          onSignUp={() =>
+            // Forward the resolved experience explicitly so the Sign-up
+            // screen keeps the SAME theme — react-router state is otherwise
+            // dropped through this navigation.
+            navigate('/signup', { state: { app: experience.id, returnTo } })
+          }
+          onForgotPassword={() =>
+            navigate('/forgot-password', { state: { app: experience.id, returnTo } })
+          }
+          banner={justRegistered ? 'Your account is ready. Sign in to continue.' : undefined}
+        />
+      )}
+    </AuthConfigurationGate>
   );
 }
 
@@ -127,58 +133,60 @@ export function SignUpPage() {
   const experience = resolveAuthExperience({ explicit: state?.app, returnTo });
 
   return (
-    <SignUpScreen
-      experience={experience}
-      onRecoverVerification={(email) =>
-        navigate('/check-email', { state: { app: experience.id, returnTo, email } })
-      }
-      onBack={() => navigate('/login', { state: { app: experience.id, returnTo } })}
-      onCredentialsSubmit={async (data) => {
-        const [firstName, ...rest] = data.name.trim().split(' ');
-        const lastName = rest.join(' ') || firstName;
-        const challenge = await doRegister({
-          email: data.email,
-          password: data.password,
-          firstName,
-          lastName,
-          legalAcceptance: data.legalAcceptance,
-        });
-        return {
-          challengeId: challenge.challengeId,
-          codeLength: challenge.codeLength,
-          expiresInSeconds: challenge.expiresInSeconds,
-        };
-      }}
-      onOtpVerify={async (challengeId: string, code: string) => {
-        await verifyOtp(challengeId, code);
-        // Registration OTP success issues the session and lands the
-        // new user in the authed area. The destination resolver picks
-        // the strongest signal:
-        //   returnTo > intent > experienceId > role inference > /home.
-        // experienceId is the load-bearing fallback for the original
-        // patch-2 regression: a brand-new customer-only user signing
-        // up from a Provider-themed flow must land on /provider, not
-        // /home.
-        //
-        // Sprint 7.x — DO NOT call clearIntendedApp() here. The intent
-        // is per-tab sessionStorage; the canonical consumption point
-        // is `useAuth().logout`. Clearing it in-flight introduced a
-        // render race where GuestOnly re-rendered after /me populated
-        // but before navigate landed, found intent already null, fell
-        // through to customer role inference, and sent the user to
-        // /home instead of the intended /provider.
-        const dest = resolvePostAuthDestination({
-          returnTo,
-          intentApp: getIntendedApp(),
-          experienceId: experience.id,
-          userRoles: user?.roles ?? null,
-        });
-        navigate(dest, { replace: true });
-      }}
-      onOtpResend={async (challengeId: string) => {
-        await resendOtp(challengeId);
-      }}
-    />
+    <AuthConfigurationGate>
+      {(channel, whatsappAvailable) => (
+        <SignUpScreen
+          channel={channel}
+          whatsappAvailable={whatsappAvailable}
+          experience={experience}
+          onRecoverVerification={(email) =>
+            navigate('/check-email', { state: { app: experience.id, returnTo, email } })
+          }
+          onBack={() => navigate('/login', { state: { app: experience.id, returnTo } })}
+          onCredentialsSubmit={async (data) => {
+            const [firstName, ...rest] = data.name.trim().split(' ');
+            const lastName = rest.join(' ') || firstName;
+            const challenge = await doRegister({
+              ...(data.phoneNumber ? { phoneNumber: data.phoneNumber } : { email: data.email }),
+              password: data.password,
+              firstName,
+              lastName,
+              legalAcceptance: data.legalAcceptance,
+            });
+            return challenge;
+          }}
+          onOtpVerify={async (challengeId: string, code: string) => {
+            await verifyOtp(challengeId, code);
+            // Registration OTP success issues the session and lands the
+            // new user in the authed area. The destination resolver picks
+            // the strongest signal:
+            //   returnTo > intent > experienceId > role inference > /home.
+            // experienceId is the load-bearing fallback for the original
+            // patch-2 regression: a brand-new customer-only user signing
+            // up from a Provider-themed flow must land on /provider, not
+            // /home.
+            //
+            // Sprint 7.x — DO NOT call clearIntendedApp() here. The intent
+            // is per-tab sessionStorage; the canonical consumption point
+            // is `useAuth().logout`. Clearing it in-flight introduced a
+            // render race where GuestOnly re-rendered after /me populated
+            // but before navigate landed, found intent already null, fell
+            // through to customer role inference, and sent the user to
+            // /home instead of the intended /provider.
+            const dest = resolvePostAuthDestination({
+              returnTo,
+              intentApp: getIntendedApp(),
+              experienceId: experience.id,
+              userRoles: user?.roles ?? null,
+            });
+            navigate(dest, { replace: true });
+          }}
+          onOtpResend={async (challengeId: string) => {
+            await resendOtp(challengeId);
+          }}
+        />
+      )}
+    </AuthConfigurationGate>
   );
 }
 
@@ -197,14 +205,29 @@ export function ForgotPasswordPage() {
   } | null;
   const returnTo = sanitizeAuthReturnTo(state?.returnTo);
   const experience = resolveAuthExperience({ explicit: state?.app, returnTo });
+  const [recoveryChannel, setRecoveryChannel] = useState<'email' | 'whatsapp' | null>(null);
   return (
-    <ForgotPasswordScreen
-      experience={experience}
-      onBack={() => navigate('/login', { state: { app: experience.id, returnTo } })}
-      onSubmit={async (email) => {
-        await authApi.forgotPassword(email);
-      }}
-    />
+    <AuthConfigurationGate>
+      {(channel, whatsappAvailable) =>
+        (recoveryChannel ?? channel) === 'whatsapp' ? (
+          <WhatsAppPasswordRecovery
+            available={whatsappAvailable}
+            experience={experience}
+            onBack={() => navigate('/login', { state: { app: experience.id, returnTo } })}
+            onUseEmail={() => setRecoveryChannel('email')}
+          />
+        ) : (
+          <ForgotPasswordScreen
+            onUseWhatsApp={whatsappAvailable ? () => setRecoveryChannel('whatsapp') : undefined}
+            experience={experience}
+            onBack={() => navigate('/login', { state: { app: experience.id, returnTo } })}
+            onSubmit={async (email) => {
+              await authApi.forgotPassword(email);
+            }}
+          />
+        )
+      }
+    </AuthConfigurationGate>
   );
 }
 

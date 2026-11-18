@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { AUTH_CONFIG_PATH } from './auth-policy-query';
 import type { AxiosError, InternalAxiosRequestConfig } from 'axios';
 import { authRequestScope, isLocallySignedOut } from './auth-session-boundary';
 import { withAuthCookieLock } from './auth-cookie-lock';
@@ -11,6 +12,8 @@ interface RetryableConfig extends InternalAxiosRequestConfig {
   _authScope?: string;
 }
 function requireCurrentScope(config?: RetryableConfig): void {
+  // This exact GET returns public delivery policy, never an account identity.
+  if (config?.url === AUTH_CONFIG_PATH && (config.method ?? 'get').toLowerCase() === 'get') return;
   if (config?._authScope !== undefined && config._authScope !== authRequestScope()) {
     throw new axios.CanceledError('Authentication changed while the request was in flight');
   }
@@ -76,6 +79,13 @@ api.interceptors.request.use((config: RetryableConfig) => {
 // refresh is logically wrong (login with wrong password should not trigger a
 // refresh attempt).
 const NO_RETRY_PATHS = new Set([
+  '/v1/auth/config',
+  '/v1/auth/forgot-password-otp',
+  '/v1/auth/reset-password-otp',
+  '/v1/auth/email/challenge',
+  '/v1/auth/email/verify',
+  '/v1/auth/phone/challenge',
+  '/v1/auth/phone/verify',
   '/v1/auth/login',
   '/v1/auth/register',
   '/v1/auth/verify-otp',

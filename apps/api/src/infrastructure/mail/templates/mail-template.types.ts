@@ -8,6 +8,9 @@
 export interface MailTemplateVars {
   'auth.registration_otp': { code: string; minutes: number };
   'auth.login_otp': { code: string; minutes: number };
+  'auth.password_reset_otp': { code: string; minutes: number };
+  'auth.phone_verification_otp': { code: string; minutes: number };
+  'auth.email_contact_otp': { code: string; minutes: number };
   'auth.email_verification': { token: string };
   'auth.password_reset': { token: string };
   'provider.verification_action_required': Record<string, never>;

@@ -49,6 +49,7 @@ function renderAuth(path: '/login' | '/signup', app?: 'seeker' | 'provider' | 'a
 
 beforeEach(() => {
   mock = new MockAdapter(api);
+  mock.onGet('/v1/auth/config').reply(200, { otpChannel: 'email', whatsappAvailable: false });
   qc = createAuthQueryClient();
 });
 
@@ -68,6 +69,7 @@ const OTP_CHALLENGE = {
 };
 
 async function submitLoginCredentials(emailValue = 'ada@example.com') {
+  await waitFor(() => expect(document.querySelector('input[type="email"]')).toBeTruthy());
   // Login form puts the email + password fields and the submit button on
   // screen after /me resolves. The TextField renders native <input>s.
   const email = document.querySelector('input[type="email"]') as HTMLInputElement;
@@ -267,7 +269,7 @@ describe('Login → OTP → authenticated', () => {
     // non-enumerating request notice and the exact resend endpoint assertions.
     await waitFor(() =>
       expect(screen.getByRole('status')).toHaveTextContent(
-        'Request received. Check your inbox and use the most recent code.',
+        'Request received. Use the most recent code you receive.',
       ),
     );
   });
@@ -555,15 +557,13 @@ describe('Register → OTP → authenticated', () => {
 
     renderAuth('/signup');
 
-    // Step 1: name + phone (dial code is preselected from geo fallback).
+    // Email registration requests only the name before credentials.
     await waitFor(() => {
-      expect(document.querySelector('input[type="tel"]')).toBeTruthy();
+      expect(document.querySelector('input[type="text"]')).toBeTruthy();
     });
     const name = document.querySelectorAll('input')[0] as HTMLInputElement;
-    const phone = document.querySelector('input[type="tel"]') as HTMLInputElement;
     await act(async () => {
       typeInto(name, 'Ada Lovelace');
-      typeInto(phone, '5551234567');
     });
     const nextBtn = screen.getAllByRole('button').find((b) => /next/i.test(b.textContent ?? ''))!;
     await act(async () => {
@@ -635,6 +635,7 @@ describe.each(['en', 'ar'] as const)('OTP challenge recovery (%s)', (lang) => {
     renderAuth(path);
     if (path === '/login') await submitLoginCredentials();
     else {
+      await waitFor(() => expect(document.querySelector('input[type="text"]')).toBeTruthy());
       fireEvent.change(document.querySelectorAll('input')[0]!, {
         target: { value: 'Ada Lovelace' },
       });

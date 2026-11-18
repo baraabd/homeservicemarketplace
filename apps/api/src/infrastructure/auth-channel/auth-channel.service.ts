@@ -1,0 +1,89 @@
+import { Injectable } from '@nestjs/common';
+import type { AuthChannelConfiguration, AuthOtpChannel } from '@homeservicemarketplace/contracts';
+import type { PrismaTx } from '@homeservicemarketplace/database';
+
+import { AppError } from '../../shared/errors/app-error';
+import { lockAuthAccount } from '../persistence/iam/auth-account-lock';
+import { PlatformSettingRepository } from '../persistence/settings/platform-setting.repository';
+import { WhatsAppAuthAdapter } from './whatsapp-auth.adapter';
+
+export const AUTH_OTP_CHANNEL_SETTING = 'auth.otpChannel';
+
+@Injectable()
+export class AuthChannelService {
+  constructor(
+    private readonly settings: PlatformSettingRepository,
+    private readonly whatsapp: WhatsAppAuthAdapter,
+  ) {}
+
+  async getChannel(tx?: PrismaTx): Promise<AuthOtpChannel> {
+    const channel = await this.getSelectedChannel(tx);
+    if (channel === 'whatsapp') this.assertWhatsAppReady();
+    return channel;
+  }
+
+  private async getSelectedChannel(tx?: PrismaTx): Promise<AuthOtpChannel> {
+    const row = await this.settings.findByKey(AUTH_OTP_CHANNEL_SETTING, tx);
+    if (!row) return 'email';
+    if (row.value !== 'email' && row.value !== 'whatsapp')
+      throw new AppError(
+        'DEPENDENCY_UNAVAILABLE',
+        'Authentication configuration is unavailable.',
+        503,
+      );
+    return row.value;
+  }
+
+  async getPublicConfig(tx?: PrismaTx): Promise<AuthChannelConfiguration> {
+    // Availability is a separate capability: losing provider configuration must
+    // not hide the operator's email rollback or existing-account email sign-in.
+    // Sending and activating WhatsApp still fail closed in their own boundaries.
+    return {
+      otpChannel: await this.getSelectedChannel(tx),
+      whatsappAvailable: this.whatsapp.isConfigured(),
+    };
+  }
+
+  assertWhatsAppReady(): void {
+    if (!this.whatsapp.isConfigured())
+      throw new AppError(
+        'DEPENDENCY_UNAVAILABLE',
+        'WhatsApp authentication is not configured.',
+        503,
+      );
+  }
+
+  /** Run under the settings transaction and account lock. A switch cannot
+   * remove the operator's own verified way back into the platform. Existing
+   * accounts additionally retain their verified-method sign-in fallback. */
+  async assertSelectable(channel: unknown, adminUserId: string, tx: PrismaTx): Promise<void> {
+    if (channel !== 'email' && channel !== 'whatsapp')
+      throw new AppError('VALIDATION_ERROR', 'Unsupported authentication channel.', 400);
+    if (channel === 'whatsapp') this.assertWhatsAppReady();
+    await lockAuthAccount(tx, adminUserId);
+    const user = await tx.user.findUnique({
+      where: { id: adminUserId },
+      select: {
+        email: true,
+        emailVerifiedAt: true,
+        phoneNumber: true,
+        phoneVerifiedAt: true,
+        status: true,
+        isActive: true,
+        deletedAt: true,
+      },
+    });
+    if (!user || user.status !== 'ACTIVE' || !user.isActive || user.deletedAt)
+      throw new AppError('FORBIDDEN', 'Account is not active.', 403);
+    const ready =
+      channel === 'whatsapp'
+        ? user?.phoneNumber && user.phoneVerifiedAt
+        : user?.email && user.emailVerifiedAt;
+    if (!ready)
+      throw new AppError(
+        'VALIDATION_ERROR',
+        'Verify your own contact for this channel before switching.',
+        400,
+      );
+  }
+}

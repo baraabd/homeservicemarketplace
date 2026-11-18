@@ -53,3 +53,39 @@ test('deepmerge: the fork keeps its upstream license and an exit criterion', () 
   );
   assert.match(fs.readFileSync(path.join(dir, 'README.md'), 'utf8'), /## Exit criterion/);
 });
+
+test('picomatch: every affected major resolves to its owned security fork', () => {
+  assert.equal(manifest.pnpm.overrides['picomatch@>=2.0.0 <3.0.0'], 'file:./vendor/picomatch-v2');
+  assert.equal(manifest.pnpm.overrides['picomatch@>=3.0.0 <=4.0.7'], 'file:./vendor/picomatch-v4');
+  for (const major of [2, 4]) {
+    assert.match(lockfile, new RegExp(`^ {2}picomatch@file:vendor/picomatch-v${major}:$`, 'm'));
+    const dir = path.join(root, `vendor/picomatch-v${major}`);
+    assert.match(
+      fs.readFileSync(path.join(dir, 'LICENSE'), 'utf8'),
+      /Permission is hereby granted/,
+    );
+    assert.match(fs.readFileSync(path.join(dir, 'README.md'), 'utf8'), /## Exit criterion/);
+  }
+  assert.doesNotMatch(lockfile, /^ {2}picomatch@\d/m, 'a vulnerable registry package remains');
+});
+
+test('picomatch: installed Jest and Nest CLI consumers load the guarded forks', () => {
+  const store = path.join(root, 'node_modules/.pnpm');
+  const entries = fs.readdirSync(store);
+  const consumers = [
+    ['anymatch', 'anymatch@', '2.3.2-hsm.1'],
+    ['jest-message-util', 'jest-message-util@', '4.0.7-hsm.1'],
+    ['@angular-devkit/core', '@angular-devkit+core@', '4.0.7-hsm.1'],
+  ];
+  for (const [name, prefix, version] of consumers) {
+    const installed = entries.filter((entry) => entry.startsWith(prefix));
+    assert.ok(installed.length > 0, `missing real consumer: ${name}`);
+    for (const entry of installed) {
+      const consumer = require('node:module').createRequire(
+        path.join(store, entry, 'node_modules', name, 'package.json'),
+      );
+      assert.equal(consumer('picomatch/package.json').version, version, name);
+      assert.ok(!consumer('picomatch').makeRe('+(*a)').source.includes('[^/]*?'), name);
+    }
+  }
+});

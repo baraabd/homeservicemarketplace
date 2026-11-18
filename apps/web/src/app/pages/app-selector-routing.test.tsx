@@ -92,6 +92,7 @@ let qc: QueryClient;
 
 beforeEach(() => {
   mock = new MockAdapter(api);
+  mock.onGet('/v1/auth/config').reply(200, { otpChannel: 'email', whatsappAvailable: false });
   qc = createAuthQueryClient();
   clearIntendedApp();
 });
@@ -348,15 +349,13 @@ describe('Provider intent survives the entire auth flow', () => {
         signUpBtn!.click();
       });
 
-      // 4. step 1 of signup wizard: name + phone
+      // 4. step 1 of email signup wizard: name
       await waitFor(() => {
-        expect(document.querySelector('input[type="tel"]')).toBeTruthy();
+        expect(document.querySelector('input[type="text"]')).toBeTruthy();
       });
       const nameInput = document.querySelectorAll('input')[0] as HTMLInputElement;
-      const phoneInput = document.querySelector('input[type="tel"]') as HTMLInputElement;
       await act(async () => {
         fireEvent.change(nameInput, { target: { value: 'Ada Lovelace' } });
-        fireEvent.change(phoneInput, { target: { value: '5551234567' } });
       });
       const nextBtn = screen.getAllByRole('button').find((b) => /next/i.test(b.textContent ?? ''))!;
       await act(async () => {

@@ -148,7 +148,7 @@ describe('provider onboarding completeness policy', () => {
       // A provider application is reviewable only from an identity we can
       // actually contact; "present but unverified" is its own state.
       const issues = evaluateOnboarding(complete({ emailVerified: false }));
-      expect(issues).toContainEqual({ field: 'emailVerified', code: 'UNVERIFIED' });
+      expect(issues).toContainEqual({ field: 'contactVerified', code: 'UNVERIFIED' });
       expect(isOnboardingComplete(complete({ emailVerified: false }))).toBe(false);
     });
   });
@@ -170,7 +170,7 @@ describe('provider onboarding completeness policy', () => {
       [
         'bio',
         'displayName',
-        'emailVerified',
+        'contactVerified',
         'headline',
         'phoneNumber',
         'serviceAreaCity',
@@ -397,5 +397,25 @@ describe('isOnboardingComplete versus isProviderInputComplete', () => {
     expect(Object.keys(c)).not.toContain('workAccess');
     expect(Object.keys(c)).not.toContain('verificationState');
     expect(Object.keys(c)).not.toContain('status');
+  });
+});
+
+describe('verified account contact policy', () => {
+  it('accepts verified authentication-phone proof without claiming email verification', () => {
+    const candidate = complete({ emailVerified: false, contactVerified: true });
+    expect(evaluateOnboarding(candidate)).toEqual([]);
+    expect(candidate.emailVerified).toBe(false);
+  });
+
+  it('does not substitute provider-profile phone proof for account contact verification', () => {
+    expect(
+      evaluateOnboarding(
+        complete({
+          emailVerified: false,
+          contactVerified: false,
+          phoneVerified: true,
+        }),
+      ),
+    ).toContainEqual({ field: 'contactVerified', code: 'UNVERIFIED' });
   });
 });

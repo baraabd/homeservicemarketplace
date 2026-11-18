@@ -13,11 +13,13 @@
 // `avatarUrl` is exposed for completeness — avatar upload is out of
 // scope for this slice.
 export interface ProfileSummary {
+  /** Stable account identity. Optional for clients hydrating older cached responses. */
+  userId?: string;
   firstName: string;
   lastName: string;
   displayName: string;
   initials: string;
-  email: string;
+  email: string | null;
   phoneNumber: string | null;
   city: string | null;
   bio: string | null;

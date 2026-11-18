@@ -17,6 +17,7 @@ export {}; // module marker — see migration-bootstrap.spec.ts.
 import { fixtureEmailDomain, withAdvisoryLock } from '../support/db-isolation';
 import { makeTestSecret } from '../support/test-secrets';
 import { currentLegalAcceptance, legalAcceptanceServiceFor } from '../support/legal-acceptance';
+import { emailAuthenticationServices } from '../support/auth-channel';
 
 const shouldRun = process.env.RUN_DB_INTEGRATION === '1';
 const d = shouldRun ? describe : describe.skip;
@@ -191,6 +192,7 @@ d('IAM end-to-end flow (real Postgres)', () => {
       securityEvents,
       mail,
       legalAcceptanceServiceFor(config),
+      ...emailAuthenticationServices(config, mail),
     );
 
     services = {

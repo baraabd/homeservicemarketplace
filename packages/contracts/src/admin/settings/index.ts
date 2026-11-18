@@ -31,6 +31,8 @@ export interface AdminSettingFieldSchema {
   default: unknown;
   min?: number;
   max?: number;
+  /** Exact allowed values for scalar string settings. */
+  options?: readonly string[];
   /**
    * R17-D — false when no product code reads this setting. The Settings screen
    * shows it read-only and the server refuses writes: changing it would report
@@ -40,6 +42,14 @@ export interface AdminSettingFieldSchema {
 }
 
 export const ADMIN_SETTINGS_SCHEMA: readonly AdminSettingFieldSchema[] = [
+  {
+    key: 'auth.otpChannel',
+    type: 'string',
+    description:
+      'Default sign-up and sign-in verification channel for all three applications. Existing accounts retain access through their verified contact method.',
+    default: 'email',
+    options: ['email', 'whatsapp'],
+  },
   // ── R17-D: four settings no product code reads ──────────────────────
   // Kept (stored values and history stay readable) but marked inert. Wiring
   // any of them is a product decision; the fee and currency ones are money

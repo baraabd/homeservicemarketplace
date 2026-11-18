@@ -35,6 +35,17 @@ describe('deriveDisplayName', () => {
     expect(deriveDisplayName({ firstName: '', lastName: '', email: '' })).toBe('');
   });
 
+  it('uses a phone identity when email and names are absent', () => {
+    expect(
+      deriveDisplayName({
+        firstName: null,
+        lastName: null,
+        email: null,
+        phoneNumber: '+963944123456',
+      }),
+    ).toBe('+963944123456');
+  });
+
   it('tolerates nullable fields from lax backends', () => {
     expect(deriveDisplayName({ firstName: null, lastName: null, email: null })).toBe('');
   });

@@ -1,3 +1,4 @@
+import type { AuthenticationContacts } from '../../../../shared/identity/verified-contact';
 import { VerificationCaseWorkflowService } from './verification-case-workflow.service';
 import { AppError } from '../../../../shared/errors/app-error';
 
@@ -44,7 +45,10 @@ const COMPLETE_PROFILE = {
   serviceAreaCountry: 'SY',
   serviceAreaRadiusKm: 25,
   acceptedConsentVersion: null,
-  user: { emailVerifiedAt: new Date('2026-01-01T00:00:00Z') },
+  user: {
+    email: 'provider@example.test',
+    emailVerifiedAt: new Date('2026-01-01T00:00:00Z'),
+  } as AuthenticationContacts,
   _count: { serviceCategories: 2, categoryApplications: 0 },
 };
 
@@ -713,5 +717,44 @@ describe('approval is now real', () => {
     // so the boundary is gone and the assertion inverts.
     const h = harness();
     expect(typeof (h.service as unknown as Record<string, unknown>).approve).toBe('function');
+  });
+});
+
+describe('verification case account contact readiness', () => {
+  it('allows the verified account phone to satisfy the account identity gate without email', async () => {
+    const h = harness({
+      row: caseRow({
+        providerProfile: {
+          ...COMPLETE_PROFILE,
+          user: {
+            email: null,
+            emailVerifiedAt: null,
+            phoneNumber: '+966501234567',
+            phoneVerifiedAt: new Date(),
+          },
+        },
+      }),
+    });
+    await expect(h.service.submit(PROVIDER_USER, { caseId: CASE_ID })).resolves.toMatchObject({
+      state: 'SUBMITTED',
+      changed: true,
+    });
+  });
+
+  it('refuses a provider whose account has no verified contact despite a populated profile phone', async () => {
+    const h = harness({
+      row: caseRow({
+        providerProfile: {
+          ...COMPLETE_PROFILE,
+          user: { email: null, emailVerifiedAt: null, phoneNumber: null, phoneVerifiedAt: null },
+        },
+      }),
+    });
+    const err = await failure(h.service.submit(PROVIDER_USER, { caseId: CASE_ID }));
+    expect(err.status).toBe(422);
+    expect(err.details).toMatchObject({
+      blockers: [{ code: 'ONBOARDING_INCOMPLETE', field: 'contactVerified' }],
+    });
+    expect(h.updates).toEqual([]);
   });
 });

@@ -20,7 +20,9 @@ export interface AdminAccessRequestReviewItem {
 
   applicant: {
     id: string;
-    email: string;
+    email: string | null;
+    phoneNumber?: string | null;
+    phoneVerifiedAt?: string | null;
     firstName: string;
     lastName: string;
     /** Axis 1: authentication standing. NOT admin standing. */

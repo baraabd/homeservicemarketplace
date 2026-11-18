@@ -4,14 +4,13 @@ import {
   ChevronLeft,
   ChevronRight,
   Mail,
+  MessageCircle,
   Lock,
   Eye,
   EyeOff,
   User,
-  Phone,
   AlertCircle,
   CheckCircle2,
-  MapPin,
   Send,
   ArrowRight,
   ArrowLeft,
@@ -19,7 +18,7 @@ import {
 import { Button } from '../ds/Button';
 import { TextField } from '../ds/TextField';
 import { useSwipe } from '../../hooks/useSwipe';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   CURRENT_LEGAL_DOCUMENTS,
   type LegalAcceptanceInput,
@@ -41,8 +40,10 @@ import {
   writeSignupDraft,
 } from '../../features/legal/signup-consent';
 import { useLang, LangToggle } from '../../i18n/LanguageContext';
-import { COUNTRY_DIAL_CODES, dialForCountry } from '../../../lib/country-dial-codes';
-import { useGeoBootstrap } from '../../../lib/geo-bootstrap';
+import type { OtpChannel } from '../../../lib/auth-channel';
+import { PhoneIdentityField } from './PhoneIdentityField';
+import { toE164Phone, isValidPhoneIdentity } from '../../../lib/phone-identity';
+import { AuthChannelNotice } from './AuthChannelNotice';
 import {
   extractAuthError,
   loginErrorMessage,
@@ -99,13 +100,14 @@ function AuthTopBar({ title, onBack }: { title: string; onBack: () => void }) {
   );
 }
 
-// ─── Email OTP panel (shared between Login and SignUp) ────────────────────
+// ─── Channel-aware OTP panel (shared between Login and SignUp) ────────────────────
 // Reuses the boxed OTP aesthetic from the project's design history: six
 // amber-bordered squares that light up as digits arrive. Only the behavior
 // is new — it consumes the real challengeId the backend returned and POSTs
 // /v1/auth/verify-otp through the parent callback.
 interface EmailOtpPanelProps {
   email: string;
+  channel?: OtpChannel;
   codeLength: number;
   onVerify: (code: string) => Promise<void>;
   onResend: () => Promise<void>;
@@ -124,6 +126,7 @@ interface EmailOtpPanelProps {
 
 export function EmailOtpPanel({
   email,
+  channel = 'email',
   codeLength,
   onVerify,
   onResend,
@@ -152,16 +155,26 @@ export function EmailOtpPanel({
       <div
         className={`w-20 h-20 rounded-2xl ${experience.classes.iconChipBg} flex items-center justify-center`}
       >
-        <Mail size={32} className={experience.classes.iconChipText} />
+        {channel === 'whatsapp' ? (
+          <MessageCircle size={32} className="text-emerald-700" />
+        ) : (
+          <Mail size={32} className={experience.classes.iconChipText} />
+        )}
       </div>
       <div>
         <h3 className="text-slate-900" style={{ fontSize: '18px', fontWeight: 800 }}>
-          {lang === 'ar' ? 'تحقق من بريدك الإلكتروني' : 'Verify your email'}
+          {channel === 'whatsapp'
+            ? lang === 'ar'
+              ? 'تحقق من واتساب'
+              : 'Check WhatsApp'
+            : lang === 'ar'
+              ? 'تحقق من بريدك الإلكتروني'
+              : 'Verify your email'}
         </h3>
         <p className="text-slate-400 mt-1" style={{ fontSize: '13px' }}>
           {lang === 'ar'
-            ? `أدخل رمز التحقق المكوّن من ${codeLength} أرقام من بريدك الإلكتروني`
-            : `Enter the ${codeLength}-digit code from your email`}
+            ? `أدخل رمز التحقق المكوّن من ${codeLength} أرقام من ${channel === 'whatsapp' ? 'واتساب' : 'بريدك الإلكتروني'}`
+            : `Enter the ${codeLength}-digit code from ${channel === 'whatsapp' ? 'WhatsApp' : 'your email'}`}
           {email ? (
             <>
               {' '}
@@ -189,7 +202,11 @@ export function EmailOtpPanel({
         onClick={focusInput}
         onTouchStart={focusInput}
         role="group"
-        aria-label={`${codeLength}-digit verification code`}
+        aria-label={
+          lang === 'ar'
+            ? `رمز التحقق المكوّن من ${codeLength} أرقام`
+            : `${codeLength}-digit verification code`
+        }
       >
         {Array.from({ length: codeLength }).map((_, i) => (
           <div
@@ -229,7 +246,11 @@ export function EmailOtpPanel({
         disabled={isVerifying || isResending || recovery === 'restart'}
         aria-invalid={!!verifyError}
         aria-describedby={verifyError ? 'otp-verification-error' : undefined}
-        aria-label={`${codeLength}-digit verification code`}
+        aria-label={
+          lang === 'ar'
+            ? `رمز التحقق المكوّن من ${codeLength} أرقام`
+            : `${codeLength}-digit verification code`
+        }
         className="sr-only"
         autoFocus
       />
@@ -374,13 +395,17 @@ function SwipeableScreen({ onBack, children }: { onBack: () => void; children: R
 // onOtpVerify resolves successfully.
 // ─────────────────────────────────────────────────────────────────────────────
 export interface LoginOtpChallenge {
+  channel?: OtpChannel;
+  maskedDestination?: string;
   challengeId: string;
   codeLength: number;
   expiresInSeconds: number;
 }
 
 interface LoginProps {
-  onLogin: (email: string, password: string) => Promise<LoginOtpChallenge>;
+  whatsappAvailable?: boolean;
+  channel?: OtpChannel;
+  onLogin: (identity: string, password: string, channel?: OtpChannel) => Promise<LoginOtpChallenge>;
   onOtpVerify: (challengeId: string, code: string) => Promise<void>;
   onOtpResend: (challengeId: string) => Promise<void>;
   onSignUp: () => void;
@@ -394,6 +419,8 @@ interface LoginProps {
 }
 
 export function LoginScreen({
+  channel = 'email',
+  whatsappAvailable = false,
   onLogin,
   onOtpVerify,
   onOtpResend,
@@ -406,6 +433,12 @@ export function LoginScreen({
   const { t, lang } = useLang();
   const navigate = useNavigate();
   const [email, setEmail] = useState('');
+  const [countryCode, setCountryCode] = useState('');
+  const [localNumber, setLocalNumber] = useState('');
+  const [identityOverride, setIdentityOverride] = useState<OtpChannel | null>(null);
+  const selectedChannel = identityOverride ?? channel;
+  const identity =
+    selectedChannel === 'whatsapp' ? toE164Phone(countryCode, localNumber) : email.trim();
   const [password, setPassword] = useState('');
   const [showPw, setShowPw] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -423,13 +456,23 @@ export function LoginScreen({
   const credentialsRevision = useRef(0);
 
   const handleLogin = async () => {
-    if (requestFlight.current) return;
+    if (requestFlight.current || (selectedChannel === 'whatsapp' && !whatsappAvailable)) return;
     setLoginError(undefined);
-    if (!email || !password) {
+    if (
+      !identity ||
+      !password ||
+      (selectedChannel === 'whatsapp' && !isValidPhoneIdentity(countryCode, localNumber))
+    ) {
       setLoginError({
         messages: {
-          en: 'Email Address / Password',
-          ar: 'البريد الإلكتروني / كلمة المرور',
+          en:
+            selectedChannel === 'whatsapp'
+              ? 'Enter a valid WhatsApp number and password.'
+              : 'Email Address / Password',
+          ar:
+            selectedChannel === 'whatsapp'
+              ? 'أدخل رقم واتساب صحيحًا وكلمة المرور.'
+              : 'البريد الإلكتروني / كلمة المرور',
         },
         code: null,
       });
@@ -439,7 +482,7 @@ export function LoginScreen({
     const revision = credentialsRevision.current;
     setIsLoading(true);
     try {
-      const out = await onLogin(email.trim(), password);
+      const out = await onLogin(identity, password, selectedChannel);
       // Inputs remain editable during the request. A reply for an earlier
       // draft must not offer recovery or an OTP challenge for the new draft.
       if (revision !== credentialsRevision.current) return;
@@ -454,8 +497,8 @@ export function LoginScreen({
       // framework text like "Unauthorized Exception" onto the login form.
       setLoginError({
         messages: {
-          en: loginErrorMessage(err, 'en'),
-          ar: loginErrorMessage(err, 'ar'),
+          en: loginErrorMessage(err, 'en', selectedChannel),
+          ar: loginErrorMessage(err, 'ar', selectedChannel),
         },
         code: extractAuthError(err).code,
       });
@@ -497,8 +540,8 @@ export function LoginScreen({
       await onOtpResend(challenge.challengeId);
       setResendNotice(
         lang === 'ar'
-          ? 'تم استلام الطلب. تحقق من بريدك واستخدم أحدث رمز يصلك.'
-          : 'Request received. Check your inbox and use the most recent code.',
+          ? 'تم استلام الطلب. استخدم أحدث رمز يصلك.'
+          : 'Request received. Use the most recent code you receive.',
       );
     } catch (err: unknown) {
       setOtpError({
@@ -567,16 +610,19 @@ export function LoginScreen({
       </div>
 
       {/* ── Card ── */}
-      <div className="flex-1 bg-white rounded-t-3xl -mt-6 px-6 pt-8 pb-6">
-        {!challenge && loginError?.code === 'AUTH_ACCOUNT_UNVERIFIED' && onRecoverVerification && (
-          <button
-            type="button"
-            className="text-slate-700 underline mb-3"
-            onClick={() => onRecoverVerification(email.trim())}
-          >
-            {lang === 'ar' ? 'طلب رابط للتحقق من البريد' : 'Request email verification'}
-          </button>
-        )}
+      <div className="relative mx-auto w-full max-w-lg flex-1 bg-white rounded-t-3xl -mt-6 px-6 pt-8 pb-6">
+        {!challenge &&
+          selectedChannel === 'email' &&
+          loginError?.code === 'AUTH_ACCOUNT_UNVERIFIED' &&
+          onRecoverVerification && (
+            <button
+              type="button"
+              className="text-slate-700 underline mb-3"
+              onClick={() => onRecoverVerification(email.trim())}
+            >
+              {lang === 'ar' ? 'طلب رابط للتحقق من البريد' : 'Request email verification'}
+            </button>
+          )}
         {banner && (
           <div className="mb-4 rounded-xl bg-green-50 border border-green-200 px-4 py-3">
             <p className="text-green-800" style={{ fontSize: '13px', fontWeight: 500 }}>
@@ -593,7 +639,8 @@ export function LoginScreen({
 
         {challenge ? (
           <EmailOtpPanel
-            email={email.trim()}
+            email={challenge.maskedDestination ?? identity}
+            channel={challenge.channel ?? selectedChannel}
             codeLength={challenge.codeLength}
             onVerify={handleOtpVerify}
             onResend={handleOtpResend}
@@ -615,19 +662,57 @@ export function LoginScreen({
           />
         ) : (
           <div className="flex flex-col gap-4">
-            <TextField
-              label={t('emailAddress')}
-              type="email"
-              autoComplete="email"
-              value={email}
-              onChange={(value) => {
-                setEmail(value);
-                setLoginError(undefined);
-                credentialsRevision.current += 1;
-              }}
-              error={loginError?.messages[lang]}
-              leadingIcon={<Mail size={16} />}
-            />
+            <AuthChannelNotice channel={selectedChannel} available={whatsappAvailable} />
+            {selectedChannel === 'whatsapp' ? (
+              <PhoneIdentityField
+                countryCode={countryCode}
+                onCountryChange={(value) => {
+                  setCountryCode(value);
+                  credentialsRevision.current += 1;
+                  setLoginError(undefined);
+                }}
+                localNumber={localNumber}
+                onNumberChange={(value) => {
+                  setLocalNumber(value);
+                  credentialsRevision.current += 1;
+                  setLoginError(undefined);
+                }}
+                error={loginError?.messages[lang]}
+              />
+            ) : (
+              <TextField
+                label={t('emailAddress')}
+                type="email"
+                autoComplete="email"
+                value={email}
+                onChange={(value) => {
+                  setEmail(value);
+                  setLoginError(undefined);
+                  credentialsRevision.current += 1;
+                }}
+                error={loginError?.messages[lang]}
+                leadingIcon={<Mail size={16} />}
+              />
+            )}
+            {(channel === 'whatsapp' || whatsappAvailable) && (
+              <button
+                type="button"
+                className="min-h-11 text-sm text-slate-700 underline"
+                onClick={() => {
+                  setIdentityOverride(selectedChannel === 'email' ? 'whatsapp' : 'email');
+                  setLoginError(undefined);
+                  credentialsRevision.current += 1;
+                }}
+              >
+                {selectedChannel === 'email'
+                  ? lang === 'ar'
+                    ? 'لدي حساب واتساب'
+                    : 'I have a WhatsApp account'
+                  : lang === 'ar'
+                    ? 'لدي حساب بريد إلكتروني'
+                    : 'I have an email account'}
+              </button>
+            )}
 
             <TextField
               label={t('password')}
@@ -647,7 +732,9 @@ export function LoginScreen({
                 <button
                   type="button"
                   onClick={() => setShowPw((v) => !v)}
-                  className="flex items-center justify-center w-5 h-5"
+                  aria-label={lang === 'ar' ? 'إظهار كلمة المرور' : 'Show password'}
+                  aria-pressed={showPw}
+                  className="flex items-center justify-center w-11 h-11 -me-3 rounded-xl focus-visible:outline-2 focus-visible:outline-blue-600"
                 >
                   {showPw ? <EyeOff size={16} /> : <Eye size={16} />}
                 </button>
@@ -667,7 +754,13 @@ export function LoginScreen({
             <Button
               variant="primary"
               tone={experience.id}
-              state={isLoading ? 'loading' : 'default'}
+              state={
+                isLoading
+                  ? 'loading'
+                  : selectedChannel === 'whatsapp' && !whatsappAvailable
+                    ? 'disabled'
+                    : 'default'
+              }
               fullWidth
               onClick={handleLogin}
             >
@@ -696,20 +789,12 @@ export function LoginScreen({
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// SIGN UP SCREEN — email OTP flow (aligned with backend IAM).
-//
-// Backend truth: POST /v1/auth/register returns 202 + an OTP challenge
-// envelope, and emails a 6-digit code. The session is issued only when
-// /v1/auth/verify-otp succeeds. This screen is a three-step wizard:
-//   Step 1 — Personal info (name + phone with auto-selected dial code,
-//            best-effort country badge). Phone is onboarding-only today and
-//            is NOT sent to the backend (no phone column yet).
-//   Step 2 — Email + password + terms. On "Create account" we POST the
-//            real register endpoint and receive the OTP challenge.
-//   Step 3 — Enter the emailed code. On success the parent navigates to
-//            the authenticated home.
+// SIGN UP SCREEN — server-selected identity, credentials, then OTP verification.
+// Country is chosen manually or resolved only after explicit location consent.
 // ─────────────────────────────────────────────────────────────────────────────
 interface SignUpProps {
+  channel?: OtpChannel;
+  whatsappAvailable?: boolean;
   onBack: () => void;
   onRecoverVerification?: (email: string) => void;
   // Parent POSTs the credentials, receives the OTP challenge, and returns
@@ -717,7 +802,8 @@ interface SignUpProps {
   // OTP callbacks below, NOT here.
   onCredentialsSubmit: (data: {
     name: string;
-    email: string;
+    email?: string;
+    phoneNumber?: string;
     password: string;
     legalAcceptance: LegalAcceptanceInput;
   }) => Promise<LoginOtpChallenge>;
@@ -729,6 +815,8 @@ interface SignUpProps {
 }
 
 export function SignUpScreen({
+  channel = 'email',
+  whatsappAvailable = true,
   onBack,
   onRecoverVerification,
   onCredentialsSubmit,
@@ -737,8 +825,7 @@ export function SignUpScreen({
   experience = AUTH_EXPERIENCES[DEFAULT_EXPERIENCE_ID],
 }: SignUpProps) {
   const { t, lang } = useLang();
-  const geo = useGeoBootstrap();
-  const dialEntry = dialForCountry(geo.countryCode);
+  const queryClient = useQueryClient();
 
   // K02 — a non-secret draft (never the password) survives a reload or a
   // visit to a full policy page; the in-place policy dialog keeps everything
@@ -747,8 +834,8 @@ export function SignUpScreen({
   const [step, setStep] = useState<number>(draft?.step ?? 1); // 1 = info, 2 = credentials, 3 = OTP
   const [name, setName] = useState(draft?.name ?? '');
   // Phone is split into a dial code the user can override + the local number.
-  const [dialCode, setDialCode] = useState<string>(dialEntry.dialCode);
-  const [localNumber, setLocalNumber] = useState('');
+  const [countryCode, setCountryCode] = useState(draft?.countryCode ?? '');
+  const [localNumber, setLocalNumber] = useState(draft?.localNumber ?? '');
   const [email, setEmail] = useState(draft?.email ?? '');
   const [password, setPassword] = useState('');
   const [showPw, setShowPw] = useState(false);
@@ -780,11 +867,10 @@ export function SignUpScreen({
   const consentCopy = SIGNUP_CONSENT_COPY[lang === 'ar' ? 'ar' : 'en'];
 
   useEffect(() => {
-    if (step < 3) writeSignupDraft({ step, name, email });
-  }, [step, name, email]);
+    if (step < 3) writeSignupDraft({ step, name, email, countryCode, localNumber });
+  }, [step, name, email, countryCode, localNumber]);
   const [isLoading, setIsLoading] = useState(false);
   const [signUpError, setSignUpError] = useState<string | undefined>();
-  const [dialCodeTouched, setDialCodeTouched] = useState(false);
   const [challenge, setChallenge] = useState<LoginOtpChallenge | null>(null);
   const [isVerifying, setIsVerifying] = useState(false);
   const [isResending, setIsResending] = useState(false);
@@ -793,18 +879,17 @@ export function SignUpScreen({
   const [resendNotice, setResendNotice] = useState<string | undefined>();
   const requestFlight = useRef(false);
 
-  // If the geo fallback resolves AFTER mount (rare; `useGeoBootstrap`
-  // resolves synchronously on initial render), keep the dial code in sync
-  // until the user edits it.
-  useEffect(() => {
-    if (dialCodeTouched) return;
-    if (dialEntry.dialCode !== dialCode) setDialCode(dialEntry.dialCode);
-  }, [dialEntry.dialCode, dialCode, dialCodeTouched]);
-
-  // Registration persists names/email/password only. Do not require a phone
-  // number that the current account contract does not accept or save.
-  const canStep1 = name.trim().length > 2;
-  const canStep2 = email.includes('@') && password.length >= 12 && agreed && legalReady;
+  const phoneNumber = toE164Phone(countryCode, localNumber);
+  const canStep1 =
+    name.trim().length > 2 &&
+    (channel === 'email' || (whatsappAvailable && isValidPhoneIdentity(countryCode, localNumber)));
+  const canStep2 =
+    (channel === 'whatsapp'
+      ? whatsappAvailable && isValidPhoneIdentity(countryCode, localNumber)
+      : email.includes('@')) &&
+    password.length >= 12 &&
+    agreed &&
+    legalReady;
 
   const goNext = async () => {
     if (requestFlight.current) return;
@@ -820,7 +905,7 @@ export function SignUpScreen({
         if (!canStep2 || !acceptance) return;
         const issued = await onCredentialsSubmit({
           name,
-          email: email.trim(),
+          ...(channel === 'whatsapp' ? { phoneNumber } : { email: email.trim() }),
           password,
           legalAcceptance: acceptance,
         });
@@ -831,7 +916,15 @@ export function SignUpScreen({
         setResendNotice(undefined);
         setStep(3);
       } catch (err: unknown) {
-        if (legalRefusalReason(err) === 'LEGAL_VERSION_STALE') {
+        if (extractAuthError(err).code === 'AUTH_CHANNEL_CHANGED') {
+          await queryClient.invalidateQueries({ queryKey: ['auth', 'config'] });
+          setStep(1);
+          setSignUpError(
+            lang === 'ar'
+              ? 'تغيرت طريقة التحقق. راجع بيانات التواصل ثم تابع.'
+              : 'The verification method changed. Review your contact details to continue.',
+          );
+        } else if (legalRefusalReason(err) === 'LEGAL_VERSION_STALE') {
           // The policy changed while the form was open: the box is cleared
           // so the person accepts the version they can now read.
           setAcceptance(null);
@@ -889,8 +982,8 @@ export function SignUpScreen({
       await onOtpResend(challenge.challengeId);
       setResendNotice(
         lang === 'ar'
-          ? 'تم استلام الطلب. تحقق من بريدك واستخدم أحدث رمز يصلك.'
-          : 'Request received. Check your inbox and use the most recent code.',
+          ? 'تم استلام الطلب. استخدم أحدث رمز يصلك.'
+          : 'Request received. Use the most recent code you receive.',
       );
     } catch (err: unknown) {
       setOtpError({
@@ -1030,93 +1123,45 @@ export function SignUpScreen({
                 hint={t('nameOnId')}
               />
 
-              {/* Phone number: country dial code + local number. Dial code is
-                  editable; we pre-select from best-effort geo/locale. Phone
-                  is onboarding-only and not persisted yet (see PR notes). */}
-              <div>
-                <label
-                  className="text-slate-600 mb-1.5 block"
-                  style={{ fontSize: '12px', fontWeight: 600 }}
-                >
-                  {t('phoneNumber')}
-                </label>
-                <div className="flex items-stretch gap-2">
-                  <div className="relative">
-                    <select
-                      data-testid="dial-code-select"
-                      aria-label={lang === 'ar' ? 'رمز الاتصال بالدولة' : 'Country calling code'}
-                      value={dialCode}
-                      onChange={(e) => {
-                        setDialCode(e.target.value);
-                        setDialCodeTouched(true);
-                      }}
-                      className="appearance-none h-12 rounded-2xl border-2 border-slate-200 bg-white pl-3 pr-7 text-slate-700"
-                      style={{ fontSize: '13px', fontWeight: 600 }}
-                    >
-                      {COUNTRY_DIAL_CODES.map((c) => (
-                        <option key={c.iso2} value={c.dialCode}>
-                          {c.iso2} {c.dialCode}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div className="flex-1">
-                    <TextField
-                      label={t('phoneNumber')}
-                      autoComplete="tel-national"
-                      type="tel"
-                      value={localNumber}
-                      onChange={setLocalNumber}
-                      leadingIcon={<Phone size={16} />}
-                      hint={
-                        lang === 'ar'
-                          ? 'اختياري، لا يُحفظ في خطوة التسجيل.'
-                          : 'Optional; not saved during registration.'
-                      }
-                    />
-                  </div>
-                </div>
-              </div>
-
-              {/* Location badge — reflects what we actually resolved.
-                  Only claims a real fix when the browser gave one. */}
-              <div className="bg-slate-50 rounded-2xl border border-slate-200 px-4 py-3 flex items-center gap-3">
-                <div
-                  className={`w-8 h-8 rounded-xl ${experience.classes.iconChipBg} flex items-center justify-center flex-shrink-0`}
-                >
-                  <MapPin size={14} className={experience.classes.iconChipText} />
-                </div>
-                <div>
-                  <p className="text-slate-700" style={{ fontSize: '13px', fontWeight: 600 }}>
-                    {geo.countryCode
-                      ? `${dialEntry.name} (${geo.countryCode})`
-                      : 'Country not detected'}
-                  </p>
-                  <p className="text-slate-400" style={{ fontSize: '11px' }}>
-                    {geo.source === 'geo'
-                      ? 'Detected from device location'
-                      : geo.source === 'locale'
-                        ? 'Inferred from browser locale'
-                        : geo.source === 'timezone'
-                          ? 'Inferred from timezone'
-                          : 'Select your country dial code above'}
-                  </p>
-                </div>
-              </div>
+              <AuthChannelNotice channel={channel} available={whatsappAvailable} />
+              {channel === 'whatsapp' && (
+                <PhoneIdentityField
+                  countryCode={countryCode}
+                  onCountryChange={setCountryCode}
+                  localNumber={localNumber}
+                  onNumberChange={setLocalNumber}
+                />
+              )}
             </div>
           )}
 
           {/* ── Step 2: Account Credentials ── */}
           {step === 2 && (
             <div className="flex flex-col gap-4">
-              <TextField
-                label={t('emailAddress')}
-                type="email"
-                autoComplete="email"
-                value={email}
-                onChange={setEmail}
-                leadingIcon={<Mail size={16} />}
-              />
+              {channel === 'email' ? (
+                <TextField
+                  label={t('emailAddress')}
+                  type="email"
+                  autoComplete="email"
+                  value={email}
+                  onChange={setEmail}
+                  leadingIcon={<Mail size={16} />}
+                />
+              ) : (
+                <div className="rounded-2xl bg-emerald-50 p-4 text-sm text-emerald-950">
+                  <p>{lang === 'ar' ? 'رقم واتساب' : 'WhatsApp number'}</p>
+                  <p dir="ltr" className="mt-1 font-semibold">
+                    {phoneNumber}
+                  </p>
+                  <button
+                    type="button"
+                    className="mt-1 min-h-11 underline"
+                    onClick={() => setStep(1)}
+                  >
+                    {lang === 'ar' ? 'تعديل الرقم' : 'Change number'}
+                  </button>
+                </div>
+              )}
               <div>
                 <TextField
                   label={t('password')}
@@ -1235,7 +1280,10 @@ export function SignUpScreen({
           {/* ── Step 3: Email OTP verification ── */}
           {step === 3 && challenge && (
             <EmailOtpPanel
-              email={email.trim()}
+              email={
+                challenge.maskedDestination ?? (channel === 'whatsapp' ? phoneNumber : email.trim())
+              }
+              channel={challenge.channel ?? channel}
               codeLength={challenge.codeLength}
               onVerify={handleOtpVerify}
               onResend={handleOtpResend}
@@ -1246,10 +1294,18 @@ export function SignUpScreen({
               resendNotice={resendNotice}
               experience={experience}
               onRestart={() =>
-                onRecoverVerification ? onRecoverVerification(email.trim()) : onBack()
+                (challenge.channel ?? channel) === 'email' && onRecoverVerification
+                  ? onRecoverVerification(email.trim())
+                  : onBack()
               }
               restartLabel={
-                lang === 'ar' ? 'طلب رابط تحقق بدلاً من الرمز' : 'Use a verification link instead'
+                (challenge.channel ?? channel) === 'whatsapp'
+                  ? lang === 'ar'
+                    ? 'العودة لتسجيل الدخول'
+                    : 'Back to sign in'
+                  : lang === 'ar'
+                    ? 'طلب رابط تحقق بدلاً من الرمز'
+                    : 'Use a verification link instead'
               }
             />
           )}
@@ -1308,6 +1364,7 @@ export function SignUpScreen({
 // network/5xx failure.
 // ─────────────────────────────────────────────────────────────────────────────
 interface ForgotPwProps {
+  onUseWhatsApp?: () => void;
   onBack: () => void;
   onSubmit: (email: string) => Promise<void>;
   // Sprint 5.1.1: experience-aware theming.
@@ -1315,6 +1372,7 @@ interface ForgotPwProps {
 }
 
 export function ForgotPasswordScreen({
+  onUseWhatsApp,
   onBack,
   onSubmit,
   experience = AUTH_EXPERIENCES[DEFAULT_EXPERIENCE_ID],
@@ -1449,6 +1507,16 @@ export function ForgotPasswordScreen({
                 >
                   {t('sendResetLink')}
                 </Button>
+
+                {onUseWhatsApp && (
+                  <button
+                    type="button"
+                    className="min-h-11 text-sm underline"
+                    onClick={onUseWhatsApp}
+                  >
+                    {lang === 'ar' ? 'استعادة حساب واتساب' : 'Recover a WhatsApp account'}
+                  </button>
+                )}
 
                 {error && (
                   <p role="alert" className="text-red-500 text-center" style={{ fontSize: '13px' }}>

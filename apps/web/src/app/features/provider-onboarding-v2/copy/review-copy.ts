@@ -162,6 +162,7 @@ const EN: ReviewCopy = {
     'bio:TOO_SHORT': 'Your description is too short.',
     'phoneNumber:REQUIRED': 'Add a phone number.',
     'emailVerified:UNVERIFIED': 'Confirm your email address.',
+    'contactVerified:UNVERIFIED': 'Verify your account email or WhatsApp number.',
     'serviceAreaCity:REQUIRED': 'Choose the city you work in.',
     'serviceAreaCountry:REQUIRED': 'Choose the country you work in.',
     'serviceAreaCountry:OUT_OF_RANGE':
@@ -273,6 +274,7 @@ const AR: ReviewCopy = {
     'bio:TOO_SHORT': 'الوصف قصير جداً.',
     'phoneNumber:REQUIRED': 'أضف رقم هاتف.',
     'emailVerified:UNVERIFIED': 'أكّد بريدك الإلكتروني.',
+    'contactVerified:UNVERIFIED': 'أكّد بريد حسابك الإلكتروني أو رقم واتساب.',
     'serviceAreaCity:REQUIRED': 'اختر المدينة التي تعمل فيها.',
     'serviceAreaCountry:REQUIRED': 'اختر الدولة التي تعمل فيها.',
     'serviceAreaCountry:OUT_OF_RANGE':

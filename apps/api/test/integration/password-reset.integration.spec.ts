@@ -18,6 +18,7 @@ export {}; // module marker — see migration-bootstrap.spec.ts.
 // row it creates uses an @itest.local email and is deleted afterward, so the
 // real admin@admin.com and all seeded data are left untouched.
 
+import { emailAuthenticationServices } from '../support/auth-channel';
 import { withAdvisoryLock } from '../support/db-isolation';
 import { makeTestSecret } from '../support/test-secrets';
 import { legalAcceptanceServiceFor } from '../support/legal-acceptance';
@@ -209,6 +210,7 @@ d('Password reset flow (real Postgres)', () => {
       securityEvents,
       mail,
       legalAcceptanceServiceFor(config),
+      ...emailAuthenticationServices(config, mail),
     );
 
     s = {

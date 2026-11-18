@@ -36,7 +36,7 @@ export const SIGNUP_CONSENT_COPY = {
 
 // ─── Non-secret draft ────────────────────────────────────────────────────
 //
-// Name and email only, in sessionStorage (this tab, cleared when it closes).
+// Name and contact draft only, in sessionStorage (this tab, cleared when it closes).
 // The password is NEVER persisted: it stays in component memory, which the
 // in-place policy dialog preserves. Consent is never restored either — the
 // person ticks it for the version they see now.
@@ -47,6 +47,8 @@ export interface SignupDraft {
   step: 1 | 2;
   name: string;
   email: string;
+  countryCode?: string;
+  localNumber?: string;
 }
 
 export function readSignupDraft(): SignupDraft | null {
@@ -59,13 +61,25 @@ export function readSignupDraft(): SignupDraft | null {
       step: value.step === 2 ? 2 : 1,
       name: value.name.slice(0, 160),
       email: value.email.slice(0, 254),
+      ...(typeof value.countryCode === 'string'
+        ? { countryCode: value.countryCode.slice(0, 2) }
+        : {}),
+      ...(typeof value.localNumber === 'string'
+        ? { localNumber: value.localNumber.slice(0, 32) }
+        : {}),
     };
   } catch {
     return null;
   }
 }
 
-export function writeSignupDraft(draft: { step: number; name: string; email: string }): void {
+export function writeSignupDraft(draft: {
+  step: number;
+  name: string;
+  email: string;
+  countryCode?: string;
+  localNumber?: string;
+}): void {
   try {
     if (!draft.name && !draft.email) {
       window.sessionStorage.removeItem(DRAFT_KEY);
@@ -75,6 +89,8 @@ export function writeSignupDraft(draft: { step: number; name: string; email: str
       step: draft.step === 2 ? 2 : 1,
       name: draft.name,
       email: draft.email,
+      ...(draft.countryCode ? { countryCode: draft.countryCode } : {}),
+      ...(draft.localNumber ? { localNumber: draft.localNumber } : {}),
     };
     window.sessionStorage.setItem(DRAFT_KEY, JSON.stringify(value));
   } catch {

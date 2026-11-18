@@ -23,7 +23,9 @@ datasource db {
 
 model User {
   id                         String                         @id @default(cuid())
-  email                      String                         @unique
+  email                      String?                        @unique
+  phoneNumber                String?                        @unique
+  phoneVerifiedAt            DateTime?
   passwordHash               String?
   firstName                  String
   lastName                   String
@@ -206,6 +208,8 @@ model VerificationToken {
   attemptCount Int          @default(0)
   resendCount  Int          @default(0)
   challengeId  String?      @unique
+  deliveryChannel String?
+  deliveryTarget  String?
   user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, purpose, usedAt])
@@ -1089,6 +1093,9 @@ enum ClientKind {
 enum TokenPurpose {
   EMAIL_VERIFICATION
   PASSWORD_RESET
+  PASSWORD_RESET_OTP
+  PHONE_VERIFICATION_OTP
+  EMAIL_CONTACT_OTP
   LOGIN_OTP
   REGISTRATION_OTP
 }
@@ -1111,6 +1118,9 @@ enum AuditEventType {
   DISPUTE_EVIDENCE_READ
   USER_REGISTERED
   EMAIL_VERIFIED
+  PHONE_VERIFIED
+  PHONE_VERIFICATION_REQUESTED
+  OTP_RESENT
   EMAIL_VERIFICATION_RESENT
   LOGIN_SUCCESS
   LOGIN_FAILED

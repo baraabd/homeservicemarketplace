@@ -7,9 +7,10 @@ import { pathToFileURL } from 'node:url';
 import { parseArgs } from 'node:util';
 
 // The install-relevant files of a repository-owned dependency fork are
-// dependency identity too: the lockfile resolves deepmerge to
-// file:./vendor/deepmerge (K01, GHSA-gcqx-w48m-w2h4), so a control without them
-// cannot install. Keep this list sorted; README/tests are not installed.
+// dependency identity too: the lockfile resolves deepmerge and both picomatch
+// major versions to repository-owned security forks. A control must contain
+// every installed source file. Keep this list sorted; documentation/tests
+// do not affect the installed runtime.
 export const DEPENDENCY_PATHS = [
   'apps/api/package.json',
   'apps/web/package.json',
@@ -19,6 +20,23 @@ export const DEPENDENCY_PATHS = [
   'vendor/deepmerge/index.d.ts',
   'vendor/deepmerge/license.txt',
   'vendor/deepmerge/package.json',
+  'vendor/picomatch-v2/LICENSE',
+  'vendor/picomatch-v2/index.js',
+  'vendor/picomatch-v2/lib/constants.js',
+  'vendor/picomatch-v2/lib/parse.js',
+  'vendor/picomatch-v2/lib/picomatch.js',
+  'vendor/picomatch-v2/lib/scan.js',
+  'vendor/picomatch-v2/lib/utils.js',
+  'vendor/picomatch-v2/package.json',
+  'vendor/picomatch-v4/LICENSE',
+  'vendor/picomatch-v4/index.js',
+  'vendor/picomatch-v4/lib/constants.js',
+  'vendor/picomatch-v4/lib/parse.js',
+  'vendor/picomatch-v4/lib/picomatch.js',
+  'vendor/picomatch-v4/lib/scan.js',
+  'vendor/picomatch-v4/lib/utils.js',
+  'vendor/picomatch-v4/package.json',
+  'vendor/picomatch-v4/posix.js',
 ];
 const RECORD = 'docs/performance/post-r18/r27-dependency-controls.json';
 const SHA = /^(?!0{40}$)[a-f0-9]{40}$/u;
@@ -109,9 +127,13 @@ export function selectDependencyControls({ root, record, candidate, proposedRepa
     (path) => digest(bytes(proposedRepair, path)) === record.dependencySha256[path],
   );
   if (!matches) {
+    // A release backmerge can have a different commit ID and exactly the same
+    // complete source tree (main's merge commit versus its develop parent).
+    // Accept only that registered tree; an unrecognized runtime/dependency
+    // change still fails, even if some dependency blobs happen to match.
     assert.equal(
-      proposedRepair,
-      record.originalPrBase,
+      git('rev-parse', `${proposedRepair}^{tree}`),
+      git('rev-parse', `${record.originalPrBase}^{tree}`),
       'unknown dependency mismatch; prepare new immutable controls',
     );
   }

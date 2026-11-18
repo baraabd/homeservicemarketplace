@@ -20,6 +20,13 @@ import type {
   RoleName,
 } from '@homeservicemarketplace/contracts';
 
+import { contactIdentity } from '../helpers/contact-identity';
+import {
+  PhoneIdentityDto,
+  PhoneEnrollmentDto,
+  EmailEnrollmentDto,
+  ResetPasswordOtpDto,
+} from '../dto/phone-auth.dto';
 import { AppConfigService } from '../../../../config/app-config.service';
 import {
   RegistrationThrottleService,
@@ -91,7 +98,7 @@ export class AuthenticationController {
     try {
       await this.registrationThrottle.assertWithinBudget({
         ipAddress: ctx.device.ipAddress,
-        email: body.email,
+        email: contactIdentity(body).destination,
       });
     } catch (err) {
       if (err instanceof RegistrationThrottledError) {
@@ -107,6 +114,8 @@ export class AuthenticationController {
       challengeId: challenge.challengeId,
       expiresInSeconds: challenge.expiresInSeconds,
       codeLength: challenge.codeLength,
+      channel: challenge.channel,
+      maskedDestination: challenge.maskedDestination,
     };
   }
 
@@ -142,6 +151,8 @@ export class AuthenticationController {
       challengeId: challenge.challengeId,
       expiresInSeconds: challenge.expiresInSeconds,
       codeLength: challenge.codeLength,
+      channel: challenge.channel,
+      maskedDestination: challenge.maskedDestination,
     };
   }
 
@@ -272,6 +283,103 @@ export class AuthenticationController {
     return { success: true };
   }
 
+  @Public()
+  @Throttle({ default: { limit: 5, ttl: 60 * 60 * 1000 } })
+  @Post('forgot-password-otp')
+  @HttpCode(HttpStatus.ACCEPTED)
+  async forgotOtp(
+    @Body() body: PhoneIdentityDto,
+    @Req() req: Request,
+  ): Promise<OtpChallengeResponse> {
+    return {
+      otpRequired: true,
+      ...(await this.auth.forgotPasswordOtp(body.phoneNumber, buildContext(req))),
+    };
+  }
+
+  @Public()
+  @Throttle({ default: { limit: 10, ttl: 60 * 60 * 1000 } })
+  @Post('reset-password-otp')
+  @HttpCode(HttpStatus.OK)
+  async resetOtp(
+    @Body() body: ResetPasswordOtpDto,
+    @Req() req: Request,
+  ): Promise<{ success: true }> {
+    await this.auth.resetPasswordOtp(
+      body.challengeId,
+      body.code,
+      body.newPassword,
+      buildContext(req),
+    );
+    return { success: true };
+  }
+
+  @UseGuards(JwtAuthGuard, CsrfGuard)
+  @Throttle({ default: { limit: 5, ttl: 60 * 60 * 1000 } })
+  @Post('phone/challenge')
+  @HttpCode(HttpStatus.ACCEPTED)
+  async phoneChallenge(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() body: PhoneEnrollmentDto,
+    @Req() req: Request,
+  ): Promise<OtpChallengeResponse> {
+    return {
+      otpRequired: true,
+      ...(await this.auth.requestPhoneEnrollment(
+        user.id,
+        body.phoneNumber,
+        body.password,
+        buildContext(req),
+      )),
+    };
+  }
+
+  @UseGuards(JwtAuthGuard, CsrfGuard)
+  @Throttle({ default: { limit: 10, ttl: 60 * 60 * 1000 } })
+  @Post('phone/verify')
+  @HttpCode(HttpStatus.OK)
+  async phoneVerify(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() body: VerifyOtpDto,
+    @Req() req: Request,
+  ): Promise<{ success: true }> {
+    await this.auth.verifyPhoneEnrollment(user.id, body.challengeId, body.code, buildContext(req));
+    return { success: true };
+  }
+
+  @UseGuards(JwtAuthGuard, CsrfGuard)
+  @Throttle({ default: { limit: 5, ttl: 60 * 60 * 1000 } })
+  @Post('email/challenge')
+  @HttpCode(HttpStatus.ACCEPTED)
+  async emailChallenge(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() body: EmailEnrollmentDto,
+    @Req() req: Request,
+  ): Promise<OtpChallengeResponse> {
+    return {
+      otpRequired: true,
+      ...(await this.auth.requestEmailEnrollment(
+        user.id,
+        body.email,
+        body.password,
+        buildContext(req),
+      )),
+    };
+  }
+
+  @UseGuards(JwtAuthGuard, CsrfGuard)
+  @Throttle({ default: { limit: 10, ttl: 60 * 60 * 1000 } })
+  @Post('email/verify')
+  @HttpCode(HttpStatus.OK)
+  async emailVerify(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() body: VerifyOtpDto,
+    @Req() req: Request,
+  ): Promise<{ success: true }> {
+    await this.auth.verifyEmailEnrollment(user.id, body.challengeId, body.code, buildContext(req));
+    return { success: true };
+  }
+
   // --- Me -----------------------------------------------------------------
   @UseGuards(JwtAuthGuard)
   @Get('me')
@@ -282,6 +390,8 @@ export class AuthenticationController {
     return {
       id: row.id,
       email: row.email,
+      phoneNumber: row.phoneNumber,
+      phoneVerifiedAt: row.phoneVerifiedAt?.toISOString() ?? null,
       firstName: row.firstName,
       lastName: row.lastName,
       status: row.status,

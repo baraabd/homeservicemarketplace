@@ -18,7 +18,12 @@ function row(over: Partial<Row> = {}): Row {
     profileImageUrl: '/media/avatars/layla.webp',
     phoneNumber: '+963900000000',
     phoneVerifiedAt: null,
-    user: { email: 'layla@example.test', emailVerifiedAt: capturedAt },
+    user: {
+      email: 'layla@example.test',
+      emailVerifiedAt: capturedAt,
+      phoneNumber: null,
+      phoneVerifiedAt: null,
+    },
     headline: 'Painter',
     bio: 'Interior and exterior painting.',
     additionalInformation: 'Weekends by arrangement.',
@@ -175,5 +180,47 @@ describe('immutable application review snapshot', () => {
     expect(JSON.stringify(query.select)).not.toMatch(/storageKey|passwordHash|signedUrl/);
     findFirst.mockResolvedValue(null);
     expect(await readProviderReviewSnapshot(db, 'missing', capturedAt)).toBeNull();
+  });
+});
+
+describe('review snapshot account contact proof', () => {
+  it('captures verified account WhatsApp independently from email and profile phone', () => {
+    const snapshot = buildProviderReviewSnapshot(
+      row({
+        phoneNumber: '+963900000000',
+        phoneVerifiedAt: null,
+        user: {
+          email: null,
+          emailVerifiedAt: null,
+          phoneNumber: '+966501234567',
+          phoneVerifiedAt: capturedAt,
+        },
+      }),
+      capturedAt,
+    );
+    expect(snapshot.profile).toMatchObject({
+      email: null,
+      emailVerified: false,
+      accountPhoneNumber: '+966501234567',
+      accountPhoneVerified: true,
+      contactVerified: true,
+      phoneNumber: '+963900000000',
+      phoneVerifiedAt: null,
+    });
+  });
+
+  it('does not infer account verification from a verified business-contact phone', () => {
+    const snapshot = buildProviderReviewSnapshot(
+      row({
+        phoneVerifiedAt: capturedAt,
+        user: { email: null, emailVerifiedAt: null, phoneNumber: null, phoneVerifiedAt: null },
+      }),
+      capturedAt,
+    );
+    expect(snapshot.profile).toMatchObject({
+      contactVerified: false,
+      accountPhoneVerified: false,
+      emailVerified: false,
+    });
   });
 });

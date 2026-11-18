@@ -332,6 +332,8 @@ export class AdminUsersService {
     return {
       id: u.id,
       email: u.email,
+      phoneNumber: u.phoneNumber,
+      phoneVerifiedAt: u.phoneVerifiedAt?.toISOString() ?? null,
       firstName: u.firstName,
       lastName: u.lastName,
       status: u.status as AdminUserSummary['status'],

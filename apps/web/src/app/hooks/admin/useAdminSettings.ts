@@ -1,7 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { UpdateAdminSettingsRequest } from '@homeservicemarketplace/contracts';
+import type {
+  AdminSettingsBulkResponse,
+  UpdateAdminSettingsRequest,
+} from '@homeservicemarketplace/contracts';
 
 import { getAdminSettings, updateAdminSettings } from '../../../lib/admin/admin-settings-api';
+import { AUTH_CONFIG_QUERY_KEY } from '../../../lib/auth-policy-query';
 
 const REFETCH_MS = 60_000;
 
@@ -24,8 +28,14 @@ export function useUpdateAdminSettings() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (body: UpdateAdminSettingsRequest) => updateAdminSettings(body),
-    onSuccess: () => {
+    onSuccess: (response) => {
+      qc.setQueryData<AdminSettingsBulkResponse>(adminSettingsQueryKeys.bulk(), (current) =>
+        current
+          ? { ...current, values: response.values, lastUpdatedAt: response.lastUpdatedAt }
+          : current,
+      );
       qc.invalidateQueries({ queryKey: adminSettingsQueryKeys.root });
+      qc.invalidateQueries({ queryKey: AUTH_CONFIG_QUERY_KEY });
     },
   });
 }

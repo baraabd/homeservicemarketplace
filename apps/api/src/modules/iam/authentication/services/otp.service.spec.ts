@@ -27,6 +27,8 @@ function makeRow(overrides: Partial<VerificationToken> = {}): VerificationToken 
     challengeId: 'chal-1',
     attemptCount: 0,
     resendCount: 0,
+    deliveryChannel: null,
+    deliveryTarget: null,
     ...overrides,
   };
 }
@@ -45,6 +47,8 @@ function makeRepo() {
       purpose: VerificationToken['purpose'];
       expiresAt: Date;
       challengeId?: string | null;
+      deliveryChannel?: string | null;
+      deliveryTarget?: string | null;
     }) => {
       const row = makeRow({ ...input, challengeId: input.challengeId ?? null });
       rows.push(row);
@@ -59,13 +63,21 @@ function makeRepo() {
     row.usedAt = new Date();
     return row;
   });
-  const recordFailedAttempt = jest.fn(async (challengeId: string, expectedHash: string, max: number) => {
-    const row = rows.find((r) => r.challengeId === challengeId && r.tokenHash === expectedHash &&
-      r.usedAt === null && r.expiresAt.getTime() > Date.now() && r.attemptCount < max);
-    if (!row) return null;
-    row.attemptCount += 1;
-    return row;
-  });
+  const recordFailedAttempt = jest.fn(
+    async (challengeId: string, expectedHash: string, max: number) => {
+      const row = rows.find(
+        (r) =>
+          r.challengeId === challengeId &&
+          r.tokenHash === expectedHash &&
+          r.usedAt === null &&
+          r.expiresAt.getTime() > Date.now() &&
+          r.attemptCount < max,
+      );
+      if (!row) return null;
+      row.attemptCount += 1;
+      return row;
+    },
+  );
   const invalidateOutstanding = jest.fn(
     async (userId: string, purpose: VerificationToken['purpose']) => {
       let count = 0;
@@ -79,17 +91,29 @@ function makeRepo() {
     },
   );
 
-  const rotateLiveChallenge = jest.fn(async (challengeId: string, expectedHash: string,
-    data: { tokenHash: string; expiresAt: Date }, limits: { attempts: number; resends: number }) => {
-    const row = rows.find((r) => r.challengeId === challengeId && r.tokenHash === expectedHash &&
-      r.usedAt === null && r.expiresAt.getTime() > Date.now() &&
-      r.attemptCount < limits.attempts && r.resendCount < limits.resends);
-    if (!row) return false;
-    row.tokenHash = data.tokenHash;
-    row.expiresAt = data.expiresAt;
-    row.resendCount += 1;
-    return true;
-  });
+  const rotateLiveChallenge = jest.fn(
+    async (
+      challengeId: string,
+      expectedHash: string,
+      data: { tokenHash: string; expiresAt: Date },
+      limits: { attempts: number; resends: number },
+    ) => {
+      const row = rows.find(
+        (r) =>
+          r.challengeId === challengeId &&
+          r.tokenHash === expectedHash &&
+          r.usedAt === null &&
+          r.expiresAt.getTime() > Date.now() &&
+          r.attemptCount < limits.attempts &&
+          r.resendCount < limits.resends,
+      );
+      if (!row) return false;
+      row.tokenHash = data.tokenHash;
+      row.expiresAt = data.expiresAt;
+      row.resendCount += 1;
+      return true;
+    },
+  );
 
   const api: Partial<VerificationTokenRepository> = {
     findByChallengeId,
@@ -104,7 +128,9 @@ function makeRepo() {
 }
 
 const secret = randomBytes(48).toString('hex');
-const cfg = { get: (key: string) => key === 'JWT_ACCESS_SECRET' ? secret : undefined } as unknown as AppConfigService;
+const cfg = {
+  get: (key: string) => (key === 'JWT_ACCESS_SECRET' ? secret : undefined),
+} as unknown as AppConfigService;
 
 describe('OtpService', () => {
   describe('issue', () => {
@@ -149,7 +175,9 @@ describe('OtpService', () => {
       const svc = new OtpService(repo, cfg);
       const issued = await svc.issue('u-1', 'LOGIN_OTP');
 
-      await expect(svc.verify(issued.challengeId, issued.rawCode === '000000' ? '111111' : '000000')).rejects.toMatchObject({
+      await expect(
+        svc.verify(issued.challengeId, issued.rawCode === '000000' ? '111111' : '000000'),
+      ).rejects.toMatchObject({
         response: expect.objectContaining({ code: 'AUTH_OTP_INVALID' }),
       });
       expect(rows()[0]!.attemptCount).toBe(1);
@@ -160,13 +188,20 @@ describe('OtpService', () => {
       const { repo, rows } = makeRepo();
       const svc = new OtpService(repo, cfg);
       const issued = await svc.issue('u-1', 'LOGIN_OTP');
-      const fakeTx = { $queryRaw: jest.fn().mockResolvedValue([]) } as unknown as NonNullable<Parameters<typeof svc.verify>[2]>;
+      const fakeTx = { $queryRaw: jest.fn().mockResolvedValue([]) } as unknown as NonNullable<
+        Parameters<typeof svc.verify>[2]
+      >;
       const wrong = issued.rawCode === '000000' ? '111111' : '000000';
       await expect(svc.verifyForLogin(issued.challengeId, wrong, fakeTx)).resolves.toMatchObject({
         rejection: { response: { code: 'AUTH_OTP_INVALID' } },
       });
       expect(rows()[0]!.attemptCount).toBe(1);
-      expect(repo.recordFailedAttempt).toHaveBeenCalledWith(issued.challengeId, rows()[0]!.tokenHash, OTP_MAX_ATTEMPTS, fakeTx);
+      expect(repo.recordFailedAttempt).toHaveBeenCalledWith(
+        issued.challengeId,
+        rows()[0]!.tokenHash,
+        OTP_MAX_ATTEMPTS,
+        fakeTx,
+      );
     });
 
     it('locks the challenge after OTP_MAX_ATTEMPTS consecutive misses (AUTH_OTP_LOCKED)', async () => {
@@ -175,10 +210,14 @@ describe('OtpService', () => {
       const issued = await svc.issue('u-1', 'LOGIN_OTP');
 
       for (let i = 0; i < OTP_MAX_ATTEMPTS - 1; i++) {
-        await svc.verify(issued.challengeId, issued.rawCode === '000000' ? '111111' : '000000').catch(() => undefined);
+        await svc
+          .verify(issued.challengeId, issued.rawCode === '000000' ? '111111' : '000000')
+          .catch(() => undefined);
       }
       // Final attempt: must surface LOCKED, not INVALID.
-      await expect(svc.verify(issued.challengeId, issued.rawCode === '000000' ? '111111' : '000000')).rejects.toMatchObject({
+      await expect(
+        svc.verify(issued.challengeId, issued.rawCode === '000000' ? '111111' : '000000'),
+      ).rejects.toMatchObject({
         response: expect.objectContaining({ code: 'AUTH_OTP_LOCKED' }),
       });
       // A locked-out challenge MUST NOT accept any code afterwards, even the
@@ -257,7 +296,6 @@ describe('OtpService', () => {
   });
 });
 
-
 describe('R04 OTP hash scope and purpose boundaries', () => {
   it('identical numeric codes in different challenges do not collide at rest', () => {
     const one = OtpService.hashForTest('123456', 'challenge-one', secret);
@@ -272,7 +310,8 @@ describe('R04 OTP hash scope and purpose boundaries', () => {
     const issued = await svc.issue('u-1', 'LOGIN_OTP');
     rows()[0]!.tokenHash = OtpService.hashForTest(issued.rawCode);
     await expect(svc.verify(issued.challengeId, issued.rawCode)).resolves.toEqual({
-      userId: 'u-1', purpose: 'LOGIN_OTP',
+      userId: 'u-1',
+      purpose: 'LOGIN_OTP',
     });
   });
 
@@ -292,13 +331,115 @@ it('R04 database-only unkeyed guesses do not equal newly issued OTP hashes', () 
   const keyed = OtpService.hashForTest('123456', 'challenge', secret);
   expect(keyed).not.toBe(OtpService.hashForTest('123456', 'challenge'));
   expect(keyed).not.toBe(OtpService.hashForTest('123456'));
-  expect(keyed).not.toBe(OtpService.hashForTest('123456', 'challenge', randomBytes(48).toString('hex')));
+  expect(keyed).not.toBe(
+    OtpService.hashForTest('123456', 'challenge', randomBytes(48).toString('hex')),
+  );
 });
 
 it('R04 infrastructure failures are not converted to committed bad-code verdicts', async () => {
   const { repo } = makeRepo();
   const svc = new OtpService(repo, cfg);
   jest.spyOn(repo, 'findByChallengeId').mockRejectedValue(new Error('Synthetic database outage'));
-  const fakeTx = { $queryRaw: jest.fn() } as unknown as NonNullable<Parameters<typeof svc.verify>[2]>;
-  await expect(svc.verifyForLogin('challenge', '123456', fakeTx)).rejects.toThrow('Synthetic database outage');
+  const fakeTx = { $queryRaw: jest.fn() } as unknown as NonNullable<
+    Parameters<typeof svc.verify>[2]
+  >;
+  await expect(svc.verifyForLogin('challenge', '123456', fakeTx)).rejects.toThrow(
+    'Synthetic database outage',
+  );
+});
+
+describe('OTP delivery binding and purpose separation', () => {
+  it('persists the WhatsApp destination and returns it unchanged after resend', async () => {
+    const { repo, rows } = makeRepo();
+    const svc = new OtpService(repo, cfg);
+    const delivery = { channel: 'whatsapp' as const, destination: '+966501234567' };
+    const first = await svc.issue('u-phone', 'REGISTRATION_OTP', undefined, delivery);
+
+    expect(rows()[0]).toMatchObject({
+      deliveryChannel: delivery.channel,
+      deliveryTarget: delivery.destination,
+    });
+    const resent = await svc.resend(first.challengeId);
+    expect(resent).toMatchObject(delivery);
+    expect(rows()[0]).toMatchObject({
+      deliveryChannel: delivery.channel,
+      deliveryTarget: delivery.destination,
+    });
+    await expect(svc.verify(first.challengeId, resent.rawCode)).resolves.toMatchObject({
+      userId: 'u-phone',
+      purpose: 'REGISTRATION_OTP',
+      ...delivery,
+    });
+  });
+
+  it.each(['PASSWORD_RESET_OTP', 'PHONE_VERIFICATION_OTP', 'EMAIL_CONTACT_OTP'] as const)(
+    'does not consume a %s challenge through the login verifier',
+    async (purpose) => {
+      const { repo, rows } = makeRepo();
+      const svc = new OtpService(repo, cfg);
+      const challenge = await svc.issue('u-phone', purpose, undefined, {
+        channel: 'whatsapp',
+        destination: '+966501234567',
+      });
+      const tx = { $queryRaw: jest.fn().mockResolvedValue([]) } as unknown as NonNullable<
+        Parameters<typeof svc.verify>[2]
+      >;
+      await expect(
+        svc.verifyForLogin(challenge.challengeId, challenge.rawCode, tx),
+      ).resolves.toMatchObject({
+        rejection: { response: { code: 'AUTH_OTP_INVALID' } },
+      });
+      expect(rows()[0]!.usedAt).toBeNull();
+      expect(repo.consumeByChallenge).not.toHaveBeenCalled();
+    },
+  );
+
+  it('a login OTP cannot authorize password recovery', async () => {
+    const { repo, rows } = makeRepo();
+    const svc = new OtpService(repo, cfg);
+    const challenge = await svc.issue('u-1', 'LOGIN_OTP');
+    const tx = { $queryRaw: jest.fn().mockResolvedValue([]) } as unknown as NonNullable<
+      Parameters<typeof svc.verify>[2]
+    >;
+    await expect(
+      svc.verifyForPasswordReset(challenge.challengeId, challenge.rawCode, tx),
+    ).resolves.toMatchObject({
+      rejection: { response: { code: 'AUTH_OTP_INVALID' } },
+    });
+    expect(rows()[0]!.usedAt).toBeNull();
+  });
+
+  it('password recovery preserves the attempt ceiling and consumes a correct code once', async () => {
+    const { repo, rows } = makeRepo();
+    const svc = new OtpService(repo, cfg);
+    const challenge = await svc.issue('u-phone', 'PASSWORD_RESET_OTP', undefined, {
+      channel: 'whatsapp',
+      destination: '+966501234567',
+    });
+    const tx = { $queryRaw: jest.fn().mockResolvedValue([]) } as unknown as NonNullable<
+      Parameters<typeof svc.verify>[2]
+    >;
+    const wrong = challenge.rawCode === '000000' ? '111111' : '000000';
+    await expect(
+      svc.verifyForPasswordReset(challenge.challengeId, wrong, tx),
+    ).resolves.toMatchObject({
+      rejection: { response: { code: 'AUTH_OTP_INVALID' } },
+    });
+    expect(rows()[0]!.attemptCount).toBe(1);
+    await expect(
+      svc.verifyForPasswordReset(challenge.challengeId, challenge.rawCode, tx),
+    ).resolves.toMatchObject({
+      consumed: {
+        userId: 'u-phone',
+        purpose: 'PASSWORD_RESET_OTP',
+        channel: 'whatsapp',
+        destination: '+966501234567',
+      },
+    });
+    await expect(
+      svc.verifyForPasswordReset(challenge.challengeId, challenge.rawCode, tx),
+    ).resolves.toMatchObject({
+      rejection: { response: { code: 'AUTH_OTP_INVALID' } },
+    });
+  });
 });

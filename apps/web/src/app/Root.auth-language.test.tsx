@@ -108,7 +108,7 @@ describe.each(['seeker', 'provider', 'admin'] as const)(
       await act(async () => {
         fireEvent.click(screen.getByRole('button', { name: 'دخول', exact: true }));
       });
-      expect(onLogin).toHaveBeenCalledExactlyOnceWith(email, password);
+      expect(onLogin).toHaveBeenCalledExactlyOnceWith(email, password, 'email');
       expect(screen.getByTestId('otp-input')).toBeInTheDocument();
       expect(onOtpVerify).not.toHaveBeenCalled();
     });

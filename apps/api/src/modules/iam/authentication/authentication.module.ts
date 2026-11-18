@@ -1,3 +1,4 @@
+import { AuthChannelModule } from '../../../infrastructure/auth-channel/auth-channel.module';
 import { Module } from '@nestjs/common';
 import { JwtModule } from '@nestjs/jwt';
 import { PassportModule } from '@nestjs/passport';
@@ -41,6 +42,7 @@ import { JwtStrategy } from './strategies/jwt.strategy';
       }),
     }),
     AuditModule,
+    AuthChannelModule,
   ],
   controllers: [AuthenticationController, LegalController],
   providers: [

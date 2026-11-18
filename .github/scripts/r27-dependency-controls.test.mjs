@@ -37,10 +37,12 @@ git('config', 'user.email', 'r27-test@example.invalid');
 DEPENDENCY_PATHS.forEach((path) => write(path, `old:${path}\n`));
 write('runtime.txt', 'original runtime\n');
 const original = commit('original runtime');
-git('switch', '-c', 'baseline');
+git('commit', '--allow-empty', '-m', 'same-tree release ancestry synchronization');
+const equivalentBase = git('rev-parse', 'HEAD');
+git('switch', '-c', 'baseline', original);
 newDependencies();
 const baseline = control(commit('dependency-only baseline'));
-git('switch', '-c', 'repair', original);
+git('switch', '-c', 'repair', equivalentBase);
 write('helper.txt', 'test-helper correction\n');
 const repairParent = commit('repair parent');
 newDependencies();
@@ -95,6 +97,19 @@ test('selects the explicit ancestor control for the known old-dependency base', 
   assert.equal(result.selection, 'EXPLICIT_DEPENDENCY_CONTROL');
   assert.equal(result.repairBaseline, repair.commit);
   assert.equal(result.baseline, baseline.commit);
+});
+
+test('a release backmerge may use the exact registered source tree with different ancestry', () => {
+  const value = input();
+  value.proposedRepair = equivalentBase;
+  const result = selectDependencyControls(value);
+  assert.equal(result.selection, 'EXPLICIT_DEPENDENCY_CONTROL');
+  assert.equal(result.repairBaseline, repair.commit);
+  assert.notEqual(equivalentBase, original);
+  assert.equal(
+    git('rev-parse', `${equivalentBase}^{tree}`),
+    git('rev-parse', `${original}^{tree}`),
+  );
 });
 
 test('future dependency-matched PRs use their actual base', () => {

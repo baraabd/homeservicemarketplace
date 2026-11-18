@@ -98,6 +98,63 @@ const TEMPLATES: { [K in MailTemplateId]: TemplateDef<K> } = {
       },
     }),
   },
+  'auth.password_reset_otp': {
+    category: 'AUTH',
+    schema: z.object({ code, minutes }).strict(),
+    render: ({ code: c, minutes: m }) => ({
+      subject: 'Your password reset code · رمز استعادة كلمة المرور',
+      en: {
+        heading: 'Reset your password',
+        lines: [`Your reset code is ${c}. It expires in ${m} minutes.`],
+        footer: FOOTER_EN,
+      },
+      ar: {
+        heading: 'استعادة كلمة المرور',
+        lines: [`رمز استعادة كلمة المرور هو ${c}، وتنتهي صلاحيته بعد ${m} دقيقة.`],
+        footer: FOOTER_AR,
+      },
+    }),
+  },
+  'auth.phone_verification_otp': {
+    category: 'AUTH',
+    schema: z.object({ code, minutes }).strict(),
+    render: ({ code: c, minutes: m }) => ({
+      subject: 'Verify your phone · تأكيد رقم الهاتف',
+      en: {
+        heading: 'Verify your phone',
+        lines: [`Your verification code is ${c}. It expires in ${m} minutes.`],
+        footer: FOOTER_EN,
+      },
+      ar: {
+        heading: 'تأكيد رقم الهاتف',
+        lines: [`رمز تأكيد رقم الهاتف هو ${c}، وتنتهي صلاحيته بعد ${m} دقيقة.`],
+        footer: FOOTER_AR,
+      },
+    }),
+  },
+  'auth.email_contact_otp': {
+    category: 'AUTH',
+    schema: z.object({ code, minutes }).strict(),
+    render: ({ code: c, minutes: m }) => ({
+      subject: 'Confirm your account email · تأكيد بريد حسابك',
+      en: {
+        heading: 'Link this email to your account',
+        lines: [
+          `Your email verification code is ${c}. It expires in ${m} minutes.`,
+          'Only enter this code in the account where you requested it.',
+        ],
+        footer: FOOTER_EN,
+      },
+      ar: {
+        heading: 'ربط هذا البريد بحسابك',
+        lines: [
+          `رمز تأكيد بريد حسابك هو ${c}، وتنتهي صلاحيته بعد ${m} دقيقة.`,
+          'أدخل الرمز فقط في الحساب الذي طلبت ربط البريد به.',
+        ],
+        footer: FOOTER_AR,
+      },
+    }),
+  },
   'auth.email_verification': {
     category: 'AUTH',
     schema: z.object({ token }).strict(),

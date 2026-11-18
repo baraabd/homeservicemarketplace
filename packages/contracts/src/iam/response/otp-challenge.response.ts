@@ -11,4 +11,6 @@ export interface OtpChallengeResponse {
   challengeId: string;
   expiresInSeconds: number;
   codeLength: number;
+  channel?: 'email' | 'whatsapp';
+  maskedDestination?: string;
 }

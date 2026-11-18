@@ -1,3 +1,4 @@
+import { hasVerifiedAuthenticationContact } from '../../../../shared/identity/verified-contact';
 import type { ProviderReviewSnapshot } from '@homeservicemarketplace/contracts';
 import type { Prisma, PrismaTx } from '@homeservicemarketplace/database';
 
@@ -14,7 +15,9 @@ const REVIEW_SELECT = {
   legalBusinessName: true,
   phoneNumber: true,
   phoneVerifiedAt: true,
-  user: { select: { email: true, emailVerifiedAt: true } },
+  user: {
+    select: { email: true, emailVerifiedAt: true, phoneNumber: true, phoneVerifiedAt: true },
+  },
   headline: true,
   bio: true,
   additionalInformation: true,
@@ -147,7 +150,10 @@ export function buildProviderReviewSnapshot(
       phoneNumber: row.phoneNumber,
       phoneVerifiedAt: iso(row.phoneVerifiedAt),
       email: row.user?.email ?? null,
-      emailVerified: row.user?.emailVerifiedAt != null,
+      emailVerified: Boolean(row.user?.email && row.user.emailVerifiedAt),
+      accountPhoneNumber: row.user?.phoneNumber ?? null,
+      accountPhoneVerified: Boolean(row.user?.phoneNumber && row.user.phoneVerifiedAt),
+      contactVerified: hasVerifiedAuthenticationContact(row.user),
       headline: row.headline,
       bio: row.bio,
       additionalInformation: row.additionalInformation,

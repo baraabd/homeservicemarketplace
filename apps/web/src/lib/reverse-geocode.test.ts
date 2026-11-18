@@ -53,6 +53,7 @@ describe('reverseGeocodeViaNominatim', () => {
       formattedAddress: 'King Fahd Rd, Riyadh, Saudi Arabia',
       city: 'Riyadh',
       country: 'Saudi Arabia',
+      countryCode: 'SA',
       lat: 24.7136,
       lng: 46.6753,
     });
