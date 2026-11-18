@@ -289,6 +289,9 @@ const repeatedExtglobRecursion = (pattern) => {
 // that repeated extglob as a literal using the existing fail-closed path.
 // Escaped, quoted and character-class stars remain literal characters.
 const hasRepeatedWildcard = (body, options) => {
+  // The parser treats an opening bracket literally when no closing bracket
+  // remains. Compute this once to keep malformed-input scanning linear.
+  const lastClosingBracket = body.lastIndexOf(']');
   let escaped = false;
   let quoted = false;
   let classStart = -1;
@@ -317,7 +320,7 @@ const hasRepeatedWildcard = (body, options) => {
       continue;
     }
     if (quoted) continue;
-    if (char === '[' && options.nobracket !== true) {
+    if (char === '[' && options.nobracket !== true && index < lastClosingBracket) {
       classStart = index;
       continue;
     }
