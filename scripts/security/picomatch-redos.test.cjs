@@ -62,6 +62,8 @@ for (const major of [2, 4]) {
       'prefix+(*a)suffix',
       '+(@(*a))',
       '+([[]*a)',
+      '+([*a)',
+      '*([*a)',
       '+(*(?=a)a)',
     ];
     for (const pattern of patterns) {
