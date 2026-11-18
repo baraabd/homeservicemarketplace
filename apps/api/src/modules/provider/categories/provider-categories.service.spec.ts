@@ -28,6 +28,8 @@ const CATEGORY = {
   icon: 'wrench',
   sortOrder: 1,
   isActive: true,
+  isLeaf: true,
+  parentId: null,
   createdAt: new Date('2026-01-01T00:00:00.000Z'),
   updatedAt: new Date('2026-01-01T00:00:00.000Z'),
   deletedAt: null,
@@ -169,6 +171,20 @@ describe('ProviderCategoriesService', () => {
       await expect(
         makeService(m).apply('user-1', { categoryId: 'cat-nope' }),
       ).rejects.toMatchObject({ code: 'VALIDATION_ERROR', status: 400 });
+      expect(m.applications.createPending).not.toHaveBeenCalled();
+    });
+
+    it('refuses a group by id or slug before creating an application', async () => {
+      const group = { ...CATEGORY, isLeaf: false };
+      const m = makeMocks({
+        categories: {
+          findById: jest.fn().mockResolvedValue(group),
+          findBySlug: jest.fn().mockResolvedValue(group),
+        },
+      });
+      for (const input of [{ categoryId: group.id }, { categorySlug: group.slug }]) {
+        await expect(makeService(m).apply('user-1', input)).rejects.toMatchObject({ status: 400 });
+      }
       expect(m.applications.createPending).not.toHaveBeenCalled();
     });
 

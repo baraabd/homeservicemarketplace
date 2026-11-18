@@ -9,6 +9,7 @@ import { PortfolioMediaModule } from './portfolio-media.module';
 import { PublicMediaCleanupService } from './public-media-cleanup.service';
 import { PublicMediaCleanupJob } from './public-media-cleanup.job';
 import { RequestMediaModule } from './request-media.module';
+import { PublicMediaReadService } from './public-media-read.service';
 
 // MediaController depends on JwtAuthGuard / CsrfGuard from
 // AuthenticationModule (presigned-url endpoint is auth-gated) and on
@@ -33,7 +34,7 @@ import { RequestMediaModule } from './request-media.module';
     RequestMediaModule,
   ],
   controllers: [MediaController],
-  providers: [PublicMediaCleanupService, PublicMediaCleanupJob],
+  providers: [PublicMediaCleanupService, PublicMediaCleanupJob, PublicMediaReadService],
   exports: [PublicMediaCleanupService],
 })
 export class MediaModule {}

@@ -57,7 +57,7 @@
     "express": "^5.1.0",
     "helmet": "^8.3.0",
     "ioredis": "^5.4.1",
-    "mongoose": "^8.24.4",
+    "mongoose": "^8.24.7",
     "nestjs-pino": "^4.6.1",
     "nodemailer": "10.1.4",
     "passport": "^0.7.0",

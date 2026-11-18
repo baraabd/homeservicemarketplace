@@ -39,9 +39,7 @@ import { VerifyOtpDto } from '../dto/verify-otp.dto';
 import { CsrfGuard } from '../guards/csrf.guard';
 import { JwtAuthGuard } from '../guards/jwt-auth.guard';
 import {
-  ACCESS_COOKIE,
-  CSRF_COOKIE,
-  REFRESH_COOKIE,
+  authCookieNames,
   accessCookieOptions,
   clearAuthCookies,
   csrfCookieOptions,
@@ -194,12 +192,13 @@ export class AuthenticationController {
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
   ): Promise<AuthResponse> {
-    const presented = extractRefreshToken(req);
+    const names = authCookieNames(this.config);
+    const presented = extractRefreshToken(req, names.refresh);
     if (!presented) throw new UnauthorizedException({ code: 'AUTH_REFRESH_INVALID' });
 
     // CSRF for web: refresh is a state-changing cookie-mounted endpoint.
-    if (readRefreshCookie(req)) {
-      const csrfCookie = readCookie(req, CSRF_COOKIE);
+    if (readRefreshCookie(req, names.refresh)) {
+      const csrfCookie = readCookie(req, names.csrf);
       const csrfHeader = req.header('x-csrf-token');
       if (!csrfCookie || !csrfHeader || csrfCookie !== csrfHeader) {
         throw new BadRequestException({ code: 'AUTH_CSRF_FAILED' });
@@ -305,18 +304,19 @@ export class AuthenticationController {
     };
 
     if (kind === 'WEB') {
+      const names = authCookieNames(this.config);
       res.cookie(
-        ACCESS_COOKIE,
+        names.access,
         result.issued.access.token,
         accessCookieOptions(this.config, result.issued.access.ttlSeconds),
       );
       res.cookie(
-        REFRESH_COOKIE,
+        names.refresh,
         result.issued.refresh.raw,
         refreshCookieOptions(this.config, result.issued.refresh.expiresAt),
       );
       res.cookie(
-        CSRF_COOKIE,
+        names.csrf,
         randomBytes(24).toString('base64url'),
         csrfCookieOptions(this.config, result.issued.access.ttlSeconds),
       );
@@ -349,8 +349,8 @@ function detectClientKind(req: Request): ClientKind {
   return raw === 'mobile' ? 'MOBILE' : 'WEB';
 }
 
-function extractRefreshToken(req: Request): string | null {
-  const cookie = readRefreshCookie(req);
+function extractRefreshToken(req: Request, cookieName: string): string | null {
+  const cookie = readRefreshCookie(req, cookieName);
   const header = req.header(MOBILE_REFRESH_HEADER);
   if (cookie && header) {
     throw new BadRequestException({ code: 'AUTH_AMBIGUOUS_TRANSPORT' });
@@ -358,8 +358,8 @@ function extractRefreshToken(req: Request): string | null {
   return cookie ?? header ?? null;
 }
 
-function readRefreshCookie(req: Request): string | null {
-  return readCookie(req, REFRESH_COOKIE);
+function readRefreshCookie(req: Request, cookieName: string): string | null {
+  return readCookie(req, cookieName);
 }
 
 function readCookie(req: Request, name: string): string | null {

@@ -545,7 +545,7 @@ export class RequestsService {
     if (!category) {
       throw new AppError('VALIDATION_ERROR', 'Selected category does not exist.', 400);
     }
-    if (!category.isActive) {
+    if (!category.isActive || !category.isLeaf) {
       throw new AppError('VALIDATION_ERROR', 'Selected category is no longer available.', 400);
     }
     return categoryId;

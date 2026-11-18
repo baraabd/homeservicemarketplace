@@ -1,5 +1,15 @@
-import { Controller, Get, Req, Res, UnauthorizedException, UseGuards } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Req,
+  Res,
+  UnauthorizedException,
+  UseGuards,
+  Optional,
+} from '@nestjs/common';
 import type { Request, Response } from 'express';
+import { AppConfigService } from '../../config/app-config.service';
+import { authCookieNames } from '../iam/authentication/helpers/cookies';
 import type { Subscription } from 'rxjs';
 
 import { CurrentUser } from '../iam/authentication/decorators/current-user.decorator';
@@ -23,6 +33,7 @@ export class RealtimeEventsController {
     private readonly sessions: SessionValidationService,
     private readonly tokens: TokenService,
     private readonly gateway: RealtimeGateway,
+    @Optional() private readonly config?: AppConfigService,
   ) {}
 
   @Get('events')
@@ -31,7 +42,7 @@ export class RealtimeEventsController {
     @Req() request: Request,
     @Res() response: Response,
   ): void {
-    const token = resolveAccessToken(request);
+    const token = resolveAccessToken(request, authCookieNames(this.config).access);
     if (!token) throw new UnauthorizedException({ code: 'AUTH_INVALID_CREDENTIALS' });
     const claims = this.tokens.verifyAccessToken(token);
     const expiresAt = claims.exp * 1000;

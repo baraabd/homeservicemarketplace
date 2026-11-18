@@ -10,6 +10,7 @@ const OPERATIONS: Readonly<Record<string, string>> = {
   ListObjectVersionsCommand: 'list_versions',
   GetPublicAccessBlockCommand: 'bucket_privacy',
   GetBucketPolicyStatusCommand: 'bucket_privacy',
+  GetBucketPolicyCommand: 'bucket_privacy',
 };
 
 /** Observe real SDK request attempts and deserialization errors. Signing a URL

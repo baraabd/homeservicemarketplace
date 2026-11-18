@@ -154,7 +154,10 @@ export function EditProfilePage({ onBack, appContext }: EditProfilePageProps) {
   // a more specific avatar; otherwise the seeker profile is authoritative.
   const avatarUrl = providerProfile?.avatarUrl ?? profile?.avatarUrl ?? null;
 
-  const categories = useMemo(() => categoriesQuery.data ?? [], [categoriesQuery.data]);
+  const categories = useMemo(
+    () => (categoriesQuery.data ?? []).filter((category) => category.isLeaf),
+    [categoriesQuery.data],
+  );
 
   // Seed the form once the API responds. We DON'T overwrite on every
   // re-render of profileQuery.data — the user is mid-edit and we'd

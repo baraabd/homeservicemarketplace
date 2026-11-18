@@ -2,6 +2,7 @@ import { defineConfig, loadEnv } from 'vite';
 import path from 'path';
 import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
+import { csrfCookieName } from './src/lib/auth-cookie-names';
 import { buildWebCsp, injectWebCsp } from '../../scripts/production/security-app/web-csp.cjs';
 
 // `VITE_API_URL` is baked into the client bundle at build time. If it is
@@ -13,6 +14,8 @@ import { buildWebCsp, injectWebCsp } from '../../scripts/production/security-app
 export default defineConfig(({ mode, command }) => {
   const env = loadEnv(mode, process.cwd(), '');
   const apiUrl = env.VITE_API_URL?.trim();
+  // Fail the build on an invalid namespace, before it can break every mutation.
+  csrfCookieName(env.VITE_AUTH_COOKIE_PREFIX);
 
   if (command === 'build' && mode === 'production' && !apiUrl) {
     throw new Error(

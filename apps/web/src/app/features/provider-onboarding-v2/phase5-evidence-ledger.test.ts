@@ -7,10 +7,13 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import {
   CANONICAL_VIEWPORT,
+  MAX_DIFF_PIXEL_RATIO,
   SCREEN_STATES,
   TASK_SCREENS,
   ONBOARDING_REPAIR_REVISION,
+  STATUS_RECOVERY_REVISION,
   REVISED_PRESENTATION_STATES,
+  revisionIdForState,
   revisionChecks,
   axeIsClean,
   canonicalCellEvidence,
@@ -20,6 +23,7 @@ import {
   persistenceEvidence,
   routeEvidence,
   type TaskScreenFile,
+  type Locale,
 } from '../../../../e2e/phase5-evidence-ledger';
 import { PHASE5_STATES } from '../../../../e2e/phase5-visual-states';
 
@@ -257,30 +261,38 @@ describe('the ledger refuses forged VISUAL evidence', () => {
 });
 
 describe('the scoped user repair requires measured revised presentation evidence', () => {
-  function revisedCell(stateId: number, differingPixels = Math.ceil(CANONICAL_PIXELS * 0.02)) {
+  function revisedCell(
+    stateId: number,
+    differingPixels = Math.ceil(CANONICAL_PIXELS * 0.02),
+    locale: Locale = 'en',
+  ) {
     const state = PHASE5_STATES.find((candidate) => candidate.id === stateId)!;
-    const dir = join(root, state.slug, 'en', '390');
+    const dir = join(root, state.slug, locale, '390');
     mkdirSync(dir, { recursive: true });
-    writeHonestCell(dir, differingPixels, { stateId });
-    const proof = {
-      revision: ONBOARDING_REPAIR_REVISION,
+    writeHonestCell(dir, differingPixels, {
       stateId,
-      locale: 'en',
+      locale,
+      acceptance: revisionIdForState(stateId),
+    });
+    const proof = {
+      revision: revisionIdForState(stateId),
+      stateId,
+      locale,
       route: state.route,
       runId: 'run-honest',
       viewport: CANONICAL_VIEWPORT,
-      lang: 'en',
-      dir: 'ltr',
+      lang: locale,
+      dir: locale === 'ar' ? 'rtl' : 'ltr',
       documentWidth: 390,
       shell: { x: 0, y: 0, width: 390, height: 844 },
       main: { x: 0, y: 72, width: 390, height: 660 },
       footer: { x: 0, y: 732, width: 390, height: 112 },
-      elements: revisionChecks(stateId, 'en').map((check) => ({
+      elements: revisionChecks(stateId, locale).map((check, index) => ({
         key: check.key,
         texts: check.texts ? [...check.texts] : Array(check.count).fill(''),
         rects: Array.from({ length: check.count }, () => ({
           x: 16,
-          y: 120,
+          y: check.region === 'footer' ? 744 : stateId === 14 ? 100 + index * 90 : 120,
           width: Math.max(44, check.minWidth),
           height: Math.max(44, check.minHeight),
         })),
@@ -293,20 +305,29 @@ describe('the scoped user repair requires measured revised presentation evidence
       dir,
       proof,
       write,
-      passes: () => canonicalCellPasses(canonicalCellEvidence(root, state, 'en')),
+      passes: () => canonicalCellPasses(canonicalCellEvidence(root, state, locale)),
     };
   }
 
-  it('pins the revision to exactly the four user-requested states', () => {
-    expect(REVISED_PRESENTATION_STATES).toEqual([6, 7, 8, 9]);
+  it('pins separate revisions to the four September states and the status14 repair only', () => {
+    expect(REVISED_PRESENTATION_STATES).toEqual([6, 7, 8, 9, 14]);
     expect(
       PHASE5_STATES.filter((state) => revisionChecks(state.id, 'en').length).map(
         (state) => state.id,
       ),
-    ).toEqual([6, 7, 8, 9]);
+    ).toEqual([6, 7, 8, 9, 14]);
+    for (const id of [6, 7, 8, 9]) expect(revisionIdForState(id)).toBe(ONBOARDING_REPAIR_REVISION);
+    expect(revisionIdForState(14)).toBe(STATUS_RECOVERY_REVISION);
+    const immutable = PHASE5_STATES.filter((state) => revisionIdForState(state.id) === null);
+    expect(immutable.map((state) => state.id)).toEqual([
+      0, 1, 2, 3, 4, 5, 10, 11, 12, 13, 15, 16, 17,
+    ]);
+    expect(immutable).toHaveLength(13);
+    expect(MAX_DIFF_PIXEL_RATIO).toBe(0.005);
+    for (const id of [-1, 6.5, 18]) expect(revisionIdForState(id)).toBeNull();
   });
 
-  it.each([6, 7, 8, 9])(
+  it.each([6, 7, 8, 9, 14])(
     'accepts honest revised state %i without claiming prototype parity',
     (id) => {
       const candidate = revisedCell(id);
@@ -318,7 +339,7 @@ describe('the scoped user repair requires measured revised presentation evidence
     },
   );
 
-  it.each([6, 7, 8, 9])(
+  it.each([6, 7, 8, 9, 14])(
     'requires revision evidence for state %i even with a zero pixel diff',
     (id) => {
       const candidate = revisedCell(id, 0);
@@ -353,7 +374,7 @@ describe('the scoped user repair requires measured revised presentation evidence
     expect(candidate.passes()).toBe(false);
   });
 
-  it.each([6, 7, 8, 9])('rejects missing required observations for state %i', (id) => {
+  it.each([6, 7, 8, 9, 14])('rejects missing required observations for state %i', (id) => {
     const candidate = revisedCell(id);
     candidate.proof.elements.pop();
     candidate.write();
@@ -395,19 +416,139 @@ describe('the scoped user repair requires measured revised presentation evidence
     const candidate = revisedCell(6);
     writeHonestCell(candidate.dir, Math.ceil(CANONICAL_PIXELS * 0.02), {
       stateId: 6,
+      acceptance: ONBOARDING_REPAIR_REVISION,
       diffPixelRatio: 0,
     });
     expect(candidate.passes()).toBe(false);
-    writeHonestCell(candidate.dir, Math.ceil(CANONICAL_PIXELS * 0.02), { stateId: 6 });
+    writeHonestCell(candidate.dir, Math.ceil(CANONICAL_PIXELS * 0.02), {
+      stateId: 6,
+      acceptance: ONBOARDING_REPAIR_REVISION,
+    });
     writeFileSync(join(candidate.dir, 'diff.png'), canonicalPng([255, 255, 255]));
     expect(candidate.passes()).toBe(false);
-    writeHonestCell(candidate.dir, Math.ceil(CANONICAL_PIXELS * 0.02), { stateId: 6 });
+    writeHonestCell(candidate.dir, Math.ceil(CANONICAL_PIXELS * 0.02), {
+      stateId: 6,
+      acceptance: ONBOARDING_REPAIR_REVISION,
+    });
     writeFileSync(join(candidate.dir, 'actual.png'), REAL_PNG);
     expect(candidate.passes()).toBe(false);
   });
 
   it('cannot use a revision artifact to exempt an unrelated screen', () => {
     const candidate = revisedCell(3);
+    expect(candidate.passes()).toBe(false);
+  });
+
+  it.each(['en', 'ar'] as const)(
+    'pins exact status recovery labels and geometry in %s',
+    (locale) => {
+      const candidate = revisedCell(14, undefined, locale);
+      expect(candidate.passes()).toBe(true);
+      for (const check of revisionChecks(14, locale).filter(
+        (item) => item.key !== 'status-review-title' && item.key !== 'status-review-guidance',
+      )) {
+        expect(check.minWidth).toBe(44);
+        expect(check.minHeight).toBe(44);
+      }
+      candidate.proof.elements.find((item) => item.key === 'status-documents')!.texts = [
+        'Preview action-required state',
+      ];
+      candidate.write();
+      expect(candidate.passes()).toBe(false);
+    },
+  );
+
+  it.each([
+    ['revision', ONBOARDING_REPAIR_REVISION],
+    ['revision', 'owner-approved'],
+    ['runId', 'earlier-run'],
+    ['stateId', 17],
+    ['locale', 'ar'],
+    ['route', '/provider/jobs'],
+  ])('refuses status recovery with wrong or stale %s', (field, value) => {
+    const candidate = revisedCell(14);
+    Object.assign(candidate.proof, { [field]: value });
+    candidate.write();
+    expect(candidate.passes()).toBe(false);
+  });
+
+  it('refuses to apply the status revision to a September repair', () => {
+    const candidate = revisedCell(6);
+    candidate.proof.revision = STATUS_RECOVERY_REVISION;
+    candidate.write();
+    expect(candidate.passes()).toBe(false);
+  });
+
+  it.each(['{}', 'null', '[]', '{'])('refuses missing observations in status proof %s', (value) => {
+    const candidate = revisedCell(14);
+    writeFileSync(join(candidate.dir, 'revision.json'), value);
+    expect(candidate.passes()).toBe(false);
+  });
+
+  it.each(['status-documents', 'status-application', 'status-refresh', 'status-withdraw'])(
+    'refuses an undersized or offscreen %s control',
+    (key) => {
+      const candidate = revisedCell(14);
+      const rect = candidate.proof.elements.find((item) => item.key === key)!.rects[0]!;
+      rect.height = 43;
+      candidate.write();
+      expect(candidate.passes()).toBe(false);
+      rect.height = 44;
+      rect.y = -50;
+      candidate.write();
+      expect(candidate.passes()).toBe(false);
+    },
+  );
+
+  it('refuses duplicate or overlapping status actions and displaced footer geometry', () => {
+    const candidate = revisedCell(14);
+    const button = candidate.proof.elements.find((item) => item.key === 'status-documents')!;
+    candidate.proof.elements.push(button);
+    candidate.write();
+    expect(candidate.passes()).toBe(false);
+    candidate.proof.elements.pop();
+    const application = candidate.proof.elements.find((item) => item.key === 'status-application')!;
+    const originalY = application.rects[0]!.y;
+    application.rects[0]!.y = button.rects[0]!.y + 1;
+    candidate.write();
+    expect(candidate.passes()).toBe(false);
+    application.rects[0]!.y = originalY;
+    candidate.proof.footer.y -= 20;
+    candidate.write();
+    expect(candidate.passes()).toBe(false);
+  });
+
+  it('refuses forged status metrics, wrong acceptance identity and fake PNGs', () => {
+    const candidate = revisedCell(14);
+    for (const metrics of [
+      { acceptance: STATUS_RECOVERY_REVISION, diffPixelRatio: 0 },
+      { acceptance: ONBOARDING_REPAIR_REVISION },
+      { acceptance: undefined },
+    ]) {
+      writeHonestCell(candidate.dir, Math.ceil(CANONICAL_PIXELS * 0.02), {
+        stateId: 14,
+        ...metrics,
+      });
+      expect(candidate.passes()).toBe(false);
+    }
+    writeHonestCell(candidate.dir, Math.ceil(CANONICAL_PIXELS * 0.02), {
+      stateId: 14,
+      acceptance: STATUS_RECOVERY_REVISION,
+    });
+    writeFileSync(join(candidate.dir, 'diff.png'), canonicalPng([255, 255, 255]));
+    expect(candidate.passes()).toBe(false);
+  });
+
+  it('keeps state17 at the unchanged 0.005 threshold despite a forged status revision', () => {
+    const candidate = revisedCell(17);
+    candidate.proof.revision = STATUS_RECOVERY_REVISION;
+    candidate.write();
+    expect(revisionChecks(17, 'en')).toEqual([]);
+    expect(revisionChecks(17, 'ar')).toEqual([]);
+    expect(candidate.passes()).toBe(false);
+    writeHonestCell(candidate.dir, Math.floor(CANONICAL_PIXELS * 0.005), { stateId: 17 });
+    expect(candidate.passes()).toBe(true);
+    writeHonestCell(candidate.dir, Math.ceil(CANONICAL_PIXELS * 0.005) + 1, { stateId: 17 });
     expect(candidate.passes()).toBe(false);
   });
 });

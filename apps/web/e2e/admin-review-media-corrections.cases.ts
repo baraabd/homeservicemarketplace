@@ -13,7 +13,7 @@ import {
 } from './admin-review-real-api';
 import { capabilitiesOf, providerApplicationReview } from './phase3-activation';
 import { adminJar, api, loginViaUi, REAL_API } from './real-api';
-import { seedLanguage } from './fixtures';
+import { expectNoHorizontalPageOverflow, seedLanguage } from './fixtures';
 import { submitIdentityCorrectionThroughBrowser } from './admin-review-identity-submission';
 
 // Registered by the existing real-API suite entrypoint only. No page.route,
@@ -190,10 +190,35 @@ for (const scenario of [
       if (providerLang === 'ar') await seedLanguage(providerPage, 'ar');
       await providerPage.reload();
       await expect(providerPage.getByTestId('review-feedback')).toContainText(message);
+      if (scenario.kind === 'identity') {
+        // Reproduce the reported entry: the provider opens Basic details and
+        // sees the existing public profile-photo controls beside a requested
+        // identity correction. The named action must reach private documents.
+        await providerPage.goto('/provider/onboarding/BASICS_IDENTITY');
+        await expect(providerPage.getByTestId('basics-task')).toBeVisible();
+        await expect(providerPage.getByTestId('avatar-uploader')).toBeVisible();
+        await expect(providerPage.getByTestId('review-feedback')).toContainText(message);
+        await expect(
+          providerPage.getByTestId('review-feedback').getByRole('button', {
+            name: providerLang === 'ar' ? 'رفع وثائق الهوية' : 'Upload identity documents',
+            exact: true,
+          }),
+        ).toBeVisible();
+        await expectNoHorizontalPageOverflow(providerPage);
+        const evidenceName = `identity-entry-basics-${scenario.evidence ? 'replacement' : 'first'}-${providerLang}`;
+        const screenshot = testInfo.outputPath(`${evidenceName}.png`);
+        await providerPage.screenshot({ path: screenshot, fullPage: true, animations: 'disabled' });
+        await testInfo.attach(evidenceName, { path: screenshot, contentType: 'image/png' });
+      }
       await providerPage
         .getByTestId('review-feedback')
         .getByRole('button', {
-          name: providerLang === 'ar' ? /^مراجعة هذه المهمة:/ : /^Review this task:/,
+          name:
+            scenario.kind === 'identity'
+              ? providerLang === 'ar'
+                ? 'رفع وثائق الهوية'
+                : 'Upload identity documents'
+              : /^Review this task:/,
         })
         .click();
       await expect(providerPage).toHaveURL(

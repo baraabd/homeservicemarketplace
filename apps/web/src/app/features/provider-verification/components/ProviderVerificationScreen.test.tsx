@@ -1,7 +1,8 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import MockAdapter from 'axios-mock-adapter';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { focusManager, QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { MemoryRouter, Route, Routes, useLocation } from 'react-router';
 
 import { api } from '../../../../lib/api';
 import * as verificationApi from '../../../../lib/provider/provider-verification-api';
@@ -80,15 +81,27 @@ const PROFILE = (over: Record<string, unknown> = {}) => ({
   profile: { id: 'pp-1', verified: false, topPro: false, ...over },
 });
 
-function renderScreen(lang: 'en' | 'ar' = 'en') {
+function LocationProbe() {
+  return <span data-testid="verification-test-location">{useLocation().pathname}</span>;
+}
+
+function renderScreen(lang: 'en' | 'ar' = 'en', client?: QueryClient) {
   window.localStorage.setItem('hsm.lang', lang);
-  const qc = new QueryClient({
-    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
-  });
+  const qc =
+    client ??
+    new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    });
   return render(
     <QueryClientProvider client={qc}>
       <LanguageProvider>
-        <ProviderVerificationScreen />
+        <MemoryRouter initialEntries={['/provider/verification']}>
+          <Routes>
+            <Route path="/provider/verification" element={<ProviderVerificationScreen />} />
+            <Route path="*" element={<h1>Application destination</h1>} />
+          </Routes>
+          <LocationProbe />
+        </MemoryRouter>
       </LanguageProvider>
     </QueryClientProvider>,
   );
@@ -111,8 +124,273 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  cleanup();
   mock.restore();
   vi.restoreAllMocks();
+  vi.useRealTimers();
+  focusManager.setFocused(undefined);
+});
+
+describe('the next step after identity review', () => {
+  it.each([
+    ['en', false, 'Review and send application'],
+    ['en', true, 'Review and send application'],
+    ['ar', false, 'مراجعة طلب الانضمام وإرساله'],
+    ['ar', true, 'مراجعة طلب الانضمام وإرساله'],
+  ] as const)(
+    'returns verified identity to an editable application in %s with V2=%s',
+    async (lang, enabled, label) => {
+      window.localStorage.setItem('hsm.ff.providerOnboardingV2', String(enabled));
+      stub({
+        caps: {
+          ...caps(
+            ['MANAGE_VERIFICATION', 'COMPLETE_ONBOARDING', 'SUBMIT_FOR_REVIEW'],
+            'ONBOARDING_INCOMPLETE',
+          ),
+          nextActions: ['COMPLETE_PROFILE', 'SUBMIT_APPLICATION'],
+        },
+        kase: kase({ state: 'VERIFIED', documents: [doc()] }),
+        // Profile data can still be in the one-minute cache after Admin review.
+        profile: PROFILE({ verified: false }),
+      });
+      renderScreen(lang);
+
+      const action = await screen.findByRole('button', { name: label });
+      expect(screen.getByTestId('verification-VERIFIED_NO_ACCESS')).not.toHaveTextContent(
+        lang === 'ar' ? 'ما انتهى هو صلاحيتك' : 'What has ended is your permission',
+      );
+      expect(screen.getByTestId('axis-identityVerified')).toHaveAttribute('data-active', 'true');
+      expect(screen.getByTestId('axis-workAccessActive')).toHaveAttribute('data-active', 'false');
+      expect(screen.getByTestId('document-d1')).toBeInTheDocument();
+      expect(screen.queryByLabelText(UI_COPY[lang].uploadLabel)).not.toBeInTheDocument();
+      fireEvent.click(action);
+      expect(screen.getByTestId('verification-test-location')).toHaveTextContent(
+        enabled ? '/provider/onboarding' : '/provider/profile',
+      );
+      expect(mock.history.post).toHaveLength(0);
+    },
+  );
+
+  it.each([
+    ['en', false, 'View application status'],
+    ['en', true, 'View application status'],
+    ['ar', false, 'متابعة حالة طلب الانضمام'],
+    ['ar', true, 'متابعة حالة طلب الانضمام'],
+  ] as const)(
+    'keeps a verified, submitted application waiting for Admin in %s with V2=%s',
+    async (lang, enabled, label) => {
+      window.localStorage.setItem('hsm.ff.providerOnboardingV2', String(enabled));
+      stub({
+        caps: {
+          ...caps(['MANAGE_VERIFICATION', 'COMPLETE_ONBOARDING'], 'AWAITING_REVIEW'),
+          nextActions: ['WAIT_FOR_REVIEW'],
+        },
+        kase: kase({ state: 'VERIFIED', documents: [doc()] }),
+      });
+      renderScreen(lang);
+
+      fireEvent.click(await screen.findByRole('button', { name: label }));
+      expect(screen.getByTestId('verification-test-location')).toHaveTextContent(
+        enabled ? '/provider/onboarding' : '/provider/profile',
+      );
+      expect(mock.history.post).toHaveLength(0);
+    },
+  );
+
+  it('returns a no-document policy to the incomplete application', async () => {
+    stub({
+      caps: {
+        ...caps(['MANAGE_VERIFICATION', 'COMPLETE_ONBOARDING'], 'ONBOARDING_INCOMPLETE'),
+        nextActions: ['COMPLETE_PROFILE', 'SUBMIT_APPLICATION'],
+      },
+      kase: kase({ verificationRequired: false, requirements: [] }),
+    });
+    renderScreen();
+    fireEvent.click(await screen.findByRole('button', { name: 'Review and send application' }));
+    expect(screen.getByTestId('verification-test-location')).toHaveTextContent('/provider/profile');
+    expect(mock.history.post).toHaveLength(0);
+  });
+
+  it.each(['en', 'ar'] as const)(
+    'offers support when a no-document policy still needs work access in %s',
+    async (lang) => {
+      stub({
+        caps: {
+          ...caps(['MANAGE_VERIFICATION'], 'NO_WORK_ACCESS'),
+          nextActions: ['WAIT_FOR_REVIEW'],
+        },
+        kase: kase({ verificationRequired: false, requirements: [] }),
+      });
+      renderScreen(lang);
+      const support = await screen.findByRole('button', {
+        name: lang === 'ar' ? 'تواصل مع الدعم' : 'Contact support',
+      });
+      expect(screen.getByTestId('axis-identityVerified')).toHaveAttribute('data-active', 'false');
+      expect(screen.getByTestId('axis-workAccessActive')).toHaveAttribute('data-active', 'false');
+      expect(screen.queryByLabelText(UI_COPY[lang].uploadLabel)).not.toBeInTheDocument();
+      fireEvent.click(support);
+      expect(screen.getByTestId('verification-test-location')).toHaveTextContent(
+        '/provider/support',
+      );
+      expect(mock.history.post).toHaveLength(0);
+    },
+  );
+
+  it.each(['en', 'ar'] as const)(
+    'offers a real support route for unavailable work access in %s',
+    async (lang) => {
+      stub({
+        caps: {
+          ...caps(['MANAGE_VERIFICATION'], 'NO_WORK_ACCESS'),
+          nextActions: ['WAIT_FOR_REVIEW'],
+        },
+        kase: kase({ state: 'VERIFIED', documents: [doc()] }),
+      });
+      renderScreen(lang);
+      fireEvent.click(
+        await screen.findByRole('button', {
+          name: lang === 'ar' ? 'تواصل مع الدعم' : 'Contact support',
+        }),
+      );
+      expect(screen.getByTestId('verification-test-location')).toHaveTextContent(
+        '/provider/support',
+      );
+      expect(mock.history.post).toHaveLength(0);
+    },
+  );
+
+  it.each([
+    ['ACCOUNT_INELIGIBLE', [], ['CONTACT_SUPPORT']],
+    ['PROVIDER_TERMINATED', ['VIEW_OWN_PROFILE'], ['CONTACT_SUPPORT']],
+    ['PROVIDER_SUSPENDED', ['VIEW_OWN_PROFILE', 'APPEAL_DECISION'], ['APPEAL_DECISION']],
+  ] as const)(
+    'keeps the support route usable for %s without exposing evidence',
+    async (reason, allowed, nextActions) => {
+      stub({ caps: { ...caps([...allowed], reason), nextActions: [...nextActions] } });
+      mock.onGet(CASE_URL).reply(403);
+      renderScreen();
+      fireEvent.click(await screen.findByRole('button', { name: 'Contact support' }));
+      expect(screen.getByTestId('verification-test-location')).toHaveTextContent(
+        '/provider/support',
+      );
+      expect(mock.history.get.filter((request) => request.url === CASE_URL)).toHaveLength(0);
+      expect(mock.history.post).toHaveLength(0);
+    },
+  );
+
+  it.each(['en', 'ar'] as const)(
+    'opens the workspace only after work is authorized in %s',
+    async (lang) => {
+      stub({
+        caps: caps(['MANAGE_VERIFICATION', 'VIEW_MARKETPLACE', 'SUBMIT_BID']),
+        kase: kase({ state: 'VERIFIED', documents: [doc()] }),
+      });
+      renderScreen(lang);
+      fireEvent.click(
+        await screen.findByRole('button', {
+          name: lang === 'ar' ? 'فتح مساحة العمل' : 'Open workspace',
+        }),
+      );
+      expect(screen.getByTestId('verification-test-location')).toHaveTextContent('/provider/jobs');
+      expect(mock.history.post).toHaveLength(0);
+    },
+  );
+
+  it('refreshes the case when the provider returns after an Admin decision', async () => {
+    focusManager.setFocused(false);
+    stub({
+      caps: caps(['MANAGE_VERIFICATION', 'COMPLETE_ONBOARDING'], 'ONBOARDING_INCOMPLETE'),
+      kase: kase({ state: 'SUBMITTED', documents: [doc()] }),
+    });
+    renderScreen(
+      'en',
+      new QueryClient({
+        defaultOptions: { queries: { retry: false, refetchOnWindowFocus: false } },
+      }),
+    );
+    await screen.findByTestId('verification-PENDING_REVIEW');
+    mock.onGet(CASE_URL).reply(200, kase({ state: 'VERIFIED', documents: [doc()] }));
+    act(() => focusManager.setFocused(true));
+    expect(
+      await screen.findByRole('button', { name: 'Review and send application' }),
+    ).toBeEnabled();
+    expect(screen.getByTestId('axis-identityVerified')).toHaveAttribute('data-active', 'true');
+    expect(screen.getByTestId('axis-workAccessActive')).toHaveAttribute('data-active', 'false');
+  });
+
+  it.each(['SUBMITTED', 'IN_REVIEW'] as const)(
+    'receives the Admin decision while a %s case stays open',
+    async (state) => {
+      vi.useFakeTimers({ shouldAdvanceTime: true });
+      stub({
+        caps: caps(['MANAGE_VERIFICATION', 'COMPLETE_ONBOARDING'], 'ONBOARDING_INCOMPLETE'),
+        kase: kase({ state, documents: [doc()] }),
+      });
+      renderScreen();
+      await screen.findByTestId('verification-PENDING_REVIEW');
+      mock.onGet(CASE_URL).reply(200, kase({ state: 'VERIFIED', documents: [doc()] }));
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(30_000);
+      });
+      expect(
+        await screen.findByRole('button', { name: 'Review and send application' }),
+      ).toBeEnabled();
+      expect(screen.getByTestId('axis-identityVerified')).toHaveAttribute('data-active', 'true');
+      expect(screen.getByTestId('axis-workAccessActive')).toHaveAttribute('data-active', 'false');
+      expect(mock.history.post).toHaveLength(0);
+    },
+  );
+
+  it('does not offer application recovery without the server capability', async () => {
+    stub({
+      caps: caps(['MANAGE_VERIFICATION'], 'ONBOARDING_INCOMPLETE'),
+      kase: kase({ state: 'VERIFIED', documents: [doc()] }),
+    });
+    renderScreen();
+    await screen.findByTestId('verification-VERIFIED_NO_ACCESS');
+    expect(
+      screen.queryByRole('button', { name: 'Review and send application' }),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Open workspace' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Contact support' })).toBeEnabled();
+  });
+
+  it('offers renewal when a verified case expires while the tab stays open', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    stub({
+      caps: caps(['MANAGE_VERIFICATION', 'SUBMIT_BID']),
+      kase: kase({ state: 'VERIFIED', documents: [doc()] }),
+      profile: PROFILE({ verified: true }),
+    });
+    renderScreen();
+    await screen.findByTestId('verification-VERIFIED_ACTIVE');
+    mock.onGet(CAPS_URL).reply(200, {
+      ...caps(['MANAGE_VERIFICATION'], 'VERIFICATION_REQUIRED'),
+      nextActions: ['VERIFY_IDENTITY'],
+    });
+    mock.onGet(CASE_URL).reply(200, kase({ state: 'EXPIRED', documents: [doc()] }));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(30_000);
+    });
+    expect(await screen.findByRole('button', { name: 'Renew verification' })).toBeEnabled();
+    expect(screen.getByTestId('axis-identityVerified')).toHaveAttribute('data-active', 'false');
+    expect(screen.getByTestId('axis-workAccessActive')).toHaveAttribute('data-active', 'false');
+    expect(screen.queryByRole('button', { name: 'Open workspace' })).not.toBeInTheDocument();
+  });
+
+  it('keeps application navigation usable offline after verification', async () => {
+    vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false);
+    stub({
+      caps: caps(['MANAGE_VERIFICATION', 'COMPLETE_ONBOARDING'], 'ONBOARDING_INCOMPLETE'),
+      kase: kase({ state: 'VERIFIED', documents: [doc()] }),
+    });
+    renderScreen();
+    const action = await screen.findByRole('button', { name: 'Review and send application' });
+    expect(action).toBeEnabled();
+    fireEvent.click(action);
+    expect(screen.getByTestId('verification-test-location')).toHaveTextContent('/provider/profile');
+    expect(mock.history.post).toHaveLength(0);
+  });
 });
 
 describe('loading, failure and offline', () => {
@@ -147,15 +425,200 @@ describe('loading, failure and offline', () => {
   });
 });
 
+describe('verification entry recovery', () => {
+  const matrix = [
+    ['en', false],
+    ['en', true],
+    ['ar', false],
+    ['ar', true],
+  ] as const;
+
+  it.each(matrix)(
+    'opens account setup without requesting forbidden evidence in %s with V2=%s',
+    async (lang, enabled) => {
+      window.localStorage.setItem('hsm.ff.providerOnboardingV2', String(enabled));
+      stub({
+        caps: { ...caps([], 'NO_PROVIDER_PROFILE'), nextActions: ['COMPLETE_PROFILE'] },
+      });
+      mock.onGet(CASE_URL).reply(403);
+      mock.onGet(PROFILE_URL).reply(403);
+      renderScreen(lang);
+
+      const action = await screen.findByRole('button', {
+        name: STATE_COPY[lang].ONBOARDING_INCOMPLETE.cta as string,
+      });
+      expect(screen.getByTestId('axis-onboardingComplete')).toHaveAttribute('data-active', 'false');
+      expect(screen.queryByLabelText(UI_COPY[lang].uploadLabel)).not.toBeInTheDocument();
+      expect(mock.history.get.filter((request) => request.url === CASE_URL)).toHaveLength(0);
+      fireEvent.click(action);
+      expect(screen.getByTestId('verification-test-location')).toHaveTextContent(
+        enabled ? '/provider/activate' : '/provider/profile',
+      );
+      expect(mock.history.post).toHaveLength(0);
+    },
+  );
+
+  it.each(matrix)(
+    'continues incomplete onboarding without document mutation permission in %s with V2=%s',
+    async (lang, enabled) => {
+      window.localStorage.setItem('hsm.ff.providerOnboardingV2', String(enabled));
+      stub({ caps: caps(['COMPLETE_ONBOARDING'], 'ONBOARDING_INCOMPLETE') });
+      mock.onGet(CASE_URL).reply(403);
+      renderScreen(lang);
+
+      fireEvent.click(
+        await screen.findByRole('button', {
+          name: STATE_COPY[lang].ONBOARDING_INCOMPLETE.cta as string,
+        }),
+      );
+      expect(screen.getByTestId('verification-test-location')).toHaveTextContent(
+        enabled ? '/provider/onboarding' : '/provider/profile',
+      );
+      expect(mock.history.get.filter((request) => request.url === CASE_URL)).toHaveLength(0);
+      expect(mock.history.post).toHaveLength(0);
+    },
+  );
+
+  it('waits for fresh capabilities before reading a cached case', async () => {
+    let reply!: (value: [number, ReturnType<typeof caps>]) => void;
+    mock.onGet(CAPS_URL).reply(
+      () =>
+        new Promise((resolve) => {
+          reply = resolve;
+        }),
+    );
+    mock.onGet(CASE_URL).reply(403);
+    mock.onGet(PROFILE_URL).reply(200, PROFILE());
+    const qc = new QueryClient({
+      defaultOptions: { queries: { retry: false, staleTime: 5 * 60 * 1000 } },
+    });
+    qc.setQueryData(['provider', 'verification', 'capabilities'], caps());
+    qc.setQueryData(['provider', 'verification', 'case'], kase({ documents: [doc()] }));
+    renderScreen('en', qc);
+
+    await screen.findByText(UI_COPY.en.loading);
+    expect(mock.history.get.filter((request) => request.url === CASE_URL)).toHaveLength(0);
+    expect(screen.queryByTestId('verification-documents')).not.toBeInTheDocument();
+    await waitFor(() => expect(reply).toBeTypeOf('function'));
+    await act(async () => reply([200, caps(['COMPLETE_ONBOARDING'], 'ONBOARDING_INCOMPLETE')]));
+    await screen.findByRole('button', { name: STATE_COPY.en.ONBOARDING_INCOMPLETE.cta as string });
+    expect(screen.queryByTestId('verification-documents')).not.toBeInTheDocument();
+    expect(mock.history.get.filter((request) => request.url === CASE_URL)).toHaveLength(0);
+  });
+
+  it('refreshes a cached submitted case when reentering with the application cache defaults', async () => {
+    let reply!: (value: [number, ReturnType<typeof kase>]) => void;
+    mock.onGet(CAPS_URL).reply(200, caps());
+    mock.onGet(PROFILE_URL).reply(200, PROFILE());
+    mock.onGet(CASE_URL).reply(
+      () =>
+        new Promise((resolve) => {
+          reply = resolve;
+        }),
+    );
+    const qc = new QueryClient({
+      defaultOptions: { queries: { retry: false, staleTime: 5 * 60 * 1000 } },
+    });
+    qc.setQueryData(['provider', 'verification', 'capabilities'], caps());
+    qc.setQueryData(
+      ['provider', 'verification', 'case'],
+      kase({ state: 'SUBMITTED', documents: [doc()] }),
+    );
+    renderScreen('en', qc);
+
+    await waitFor(() => expect(reply).toBeTypeOf('function'));
+    expect(screen.getByText(UI_COPY.en.loading)).toBeInTheDocument();
+    expect(screen.queryByTestId('verification-PENDING_REVIEW')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('verification-documents')).not.toBeInTheDocument();
+    await act(async () => reply([200, kase({ state: 'ACTION_REQUIRED', documents: [doc()] })]));
+    await screen.findByRole('button', { name: STATE_COPY.en.CHANGES_REQUESTED.cta as string });
+    expect(screen.queryByTestId('verification-PENDING_REVIEW')).not.toBeInTheDocument();
+    expect(mock.history.get.filter((request) => request.url === CAPS_URL)).toHaveLength(1);
+    expect(mock.history.get.filter((request) => request.url === CASE_URL)).toHaveLength(1);
+  });
+
+  it.each([
+    ['ACCOUNT_INELIGIBLE', 'ACCOUNT_LOCKED'],
+    ['PROVIDER_TERMINATED', 'ACCOUNT_LOCKED'],
+    ['PROVIDER_SUSPENDED', 'SUSPENDED'],
+  ])(
+    'explains %s without a forbidden evidence request or recovery grant',
+    async (reason, state) => {
+      stub({ caps: caps([], reason) });
+      mock.onGet(CASE_URL).reply(403);
+      renderScreen();
+
+      await screen.findByTestId(`verification-${state}`);
+      expect(screen.queryByRole('button')).not.toBeInTheDocument();
+      expect(mock.history.get.filter((request) => request.url === CASE_URL)).toHaveLength(0);
+    },
+  );
+
+  it.each(['NO_PROVIDER_PROFILE', 'ONBOARDING_INCOMPLETE'])(
+    'does not invent onboarding permission for %s without its server action',
+    async (reason) => {
+      stub({ caps: caps([], reason) });
+      mock.onGet(CASE_URL).reply(403);
+      renderScreen();
+
+      await screen.findByTestId('verification-ONBOARDING_INCOMPLETE');
+      expect(screen.queryByRole('button')).not.toBeInTheDocument();
+      expect(screen.queryByLabelText(UI_COPY.en.uploadLabel)).not.toBeInTheDocument();
+      expect(mock.history.get.filter((request) => request.url === CASE_URL)).toHaveLength(0);
+    },
+  );
+
+  it('retries an API outage without calling it an incomplete application', async () => {
+    mock.onGet(CAPS_URL).networkErrorOnce();
+    mock.onGet(CAPS_URL).reply(200, caps());
+    mock.onGet(CASE_URL).reply(200, { case: null });
+    mock.onGet(PROFILE_URL).reply(200, PROFILE());
+    renderScreen();
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(UI_COPY.en.loadFailed);
+    expect(screen.queryByText(STATE_COPY.en.ONBOARDING_INCOMPLETE.title)).not.toBeInTheDocument();
+    expect(mock.history.get.filter((request) => request.url === CASE_URL)).toHaveLength(0);
+    fireEvent.click(screen.getByRole('button', { name: UI_COPY.en.retry }));
+    await screen.findByRole('button', { name: STATE_COPY.en.NOT_STARTED.cta as string });
+    expect(mock.history.get.filter((request) => request.url === CASE_URL)).toHaveLength(1);
+  });
+
+  it('retries a permitted case read after a network failure', async () => {
+    mock.onGet(CAPS_URL).reply(200, caps());
+    mock.onGet(PROFILE_URL).reply(200, PROFILE());
+    mock.onGet(CASE_URL).networkErrorOnce();
+    mock.onGet(CASE_URL).reply(200, kase());
+    renderScreen();
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(UI_COPY.en.loadFailed);
+    fireEvent.click(screen.getByRole('button', { name: UI_COPY.en.retry }));
+    await screen.findByRole('button', { name: STATE_COPY.en.EVIDENCE_REQUIRED.cta as string });
+    expect(screen.getByLabelText(UI_COPY.en.uploadLabel)).toBeInTheDocument();
+  });
+
+  it('does not offer a replacement button when the server has no document target', async () => {
+    stub({ kase: kase({ state: 'ACTION_REQUIRED', requirements: [], documents: [] }) });
+    renderScreen();
+
+    await screen.findByTestId('verification-CHANGES_REQUESTED');
+    expect(
+      screen.queryByRole('button', { name: STATE_COPY.en.CHANGES_REQUESTED.cta as string }),
+    ).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: UI_COPY.en.resubmit })).toBeInTheDocument();
+  });
+});
+
 describe('each state gets its own screen', () => {
   it.each([
+    ['UNAVAILABLE', { kase: kase({ state: 'FUTURE_STATE' }) }],
     ['ACCOUNT_LOCKED', { caps: caps([], 'ACCOUNT_INELIGIBLE') }],
     ['SUSPENDED', { caps: caps([], 'PROVIDER_SUSPENDED') }],
     ['ONBOARDING_INCOMPLETE', { caps: caps([], 'ONBOARDING_INCOMPLETE') }],
     ['NOT_STARTED', { kase: { case: null } }],
     ['NOT_REQUIRED', { kase: kase({ verificationRequired: false, requirements: [] }) }],
     ['EVIDENCE_REQUIRED', { kase: kase({ documents: [] }) }],
-    ['SCANNING', { kase: kase({ requirements: [], documents: [doc({ scanState: 'PENDING' })] }) }],
+    ['SCANNING', { kase: kase({ documents: [doc({ scanState: 'PENDING' })] }) }],
+    ['SCAN_RETRY_PENDING', { kase: kase({ documents: [doc({ scanState: 'SCAN_FAILED' })] }) }],
     ['EVIDENCE_UNUSABLE', { kase: kase({ documents: [doc({ scanState: 'QUARANTINED' })] }) }],
     ['READY_TO_SUBMIT', { kase: kase({ documents: [doc()] }) }],
     ['PENDING_REVIEW', { kase: kase({ state: 'SUBMITTED' }) }],
@@ -174,18 +637,20 @@ describe('each state gets its own screen', () => {
   });
 
   it('renders VERIFIED_ACTIVE when the grant is live', async () => {
-    stub({ caps: caps(['SUBMIT_BID']), kase: kase({ state: 'VERIFIED' }) });
+    stub({ caps: caps(['SUBMIT_BID', 'MANAGE_VERIFICATION']), kase: kase({ state: 'VERIFIED' }) });
     renderScreen();
     expect(await screen.findByTestId('verification-VERIFIED_ACTIVE')).toBeInTheDocument();
   });
 
-  it('offers no action where nothing can be done', async () => {
-    // Offering a button that cannot help teaches people to tap and hope.
+  it('offers a status refresh without offering a document mutation during review', async () => {
     stub({ kase: kase({ state: 'SUBMITTED' }) });
     renderScreen();
     await screen.findByTestId('verification-PENDING_REVIEW');
 
-    expect(screen.queryByRole('button')).not.toBeInTheDocument();
+    expect(screen.getAllByRole('button')).toHaveLength(1);
+    expect(screen.getByRole('button', { name: UI_COPY.en.refresh })).toBeEnabled();
+    expect(screen.queryByLabelText(UI_COPY.en.uploadLabel)).not.toBeInTheDocument();
+    expect(mock.history.post).toHaveLength(0);
   });
 
   it('never offers an upload to a suspended provider', async () => {
@@ -207,7 +672,10 @@ describe('each state gets its own screen', () => {
 describe('the five axes stay visibly apart', () => {
   it('shows the three access axes with their value in TEXT', async () => {
     // A badge whose only signal is colour says nothing to a screen reader.
-    stub({ caps: caps(['SUBMIT_BID']), profile: PROFILE({ verified: true }) });
+    stub({
+      caps: caps(['SUBMIT_BID', 'MANAGE_VERIFICATION']),
+      profile: PROFILE({ verified: true }),
+    });
     renderScreen();
 
     const axes = await screen.findByTestId('verification-axes');
@@ -221,13 +689,14 @@ describe('the five axes stay visibly apart', () => {
     // they are unverified would send them to re-upload documents that are
     // perfectly good.
     stub({
-      caps: caps([]),
+      caps: caps(['MANAGE_VERIFICATION']),
       kase: kase({ state: 'VERIFIED' }),
       profile: PROFILE({ verified: true }),
     });
     renderScreen();
 
-    const axes = await screen.findByTestId('verification-axes');
+    await screen.findByTestId('verification-VERIFIED_NO_ACCESS');
+    const axes = screen.getByTestId('verification-axes');
     expect(within(axes).getByTestId('axis-identityVerified')).toHaveAttribute(
       'data-active',
       'true',
@@ -328,6 +797,30 @@ describe('documents and what the reviewer said', () => {
 });
 
 describe('starting and submitting', () => {
+  it.each([
+    ['REJECTED', 'REJECTED'],
+    ['EXPIRED', 'REVERIFICATION_REQUIRED'],
+  ] as const)(
+    'creates a fresh case after %s and reaches the document upload step',
+    async (state, viewState) => {
+      stub({ kase: kase({ state, documents: [doc()] }) });
+      mock.onPost(CASE_URL).reply(() => {
+        mock.onGet(CASE_URL).reply(200, kase({ id: 'renewed-case' }));
+        return [201, { ...kase({ id: 'renewed-case' }), created: true }];
+      });
+      renderScreen();
+      fireEvent.click(
+        await screen.findByRole('button', { name: STATE_COPY.en[viewState].cta as string }),
+      );
+      await screen.findByTestId('verification-EVIDENCE_REQUIRED');
+      expect(screen.getByLabelText(UI_COPY.en.uploadLabel)).toBeInTheDocument();
+      expect(mock.history.post.map((request) => request.url)).toEqual([CASE_URL]);
+      expect(
+        screen.queryByRole('button', { name: UI_COPY.en.contactSupport }),
+      ).not.toBeInTheDocument();
+    },
+  );
+
   it('starts missing identity verification after an admin returns the application for correction', async () => {
     stub({
       caps: caps(['MANAGE_VERIFICATION', 'COMPLETE_ONBOARDING'], 'ONBOARDING_INCOMPLETE'),
@@ -431,6 +924,92 @@ describe('starting and submitting', () => {
       expect(screen.getByRole('link', { name: UI_COPY[lang].returnToApplication })).toHaveAttribute(
         'href',
         '/provider/profile',
+      );
+    },
+  );
+
+  describe.each(['DRAFT', 'ACTION_REQUIRED'] as const)(
+    'required-slot submission from %s',
+    (state) => {
+      it.each(['PENDING', 'SCAN_FAILED', 'QUARANTINED', 'REJECTED'] as const)(
+        'submits required clean evidence while keeping an optional %s file restricted',
+        async (scanState) => {
+          const documents = [
+            doc(),
+            doc({
+              id: 'optional',
+              kind: 'CATEGORY_LICENSE',
+              serviceCategoryId: 'optional-category',
+              scanState,
+            }),
+          ];
+          stub({ kase: kase({ state, documents }) });
+          mock.onPost(`${CASE_URL}/submit`).reply(() => {
+            mock.onGet(CASE_URL).reply(200, kase({ state: 'SUBMITTED', documents }));
+            return [200, {}];
+          });
+          renderScreen();
+          await screen.findByTestId('verification-axes');
+          expect(screen.getByTestId('document-optional')).toHaveAttribute('data-scan', scanState);
+          const submit = screen.queryByRole('button', {
+            name:
+              state === 'DRAFT'
+                ? (STATE_COPY.en.READY_TO_SUBMIT.cta as string)
+                : UI_COPY.en.resubmit,
+          });
+          expect(submit).toBeEnabled();
+          fireEvent.click(submit!);
+          await screen.findByTestId('verification-PENDING_REVIEW');
+          expect(
+            mock.history.post.filter((request) => request.url === `${CASE_URL}/submit`),
+          ).toHaveLength(1);
+          expect(screen.getByTestId('document-optional')).toHaveAttribute('data-scan', scanState);
+          expect(screen.getByTestId('axis-workAccessActive')).toHaveAttribute(
+            'data-active',
+            'false',
+          );
+        },
+      );
+
+      it.each(['PENDING', 'SCAN_FAILED', 'QUARANTINED', 'REJECTED'] as const)(
+        'keeps required %s evidence blocked even when submit appears in a stale action list',
+        async (scanState) => {
+          stub({
+            kase: kase({ state, availableActions: ['submit'], documents: [doc({ scanState })] }),
+          });
+          renderScreen();
+          await screen.findByTestId('verification-axes');
+          expect(
+            screen.queryByRole('button', { name: STATE_COPY.en.READY_TO_SUBMIT.cta as string }),
+          ).not.toBeInTheDocument();
+          expect(
+            screen.queryByRole('button', { name: UI_COPY.en.resubmit }),
+          ).not.toBeInTheDocument();
+          expect(screen.getByTestId('document-d1')).toHaveAttribute('data-scan', scanState);
+          expect(mock.history.post).toHaveLength(0);
+        },
+      );
+
+      it.each([
+        ['superseded', doc({ superseded: true })],
+        [
+          'another category',
+          doc({ kind: 'CATEGORY_LICENSE', serviceCategoryId: 'optional-category' }),
+        ],
+      ])(
+        'does not substitute %s clean evidence for the current requirement',
+        async (_label, document) => {
+          stub({ kase: kase({ state, availableActions: ['submit'], documents: [document] }) });
+          renderScreen();
+          await screen.findByTestId('verification-axes');
+          expect(
+            screen.queryByRole('button', { name: STATE_COPY.en.READY_TO_SUBMIT.cta as string }),
+          ).not.toBeInTheDocument();
+          expect(
+            screen.queryByRole('button', { name: UI_COPY.en.resubmit }),
+          ).not.toBeInTheDocument();
+          expect(mock.history.post).toHaveLength(0);
+        },
       );
     },
   );
@@ -574,6 +1153,130 @@ describe('starting and submitting', () => {
     ).toBeInTheDocument();
   });
 
+  it('explains the security check without a time promise and provides refresh and support', async () => {
+    stub({ kase: kase({ documents: [doc({ scanState: 'PENDING' })] }) });
+    renderScreen('ar');
+    const section = await screen.findByTestId('verification-SCANNING');
+    expect(section).toHaveTextContent(STATE_COPY.ar.SCANNING.body);
+    expect(section).not.toHaveTextContent('لحظات');
+    expect(section).not.toHaveTextContent('لا حاجة لفعل أي شيء');
+    expect(screen.queryByLabelText(UI_COPY.ar.uploadLabel)).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: STATE_COPY.ar.READY_TO_SUBMIT.cta as string }),
+    ).not.toBeInTheDocument();
+
+    mock.onGet(CASE_URL).reply(200, kase({ documents: [doc()] }));
+    fireEvent.click(screen.getByRole('button', { name: UI_COPY.ar.refresh }));
+    await screen.findByTestId('verification-READY_TO_SUBMIT');
+    expect(mock.history.post).toHaveLength(0);
+  });
+
+  it('opens support for a pending scan without altering or submitting the document', async () => {
+    stub({ kase: kase({ documents: [doc({ scanState: 'PENDING' })] }) });
+    renderScreen();
+    fireEvent.click(await screen.findByRole('button', { name: UI_COPY.en.contactSupport }));
+    expect(screen.getByTestId('verification-test-location')).toHaveTextContent('/provider/support');
+    expect(mock.history.post).toHaveLength(0);
+  });
+
+  it.each([
+    ['en', 'DRAFT', 'READY_TO_SUBMIT'],
+    ['ar', 'DRAFT', 'READY_TO_SUBMIT'],
+    ['en', 'ACTION_REQUIRED', 'CHANGES_REQUESTED'],
+    ['ar', 'ACTION_REQUIRED', 'CHANGES_REQUESTED'],
+  ] as const)(
+    'recovers the same document from a technical scan failure in %s/%s without another upload',
+    async (lang, state, recoveredState) => {
+      const upload = vi.spyOn(verificationApi, 'uploadEvidence').mockResolvedValue({} as never);
+      stub({ kase: kase({ state, documents: [doc({ scanState: 'SCAN_FAILED' })] }) });
+      renderScreen(lang);
+      const section = await screen.findByTestId('verification-SCAN_RETRY_PENDING');
+      expect(section).toHaveTextContent(STATE_COPY[lang].SCAN_RETRY_PENDING.body);
+      expect(screen.getByTestId('document-d1')).toHaveAttribute('data-scan', 'SCAN_FAILED');
+      expect(screen.getByRole('button', { name: UI_COPY[lang].refresh })).toBeEnabled();
+      expect(screen.getByRole('button', { name: UI_COPY[lang].contactSupport })).toBeEnabled();
+      expect(screen.queryByLabelText(UI_COPY[lang].uploadLabel)).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole('button', { name: STATE_COPY[lang].EVIDENCE_UNUSABLE.cta as string }),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole('button', { name: STATE_COPY[lang].READY_TO_SUBMIT.cta as string }),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole('button', { name: UI_COPY[lang].resubmit }),
+      ).not.toBeInTheDocument();
+      expect(mock.history.post).toHaveLength(0);
+
+      mock.onGet(CASE_URL).reply(200, kase({ state, documents: [doc()] }));
+      fireEvent.click(screen.getByRole('button', { name: UI_COPY[lang].refresh }));
+      await screen.findByTestId(`verification-${recoveredState}`);
+      expect(screen.getByTestId('document-d1')).toHaveAttribute('data-scan', 'CLEAN');
+      expect(
+        screen.getByRole('button', {
+          name:
+            state === 'DRAFT'
+              ? (STATE_COPY[lang].READY_TO_SUBMIT.cta as string)
+              : UI_COPY[lang].resubmit,
+        }),
+      ).toBeEnabled();
+      expect(upload).not.toHaveBeenCalled();
+      expect(mock.history.post).toHaveLength(0);
+    },
+  );
+
+  it('observes an automatic scan retry completing while the provider keeps the page open', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('visible');
+    stub({ kase: kase({ documents: [doc({ scanState: 'SCAN_FAILED' })] }) });
+    renderScreen();
+    await screen.findByTestId('verification-SCAN_RETRY_PENDING');
+    mock.onGet(CASE_URL).reply(200, kase({ documents: [doc()] }));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(30_000);
+    });
+    await screen.findByTestId('verification-READY_TO_SUBMIT');
+    expect(screen.getByTestId('document-d1')).toHaveAttribute('data-scan', 'CLEAN');
+    expect(mock.history.post).toHaveLength(0);
+  });
+
+  it('explains a technical failure while allowing an unrelated missing document to be added', async () => {
+    stub({
+      kase: kase({
+        requirements: [
+          { kind: 'INDIVIDUAL_IDENTITY', serviceCategoryId: null },
+          { kind: 'BUSINESS_REGISTRATION', serviceCategoryId: null },
+        ],
+        documents: [doc({ scanState: 'SCAN_FAILED' })],
+      }),
+    });
+    renderScreen();
+    await screen.findByTestId('verification-EVIDENCE_REQUIRED');
+    expect(screen.getByTestId('verification-documents')).toHaveTextContent(
+      UI_COPY.en.scanRetryNote,
+    );
+    expect(
+      within(screen.getByTestId('verification-documents')).queryByRole('button'),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: STATE_COPY.en.EVIDENCE_REQUIRED.cta as string }),
+    ).toBeEnabled();
+    expect(
+      screen.queryByRole('button', { name: STATE_COPY.en.READY_TO_SUBMIT.cta as string }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('does not invent an evidence or submit operation for an unknown case state', async () => {
+    stub({
+      kase: kase({ state: 'FUTURE_STATE', documents: [doc()], availableActions: ['submit'] }),
+    });
+    renderScreen();
+    await screen.findByTestId('verification-UNAVAILABLE');
+    expect(screen.getAllByRole('button')).toHaveLength(1);
+    expect(screen.getByRole('button', { name: UI_COPY.en.refresh })).toBeEnabled();
+    expect(screen.queryByLabelText(UI_COPY.en.uploadLabel)).not.toBeInTheDocument();
+    expect(mock.history.post).toHaveLength(0);
+  });
+
   it('replaces the selected business document using its real kind', async () => {
     const upload = vi.spyOn(verificationApi, 'uploadEvidence').mockResolvedValue({} as never);
     stub({
@@ -618,6 +1321,9 @@ describe('starting and submitting', () => {
 
       const input = screen.getByLabelText(UI_COPY.en.uploadLabel);
       expect(input).toHaveAttribute('type', 'file');
+      // Identity evidence has a narrower allowlist than the public profile photo.
+      // Advertising WebP here lets providers choose a file the upload API refuses.
+      expect(input).toHaveAttribute('accept', 'image/jpeg,image/png,application/pdf');
       expect(input).toHaveAttribute('hidden');
       expect(input).not.toBeVisible();
       const opener = screen.getByRole('button', { name: STATE_COPY.en[viewState].cta as string });
@@ -671,10 +1377,14 @@ describe('Arabic', () => {
 
 describe('the file picker exists only where it can be used', () => {
   it.each([
+    ['SCAN_RETRY_PENDING', { kase: kase({ documents: [doc({ scanState: 'SCAN_FAILED' })] }) }],
     ['PENDING_REVIEW', { kase: kase({ state: 'SUBMITTED' }) }],
-    ['VERIFIED_ACTIVE', { caps: caps(['SUBMIT_BID']), kase: kase({ state: 'VERIFIED' }) }],
+    [
+      'VERIFIED_ACTIVE',
+      { caps: caps(['SUBMIT_BID', 'MANAGE_VERIFICATION']), kase: kase({ state: 'VERIFIED' }) },
+    ],
     ['SUSPENDED', { caps: caps([], 'PROVIDER_SUSPENDED') }],
-    ['SCANNING', { kase: kase({ requirements: [], documents: [doc({ scanState: 'PENDING' })] }) }],
+    ['SCANNING', { kase: kase({ documents: [doc({ scanState: 'PENDING' })] }) }],
   ])('is absent in %s', async (state, options) => {
     // A file input is exposed as a BUTTON to assistive technology. Leaving it
     // mounted puts a "choose a file" control in the tab order of a screen

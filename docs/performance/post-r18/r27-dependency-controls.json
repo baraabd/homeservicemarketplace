@@ -1,26 +1,26 @@
 {
   "schemaVersion": 1,
-  "experiment": "nov04-open-pr-integration",
-  "priorBaseline": "462418888be76ec642664ea77971da9239ffb02a",
-  "originalPrBase": "d0690dd626eae55d39b9c592ba6639b594a01032",
+  "experiment": "auth-login-mongoose-security-20261111",
+  "priorBaseline": "280e9e23c8a8e54b7b06d507b57a74ba35554eeb",
+  "originalPrBase": "fca0f1c238616602865aa4620092f68bfbb77b87",
   "dependencySha256": {
-    "apps/api/package.json": "888ef21b0c0cd474c16fffc5a470e9e67cbb6293719b8d5a437ae4d3b819f6a1",
+    "apps/api/package.json": "8b861c1ce9a35120f980c382733e658f42c7ec2e2681e906543d4c2967988b59",
     "apps/web/package.json": "16a0c6a4abfe68591b54c73765b301500d3be37037d2ca298458efdba647fac7",
     "package.json": "b8c5564e1f20737a5f269d9d2fa32efe4249e868e8cde814e83394ecf9aeda81",
-    "pnpm-lock.yaml": "6cd977c095d479f18f9556303d263937c099adde00e828016fca36c0c13561bf",
+    "pnpm-lock.yaml": "fd1ac7ba2bbab7e6d7b0088d126d27e670892588dc5eeae837b41f118de83202",
     "vendor/deepmerge/index.cjs": "8b51276b1720fd68734add9e48cf000d36c15de1775d116fbc03c8bc2110dcf3",
     "vendor/deepmerge/index.d.ts": "d9fe3cb82c11b576a7ea5886ae5de649c8242b20d0a1418fb8203b42453ffd41",
     "vendor/deepmerge/license.txt": "6cfc4687cb2f2d86f4a77e6b526290d3878e5e512f3fec2f4cb36a9cb36f798b",
     "vendor/deepmerge/package.json": "228a2e50f2f8312688c965f44d380b906ac06d4e96d5d026eeeac310b0d87795"
   },
   "baseline": {
-    "commit": "280e9e23c8a8e54b7b06d507b57a74ba35554eeb",
-    "tree": "dac6b54598f63a750b69eaf1caabded3b23b48e5",
-    "parent": "462418888be76ec642664ea77971da9239ffb02a"
+    "commit": "a2cd2b5e3a79eb608721bd632ebc8b3f31809281",
+    "tree": "dd1485dffbf80c752ff2e5d8d84bfcdef53f15a6",
+    "parent": "280e9e23c8a8e54b7b06d507b57a74ba35554eeb"
   },
   "repair": {
-    "commit": "e835e1eeae136dbf1048ecb612a665afb1655ad4",
-    "tree": "86841b26b3594d73835a2e7df73a158f919ef787",
-    "parent": "d0690dd626eae55d39b9c592ba6639b594a01032"
+    "commit": "111febd68436acf32e07e9b1110007b65ecd715c",
+    "tree": "f27c99598055255e65c2e5a6739bf0eaad6f004f",
+    "parent": "fca0f1c238616602865aa4620092f68bfbb77b87"
   }
 }

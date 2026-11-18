@@ -42,7 +42,7 @@ jobs:
       - name: Verify exact runtime and safe-start regressions
         run: |
           node scripts/runtime/toolchain.cjs
-          node --test scripts/runtime/toolchain.test.cjs scripts/dev/preflight.test.cjs scripts/dev/workspace-state.test.cjs scripts/dev/compose-smoke-context.test.cjs .github/scripts/merge-integrity.test.mjs
+          node --test scripts/ci/install-browser.test.cjs scripts/runtime/toolchain.test.cjs scripts/dev/preflight.test.cjs scripts/dev/workspace-state.test.cjs scripts/dev/compose-smoke-context.test.cjs .github/scripts/merge-integrity.test.mjs
       - run: pnpm install --frozen-lockfile
       - name: Assert lockfile remains unchanged
         run: git diff --exit-code -- pnpm-lock.yaml
@@ -64,7 +64,7 @@ jobs:
           node scripts/dev/api-output-check.cjs verify
           pnpm --filter @homeservicemarketplace/web build
       - name: Install Chromium
-        run: pnpm --filter @homeservicemarketplace/web exec playwright install --with-deps chromium
+        run: node scripts/ci/install-browser.cjs
       - name: Reproduce the blank screen, then verify the real dev command
         run: pnpm --filter @homeservicemarketplace/web test:startup
       - name: Upload browser evidence

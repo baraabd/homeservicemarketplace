@@ -4,6 +4,7 @@ import { MemoryRouter } from 'react-router';
 import MockAdapter from 'axios-mock-adapter';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
+import { launchCatalog } from '../../../../test-support/launch-catalog';
 import { api } from '../../../../lib/api';
 import { providerQueryKeys } from '../../../../lib/provider/query-keys';
 import { LanguageProvider } from '../../../i18n/LanguageContext';
@@ -182,6 +183,27 @@ function renderScreen(
 // below on the design that replaced them.
 
 describe('the picker — finding a service at catalogue scale', () => {
+  it('shows the six Arabic launch specialties and submits the selected catalog ID', async () => {
+    mock.onGet('/v1/services').reply(200, { items: launchCatalog });
+    renderScreen(DRAFT(), 'ar');
+    const choices = within(await screen.findByTestId('specialty-choices'));
+    await waitFor(() => expect(choices.getAllByRole('checkbox')).toHaveLength(6));
+    for (const item of launchCatalog) {
+      if (item.isLeaf) {
+        expect(choices.getByTestId('specialty-choice-' + item.id)).toHaveTextContent(item.labelAr);
+      } else {
+        expect(choices.queryByTestId('specialty-choice-' + item.id)).toBeNull();
+      }
+    }
+    fireEvent.click(
+      within(choices.getByTestId('specialty-choice-category-ac-repair')).getByRole('checkbox'),
+    );
+    await waitFor(() => {
+      const sent = mock.history.patch.find((r) => r.url?.endsWith('/SPECIALTIES'));
+      expect(sent && JSON.parse(sent.data).specialtyLeafIds).toEqual(['category-ac-repair']);
+    });
+  });
+
   it('offers every selectable leaf', async () => {
     renderScreen();
     await screen.findByTestId('specialty-choices');

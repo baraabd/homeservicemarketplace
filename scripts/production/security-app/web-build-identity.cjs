@@ -29,6 +29,12 @@ const DOCUMENT_HEADER_CSP = "frame-ancestors 'none'; object-src 'none'; base-uri
 const PUBLIC_WEB_INPUTS = Object.freeze([
   { envName: 'VITE_API_URL', field: 'apiUrl', kind: 'origin', explicit: true },
   {
+    envName: 'VITE_AUTH_COOKIE_PREFIX',
+    field: 'authCookiePrefix',
+    kind: 'cookie-prefix',
+    default: 'hsm',
+  },
+  {
     envName: 'VITE_PROVIDER_ONBOARDING_V2',
     field: 'onboardingV2',
     kind: 'boolean',
@@ -69,6 +75,7 @@ function fail(code, key) {
 
 function readInput(env, input) {
   const raw = env[input.envName];
+  if (raw === '' && input.kind === 'cookie-prefix') fail('WEB_IMAGE_INPUT_INVALID', input.envName);
   if (raw === undefined || raw === '') {
     if (input.explicit) fail('WEB_IMAGE_INPUT_REQUIRED', input.envName);
     return input.default;
@@ -85,6 +92,10 @@ function publicWebConfig(env) {
     if (input.kind === 'boolean') {
       if (raw !== 'true' && raw !== 'false') fail('WEB_IMAGE_INPUT_INVALID', input.envName);
       config[input.field] = raw === 'true';
+    } else if (input.kind === 'cookie-prefix') {
+      if (raw !== raw.trim() || !/^[a-z][a-z0-9_]{0,31}$/.test(raw))
+        fail('WEB_IMAGE_INPUT_INVALID', input.envName);
+      config[input.field] = raw;
     } else if (input.kind === 'transports') {
       if (!TRANSPORTS.includes(raw)) fail('WEB_IMAGE_INPUT_INVALID', input.envName);
       config[input.field] = raw;

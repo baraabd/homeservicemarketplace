@@ -8,6 +8,7 @@ import type {
 } from '@homeservicemarketplace/contracts';
 import { approveProviderReview, requestProviderReviewChanges, requestStatus } from '../api';
 import { BLOCKER_LABELS, REVIEW_COPY, TASK_LABELS, type ReviewLanguage } from '../copy';
+import { noReviewActionMessage } from '../application-presentation';
 import { ReviewBadge, ReviewBanner, StatusBadge } from './ReviewPrimitives';
 import { formatReviewDate } from '../format-review-date';
 import {
@@ -237,7 +238,12 @@ export function ReviewDecisionPanel({
             <small>{t.privateHint}</small>
           </label>
         )}
-        {!review.availableActions.length && <p className="ar-muted">{t.noActions}</p>}
+        {!review.availableActions.length && (
+          <div data-testid="review-next-step">
+            <h3 className="ar-subheading">{t.nextStep}</h3>
+            <p className="ar-muted">{noReviewActionMessage(review, lang)}</p>
+          </div>
+        )}
         {review.availableActions.map((action) => (
           <button
             key={action}
@@ -276,6 +282,11 @@ export function ReviewDecisionPanel({
       <section className="ar-card ar-stack">
         <h2 className="ar-heading">{t.capabilities}</h2>
         <p className="ar-muted">{t.capabilityHint}</p>
+        {review.verification?.workAccess?.active && !review.canWork && (
+          <p className="ar-muted" data-testid="review-live-grant-blocked">
+            {t.liveGrantBlocked}
+          </p>
+        )}
         <ul className="ar-list">
           {review.capabilities.capabilities
             .filter((entry) => capabilityLabels[entry.capability])

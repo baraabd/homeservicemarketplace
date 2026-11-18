@@ -273,6 +273,27 @@ describe('AuthenticationService', () => {
       expect(rows[0].acceptedAt).toBeInstanceOf(Date);
     });
 
+    it('refuses signup uniformly when the default role is missing', async () => {
+      const h = makeHarness();
+      h.roles.findByName.mockResolvedValueOnce(null);
+      await expect(
+        h.svc.register(
+          {
+            email: 'n@example.com',
+            password: 'x'.repeat(12),
+            firstName: 'A',
+            lastName: 'B',
+            legalAcceptance,
+          },
+          ctx,
+        ),
+      ).rejects.toMatchObject({ code: 'DEPENDENCY_UNAVAILABLE', status: 503 });
+      expect(h.users.findByEmail).not.toHaveBeenCalled();
+      expect(h.users.create).not.toHaveBeenCalled();
+      expect(h.fakeTx.userLegalAcceptance.createMany).not.toHaveBeenCalled();
+      expect(h.mail.send).not.toHaveBeenCalled();
+    });
+
     it('K02: a stale policy version is refused (409) BEFORE any account lookup', async () => {
       const h = makeHarness();
       await expect(
@@ -294,41 +315,47 @@ describe('AuthenticationService', () => {
       expect(h.users.create).not.toHaveBeenCalled();
     });
 
-    it('K02: production refuses acceptance of DRAFT policy text unless explicitly allowed', async () => {
-      const h = makeHarness();
-      const prodConfig = {
-        get: (k: string) =>
-          k === 'NODE_ENV' ? 'production' : k === 'AUTH_ANTI_ENUM_DELAY_MS' ? 0 : undefined,
-      } as unknown as AppConfigService;
-      const prodSvc = new AuthenticationService(
-        h.users,
-        h.roles,
-        h.passwords,
-        h.verification,
-        h.otp,
-        h.sessions,
-        h.attempts,
-        h.tx,
-        h.audit,
-        prodConfig,
-        h.securityEvents,
-        h.mail,
-        new LegalAcceptanceService(prodConfig),
-      );
-      await expect(
-        prodSvc.register(
-          {
-            email: 'n@example.com',
-            password: 'x'.repeat(12),
-            firstName: 'A',
-            lastName: 'B',
-            legalAcceptance,
+    it.each([undefined, true, false])(
+      'production refuses draft policies with rehearsal flag %s',
+      async (flag) => {
+        const h = makeHarness();
+        const prodConfig = {
+          get: (key: string) => {
+            if (key === 'NODE_ENV') return 'production';
+            if (key === 'LEGAL_DRAFT_ACCEPTANCE_ALLOWED') return flag;
+            return key === 'AUTH_ANTI_ENUM_DELAY_MS' ? 0 : undefined;
           },
-          ctx,
-        ),
-      ).rejects.toMatchObject({ status: 409, details: { reason: 'LEGAL_ACCEPTANCE_CLOSED' } });
-      expect(h.users.findByEmail).not.toHaveBeenCalled();
-    });
+        } as unknown as AppConfigService;
+        const prodSvc = new AuthenticationService(
+          h.users,
+          h.roles,
+          h.passwords,
+          h.verification,
+          h.otp,
+          h.sessions,
+          h.attempts,
+          h.tx,
+          h.audit,
+          prodConfig,
+          h.securityEvents,
+          h.mail,
+          new LegalAcceptanceService(prodConfig),
+        );
+        await expect(
+          prodSvc.register(
+            {
+              email: 'n@example.com',
+              password: 'x'.repeat(12),
+              firstName: 'A',
+              lastName: 'B',
+              legalAcceptance,
+            },
+            ctx,
+          ),
+        ).rejects.toMatchObject({ status: 409, details: { reason: 'LEGAL_ACCEPTANCE_CLOSED' } });
+        expect(h.users.findByEmail).not.toHaveBeenCalled();
+      },
+    );
 
     it('anti-enumeration timing floor: register pads the response so duplicate vs new takes >= AUTH_ANTI_ENUM_DELAY_MS', async () => {
       // Build a service with the floor enabled (the suite-level config sets 0).

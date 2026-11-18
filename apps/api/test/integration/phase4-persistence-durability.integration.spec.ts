@@ -349,7 +349,14 @@ d('Phase 4 — onboarding persistence is durable across sessions (real Postgres 
     await cleanupCategories();
 
     await prisma.serviceCategory.create({
-      data: { id: CAT_ROOT, slug: CAT_ROOT, labelEn: 'Plumbing', labelAr: 'سباكة', icon: 'wrench' },
+      data: {
+        id: CAT_ROOT,
+        slug: CAT_ROOT,
+        labelEn: 'Plumbing',
+        labelAr: 'سباكة',
+        icon: 'wrench',
+        isLeaf: false,
+      },
     });
     await prisma.serviceCategory.create({
       data: {

@@ -3,3 +3,5 @@
 import './admin-review-workflow.cases';
 import './admin-review-media-corrections.cases';
 import './admin-review-lifecycle.cases';
+import './provider-verification-recovery.cases';
+import './provider-lifecycle-recovery.cases';

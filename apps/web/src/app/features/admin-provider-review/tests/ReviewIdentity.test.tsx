@@ -360,8 +360,8 @@ describe('current evidence and historical replacements', () => {
       expect(preview).toBeDisabled();
       expect(preview).toHaveAccessibleDescription(
         lang === 'ar'
-          ? 'يتاح فتح الوثيقة بعد اكتمال فحص الأمان. حدّث البيانات للتحقق من تقدم الفحص.'
-          : 'Opening becomes available after the safety check completes. Refresh to check progress.',
+          ? 'يتاح فتح الوثيقة بعد اكتمال الفحص الآلي لأمان الملف. تُحدّث حالته تلقائيًا.'
+          : 'Opening becomes available after the automatic safety check completes. Its status updates automatically.',
       );
       expect(
         screen.queryByText(lang === 'ar' ? 'غير متاح للفتح' : 'Not available to open'),

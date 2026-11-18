@@ -775,7 +775,14 @@ d('Phase 3 Journey C (reopened) — complete canonical activation (real Postgres
     await prisma.userRole.create({ data: { userId: ADMIN, roleId: adminRole.id } });
 
     await prisma.serviceCategory.create({
-      data: { id: ROOT, slug: ROOT, labelEn: 'Electrical', labelAr: 'كهرباء', icon: 'bolt' },
+      data: {
+        id: ROOT,
+        slug: ROOT,
+        labelEn: 'Electrical',
+        labelAr: 'كهرباء',
+        icon: 'bolt',
+        isLeaf: false,
+      },
     });
     await prisma.serviceCategory.create({
       data: {

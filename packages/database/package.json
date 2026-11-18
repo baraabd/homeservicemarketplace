@@ -32,6 +32,7 @@
     "grant:provider": "dotenv -e ../../.env -- node dist/admin-access-grant.js --provider",
     "verify:migrations": "node scripts/verify-constraint-migrations.mjs",
     "backfill:provider-lifecycle": "dotenv -e ../../.env -- node scripts/backfill-provider-lifecycle.mjs",
+    "catalog:init": "node dist/service-catalog-init.js",
     "catalog:group": "dotenv -e ../../.env -- node scripts/group-flat-categories.mjs",
     "work-access:readiness": "dotenv -e ../../.env -- node dist/work-access-readiness.js",
     "market:init:ksa": "dotenv -e ../../.env -- node dist/market-init.js"

@@ -8,6 +8,8 @@ import {
   csrfCookieOptions,
   refreshCookieOptions,
   REFRESH_PATH,
+  authCookieNames,
+  clearAuthCookies,
 } from './cookies';
 
 function makeConfig(overrides: Record<string, unknown> = {}): AppConfigService {
@@ -21,6 +23,41 @@ function makeConfig(overrides: Record<string, unknown> = {}): AppConfigService {
 }
 
 describe('cookie helpers', () => {
+  it('keeps default names and clears only its configured namespace', () => {
+    expect(authCookieNames(makeConfig())).toEqual({
+      access: 'hsm_at',
+      refresh: 'hsm_rt',
+      csrf: 'hsm_csrf',
+    });
+    const config = makeConfig({ AUTH_COOKIE_PREFIX: 'hsm_staging' });
+    expect(authCookieNames(config)).toEqual({
+      access: 'hsm_staging_at',
+      refresh: 'hsm_staging_rt',
+      csrf: 'hsm_staging_csrf',
+    });
+    const clearCookie = jest.fn();
+    clearAuthCookies({ clearCookie } as never, config);
+    expect(clearCookie.mock.calls.map(([name]) => name)).toEqual([
+      'hsm_staging_at',
+      'hsm_staging_rt',
+      'hsm_staging_csrf',
+    ]);
+    expect(clearCookie.mock.calls[1][1]).toMatchObject({
+      path: REFRESH_PATH,
+      httpOnly: true,
+      sameSite: 'strict',
+    });
+  });
+
+  it.each(['', 'HSM', 'hsm-staging', 'hsm;injected', 'hsm.', 'hsm\n', 'x'.repeat(33)])(
+    'rejects invalid prefix %s',
+    (prefix) => {
+      expect(() => authCookieNames(makeConfig({ AUTH_COOKIE_PREFIX: prefix }))).toThrow(
+        /AUTH_COOKIE_PREFIX/,
+      );
+    },
+  );
+
   describe('accessCookieOptions', () => {
     it('is HttpOnly, Secure, and scoped to root path', () => {
       const opts = accessCookieOptions(makeConfig(), 600);

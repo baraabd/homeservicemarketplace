@@ -16,7 +16,7 @@ const state = vi.hoisted(() => ({
     isLoading: false,
     user: null as { id: string; roles: string[]; email: string } | null,
   },
-  imports: { admin: 0, home: 0, provider: 0, onboarding: 0, auth: 0, disputes: 0 },
+  imports: { admin: 0, denial: 0, home: 0, provider: 0, onboarding: 0, auth: 0, disputes: 0 },
   coordinatorMounts: 0,
   coordinatorUnmounts: 0,
 }));
@@ -48,6 +48,10 @@ vi.mock('./pages/AuthPages', () => {
 vi.mock('./pages/AdminPage', () => {
   state.imports.admin++;
   return { AdminPage: () => <h1>Admin workspace</h1> };
+});
+vi.mock('./components/admin/AdminAccessRequired', async (importOriginal) => {
+  state.imports.denial++;
+  return importOriginal();
 });
 vi.mock('./pages/HomePage', () => {
   state.imports.home++;
@@ -154,6 +158,7 @@ describe('actual route table with deferred pages', () => {
     expect(screen.getByRole('heading', { name: 'App selector' })).toBeVisible();
     expect(state.imports).toEqual({
       admin: 0,
+      denial: 0,
       home: 0,
       provider: 0,
       onboarding: 0,
@@ -168,6 +173,7 @@ describe('actual route table with deferred pages', () => {
       await screen.findByRole('heading', { name: 'Login /admin/reviews?status=PENDING#queue' }),
     ).toBeVisible();
     expect(state.imports.admin).toBe(0);
+    expect(state.imports.denial).toBe(0);
 
     await act(async () => {
       await router.navigate('/home');
@@ -175,12 +181,23 @@ describe('actual route table with deferred pages', () => {
     expect(await screen.findByRole('heading', { name: 'Login /home' })).toBeVisible();
     expect(state.imports.home).toBe(0);
 
+    state.auth.isLoading = true;
+    await act(async () => {
+      await router.navigate('/admin?waiting-for-auth');
+    });
+    expect(state.imports.admin).toBe(0);
+    expect(state.imports.denial).toBe(0);
+    expect(
+      screen.queryByRole('heading', { name: 'Admin access required' }),
+    ).not.toBeInTheDocument();
+
     signIn('customer-a', ['customer']);
     await act(async () => {
       await router.navigate('/admin');
     });
     expect(await screen.findByRole('heading', { name: 'Admin access required' })).toBeVisible();
     expect(state.imports.admin).toBe(0);
+    expect(state.imports.denial).toBe(1);
 
     signIn('admin-a', ['admin']);
     await act(async () => {
@@ -189,6 +206,7 @@ describe('actual route table with deferred pages', () => {
     });
     expect(await screen.findByRole('heading', { name: 'Admin workspace' })).toBeVisible();
     expect(state.imports.admin).toBe(1);
+    expect(state.imports.denial).toBe(1);
     expect(state.imports.provider).toBe(0);
     expect(state.imports.onboarding).toBe(0);
   });

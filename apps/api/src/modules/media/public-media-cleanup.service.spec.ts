@@ -68,43 +68,28 @@ function harness(rows: Asset[], storage?: { deleteObject?: jest.Mock }) {
   // and the PUBLIC scope on its own, which made those assertions vacuous:
   // mutation testing removed both from the service and all thirteen tests
   // still passed. The fake was doing the work the code was being credited for.
-  const eligible = (where: Record<string, unknown>, take?: number) => {
-    const or = where.OR as Array<Record<string, { lte?: Date }>> | undefined;
-    const now = or?.[0]?.retainUntil?.lte;
-    const abandonedCutoff = or?.[1]?.uploadExpiresAt?.lte;
-    const wantsVisibility = 'visibility' in where ? where.visibility : undefined;
-    const wantsUndeleted = 'deletedAt' in where && where.deletedAt === null;
-    // R06 — read from the `where`, like everything else here.
-    const wantsUnattached = 'serviceRequestId' in where && where.serviceRequestId === null;
-    const unclaimedBranch = (where.OR as Array<Record<string, unknown>> | undefined)?.[2] as
-      | { purpose?: string; uploadExpiresAt?: { lte?: Date } }
-      | undefined;
+  const matches = (where: Record<string, unknown>, row: Asset): boolean =>
+    Object.entries(where).every(([field, expected]) => {
+      if (field === 'OR' || field === 'AND') {
+        const clauses = expected as Record<string, unknown>[];
+        return field === 'OR'
+          ? clauses.some((clause) => matches(clause, row))
+          : clauses.every((clause) => matches(clause, row));
+      }
+      const actual = (row as unknown as Record<string, unknown>)[field];
+      if (expected === null || typeof expected !== 'object') return actual === expected;
+      const filter = expected as { not?: unknown; lte?: Date };
+      if ('not' in filter && actual === filter.not) return false;
+      if (filter.lte !== undefined && !(actual instanceof Date && actual <= filter.lte))
+        return false;
+      return true;
+    });
 
-    return rows
-      .filter((r) => {
-        if (wantsVisibility !== undefined && r.visibility !== wantsVisibility) return false;
-        if (wantsUndeleted && r.deletedAt !== null) return false;
-        if (wantsUnattached && r.serviceRequestId !== null) return false;
-        if (!or) return true;
-        const retired = now !== undefined && r.retainUntil !== null && r.retainUntil <= now;
-        const abandoned =
-          abandonedCutoff !== undefined &&
-          r.uploadCompletedAt === null &&
-          r.uploadExpiresAt !== null &&
-          r.uploadExpiresAt <= abandonedCutoff;
-        const unclaimedCutoff = unclaimedBranch?.uploadExpiresAt?.lte;
-        const unclaimed =
-          unclaimedBranch !== undefined &&
-          unclaimedCutoff !== undefined &&
-          r.purpose === unclaimedBranch.purpose &&
-          r.uploadCompletedAt !== null &&
-          r.uploadExpiresAt !== null &&
-          r.uploadExpiresAt <= unclaimedCutoff;
-        return retired || abandoned || unclaimed;
-      })
+  const eligible = (where: Record<string, unknown>, take?: number) =>
+    rows
+      .filter((row) => matches(where, row))
       .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime())
       .slice(0, take ?? rows.length);
-  };
 
   const prisma = {
     client: {
@@ -119,18 +104,39 @@ function harness(rows: Asset[], storage?: { deleteObject?: jest.Mock }) {
         ),
         updateMany: jest.fn(
           async (args: {
-            where: { id: string; deletedAt?: null; serviceRequestId?: null; retainUntil?: null };
+            where: {
+              id: string;
+              visibility?: string;
+              purpose?: null;
+              deletedAt?: null;
+              serviceRequestId?: null;
+              retainUntil?: null;
+              uploadCompletedAt?: null;
+              uploadExpiresAt?: { not: null; lte: Date };
+            };
             data: { deletedAt: Date; retainUntil?: Date };
           }) => {
             const row = rows.find((r) => r.id === args.where.id);
             if (!row) return { count: 0 };
             // R06 — the fence. Each condition is honoured only if asked for.
             if (args.data.retainUntil !== undefined) {
+              if ('visibility' in args.where && row.visibility !== args.where.visibility)
+                return { count: 0 };
+              if ('purpose' in args.where && row.purpose !== args.where.purpose)
+                return { count: 0 };
               if ('serviceRequestId' in args.where && row.serviceRequestId !== null) {
                 return { count: 0 };
               }
               if ('retainUntil' in args.where && row.retainUntil !== null) return { count: 0 };
               if ('deletedAt' in args.where && row.deletedAt !== null) return { count: 0 };
+              if ('uploadCompletedAt' in args.where && row.uploadCompletedAt !== null)
+                return { count: 0 };
+              if (
+                args.where.uploadExpiresAt &&
+                (row.uploadExpiresAt === null ||
+                  row.uploadExpiresAt > args.where.uploadExpiresAt.lte)
+              )
+                return { count: 0 };
               row.retainUntil = args.data.retainUntil;
               return { count: 1 };
             }
@@ -158,12 +164,37 @@ const sweep = (h: ReturnType<typeof harness>, limit = 50) =>
   h.service.sweep({ limit, reservationGraceMs: GRACE_MS, now: NOW });
 
 describe('PublicMediaCleanupService — what is eligible', () => {
-  it('retires an asset the provider asked to remove', async () => {
+  it('cleans a retired legacy asset with no recorded upload deadline', async () => {
     const h = harness([asset({ id: 'removed', retainUntil: ago(1000) })]);
     const result = await sweep(h);
 
     expect(h.deleteObject).toHaveBeenCalledTimes(1);
     expect(result).toMatchObject({ examined: 1, deleted: 1, raced: 0, failed: 0 });
+  });
+
+  it('waits for an issued upload grant to expire before physically deleting a retired upload', async () => {
+    const uploadExpiresAt = new Date(NOW.getTime() + 3_600_000);
+    const retired = asset({
+      id: 'uploaded-then-removed',
+      uploadCompletedAt: NOW,
+      retainUntil: NOW,
+      uploadExpiresAt,
+    });
+    const h = harness([retired]);
+
+    // A replayed PUT may still write the same key during this window. Public
+    // reads already deny retainUntil, but deletedAt must remain unset so the
+    // cleanup pass after expiry can remove even replayed bytes.
+    expect(await sweep(h)).toMatchObject({ examined: 0, deleted: 0 });
+    expect(h.deleteObject).not.toHaveBeenCalled();
+    expect(retired.deletedAt).toBeNull();
+    expect(retired.retainUntil).toEqual(NOW);
+
+    expect(
+      await h.service.sweep({ limit: 50, reservationGraceMs: GRACE_MS, now: uploadExpiresAt }),
+    ).toMatchObject({ examined: 1, deleted: 1 });
+    expect(h.deleteObject).toHaveBeenCalledTimes(1);
+    expect(retired.deletedAt).not.toBeNull();
   });
 
   it('NEVER sweeps an active asset', async () => {
@@ -202,6 +233,38 @@ describe('PublicMediaCleanupService — what is eligible', () => {
 
     expect(h.deleteObject).toHaveBeenCalledTimes(1);
     expect(result.deleted).toBe(1);
+    expect(h.rows[0].retainUntil).toEqual(NOW);
+  });
+
+  it.each(['claimed', 'refreshed'] as const)(
+    'does not delete a reservation %s after the candidate snapshot',
+    async (change) => {
+      const h = harness([
+        asset({ id: 'contested', uploadCompletedAt: null, uploadExpiresAt: ago(GRACE_MS + 1) }),
+      ]);
+      const read = h.prisma.client.mediaAsset.findMany.getMockImplementation()!;
+      h.prisma.client.mediaAsset.findMany.mockImplementationOnce(async (args) => {
+        const candidates = await read(args);
+        if (change === 'claimed') h.rows[0].uploadCompletedAt = NOW;
+        else h.rows[0].uploadExpiresAt = new Date(NOW.getTime() + 60_000);
+        return candidates;
+      });
+      expect(await sweep(h)).toMatchObject({ examined: 1, deleted: 0, raced: 1 });
+      expect(h.deleteObject).not.toHaveBeenCalled();
+      expect(h.rows[0].retainUntil).toBeNull();
+      expect(h.rows[0].deletedAt).toBeNull();
+    },
+  );
+
+  it('fences abandoned bytes before deletion and preserves retry eligibility when storage fails', async () => {
+    const h = harness([asset({ uploadCompletedAt: null, uploadExpiresAt: ago(GRACE_MS + 1) })]);
+    h.deleteObject.mockImplementationOnce(async () => {
+      expect(h.rows[0].retainUntil).toEqual(NOW);
+      throw new Error('storage unavailable');
+    });
+    expect(await sweep(h)).toMatchObject({ deleted: 0, failed: 1 });
+    expect(h.rows[0].deletedAt).toBeNull();
+    expect(await sweep(h)).toMatchObject({ deleted: 1, failed: 0 });
   });
 
   it('never considers RESTRICTED evidence, whatever its retention says', async () => {

@@ -17,7 +17,6 @@ import { useAuthIdentity } from '../../../lib/use-auth-identity';
 import { ProviderStatusState } from './ProviderStatusState';
 import { ProviderOnboardingWizard } from './onboarding/ProviderOnboardingWizard';
 import { ProviderActivationScreen } from '../../features/provider-onboarding-v2/components/ProviderActivationScreen';
-import { ProviderStatusCentreScreen } from '../../features/provider-onboarding-v2/components/ProviderStatusCentreScreen';
 import {
   ProviderNotificationsBellButton,
   ProviderNotificationsDrawer,
@@ -84,6 +83,15 @@ const ProviderBookingDetailScreen = lazy(() =>
   import('./screens/ProviderBookingDetailScreen').then((m) => ({
     default: m.ProviderBookingDetailScreen,
   })),
+);
+// The status centre reads identity-review state; its verification copy and
+// helpers should load only when this route is opened, like workspace tabs.
+const ProviderStatusCentreScreen = lazy(() =>
+  import('../../features/provider-onboarding-v2/components/ProviderStatusCentreScreen').then(
+    (m) => ({
+      default: m.ProviderStatusCentreScreen,
+    }),
+  ),
 );
 
 /**
@@ -456,7 +464,9 @@ function ProviderAppRoutes({ checksWorkspaceAccess }: { checksWorkspaceAccess: b
           // them and belongs on their application, not on a status board that
           // would tell them we are reviewing something they have not sent.
           onboardingV2 && (profile.status === 'PENDING_REVIEW' || isActive) ? (
-            <ProviderStatusCentreScreen />
+            <Suspense fallback={<ShellSpinner testId="provider-status-loading" />}>
+              <ProviderStatusCentreScreen />
+            </Suspense>
           ) : hasMarketplace ? (
             <Navigate to={home} replace />
           ) : (

@@ -926,6 +926,52 @@ describe('submit — completeness and idempotency', () => {
 // OPTIMISTIC CONCURRENCY
 // ─────────────────────────────────────────────────────────────────────────────
 describe('patchStep — concurrency', () => {
+  it('persists related changes on the same transaction only after the version write succeeds', async () => {
+    const h = build();
+    const effect = jest.fn(async () => {
+      expect(h.drafts.advanceIfVersion).toHaveBeenCalled();
+    });
+    await h.service.patchStep('u-1', 'IDENTITY', { version: 3, profileImageUrl: null }, effect);
+    expect(effect).toHaveBeenCalledWith(h.trx, {
+      profileImageUrl: 'https://cdn.example.test/ada.jpg',
+    });
+  });
+
+  it.each(['stale', 'lost-race', 'review-locked'] as const)(
+    'does not persist related changes when the step is %s',
+    async (condition) => {
+      const h = build({
+        advanceCount: condition === 'lost-race' ? 0 : 1,
+        profile: makeCompleteProfile({
+          onboardingState: condition === 'review-locked' ? 'SUBMITTED' : 'DRAFT',
+        }),
+      });
+      const effect = jest.fn();
+      await expect(
+        h.service.patchStep(
+          'u-1',
+          'IDENTITY',
+          {
+            version: condition === 'stale' ? 1 : 3,
+            profileImageUrl: null,
+          },
+          effect,
+        ),
+      ).rejects.toMatchObject({ status: 409 });
+      expect(effect).not.toHaveBeenCalled();
+    },
+  );
+
+  it('propagates related persistence failures to the transaction runner', async () => {
+    const h = build();
+    const failure = new Error('ledger unavailable');
+    await expect(
+      h.service.patchStep('u-1', 'IDENTITY', { version: 3, profileImageUrl: null }, async () => {
+        throw failure;
+      }),
+    ).rejects.toBe(failure);
+  });
+
   it('accepts a patch at the current version', async () => {
     const h = build();
     await h.service.patchStep('u-1', 'PROFILE', { version: 3, bio: 'A new bio, long enough.' });

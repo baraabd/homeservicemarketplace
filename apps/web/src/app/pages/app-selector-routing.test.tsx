@@ -1,3 +1,4 @@
+import { CURRENT_LEGAL_DOCUMENTS } from '@homeservicemarketplace/contracts';
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import MockAdapter from 'axios-mock-adapter';
@@ -227,22 +228,7 @@ describe('Provider intent survives the entire auth flow', () => {
       let otpVerified = false;
       mock.onGet('/v1/auth/me').reply(() => (otpVerified ? [200, MOCK_ME] : [401, {}]));
       mock.onGet('/v1/legal/documents').reply(200, {
-        documents: [
-          {
-            kind: 'TERMS_OF_SERVICE',
-            version: 't-test',
-            status: 'DRAFT',
-            approvalReference: null,
-            path: '/legal/terms',
-          },
-          {
-            kind: 'PRIVACY_NOTICE',
-            version: 'p-test',
-            status: 'DRAFT',
-            approvalReference: null,
-            path: '/legal/privacy',
-          },
-        ],
+        documents: Object.values(CURRENT_LEGAL_DOCUMENTS),
         acceptanceOpen: true,
       });
       mock.onPost('/v1/auth/refresh').reply(401, {});
@@ -324,22 +310,7 @@ describe('Provider intent survives the entire auth flow', () => {
       let otpVerified = false;
       mock.onGet('/v1/auth/me').reply(() => (otpVerified ? [200, MOCK_ME] : [401, {}]));
       mock.onGet('/v1/legal/documents').reply(200, {
-        documents: [
-          {
-            kind: 'TERMS_OF_SERVICE',
-            version: 't-test',
-            status: 'DRAFT',
-            approvalReference: null,
-            path: '/legal/terms',
-          },
-          {
-            kind: 'PRIVACY_NOTICE',
-            version: 'p-test',
-            status: 'DRAFT',
-            approvalReference: null,
-            path: '/legal/privacy',
-          },
-        ],
+        documents: Object.values(CURRENT_LEGAL_DOCUMENTS),
         acceptanceOpen: true,
       });
       mock.onPost('/v1/auth/refresh').reply(401, {});

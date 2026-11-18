@@ -64,6 +64,7 @@ interface ScannableAsset {
   id: string;
   storageKey: string;
   scanState: string;
+  scannedAt: Date | null;
   declaredMimeType: string;
   detectedMimeType: string | null;
   originalFilename: string | null;
@@ -104,6 +105,9 @@ export class EvidenceScanService {
    */
   async scanPending(options: { limit?: number; now?: Date } = {}): Promise<ScanSweepResult> {
     const now = options.now ?? new Date();
+    // Selection uses one cutoff; persistence records each attempt's completion.
+    // A slow batch must not backdate every failure to the sweep's start time.
+    const attemptTime = options.now ? () => now : () => new Date();
     const limit = Math.min(Math.max(1, options.limit ?? DEFAULT_BATCH), MAX_BATCH);
     const retryBefore = new Date(now.getTime() - RETRY_AFTER_SECONDS * 1000);
 
@@ -127,6 +131,7 @@ export class EvidenceScanService {
         storageKey: true,
         purpose: true,
         scanState: true,
+        scannedAt: true,
         declaredMimeType: true,
         detectedMimeType: true,
         originalFilename: true,
@@ -134,7 +139,14 @@ export class EvidenceScanService {
         ownerUserId: true,
         verificationCaseId: true,
       },
-      orderBy: { createdAt: 'asc' },
+      // Never-attempted uploads first, then the least recently attempted retry.
+      // A slow sweep can exceed the cooldown; ordering only by creation time
+      // would select the same old failures again before reaching newer rows.
+      orderBy: [
+        { scannedAt: { sort: 'asc', nulls: 'first' } },
+        { createdAt: 'asc' },
+        { id: 'asc' },
+      ],
       take: limit,
     })) as ScannableAsset[];
 
@@ -158,7 +170,7 @@ export class EvidenceScanService {
       }
       result.examined += 1;
       try {
-        await this.processOne(asset, maxBytes, now, result);
+        await this.processOne(asset, maxBytes, attemptTime, result);
       } catch {
         // A defect in one asset's handling must not abandon the batch. The
         // asset keeps its current state and is picked up next sweep.
@@ -185,7 +197,7 @@ export class EvidenceScanService {
   private async processOne(
     asset: ScannableAsset,
     maxBytes: number,
-    now: Date,
+    attemptTime: () => Date,
     result: ScanSweepResult,
   ): Promise<void> {
     // 1. Read the object. An unreadable object is a scan FAILURE, never a
@@ -194,7 +206,9 @@ export class EvidenceScanService {
     try {
       bytes = await this.readObject(asset.storageKey, maxBytes);
     } catch {
-      await this.write(asset, 'SCAN_FAILED', now, result, { reason: 'STORAGE_UNREADABLE' });
+      await this.write(asset, 'SCAN_FAILED', attemptTime(), result, {
+        reason: 'STORAGE_UNREADABLE',
+      });
       return;
     }
 
@@ -210,7 +224,7 @@ export class EvidenceScanService {
       maxBytes,
     });
     if (!validation.ok) {
-      await this.write(asset, 'REJECTED', now, result, { reason: validation.code });
+      await this.write(asset, 'REJECTED', attemptTime(), result, { reason: validation.code });
       return;
     }
 
@@ -235,11 +249,15 @@ export class EvidenceScanService {
     });
 
     if (!decision.write) {
+      if (asset.scanState === 'SCAN_FAILED' && verdict.state === 'FAILED') {
+        await this.recordFailedRetry(asset, attemptTime(), result);
+        return;
+      }
       result.skipped += 1;
       return;
     }
 
-    await this.write(asset, decision.next, now, result, {
+    await this.write(asset, decision.next, attemptTime(), result, {
       signature: verdict.state === 'INFECTED' ? verdict.signature : undefined,
     });
   }
@@ -285,6 +303,12 @@ export class EvidenceScanService {
     result: ScanSweepResult,
     detail: { reason?: string; signature?: string } = {},
   ): Promise<void> {
+    if (asset.scanState === 'SCAN_FAILED' && next === 'SCAN_FAILED') {
+      // Storage failures also retry. They must not create another copy of the
+      // same outcome audit/event merely because the object is still unavailable.
+      await this.recordFailedRetry(asset, now, result);
+      return;
+    }
     const claimed = await this.tx.run(async (trx) => {
       const client = trx as unknown as typeof this.prisma.client;
 
@@ -370,5 +394,30 @@ export class EvidenceScanService {
       default:
         break;
     }
+  }
+
+  /** A failed retry is a new attempt, not a new verdict. Keep the immutable
+   * outcome history while restarting its cooldown; otherwise the oldest
+   * failures fill every batch and newer uploads never reach the scanner.
+   * Pin both state and attempt time so concurrent workers cannot overwrite a
+   * newer attempt or a terminal decision. No document becomes readable here. */
+  private async recordFailedRetry(
+    asset: ScannableAsset,
+    now: Date,
+    result: ScanSweepResult,
+  ): Promise<void> {
+    const { count } = await this.prisma.client.mediaAsset.updateMany({
+      where: {
+        id: asset.id,
+        purpose: null,
+        scanState: 'SCAN_FAILED',
+        scannedAt: asset.scannedAt,
+        deletedAt: null,
+        erasureStartedAt: null,
+      },
+      data: { scannedAt: now },
+    });
+    if (count === 1) result.failed += 1;
+    else result.skipped += 1;
   }
 }

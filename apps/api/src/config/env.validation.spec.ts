@@ -30,6 +30,18 @@ describe('validateEnv', () => {
     expect(env.MONGODB_MAX_POOL_SIZE).toBe(20);
     expect(env.AUTH_ANTI_ENUM_DELAY_MS).toBe(200);
     expect(env.AUTH_REQUIRE_EMAIL_VERIFICATION).toBe(true);
+    expect(env.AUTH_COOKIE_PREFIX).toBe('hsm');
+  });
+
+  it('accepts an explicit cookie namespace and refuses malformed identifiers', () => {
+    expect(validateEnv({ ...baseEnv, AUTH_COOKIE_PREFIX: 'hsm_staging' }).AUTH_COOKIE_PREFIX).toBe(
+      'hsm_staging',
+    );
+    for (const prefix of ['', 'hsm;other', 'HSM', 'hsm-prod', 'hsm\n', 'x'.repeat(33)]) {
+      expect(() => validateEnv({ ...baseEnv, AUTH_COOKIE_PREFIX: prefix })).toThrow(
+        /AUTH_COOKIE_PREFIX/,
+      );
+    }
   });
 
   describe('required vars', () => {

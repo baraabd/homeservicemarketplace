@@ -115,6 +115,7 @@ describe('reason capture', () => {
 
     await waitFor(() =>
       expect(onRun).toHaveBeenCalledWith({
+        caseId: 'c1',
         action: 'reject',
         reasonCode: 'DOCUMENT_MISMATCH',
         note: 'checked twice',

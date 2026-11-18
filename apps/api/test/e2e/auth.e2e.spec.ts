@@ -449,6 +449,69 @@ describe('Authentication controller (e2e)', () => {
     });
   });
 
+  describe('staging cookie namespace', () => {
+    it('issues namespaced cookies and preserves their security flags', async () => {
+      app = await bootApp({ AUTH_COOKIE_PREFIX: 'hsm_staging' });
+      authService.verifyOtp.mockResolvedValueOnce(issuedSession());
+      const res = await request(app.getHttpServer())
+        .post('/v1/auth/verify-otp')
+        .set('X-Client-Kind', 'web')
+        .send({ challengeId: 'chal-16-plus-chars', code: '123456' });
+      expect(res.status).toBe(200);
+      const cookies = (res.headers['set-cookie'] as unknown as string[]) ?? [];
+      expect(cookies.map((cookie) => cookie.split('=')[0])).toEqual([
+        'hsm_staging_at',
+        'hsm_staging_rt',
+        'hsm_staging_csrf',
+      ]);
+      expect(cookies[0]).toMatch(/HttpOnly/);
+      expect(cookies[1]).toMatch(/Path=\/v1\/auth\/refresh/);
+      expect(cookies[1]).toMatch(/SameSite=Strict/);
+      expect(cookies[2]).not.toMatch(/HttpOnly/);
+    });
+
+    it('refreshes only the staging session when both environments send cookies', async () => {
+      app = await bootApp({ AUTH_COOKIE_PREFIX: 'hsm_staging' });
+      const issued = issuedSession();
+      authService.refresh.mockResolvedValueOnce({
+        issued: issued.issued,
+        roles: issued.roles,
+        userId: issued.user.id,
+      });
+      const res = await request(app.getHttpServer())
+        .post('/v1/auth/refresh')
+        .set('Cookie', [
+          'hsm_rt=production-refresh',
+          'hsm_csrf=production-csrf',
+          'hsm_staging_rt=staging-refresh',
+          'hsm_staging_csrf=staging-csrf',
+        ])
+        .set('X-CSRF-Token', 'staging-csrf');
+      expect(res.status).toBe(200);
+      expect(authService.refresh).toHaveBeenCalledWith(
+        expect.objectContaining({ refreshTokenRaw: 'staging-refresh' }),
+      );
+      const cookies = (res.headers['set-cookie'] as unknown as string[]) ?? [];
+      expect(cookies.every((cookie) => cookie.startsWith('hsm_staging_'))).toBe(true);
+    });
+
+    it('does not fall back to production refresh or CSRF cookies', async () => {
+      app = await bootApp({ AUTH_COOKIE_PREFIX: 'hsm_staging' });
+      const missing = await request(app.getHttpServer())
+        .post('/v1/auth/refresh')
+        .set('Cookie', ['hsm_rt=production-refresh', 'hsm_csrf=production-csrf'])
+        .set('X-CSRF-Token', 'production-csrf');
+      expect(missing.status).toBe(401);
+      const mismatch = await request(app.getHttpServer())
+        .post('/v1/auth/refresh')
+        .set('Cookie', ['hsm_staging_rt=staging-refresh', 'hsm_csrf=production-csrf'])
+        .set('X-CSRF-Token', 'production-csrf');
+      expect(mismatch.status).toBe(400);
+      expect(mismatch.body.error.code).toBe('AUTH_CSRF_FAILED');
+      expect(authService.refresh).not.toHaveBeenCalled();
+    });
+  });
+
   // --- Refresh: cookie XOR header, CSRF ----------------------------------
   describe('POST /v1/auth/refresh', () => {
     it('rejects when BOTH cookie and Authorization-style refresh header are present (ambiguous transport)', async () => {

@@ -102,8 +102,8 @@ export function decideScanWrite(input: {
       return scanner.isRealScanner ? { write: true, next: 'CLEAN' } : NO_CHANGE;
 
     case 'FAILED':
-      // Recorded once, then left alone: rewriting it on every retry would make
-      // updatedAt useless for spotting an asset that is genuinely stuck.
+      // The verdict is recorded once. The service separately records a failed
+      // retry's attempt time to enforce its cooldown without another outcome.
       return current === 'SCAN_FAILED' ? NO_CHANGE : { write: true, next: 'SCAN_FAILED' };
 
     case 'UNAVAILABLE':

@@ -55,8 +55,18 @@ describe('HealthService', () => {
       `${sha}
 `,
     ]) {
-      expect(runtimeSourceSha(value)).toBeNull();
+      expect(runtimeSourceSha(value, '')).toBeNull();
     }
+  });
+
+  it('uses Railway Git metadata for images without a baked revision', () => {
+    const railway = 'c'.repeat(40);
+    const baked = 'b'.repeat(40);
+    expect(runtimeSourceSha('unknown', railway)).toBe(railway);
+    expect(runtimeSourceSha('', railway)).toBe(railway);
+    expect(runtimeSourceSha(baked, railway)).toBe(baked);
+    expect(runtimeSourceSha('bad', railway)).toBeNull();
+    expect(runtimeSourceSha('unknown', 'short')).toBeNull();
   });
 
   it('liveness carries the image revision from HSM_SOURCE_SHA', () => {

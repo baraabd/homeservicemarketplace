@@ -20,7 +20,10 @@ import { Button } from '../ds/Button';
 import { TextField } from '../ds/TextField';
 import { useSwipe } from '../../hooks/useSwipe';
 import { useQuery } from '@tanstack/react-query';
-import type { LegalAcceptanceInput } from '@homeservicemarketplace/contracts';
+import {
+  CURRENT_LEGAL_DOCUMENTS,
+  type LegalAcceptanceInput,
+} from '@homeservicemarketplace/contracts';
 import { getLegalDocuments } from '../../../lib/auth-api';
 // K02 — the policy dialog (Radix Dialog + full bilingual policy text) is
 // loaded only when a policy is opened, keeping it out of the auth chunk
@@ -41,8 +44,11 @@ import { useLang, LangToggle } from '../../i18n/LanguageContext';
 import { COUNTRY_DIAL_CODES, dialForCountry } from '../../../lib/country-dial-codes';
 import { useGeoBootstrap } from '../../../lib/geo-bootstrap';
 import {
+  extractAuthError,
   loginErrorMessage,
   otpErrorMessage,
+  otpRecoveryAction,
+  type OtpRecoveryAction,
   registrationErrorMessage,
   recoveryRequestErrorMessage,
 } from '../../../lib/auth-errors';
@@ -107,6 +113,7 @@ interface EmailOtpPanelProps {
   isResending?: boolean;
   verifyError?: string;
   resendNotice?: string;
+  recovery?: OtpRecoveryAction;
   onRestart?: () => void;
   restartLabel?: string;
   // Experience-aware theming (Sprint 5.1.1). Defaults to seeker so any
@@ -124,13 +131,15 @@ export function EmailOtpPanel({
   isResending,
   verifyError,
   resendNotice,
+  recovery = null,
   onRestart,
   restartLabel,
   experience = AUTH_EXPERIENCES[DEFAULT_EXPERIENCE_ID],
 }: EmailOtpPanelProps) {
   const { lang } = useLang();
   const [code, setCode] = useState('');
-  const canSubmit = code.length === codeLength && !isVerifying && !isResending;
+  const canSubmit =
+    code.length === codeLength && !isVerifying && !isResending && recovery !== 'restart';
   // Ref so any tap/click on the visual boxes can programmatically focus the
   // visually-hidden <input>. Without this, mobile users literally cannot
   // bring up the numeric keyboard (the input is sr-only — offscreen), and
@@ -156,7 +165,7 @@ export function EmailOtpPanel({
           {email ? (
             <>
               {' '}
-              to{' '}
+              {lang === 'ar' ? 'إلى' : 'to'}{' '}
               <span className="text-slate-700" style={{ fontWeight: 600 }}>
                 {email}
               </span>
@@ -217,7 +226,7 @@ export function EmailOtpPanel({
             void onVerify(code);
           }
         }}
-        disabled={isVerifying || isResending}
+        disabled={isVerifying || isResending || recovery === 'restart'}
         aria-invalid={!!verifyError}
         aria-describedby={verifyError ? 'otp-verification-error' : undefined}
         aria-label={`${codeLength}-digit verification code`}
@@ -258,7 +267,7 @@ export function EmailOtpPanel({
       <button
         type="button"
         onClick={() => void onResend()}
-        disabled={isResending || isVerifying}
+        disabled={isResending || isVerifying || recovery !== null}
         className={`${experience.classes.accentText} active:opacity-70 disabled:opacity-50`}
         style={{ fontSize: '13px', fontWeight: 600 }}
       >
@@ -400,31 +409,56 @@ export function LoginScreen({
   const [password, setPassword] = useState('');
   const [showPw, setShowPw] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-  const [emailError, setEmailError] = useState<string | undefined>();
+  const [loginError, setLoginError] = useState<{
+    messages: Record<'en' | 'ar', string>;
+    code: string | null;
+  }>();
   const [challenge, setChallenge] = useState<LoginOtpChallenge | null>(null);
   const [isVerifying, setIsVerifying] = useState(false);
   const [isResending, setIsResending] = useState(false);
-  const [otpError, setOtpError] = useState<string | undefined>();
+  const [otpError, setOtpError] = useState<Record<'en' | 'ar', string> | undefined>();
+  const [otpRecovery, setOtpRecovery] = useState<OtpRecoveryAction>(null);
   const [resendNotice, setResendNotice] = useState<string | undefined>();
   const requestFlight = useRef(false);
+  const credentialsRevision = useRef(0);
 
   const handleLogin = async () => {
     if (requestFlight.current) return;
+    setLoginError(undefined);
     if (!email || !password) {
-      setEmailError(t('emailAddress') + ' / ' + t('password'));
+      setLoginError({
+        messages: {
+          en: 'Email Address / Password',
+          ar: 'البريد الإلكتروني / كلمة المرور',
+        },
+        code: null,
+      });
       return;
     }
     requestFlight.current = true;
-    setEmailError(undefined);
+    const revision = credentialsRevision.current;
     setIsLoading(true);
     try {
       const out = await onLogin(email.trim(), password);
+      // Inputs remain editable during the request. A reply for an earlier
+      // draft must not offer recovery or an OTP challenge for the new draft.
+      if (revision !== credentialsRevision.current) return;
       setChallenge(out);
+      setOtpRecovery(null);
+      setOtpError(undefined);
+      setResendNotice(undefined);
     } catch (err: unknown) {
+      if (revision !== credentialsRevision.current) return;
       // Map the backend's stable error CODE to user copy here — never
       // render response.data.error.message verbatim. That used to leak raw
       // framework text like "Unauthorized Exception" onto the login form.
-      setEmailError(loginErrorMessage(err));
+      setLoginError({
+        messages: {
+          en: loginErrorMessage(err, 'en'),
+          ar: loginErrorMessage(err, 'ar'),
+        },
+        code: extractAuthError(err).code,
+      });
     } finally {
       requestFlight.current = false;
       setIsLoading(false);
@@ -432,7 +466,7 @@ export function LoginScreen({
   };
 
   const handleOtpVerify = async (code: string) => {
-    if (!challenge || requestFlight.current) return;
+    if (!challenge || requestFlight.current || otpRecovery === 'restart') return;
     requestFlight.current = true;
     setIsVerifying(true);
     setOtpError(undefined);
@@ -441,7 +475,12 @@ export function LoginScreen({
       // Success is surfaced by the parent (which navigates to /home or
       // the saved returnTo path). No further UI change needed here.
     } catch (err: unknown) {
-      setOtpError(otpErrorMessage(err, 'verify'));
+      setOtpError({
+        en: otpErrorMessage(err, 'verify', 'en'),
+        ar: otpErrorMessage(err, 'verify', 'ar'),
+      });
+      const recovery = otpRecoveryAction(err, 'verify');
+      if (recovery) setOtpRecovery(recovery);
     } finally {
       requestFlight.current = false;
       setIsVerifying(false);
@@ -449,7 +488,7 @@ export function LoginScreen({
   };
 
   const handleOtpResend = async () => {
-    if (!challenge || requestFlight.current) return;
+    if (!challenge || requestFlight.current || otpRecovery !== null) return;
     requestFlight.current = true;
     setIsResending(true);
     setResendNotice(undefined);
@@ -462,7 +501,12 @@ export function LoginScreen({
           : 'Request received. Check your inbox and use the most recent code.',
       );
     } catch (err: unknown) {
-      setOtpError(otpErrorMessage(err, 'resend'));
+      setOtpError({
+        en: otpErrorMessage(err, 'resend', 'en'),
+        ar: otpErrorMessage(err, 'resend', 'ar'),
+      });
+      const recovery = otpRecoveryAction(err, 'resend');
+      if (recovery) setOtpRecovery(recovery);
     } finally {
       requestFlight.current = false;
       setIsResending(false);
@@ -524,7 +568,7 @@ export function LoginScreen({
 
       {/* ── Card ── */}
       <div className="flex-1 bg-white rounded-t-3xl -mt-6 px-6 pt-8 pb-6">
-        {emailError && onRecoverVerification && (
+        {!challenge && loginError?.code === 'AUTH_ACCOUNT_UNVERIFIED' && onRecoverVerification && (
           <button
             type="button"
             className="text-slate-700 underline mb-3"
@@ -555,12 +599,16 @@ export function LoginScreen({
             onResend={handleOtpResend}
             isVerifying={isVerifying}
             isResending={isResending}
-            verifyError={otpError}
+            verifyError={otpError?.[lang]}
+            recovery={otpRecovery}
             resendNotice={resendNotice}
             experience={experience}
             onRestart={() => {
               setChallenge(null);
+              setOtpRecovery(null);
               setPassword('');
+              setLoginError(undefined);
+              credentialsRevision.current += 1;
               setOtpError(undefined);
               setResendNotice(undefined);
             }}
@@ -572,8 +620,12 @@ export function LoginScreen({
               type="email"
               autoComplete="email"
               value={email}
-              onChange={setEmail}
-              error={emailError}
+              onChange={(value) => {
+                setEmail(value);
+                setLoginError(undefined);
+                credentialsRevision.current += 1;
+              }}
+              error={loginError?.messages[lang]}
               leadingIcon={<Mail size={16} />}
             />
 
@@ -585,7 +637,11 @@ export function LoginScreen({
                 void handleLogin();
               }}
               value={password}
-              onChange={setPassword}
+              onChange={(value) => {
+                setPassword(value);
+                setLoginError(undefined);
+                credentialsRevision.current += 1;
+              }}
               leadingIcon={<Lock size={16} />}
               trailingIcon={
                 <button
@@ -696,7 +752,7 @@ export function SignUpScreen({
   const [email, setEmail] = useState(draft?.email ?? '');
   const [password, setPassword] = useState('');
   const [showPw, setShowPw] = useState(false);
-  const [agreed, setAgreed] = useState(false);
+  const [acceptance, setAcceptance] = useState<LegalAcceptanceInput | null>(null);
   const [policyOpen, setPolicyOpen] = useState<'terms' | 'privacy' | null>(null);
   const legalQuery = useQuery({
     queryKey: ['legal', 'documents'],
@@ -706,7 +762,21 @@ export function SignUpScreen({
   const legalDocs = legalQuery.data;
   const termsDoc = legalDocs?.documents.find((d) => d.kind === 'TERMS_OF_SERVICE');
   const privacyDoc = legalDocs?.documents.find((d) => d.kind === 'PRIVACY_NOTICE');
-  const legalReady = !!termsDoc && !!privacyDoc && legalDocs?.acceptanceOpen === true;
+  // The dialog renders the policy text shipped with this web build. During a
+  // rolling release it can lag behind the API's current document versions.
+  const samePolicies =
+    termsDoc?.version === CURRENT_LEGAL_DOCUMENTS.TERMS_OF_SERVICE.version &&
+    privacyDoc?.version === CURRENT_LEGAL_DOCUMENTS.PRIVACY_NOTICE.version;
+  const legalReady = samePolicies && legalDocs?.acceptanceOpen === true;
+  const agreed =
+    legalReady &&
+    acceptance !== null &&
+    acceptance.termsVersion === termsDoc?.version &&
+    acceptance.privacyVersion === privacyDoc?.version &&
+    acceptance.locale === lang;
+  useEffect(() => {
+    if (acceptance && !agreed) setAcceptance(null);
+  }, [acceptance, agreed]);
   const consentCopy = SIGNUP_CONSENT_COPY[lang === 'ar' ? 'ar' : 'en'];
 
   useEffect(() => {
@@ -718,7 +788,8 @@ export function SignUpScreen({
   const [challenge, setChallenge] = useState<LoginOtpChallenge | null>(null);
   const [isVerifying, setIsVerifying] = useState(false);
   const [isResending, setIsResending] = useState(false);
-  const [otpError, setOtpError] = useState<string | undefined>();
+  const [otpError, setOtpError] = useState<Record<'en' | 'ar', string> | undefined>();
+  const [otpRecovery, setOtpRecovery] = useState<OtpRecoveryAction>(null);
   const [resendNotice, setResendNotice] = useState<string | undefined>();
   const requestFlight = useRef(false);
 
@@ -746,28 +817,29 @@ export function SignUpScreen({
       setIsLoading(true);
       setSignUpError(undefined);
       try {
-        if (!termsDoc || !privacyDoc) return;
+        if (!canStep2 || !acceptance) return;
         const issued = await onCredentialsSubmit({
           name,
           email: email.trim(),
           password,
-          legalAcceptance: {
-            termsVersion: termsDoc.version,
-            privacyVersion: privacyDoc.version,
-            locale: lang === 'ar' ? 'ar' : 'en',
-          },
+          legalAcceptance: acceptance,
         });
         clearSignupDraft();
         setChallenge(issued);
+        setOtpRecovery(null);
+        setOtpError(undefined);
+        setResendNotice(undefined);
         setStep(3);
       } catch (err: unknown) {
         if (legalRefusalReason(err) === 'LEGAL_VERSION_STALE') {
           // The policy changed while the form was open: the box is cleared
           // so the person accepts the version they can now read.
-          setAgreed(false);
+          setAcceptance(null);
           void legalQuery.refetch();
           setSignUpError(consentCopy.stale);
         } else if (legalRefusalReason(err) === 'LEGAL_ACCEPTANCE_CLOSED') {
+          setAcceptance(null);
+          void legalQuery.refetch();
           setSignUpError(consentCopy.closed);
         } else {
           setSignUpError(
@@ -787,7 +859,7 @@ export function SignUpScreen({
   };
 
   const handleOtpVerify = async (code: string) => {
-    if (!challenge || requestFlight.current) return;
+    if (!challenge || requestFlight.current || otpRecovery === 'restart') return;
     requestFlight.current = true;
     setIsVerifying(true);
     setOtpError(undefined);
@@ -795,7 +867,12 @@ export function SignUpScreen({
       await onOtpVerify(challenge.challengeId, code);
       // Parent takes over (navigation to /home / returnTo).
     } catch (err: unknown) {
-      setOtpError(otpErrorMessage(err, 'verify'));
+      setOtpError({
+        en: otpErrorMessage(err, 'verify', 'en'),
+        ar: otpErrorMessage(err, 'verify', 'ar'),
+      });
+      const recovery = otpRecoveryAction(err, 'verify');
+      if (recovery) setOtpRecovery(recovery);
     } finally {
       requestFlight.current = false;
       setIsVerifying(false);
@@ -803,7 +880,7 @@ export function SignUpScreen({
   };
 
   const handleOtpResend = async () => {
-    if (!challenge || requestFlight.current) return;
+    if (!challenge || requestFlight.current || otpRecovery !== null) return;
     requestFlight.current = true;
     setIsResending(true);
     setResendNotice(undefined);
@@ -816,12 +893,50 @@ export function SignUpScreen({
           : 'Request received. Check your inbox and use the most recent code.',
       );
     } catch (err: unknown) {
-      setOtpError(otpErrorMessage(err, 'resend'));
+      setOtpError({
+        en: otpErrorMessage(err, 'resend', 'en'),
+        ar: otpErrorMessage(err, 'resend', 'ar'),
+      });
+      const recovery = otpRecoveryAction(err, 'resend');
+      if (recovery) setOtpRecovery(recovery);
     } finally {
       requestFlight.current = false;
       setIsResending(false);
     }
   };
+
+  if (step < 3 && legalDocs && !legalReady) {
+    return (
+      <SwipeableScreen onBack={onBack}>
+        <div className="flex min-h-svh flex-col bg-white">
+          <AuthTopBar title={t('createAccount')} onBack={onBack} />
+          <main className="mx-auto flex w-full max-w-md flex-col gap-4 px-6 py-8">
+            <h2 role="status" className="text-lg font-semibold text-slate-900">
+              {legalDocs.acceptanceOpen ? consentCopy.updateRequired : consentCopy.closed}
+            </h2>
+            <a className="min-h-11 underline" href="/legal/terms">
+              {consentCopy.readTerms}
+            </a>
+            <a className="min-h-11 underline" href="/legal/privacy">
+              {consentCopy.readPrivacy}
+            </a>
+            <Button variant="primary" tone={experience.id} onClick={onBack}>
+              {t('login')}
+            </Button>
+            {legalDocs.acceptanceOpen && (
+              <button
+                type="button"
+                className="min-h-11 underline"
+                onClick={() => window.location.reload()}
+              >
+                {consentCopy.reload}
+              </button>
+            )}
+          </main>
+        </div>
+      </SwipeableScreen>
+    );
+  }
 
   const stepLabels = [t('accountInfo'), t('createAccount'), t('verification')];
 
@@ -1036,7 +1151,17 @@ export function SignUpScreen({
                     id="signup-consent"
                     type="checkbox"
                     checked={agreed}
-                    onChange={(event) => setAgreed(event.target.checked)}
+                    onChange={(event) =>
+                      setAcceptance(
+                        event.target.checked && legalReady && termsDoc && privacyDoc
+                          ? {
+                              termsVersion: termsDoc.version,
+                              privacyVersion: privacyDoc.version,
+                              locale: lang,
+                            }
+                          : null,
+                      )
+                    }
                     disabled={!legalReady}
                     aria-describedby="signup-consent-links"
                     className="mt-0.5 h-6 w-6 shrink-0 cursor-pointer accent-blue-600 disabled:cursor-not-allowed"
@@ -1093,10 +1218,6 @@ export function SignUpScreen({
                       {consentCopy.retry}
                     </button>
                   </p>
-                ) : legalDocs && !legalDocs.acceptanceOpen ? (
-                  <p className="ps-9 text-amber-800" style={{ fontSize: '14px' }} role="status">
-                    {consentCopy.closed}
-                  </p>
                 ) : null}
               </div>
               {policyOpen !== null ? (
@@ -1120,7 +1241,8 @@ export function SignUpScreen({
               onResend={handleOtpResend}
               isVerifying={isVerifying}
               isResending={isResending}
-              verifyError={otpError}
+              verifyError={otpError?.[lang]}
+              recovery={otpRecovery}
               resendNotice={resendNotice}
               experience={experience}
               onRestart={() =>

@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { completeBookingAfterApproval } from './booking-fixtures';
 
 import {
   acceptTerms,
@@ -137,6 +138,10 @@ test.describe('Phase 3 — the activation chain is reachable in a running API', 
     expect(caps.primaryReason).toBeNull();
     expect(caps.allowed).toContain('VIEW_MARKETPLACE');
     expect(caps.allowed).toContain('SUBMIT_BID');
+  });
+
+  test('the approved provider can bid on a new customer request and complete the resulting booking', async () => {
+    await completeBookingAfterApproval(account);
   });
 
   test('suspension returns work to 403 and reactivation restores it', async () => {

@@ -1,8 +1,8 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": "vite",
-  "buildCommand": "pnpm --filter @homeservicemarketplace/web build",
-  "installCommand": "pnpm install --frozen-lockfile",
+  "buildCommand": "pnpm --config.use-node-version=24.21.0 exec node ../../scripts/deploy/vercel-hosted-build.mjs",
+  "installCommand": "pnpm --config.use-node-version=24.21.0 install --frozen-lockfile",
   "outputDirectory": "dist",
   "git": {
     "deploymentEnabled": false

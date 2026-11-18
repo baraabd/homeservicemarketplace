@@ -24,6 +24,29 @@ const deployed = {
 };
 
 describe('S03 runtime safety', () => {
+  it('defaults to strict AWS portfolio privacy checks and allows explicit MinIO', () => {
+    expect(validateEnv(base).S3_PORTFOLIO_PRIVACY_MODE).toBe('aws');
+    expect(
+      validateEnv({
+        ...base,
+        S3_PORTFOLIO_PRIVACY_MODE: 'minio',
+        S3_ENDPOINT: 'http://127.0.0.1:9000',
+      }).S3_PORTFOLIO_PRIVACY_MODE,
+    ).toBe('minio');
+  });
+  it.each(['auto', 'skip', 'MINIO', 'minio '])('rejects unknown privacy mode %p', (mode) => {
+    expect(() => validateEnv({ ...base, S3_PORTFOLIO_PRIVACY_MODE: mode })).toThrow(
+      /S3_PORTFOLIO_PRIVACY_MODE/,
+    );
+  });
+  it.each([undefined, '', ' ', 'invalid', 'file:///tmp/store', 'https://user:pass@store.test'])(
+    'requires an explicit HTTP(S) endpoint for MinIO privacy mode (%p)',
+    (endpoint) => {
+      expect(() =>
+        validateEnv({ ...base, S3_PORTFOLIO_PRIVACY_MODE: 'minio', S3_ENDPOINT: endpoint }),
+      ).toThrow(/S3_ENDPOINT/);
+    },
+  );
   it.each(['flase', 'tru', 'disabled', '', ' false ', ' true '])(
     'rejects an unrecognised boolean %p instead of silently disabling a control',
     (value) => {

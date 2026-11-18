@@ -16,7 +16,7 @@ import {
 } from '@nestjs/common';
 import request from 'supertest';
 
-import { acquireAdvisoryLock, fixturePrefix, type HeldLock } from '../support/db-isolation';
+import { acquireAdvisoryLocks, fixturePrefix, type HeldLock } from '../support/db-isolation';
 
 // Sprint 9B.23 — V2 Task 6, against real Postgres.
 //
@@ -66,6 +66,13 @@ d('Onboarding review and submission (real Postgres)', () => {
   const CATEGORY = `${P}cat`;
 
   let lifecycleLock: HeldLock;
+  let avatarLedger: import('../../src/modules/media/public-media-ledger.service').PublicMediaLedgerService;
+  let avatarOwnerRef: string;
+  const pngHead = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+  const avatarStorage = {
+    readObjectHead: jest.fn(async () => ({ sizeBytes: pngHead.byteLength, head: pngHead })),
+    publicUrlForKey: (key: string) => `https://media.example.test/${key}`,
+  };
 
   const CONSENT_KEY = 'provider_consent_policy_version';
 
@@ -117,6 +124,7 @@ d('Onboarding review and submission (real Postgres)', () => {
   }
 
   async function cleanupFixtures(): Promise<void> {
+    await prisma.mediaAsset.deleteMany({ where: { ownerUserId: { startsWith: P } } });
     await prisma.providerOnboardingSubmission.deleteMany({
       where: { providerProfileId: { startsWith: P } },
     });
@@ -141,7 +149,10 @@ d('Onboarding review and submission (real Postgres)', () => {
     // must not overlap the lifecycle backfill, which rewrites that table
     // wholesale and asserts on whole-table totals. It creates no ServiceRequest,
     // so it does not take the serviceRequests lock.
-    lifecycleLock = await acquireAdvisoryLock('providerLifecycle', 'shared');
+    lifecycleLock = await acquireAdvisoryLocks([
+      { resource: 'providerLifecycle', mode: 'shared' },
+      { resource: 'mediaAssets', mode: 'shared' },
+    ]);
 
     const db =
       require('@homeservicemarketplace/database') as typeof import('@homeservicemarketplace/database');
@@ -211,6 +222,8 @@ d('Onboarding review and submission (real Postgres)', () => {
     const {
       PublicMediaLedgerService,
     } = require('../../src/modules/media/public-media-ledger.service');
+    const avatarPolicy = require('../../src/modules/provider/onboarding/avatar/avatar-policy');
+    avatarOwnerRef = avatarPolicy.avatarOwnerRef(USER, 'review-submit-test-secret');
     const {
       ProviderServiceAreaExpansionService,
     } = require('../../src/modules/provider/onboarding/service-area/expansion/provider-service-area-expansion.service');
@@ -262,7 +275,7 @@ d('Onboarding review and submission (real Postgres)', () => {
         Reflector,
         { provide: PrismaService, useValue: { client: prisma, isReady: () => true } },
         { provide: AppConfigService, useValue: config },
-        { provide: STORAGE_PORT, useValue: {} },
+        { provide: STORAGE_PORT, useValue: avatarStorage },
         { provide: AllExceptionsFilter, useValue: new AllExceptionsFilter(config) },
         { provide: APP_FILTER, useExisting: AllExceptionsFilter },
       ],
@@ -285,6 +298,7 @@ d('Onboarding review and submission (real Postgres)', () => {
     );
     await app.init();
     http = app.getHttpServer();
+    avatarLedger = app.get(PublicMediaLedgerService);
 
     await cleanupFixtures();
     await prisma.user.create({
@@ -331,6 +345,11 @@ d('Onboarding review and submission (real Postgres)', () => {
 
   beforeEach(async () => {
     currentUser = { id: USER };
+    avatarStorage.readObjectHead.mockReset().mockResolvedValue({
+      sizeBytes: pngHead.byteLength,
+      head: pngHead,
+    });
+    await prisma.mediaAsset.deleteMany({ where: { ownerUserId: USER } });
     // DELIBERATELY NOT creating `provider_consent_policy_version`.
     //
     // It is a GLOBAL settings row, and `requiredConsentVersion()` treats an
@@ -1283,6 +1302,133 @@ d('Onboarding review and submission (real Postgres)', () => {
       expect(await prisma.providerWorkAccessGrant.count({ where: { providerProfileId: PP } })).toBe(
         0,
       );
+    });
+  });
+
+  describe('avatar writes preserve the current photo on failure (real Postgres)', () => {
+    const oldKey = () => `avatars/${avatarOwnerRef}/old.png`;
+    const newKey = () => `avatars/${avatarOwnerRef}/new.png`;
+
+    async function prepareAvatar(): Promise<number> {
+      await prisma.providerProfile.update({
+        where: { id: PP },
+        data: { profileImageUrl: avatarStorage.publicUrlForKey(oldKey()) },
+      });
+      await prisma.mediaAsset.createMany({
+        data: [oldKey(), newKey()].map((storageKey, index) => ({
+          ownerUserId: USER,
+          visibility: 'PUBLIC',
+          storageKey,
+          declaredMimeType: 'image/png',
+          sizeBytes: pngHead.byteLength,
+          uploadCompletedAt: index === 0 ? new Date() : null,
+          uploadExpiresAt: new Date(Date.now() + 3_600_000),
+        })),
+      });
+      const draft = await request(http).get('/v1/me/provider/onboarding/draft');
+      expect(draft.status).toBe(200);
+      return draft.body.version as number;
+    }
+
+    async function expectUnchanged(version: number): Promise<void> {
+      const [profile, draft, oldAsset, newAsset] = await Promise.all([
+        prisma.providerProfile.findUnique({ where: { id: PP } }),
+        prisma.providerOnboardingDraft.findUnique({ where: { providerProfileId: PP } }),
+        prisma.mediaAsset.findUnique({ where: { storageKey: oldKey() } }),
+        prisma.mediaAsset.findUnique({ where: { storageKey: newKey() } }),
+      ]);
+      expect(profile.profileImageUrl).toBe(avatarStorage.publicUrlForKey(oldKey()));
+      expect(draft.version).toBe(version);
+      expect(oldAsset.uploadCompletedAt).not.toBeNull();
+      expect(oldAsset.retainUntil).toBeNull();
+      expect(oldAsset.deletedAt).toBeNull();
+      expect(newAsset.uploadCompletedAt).toBeNull();
+    }
+
+    const writeAvatar = (operation: 'finalize' | 'remove', version: number) =>
+      request(http)
+        .post(`/v1/me/provider/onboarding/avatar${operation === 'remove' ? '/remove' : ''}`)
+        .send(operation === 'finalize' ? { key: newKey(), version } : { version });
+
+    it.each(['finalize', 'remove'] as const)(
+      'rejects stale %s without changing profile or ledger',
+      async (operation) => {
+        const version = await prepareAvatar();
+        expect((await writeAvatar(operation, version + 1)).status).toBe(409);
+        await expectUnchanged(version);
+      },
+    );
+
+    it.each(['finalize', 'remove'] as const)(
+      'rejects review-locked %s without changing profile or ledger',
+      async (operation) => {
+        const version = await prepareAvatar();
+        await prisma.providerProfile.update({
+          where: { id: PP },
+          data: { onboardingState: 'SUBMITTED' },
+        });
+        expect((await writeAvatar(operation, version)).status).toBe(409);
+        await expectUnchanged(version);
+      },
+    );
+
+    it('leaves the current avatar and reservation untouched when storage cannot be read', async () => {
+      const version = await prepareAvatar();
+      avatarStorage.readObjectHead.mockRejectedValueOnce(new Error('fixture storage unavailable'));
+      expect((await writeAvatar('finalize', version)).status).toBe(500);
+      await expectUnchanged(version);
+    });
+
+    it.each(['expired', 'fenced'] as const)(
+      'rejects an %s reservation without changing the current avatar',
+      async (state) => {
+        const version = await prepareAvatar();
+        await prisma.mediaAsset.update({
+          where: { storageKey: newKey() },
+          data:
+            state === 'expired' ? { uploadExpiresAt: new Date(0) } : { retainUntil: new Date() },
+        });
+        const response = await writeAvatar('finalize', version);
+        expect(response.status).toBe(400);
+        await expectUnchanged(version);
+      },
+    );
+
+    it.each(['finalize', 'remove'] as const)(
+      'rolls back profile, version and ledger if retirement fails during %s',
+      async (operation) => {
+        const version = await prepareAvatar();
+        const retire = avatarLedger.retire.bind(avatarLedger);
+        const failure = jest
+          .spyOn(avatarLedger, 'retire')
+          .mockImplementationOnce(async (input, now, tx) => {
+            // Fail AFTER a real UPDATE, so this test proves rollback, not merely
+            // that validation rejected the operation before any data was written.
+            await retire(input, now, tx);
+            throw new Error('fixture retirement persistence failed');
+          });
+        try {
+          expect((await writeAvatar(operation, version)).status).toBe(500);
+          await expectUnchanged(version);
+        } finally {
+          failure.mockRestore();
+        }
+      },
+    );
+
+    it('commits replacement once and accepts a retry carrying the old version', async () => {
+      const version = await prepareAvatar();
+      const first = await writeAvatar('finalize', version);
+      expect(first.status).toBe(200);
+      expect(first.body.data.profileImageUrl).toBe(avatarStorage.publicUrlForKey(newKey()));
+      const oldAsset = await prisma.mediaAsset.findUnique({ where: { storageKey: oldKey() } });
+      const newAsset = await prisma.mediaAsset.findUnique({ where: { storageKey: newKey() } });
+      expect(oldAsset.retainUntil).not.toBeNull();
+      expect(newAsset.uploadCompletedAt).not.toBeNull();
+      expect(newAsset.retainUntil).toBeNull();
+      const retry = await writeAvatar('finalize', version);
+      expect(retry.status).toBe(200);
+      expect(retry.body.version).toBe(first.body.version);
     });
   });
 

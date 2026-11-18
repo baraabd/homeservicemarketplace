@@ -571,23 +571,38 @@ describe('EditProfilePage — provider skills + serviceAreaCity', () => {
       updatedAt: '2026-04-30T00:00:00.000Z',
     },
   };
+  const electrical = {
+    id: 'cat-electrical',
+    slug: 'electrical',
+    labelEn: 'Electrical',
+    labelAr: 'كهرباء',
+    icon: '⚡',
+    parentId: 'group-maintenance',
+    isLeaf: true,
+    sortOrder: 1,
+  };
   const SERVICES = [
+    {
+      id: 'group-maintenance',
+      slug: 'home-maintenance',
+      labelEn: 'Home maintenance',
+      labelAr: 'الصيانة المنزلية',
+      icon: '🛠️',
+      parentId: null,
+      isLeaf: false,
+      sortOrder: 0,
+    },
     {
       id: 'cat-plumbing',
       slug: 'plumbing',
       labelEn: 'Plumbing',
       labelAr: 'سباكة',
       icon: '🔧',
+      parentId: 'group-maintenance',
+      isLeaf: true,
       sortOrder: 0,
     },
-    {
-      id: 'cat-electrical',
-      slug: 'electrical',
-      labelEn: 'Electrical',
-      labelAr: 'كهرباء',
-      icon: '⚡',
-      sortOrder: 1,
-    },
+    electrical,
   ];
 
   function mockProviderRoute(): void {
@@ -608,6 +623,7 @@ describe('EditProfilePage — provider skills + serviceAreaCity', () => {
       expect(screen.getByTestId('skill-pill-plumbing')).toBeInTheDocument();
       expect(screen.getByTestId('skill-pill-electrical')).toBeInTheDocument();
     });
+    expect(screen.queryByTestId('skill-pill-home-maintenance')).toBeNull();
     // The catalog and saved profile arrive independently. Wait for the saved
     // selection as well, rather than asserting as soon as the catalog renders.
     await waitFor(() => {
@@ -674,7 +690,7 @@ describe('EditProfilePage — provider skills + serviceAreaCity', () => {
           application: {
             id: 'app-1',
             status: 'PENDING',
-            category: SERVICES[1],
+            category: electrical,
             createdAt: '2026-08-22T00:00:00.000Z',
             updatedAt: '2026-08-22T00:00:00.000Z',
             supersededAt: null,
@@ -738,7 +754,7 @@ describe('EditProfilePage — provider skills + serviceAreaCity', () => {
     mock.onGet('/v1/me/provider/profile').reply(200, {
       profile: {
         ...PROVIDER_PROFILE_ROW.profile,
-        pendingCategories: [SERVICES[1]],
+        pendingCategories: [electrical],
       },
     });
     mock.onGet('/v1/services').reply(200, { items: SERVICES });

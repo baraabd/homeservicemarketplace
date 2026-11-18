@@ -21,7 +21,7 @@ concurrency:
 # G1 remains 40cdac5... in its immutable gate; its historical R27 comparison
 # has a different lock digest and must not be relabelled comparable.
 env:
-  R27_BASELINE_SHA: 280e9e23c8a8e54b7b06d507b57a74ba35554eeb
+  R27_BASELINE_SHA: a2cd2b5e3a79eb608721bd632ebc8b3f31809281
   R27_CANDIDATE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
 
 jobs:
@@ -142,7 +142,7 @@ jobs:
           set -euo pipefail
           pnpm --filter @homeservicemarketplace/web build
           pnpm --filter @homeservicemarketplace/web exec tsc -p r27-tests/tsconfig.json --noEmit
-          pnpm --filter @homeservicemarketplace/web exec playwright install --with-deps chromium
+          node ../harness/scripts/ci/install-browser.cjs
       - name: Production bundle browser measurements and fault recovery
         env:
           R27_BROWSER_MODE: production

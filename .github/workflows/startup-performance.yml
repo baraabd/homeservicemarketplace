@@ -101,7 +101,7 @@ jobs:
           pnpm --filter @homeservicemarketplace/web build
           pnpm --filter @homeservicemarketplace/web typecheck:e2e
       - name: Install real Chromium
-        run: pnpm --filter @homeservicemarketplace/web exec playwright install --with-deps chromium
+        run: node scripts/ci/install-browser.cjs
       - name: Start the isolated API and built SPA
         run: |
           set -euo pipefail

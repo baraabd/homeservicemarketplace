@@ -52,8 +52,22 @@ export interface StoredObjectHead {
   head: Uint8Array;
 }
 
+/** Signed, bounded API upload; the selected adapter must validate before writing. */
+export interface SignedUploadInput {
+  key: string;
+  sig: string;
+  exp: number;
+  contentType: string;
+  sizeBytes: number;
+  body: Buffer;
+  actualContentType: string | null;
+}
+
 export abstract class StoragePort {
   abstract presignUpload(input: PresignUploadInput): Promise<PresignedUpload>;
+
+  /** Optional for adapters that support the API upload transport. */
+  acceptUpload?(input: SignedUploadInput): Promise<void>;
 
   /** API-mediated delivery. Authorization is checked before opening this stream.
    * Return null only for an absent object; transport and storage faults must throw. */
