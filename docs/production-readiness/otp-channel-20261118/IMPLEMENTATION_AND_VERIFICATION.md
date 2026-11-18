@@ -25,7 +25,7 @@ The official CodeQL SARIF for commit `64d338d5062ceba852dabf975bb71d086379858c` 
 
 The OTP codec now uses versioned Argon2id (`otp-v4`, 19,456 KiB memory, two passes, one lane), with the cryptographically random challenge ID as its individual salt and the server authentication secret as an additional pepper. Its deterministic digest preserves database compare-and-swap and single-use behavior. No fast-digest fallback or scanner suppression remains.
 
-The deployment impact is limited to outstanding numeric OTPs, whose normal lifetime is five minutes. A pre-v4 code returns the existing expired-code response; resend upgrades a still-live challenge without changing its owner or destination or clearing attempt/resend limits. An expired or exhausted challenge still requires a fresh sign-in or recovery request. Account passwords, verified contacts and opaque email links are unaffected.
+The deployment impact is limited to outstanding numeric OTPs, whose normal lifetime is five minutes. A pre-v4 code returns the existing expired-code response; the current UI then offers its existing start-again recovery to request a fresh challenge. The resend API can also upgrade a still-live challenge without changing its owner or destination or clearing attempt/resend limits. An expired or exhausted challenge still requires a fresh sign-in or recovery request. Account passwords, verified contacts and opaque email links are unaffected.
 
 Anonymous registration and WhatsApp recovery prepare one OTP digest before account lookup on both real and neutral paths, including duplicates and suppressed delivery. Persistence reuses that prepared work. Unknown well-formed verification/resend IDs also perform one digest operation. Malformed input and known expired, exhausted or wrong-purpose challenges are rejected before expensive work. Existing endpoint throttles, per-account transaction locks and native asynchronous Argon2 execution continue to apply; adding memory-hard work is not a substitute for those limits.
 
@@ -42,12 +42,14 @@ Runtime: Node 24.21.0 and pnpm 10.32.1, matching the repository pins.
 | Provider onboarding/verification regressions                | 377 passed                                                                                                              |
 | Provider review policy/service regressions                  | 40 passed                                                                                                               |
 | Delivery/channel/settings suites                            | 104 passed                                                                                                              |
-| Complete web suite                                          | 249 files, 3,187 tests passed                                                                                           |
+| Complete web suite                                          | 250 files, 3,203 tests passed in the final numeral-normalization sweep                                                  |
+| OTP/phone numeral and related scoped regressions            | 152 passed, including Arabic typing, Persian paste-value changes, ASCII submission, leading zeroes and length limits    |
+| Production bundle checks                                    | 10 passed against unchanged thresholds; auth 18.5 / 20 KiB and admin 105.7 / 110 KiB Brotli                             |
 | API and web TypeScript and production compilation           | Passed; web compilation used a synthetic API URL, not a deployment                                                      |
 | Scoped changed-code lint and whitespace checks              | Passed                                                                                                                  |
 | Browser presentation matrix                                 | 72 layout observations: 2 channels × 3 applications × 2 languages × 6 requested viewport widths; no horizontal overflow |
 
-These counts refer to overlapping scoped runs and must not be summed into a total. Final-head remote CI results are recorded separately in the pull request. The complete API and web runs include the contact-shape and fresh-policy cache regressions.
+These counts refer to overlapping scoped runs and must not be summed into a total. Final-head remote CI results are recorded separately in the pull request. The complete API and web runs include the contact-shape and fresh-policy cache regressions; the latest web run also covers shared Arabic/Persian digit normalization. Production compilation used `https://api.example.test`; the source-bound [numeral bundle summary](./BUNDLE_NUMERAL_SUMMARY.json) records the modified-worktree measurement separately from remote CI. Existing duplicate fixture-key warnings and the production chunk-size advisory remained nonblocking.
 
 ### Browser observations
 

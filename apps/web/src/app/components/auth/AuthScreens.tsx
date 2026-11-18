@@ -7,6 +7,7 @@ import { useLang, LangToggle } from '../../i18n/LanguageContext';
 import type { OtpChannel } from '../../../lib/auth-channel';
 import { PhoneIdentityField } from './PhoneIdentityField';
 import { toE164Phone, isValidPhoneIdentity } from '../../../lib/phone-identity';
+import { normalizeDecimalDigits } from '../../../lib/normalize-decimal-digits';
 import { AuthChannelNotice } from './AuthChannelNotice';
 import {
   extractAuthError,
@@ -157,7 +158,9 @@ export function EmailOtpPanel({
         autoComplete="one-time-code"
         maxLength={codeLength}
         value={code}
-        onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, codeLength))}
+        onChange={(e) =>
+          setCode(normalizeDecimalDigits(e.target.value).replace(/\D/gu, '').slice(0, codeLength))
+        }
         onKeyDown={(event) => {
           if (event.key === 'Enter' && canSubmit) {
             event.preventDefault();

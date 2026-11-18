@@ -13,8 +13,10 @@ describe('phone identity formatting', () => {
     ['SY', '٠٩٤٤ ١٢٣ ٤٥٦', '+963944123456'],
     ['SE', '070-123 45 67', '+46701234567'],
     ['IT', '06 12345678', '+390612345678'],
+    ['IT', '۰۶ ۱۲۳۴۵۶۷۸', '+390612345678'],
     ['', '+49 (151) 23456789', '+4915123456789'],
     ['US', '00963 944123456', '+963944123456'],
+    ['US', '٠۰۹۶۳ ۹٤۴۱۲۳٤۵۶', '+963944123456'],
   ])('formats %s / %s as %s', (country, local, expected) => {
     expect(toE164Phone(country, local)).toBe(expected);
     expect(isValidPhoneIdentity(country, local)).toBe(true);

@@ -1,4 +1,5 @@
 import { COUNTRY_DIAL_CODES } from './country-dial-codes';
+import { normalizeDecimalDigits } from './normalize-decimal-digits';
 
 const NATIONAL_ZERO_PREFIX = new Set([
   'AE',
@@ -27,11 +28,7 @@ const NATIONAL_ZERO_PREFIX = new Set([
 
 /** Formatting only. The API remains authoritative for identity validation. */
 export function toE164Phone(countryCode: string, localNumber: string): string {
-  const normalized = localNumber
-    .trim()
-    .replace(/[٠-٩]/gu, (digit) => String(digit.charCodeAt(0) - 0x660))
-    .replace(/[۰-۹]/gu, (digit) => String(digit.charCodeAt(0) - 0x6f0))
-    .replace(/[\s().-]/gu, '');
+  const normalized = normalizeDecimalDigits(localNumber.trim()).replace(/[\s().-]/gu, '');
   if (!/^(?:\+|00)?\d+$/u.test(normalized)) return '';
   if (normalized.startsWith('+')) return normalized;
   if (normalized.startsWith('00')) return `+${normalized.slice(2)}`;

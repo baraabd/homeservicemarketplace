@@ -103,6 +103,44 @@ async function enterOtp(code: string) {
 }
 
 describe('Login → OTP → authenticated', () => {
+  it.each([
+    ['typed Arabic', '٠١٢٣٤٥', true],
+    ['pasted Persian', '۰۱۲۳۴۵', false],
+    ['overlong mixed input', '٠۱2٣۴5٦', false],
+  ] as const)(
+    'submits %s digits as six ASCII digits with a leading zero',
+    async (_label, digits, typed) => {
+      localStorage.setItem('hsm.lang', 'ar');
+      mock.onGet('/v1/auth/me').reply(401, {});
+      mock.onPost('/v1/auth/login').reply(200, OTP_CHALLENGE);
+      mock.onPost('/v1/auth/verify-otp').reply(400, { error: { code: 'AUTH_OTP_INVALID' } });
+      renderAuth('/login');
+      await submitLoginCredentials();
+      const input = (await screen.findByTestId('otp-input')) as HTMLInputElement;
+      if (typed) {
+        for (const digit of digits) {
+          fireEvent.change(input, { target: { value: input.value + digit } });
+        }
+      } else {
+        // Native paste/autofill produces one change with the complete input value.
+        fireEvent.change(input, { target: { value: digits } });
+      }
+      expect(input).toHaveValue('012345');
+      expect(screen.getByTestId('otp-box-0')).toHaveTextContent('0');
+      fireEvent.keyDown(input, { key: 'Enter' });
+      await waitFor(() => {
+        const requests = mock.history.post.filter(
+          (request) => request.url === '/v1/auth/verify-otp',
+        );
+        expect(requests).toHaveLength(1);
+        expect(JSON.parse(requests[0]!.data)).toEqual({
+          challengeId: OTP_CHALLENGE.challengeId,
+          code: '012345',
+        });
+      });
+    },
+  );
+
   it('valid credentials reveal the OTP panel; no session before OTP success', async () => {
     mock.onGet('/v1/auth/me').reply(401, {});
     mock.onPost('/v1/auth/refresh').reply(401, {});

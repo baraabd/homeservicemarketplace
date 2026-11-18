@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "scope": "production Vite chunk bytes; no browser latency or hosted acceptance claim",
   "compression": {
     "gzip": "zlib level 1 (nginx.conf default)",
@@ -16,14 +16,32 @@
     "worktreeModified": true,
     "buildWallClockMs": 7556,
     "lockfileSha256": "0a0e9798d23c0891dc2b0e3bf0ab0a1122a2d38a91fc9f2718e61572c06a4c12",
-    "sourceSha256": {
-      "apps/web/src/app/components/admin/AdminRouteContent.tsx": "d54c59077983072affdd7107d82ecb44449a6565bbeebe59b50cea22cae0ce73",
-      "apps/web/src/app/components/auth/AuthScreens.tsx": "0eb6bf812f37406bbc73c0338c1eeb8758f03aae910b8f20b947eb467ff7bce5",
-      "apps/web/src/app/components/auth/SignUpScreen.tsx": "6e2694e5612e32a5e6a9d3e86080ecbbeff7661066814a7f7fddba32c68c4199",
-      "apps/web/src/app/components/auth/ForgotPasswordScreen.tsx": "bd841b734f4f214da14b2983e7ed4712f672424a6a1d115104a1a6242f488466",
-      "apps/web/src/app/components/auth/AuthLayout.tsx": "41066d0f3a2c97578c5e91f381740f9e618402d0c2a265f739a78f75a419da8e",
-      "apps/web/src/app/pages/AuthPages.tsx": "868bb0ad18022d95d19e92504bf582b79e3244b0d9f882eb563b8ccaa352f381"
-    }
+    "sourceSha256": [
+      {
+        "path": "apps/web/src/app/components/admin/AdminRouteContent.tsx",
+        "sha256": "d54c59077983072affdd7107d82ecb44449a6565bbeebe59b50cea22cae0ce73"
+      },
+      {
+        "path": "apps/web/src/app/components/auth/AuthScreens.tsx",
+        "sha256": "0eb6bf812f37406bbc73c0338c1eeb8758f03aae910b8f20b947eb467ff7bce5"
+      },
+      {
+        "path": "apps/web/src/app/components/auth/SignUpScreen.tsx",
+        "sha256": "6e2694e5612e32a5e6a9d3e86080ecbbeff7661066814a7f7fddba32c68c4199"
+      },
+      {
+        "path": "apps/web/src/app/components/auth/ForgotPasswordScreen.tsx",
+        "sha256": "bd841b734f4f214da14b2983e7ed4712f672424a6a1d115104a1a6242f488466"
+      },
+      {
+        "path": "apps/web/src/app/components/auth/AuthLayout.tsx",
+        "sha256": "41066d0f3a2c97578c5e91f381740f9e618402d0c2a265f739a78f75a419da8e"
+      },
+      {
+        "path": "apps/web/src/app/pages/AuthPages.tsx",
+        "sha256": "868bb0ad18022d95d19e92504bf582b79e3244b0d9f882eb563b8ccaa352f381"
+      }
+    ]
   },
   "thresholdFile": "scripts/perf/post-r18/budgets.proposed.json",
   "thresholdsModified": false,

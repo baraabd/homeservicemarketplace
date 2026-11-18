@@ -174,4 +174,57 @@ describe('Authentication channel settings', () => {
     expect(screen.getByLabelText('Verification code sent to WhatsApp')).toHaveValue('000000');
     expect(screen.getByRole('radio', { name: /WhatsApp/ })).toBeDisabled();
   });
+
+  it.each([
+    ['email', '٠١٢٣٤٥', true],
+    ['whatsapp', '۰۱۲۳۴۵', false],
+  ] as const)(
+    'normalizes Arabic/Persian %s enrollment codes before verification',
+    async (channel, digits, typed) => {
+      state.verified = channel === 'email';
+      state.emailVerified = channel === 'whatsapp';
+      state.request.mockResolvedValue({
+        otpRequired: true,
+        challengeId: 'localized-code',
+        channel,
+        codeLength: 6,
+        expiresInSeconds: 300,
+      });
+      show();
+      const identity = await screen.findByLabelText(
+        channel === 'email' ? 'Email address' : 'WhatsApp phone number',
+      );
+      fireEvent.change(identity, {
+        target: { value: channel === 'email' ? 'admin@example.test' : '+966500000002' },
+      });
+      fireEvent.change(screen.getByLabelText('Current password'), {
+        target: { value: 'Current-password-27' },
+      });
+      fireEvent.click(
+        screen.getByRole('button', {
+          name: channel === 'email' ? 'Send code to email' : 'Send code to WhatsApp',
+        }),
+      );
+      const input = (await screen.findByLabelText(
+        channel === 'email'
+          ? 'Verification code sent to email'
+          : 'Verification code sent to WhatsApp',
+      )) as HTMLInputElement;
+      if (typed) {
+        for (const digit of digits)
+          fireEvent.change(input, { target: { value: input.value + digit } });
+      } else {
+        fireEvent.change(input, { target: { value: digits } });
+      }
+      expect(input).toHaveValue('012345');
+      fireEvent.click(
+        screen.getByRole('button', {
+          name: channel === 'email' ? 'Verify email' : 'Verify number',
+        }),
+      );
+      await waitFor(() =>
+        expect(state.verify).toHaveBeenCalledExactlyOnceWith(channel, 'localized-code', '012345'),
+      );
+    },
+  );
 });

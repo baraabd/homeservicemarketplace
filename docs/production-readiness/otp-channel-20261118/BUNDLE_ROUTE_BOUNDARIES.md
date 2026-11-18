@@ -49,4 +49,6 @@ pnpm --filter @homeservicemarketplace/web exec vitest run
 
 Scoped regression verification passed: 103 auth, lifecycle and channel tests plus 21 admin routing and settings tests. The full web suite then passed **249 test files / 3,191 tests** in 45.27 seconds, with no failures. It emitted existing duplicate-key warnings for `availability` and `timezone` in `provider-onboarding-v2/autosave/onboarding-exit.test.tsx`. Web TypeScript compilation passed. Scoped ESLint reported no errors and one pre-existing `react-hooks/set-state-in-effect` warning in the email verification page.
 
+After extracting shared Arabic/Persian digit normalization, the final local sweep passed **250 test files / 3,203 tests** in 51.96 seconds. Production compilation and all **10 unchanged bundle checks** passed. The shell measured 184.8 KiB, auth 18.5 KiB, provider onboarding 74.8 KiB and admin 105.7 KiB Brotli. [BUNDLE_NUMERAL_SUMMARY.json](./BUNDLE_NUMERAL_SUMMARY.json) retains exact bytes, source hashes, threshold hash and the synthetic API URL for this later modified-worktree measurement based on `d6cdb2243fd691a98efbffed87af08f6601fb850`.
+
 The final committed source still requires its own remote CI result. These local results do not establish WhatsApp provider delivery, database acceptance, browser latency or production rollout readiness.

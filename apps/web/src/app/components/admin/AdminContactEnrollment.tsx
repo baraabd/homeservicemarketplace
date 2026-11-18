@@ -7,6 +7,7 @@ import {
   verifyAdminContact,
 } from '../../../lib/admin/admin-auth-channel-api';
 import { extractAuthError } from '../../../lib/auth-errors';
+import { normalizeDecimalDigits } from '../../../lib/normalize-decimal-digits';
 
 /** One password-confirmed ownership journey for either administrator contact. */
 export function AdminContactEnrollment({
@@ -123,7 +124,9 @@ export function AdminContactEnrollment({
             <input
               id={`${id}-code`}
               value={code}
-              onChange={(e) => setCode(e.target.value.replace(/\D/gu, '').slice(0, 6))}
+              onChange={(e) =>
+                setCode(normalizeDecimalDigits(e.target.value).replace(/\D/gu, '').slice(0, 6))
+              }
               inputMode="numeric"
               autoComplete="one-time-code"
               maxLength={6}
