@@ -1,26 +1,43 @@
 {
   "schemaVersion": 1,
-  "experiment": "auth-login-mongoose-security-20261111",
-  "priorBaseline": "280e9e23c8a8e54b7b06d507b57a74ba35554eeb",
-  "originalPrBase": "fca0f1c238616602865aa4620092f68bfbb77b87",
+  "experiment": "picomatch-security-20261118",
+  "priorBaseline": "e9cfb2344899a91ceedc7cbcf9bfc73acefda74d",
+  "originalPrBase": "d64d463666e94a68b007ba96d724998e7e928fdc",
   "dependencySha256": {
     "apps/api/package.json": "8b861c1ce9a35120f980c382733e658f42c7ec2e2681e906543d4c2967988b59",
     "apps/web/package.json": "16a0c6a4abfe68591b54c73765b301500d3be37037d2ca298458efdba647fac7",
-    "package.json": "b8c5564e1f20737a5f269d9d2fa32efe4249e868e8cde814e83394ecf9aeda81",
-    "pnpm-lock.yaml": "fd1ac7ba2bbab7e6d7b0088d126d27e670892588dc5eeae837b41f118de83202",
+    "package.json": "ec3251d4263d62dcb80de3eb083e4cb4e79d028802acb332162b60a4a0abeca2",
+    "pnpm-lock.yaml": "0a0e9798d23c0891dc2b0e3bf0ab0a1122a2d38a91fc9f2718e61572c06a4c12",
     "vendor/deepmerge/index.cjs": "8b51276b1720fd68734add9e48cf000d36c15de1775d116fbc03c8bc2110dcf3",
     "vendor/deepmerge/index.d.ts": "d9fe3cb82c11b576a7ea5886ae5de649c8242b20d0a1418fb8203b42453ffd41",
     "vendor/deepmerge/license.txt": "6cfc4687cb2f2d86f4a77e6b526290d3878e5e512f3fec2f4cb36a9cb36f798b",
-    "vendor/deepmerge/package.json": "228a2e50f2f8312688c965f44d380b906ac06d4e96d5d026eeeac310b0d87795"
+    "vendor/deepmerge/package.json": "228a2e50f2f8312688c965f44d380b906ac06d4e96d5d026eeeac310b0d87795",
+    "vendor/picomatch-v2/LICENSE": "d0cd141b0c322fded5dfad1d4645bb2fedfc05b7321fe1009469638190d59ef9",
+    "vendor/picomatch-v2/index.js": "5695ff5dfcd5a338a40630bd506056f2950bcb08fe1cc068519cbbfe60add480",
+    "vendor/picomatch-v2/lib/constants.js": "91ceb8b11a93990c34086519aef0de103eb3ad31e044d67ffaf08e006e536ed9",
+    "vendor/picomatch-v2/lib/parse.js": "473a137eb081f0619e2052edc217dc0207c74ddde2a9c5706de333bc89a21d97",
+    "vendor/picomatch-v2/lib/picomatch.js": "1e10a3653eee2eeaec074f37838dfe5291145a2c816bfc53d237360ffc3fd453",
+    "vendor/picomatch-v2/lib/scan.js": "1f3cc2d55400085cfdde0e3a42d2a485f5b682dea0e7ad50aae49847c6a9bc01",
+    "vendor/picomatch-v2/lib/utils.js": "4c92cab7287077602a12ff34261c0eada6a062de35a3d188013cfb951c186eb7",
+    "vendor/picomatch-v2/package.json": "d1afd33179b0e29c7f83c3d0631c35e7bf7b0c4d1d7a62f37538e7480a52023e",
+    "vendor/picomatch-v4/LICENSE": "d0cd141b0c322fded5dfad1d4645bb2fedfc05b7321fe1009469638190d59ef9",
+    "vendor/picomatch-v4/index.js": "02ae26406508e28f9ba0865be16cf77f0b33de6c4d4d49c212c4176df1d5625a",
+    "vendor/picomatch-v4/lib/constants.js": "07443f57118d9a56bfe812d973a4ed92461a37840bd759e044b58091e2ffd9a3",
+    "vendor/picomatch-v4/lib/parse.js": "ce6c0d8b7bce48ff37cd8f7f161815affff4c549b2be0febf1cdccd6bda4ede6",
+    "vendor/picomatch-v4/lib/picomatch.js": "058c0a6e91d90cc43377f2bd7c6ddbd797a7b2ae8ce9fe5e0908ff7ab3ebaafa",
+    "vendor/picomatch-v4/lib/scan.js": "854155470a6a9740240d07040a66f19f37d54cae8af35905514e9e8d3f855e6f",
+    "vendor/picomatch-v4/lib/utils.js": "632eb6db0f54bdd9b71eec12d54e18ddf6d942598e00016fa1f073dae99d9f93",
+    "vendor/picomatch-v4/package.json": "676cab6e9ac440dbe7cf809c1e4a5e4098828c794230902d4a3521685d95b3e2",
+    "vendor/picomatch-v4/posix.js": "5695ff5dfcd5a338a40630bd506056f2950bcb08fe1cc068519cbbfe60add480"
   },
   "baseline": {
-    "commit": "a2cd2b5e3a79eb608721bd632ebc8b3f31809281",
-    "tree": "dd1485dffbf80c752ff2e5d8d84bfcdef53f15a6",
-    "parent": "280e9e23c8a8e54b7b06d507b57a74ba35554eeb"
+    "commit": "ad1beac0397fe2c1ae9d4c0e5a89cbb65e67cb33",
+    "tree": "6e838d5b1b7904112df1ec5de989ff7f9d2ea37e",
+    "parent": "e9cfb2344899a91ceedc7cbcf9bfc73acefda74d"
   },
   "repair": {
-    "commit": "111febd68436acf32e07e9b1110007b65ecd715c",
-    "tree": "f27c99598055255e65c2e5a6739bf0eaad6f004f",
-    "parent": "fca0f1c238616602865aa4620092f68bfbb77b87"
+    "commit": "b9c64b1a498f662dc3df899906e1ba3e9ae713e1",
+    "tree": "2b0a25d4a1f53e46c6176ebc7cec1f65b5680134",
+    "parent": "8ef71b1b36995632ba4fdf3d837698c26b3f64ff"
   }
 }

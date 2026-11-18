@@ -36,7 +36,7 @@
     "runtime:sprint01-security": "node scripts/runtime/verify-sprint01-security.cjs",
     "security:audit": "node scripts/security/dependency-audit.cjs",
     "security:audit:prod": "node scripts/security/dependency-audit.cjs --prod",
-    "security:audit:test": "node --test scripts/security/dependency-audit.test.cjs scripts/security/vendored-forks.test.cjs vendor/deepmerge/test/prototype-poisoning.test.cjs"
+    "security:audit:test": "node --test scripts/security/dependency-audit.test.cjs scripts/security/vendored-forks.test.cjs vendor/deepmerge/test/prototype-poisoning.test.cjs scripts/security/picomatch-redos.test.cjs"
   },
   "lint-staged": {
     "*.{js,mjs,cjs,ts,tsx}": [
@@ -81,7 +81,6 @@
       "js-yaml@>=3.0.0 <3.15.2": "3.15.2",
       "js-yaml@>=4.0.0 <4.3.2": "4.3.2",
       "nanoid@>=3.0.0 <3.3.18": "3.3.18",
-      "picomatch@>=4.0.0 <4.0.4": "4.0.4",
       "postcss@>=8.0.0 <8.5.23": "8.5.23",
       "qs@>=6.0.0 <6.16.2": "6.16.2",
       "tar@>=7.0.0 <7.5.21": "7.5.21",
@@ -97,7 +96,9 @@
       "happy-dom@>=17.0.0 <21.0.4": "21.0.4",
       "glob@>=9.0.0 <14.0.2": "14.0.3",
       "minimatch@>=9.0.0 <11.0.1": "11.0.4",
-      "deepmerge@>=4.2.0 <=4.3.1": "file:./vendor/deepmerge"
+      "deepmerge@>=4.2.0 <=4.3.1": "file:./vendor/deepmerge",
+      "picomatch@>=2.0.0 <3.0.0": "file:./vendor/picomatch-v2",
+      "picomatch@>=3.0.0 <=4.0.7": "file:./vendor/picomatch-v4"
     }
   },
   "volta": {
