@@ -6,6 +6,8 @@ The requested change applies to customer, professional and administrator authent
 
 The previous country card inferred United States from browser locale even when the dial code was different. Country selection now starts empty. Selecting a country shows its flag and calling code; location lookup runs only after the user chooses the disclosed location action. Manual selection and country search remain available when permission is denied or lookup fails. No locale or timezone is treated as location.
 
+A pasted international number controls its displayed calling code. The country display cannot contradict that number, and location cannot replace it. Shared or unsupported prefixes remain unresolved until a compatible explicit selection is available; the UI does not guess the United States for `+1`. The raw input stays intact, Arabic/Persian digits normalize for submission, and an international number does not receive a duplicate calling-code prefix.
+
 The UI waits for public authentication configuration before showing credential forms. Loading and retry states avoid rendering the wrong channel while policy is unknown. Existing accounts retain a compatible login route during a channel transition; new registration follows the selected policy. A challenge retains its original channel and masked destination even if the administrator subsequently changes policy.
 
 ## Implementation boundaries
@@ -42,14 +44,15 @@ Runtime: Node 24.21.0 and pnpm 10.32.1, matching the repository pins.
 | Provider onboarding/verification regressions                | 377 passed                                                                                                              |
 | Provider review policy/service regressions                  | 40 passed                                                                                                               |
 | Delivery/channel/settings suites                            | 104 passed                                                                                                              |
-| Complete web suite                                          | 250 files, 3,203 tests passed in the final numeral-normalization sweep                                                  |
+| Complete web suite                                          | 250 files, 3,231 tests passed after the international-number consistency correction                                     |
 | OTP/phone numeral and related scoped regressions            | 152 passed, including Arabic typing, Persian paste-value changes, ASCII submission, leading zeroes and length limits    |
-| Production bundle checks                                    | 10 passed against unchanged thresholds; auth 18.5 / 20 KiB and admin 105.7 / 110 KiB Brotli                             |
-| API and web TypeScript and production compilation           | Passed; web compilation used a synthetic API URL, not a deployment                                                      |
+| International phone/country consistency regressions         | 49 passed, including shared prefixes, full-number preservation and stale location cancellation                          |
+| Production bundle checks                                    | 10 passed against unchanged thresholds; auth 19.2 / 20 KiB and admin 105.8 / 110 KiB Brotli                             |
+| API and web TypeScript and production compilation           | Passed; web compilation used synthetic API origins, not a deployment                                                    |
 | Scoped changed-code lint and whitespace checks              | Passed                                                                                                                  |
 | Browser presentation matrix                                 | 72 layout observations: 2 channels × 3 applications × 2 languages × 6 requested viewport widths; no horizontal overflow |
 
-These counts refer to overlapping scoped runs and must not be summed into a total. Final-head remote CI results are recorded separately in the pull request. The complete API and web runs include the contact-shape and fresh-policy cache regressions; the latest web run also covers shared Arabic/Persian digit normalization. Production compilation used `https://api.example.test`; the source-bound [numeral bundle summary](./BUNDLE_NUMERAL_SUMMARY.json) records the modified-worktree measurement separately from remote CI. Existing duplicate fixture-key warnings and the production chunk-size advisory remained nonblocking.
+These counts refer to overlapping scoped runs and must not be summed into a total. Final-head remote CI results are recorded separately in the pull request. The complete API and web runs include the contact-shape and fresh-policy cache regressions; the latest web run also covers shared Arabic/Persian digit normalization and international-number display consistency. Build measurements used synthetic API origins (`https://api.example.test` for the earlier numeral measurement and a loopback URL for the final phone measurement). The source-bound [numeral summary](./BUNDLE_NUMERAL_SUMMARY.json) is retained as historical evidence; the [phone-consistency summary](./BUNDLE_PHONE_CONSISTENCY_SUMMARY.json) records the latest modified-worktree measurement separately from remote CI. Existing duplicate fixture-key warnings and the production chunk-size advisory remained nonblocking.
 
 ### Browser observations
 
@@ -77,4 +80,4 @@ No production deployment, live WhatsApp delivery or universal defect-free guaran
 
 ## Initial bundle delivery
 
-The final production graph passes all ten existing bundle checks without changing thresholds. Auth is 18.5 KiB Brotli (20 KiB ceiling), administrator 105.8 KiB (110 KiB ceiling). Sign-up, recovery and administrator settings load at their actual route/interaction boundaries. Deferred costs and cold-route totals are disclosed in [bundle evidence](./BUNDLE_ROUTE_BOUNDARIES.md); these are build measurements, not hosted latency claims.
+The final production graph passes all ten existing bundle checks without changing thresholds. Auth is 19.2 KiB Brotli (20 KiB ceiling), administrator 105.8 KiB (110 KiB ceiling). Sign-up, recovery and administrator settings load at their actual route/interaction boundaries. Deferred costs and cold-route totals are disclosed in the [original route evidence](./BUNDLE_ROUTE_BOUNDARIES.md) and [latest phone-consistency measurement](./BUNDLE_PHONE_CONSISTENCY_SUMMARY.json); these are build measurements, not hosted latency claims.

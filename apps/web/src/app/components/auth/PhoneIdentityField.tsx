@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { MapPin, Phone, Search } from 'lucide-react';
 import { COUNTRY_DIAL_CODES } from '../../../lib/country-dial-codes';
-import { countryFlag } from '../../../lib/phone-identity';
+import { countryFlag, phoneCountryDisplay } from '../../../lib/phone-identity';
 import { reverseGeocodeViaNominatim } from '../../../lib/reverse-geocode';
 import { useLang } from '../../i18n/LanguageContext';
 
@@ -68,6 +68,12 @@ const COPY = {
     failed: 'We could not identify your country. Choose it manually to continue.',
     found: 'Country selected from your location. Check the calling code before continuing.',
     noMatches: 'No matching countries. Clear the search or enter the full international number.',
+    international:
+      'The full number sets the calling code. Edit the number to change it; location cannot override it.',
+    shared:
+      'This calling code is shared. Choose your country if listed; the number stays unchanged.',
+    unresolved:
+      'No country is assumed for this prefix. You can use a complete international number without selecting a country.',
   },
   ar: {
     country: 'الدولة ومفتاح الاتصال',
@@ -83,6 +89,10 @@ const COPY = {
     failed: 'تعذر تحديد الدولة. اخترها يدوياً للمتابعة.',
     found: 'تم اختيار الدولة من موقعك. تحقق من مفتاح الاتصال قبل المتابعة.',
     noMatches: 'لا توجد دولة مطابقة. امسح البحث أو أدخل الرقم الدولي كاملاً.',
+    international:
+      'يحدد الرقم الدولي مفتاح الاتصال. عدّل الرقم لتغييره؛ لا يمكن للموقع تغيير هذا المفتاح.',
+    shared: 'مفتاح الاتصال مشترك. اختر دولتك إن كانت مدرجة؛ سيبقى الرقم كما أدخلته.',
+    unresolved: 'لا نفترض دولة لهذا المفتاح. يمكنك استخدام الرقم الدولي كاملاً دون اختيار دولة.',
   },
 } as const;
 
@@ -108,22 +118,29 @@ export function PhoneIdentityField({
   const generation = useRef(0);
   const request = useRef<AbortController | null>(null);
   const requestTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const selected = COUNTRY_DIAL_CODES.find((entry) => entry.iso2 === countryCode);
+  const display = useMemo(
+    () => phoneCountryDisplay(countryCode, localNumber),
+    [countryCode, localNumber],
+  );
+  const selected = display.country;
+  const countryLocked = display.international && !display.needsCountryChoice;
   const countries = useMemo(() => {
     const term = search.trim().toLocaleLowerCase();
-    return COUNTRY_DIAL_CODES.filter(
-      (entry) =>
-        !term ||
-        `${entry.name} ${ARABIC_COUNTRIES[entry.iso2] ?? ''} ${entry.iso2} ${entry.dialCode}`
-          .toLocaleLowerCase()
-          .includes(term),
-    ).sort((a, b) =>
-      (lang === 'ar' ? (ARABIC_COUNTRIES[a.iso2] ?? a.name) : a.name).localeCompare(
-        lang === 'ar' ? (ARABIC_COUNTRIES[b.iso2] ?? b.name) : b.name,
-        lang,
-      ),
-    );
-  }, [search, lang]);
+    return display.choices
+      .filter(
+        (entry) =>
+          !term ||
+          `${entry.name} ${ARABIC_COUNTRIES[entry.iso2] ?? ''} ${entry.iso2} ${entry.dialCode}`
+            .toLocaleLowerCase()
+            .includes(term),
+      )
+      .sort((a, b) =>
+        (lang === 'ar' ? (ARABIC_COUNTRIES[a.iso2] ?? a.name) : a.name).localeCompare(
+          lang === 'ar' ? (ARABIC_COUNTRIES[b.iso2] ?? b.name) : b.name,
+          lang,
+        ),
+      );
+  }, [search, lang, display.choices]);
 
   const cancelRequest = useCallback(() => {
     request.current?.abort();
@@ -139,13 +156,19 @@ export function PhoneIdentityField({
     [cancelRequest],
   );
   useEffect(() => {
-    if (!disabled) return;
+    if (!disabled && !display.international) return;
     generation.current += 1;
     cancelRequest();
-  }, [disabled, cancelRequest]);
-  if (disabled && locating) setLocating(false);
+  }, [disabled, display.international, cancelRequest]);
+  if ((disabled || display.international) && locating) setLocating(false);
 
   function selectCountry(value: string) {
+    if (
+      disabled ||
+      countryLocked ||
+      (display.international && value && !display.choices.some((entry) => entry.iso2 === value))
+    )
+      return;
     generation.current += 1;
     cancelRequest();
     setLocating(false);
@@ -155,8 +178,22 @@ export function PhoneIdentityField({
     setSearchOpen(false);
   }
 
+  function changeNumber(value: string) {
+    generation.current += 1;
+    cancelRequest();
+    setLocating(false);
+    setLocationStatus(null);
+    const next = phoneCountryDisplay(countryCode, value);
+    if (next.international && next.country?.iso2 !== countryCode) {
+      onCountryChange(next.country?.iso2 ?? '');
+    }
+    setSearch('');
+    setSearchOpen(false);
+    onNumberChange(value);
+  }
+
   function detectCountry() {
-    if (disabled || locating) return;
+    if (disabled || locating || display.international) return;
     setLocationStatus(null);
     if (!navigator.geolocation) {
       setLocationStatus('denied');
@@ -227,8 +264,9 @@ export function PhoneIdentityField({
             id={`${id}-country`}
             data-testid="dial-code-select"
             className={fieldClass}
-            value={countryCode}
-            disabled={disabled}
+            value={selected?.iso2 ?? ''}
+            disabled={disabled || countryLocked}
+            aria-describedby={display.international ? `${id}-country-hint` : undefined}
             onChange={(event) => selectCountry(event.target.value)}
           >
             <option value="">{copy.choose}</option>
@@ -249,7 +287,7 @@ export function PhoneIdentityField({
           </select>
           <button
             type="button"
-            disabled={disabled}
+            disabled={disabled || countryLocked}
             aria-label={copy.search}
             aria-expanded={searchOpen}
             aria-controls={`${id}-search`}
@@ -262,7 +300,16 @@ export function PhoneIdentityField({
             <Search size={19} aria-hidden="true" />
           </button>
         </div>
-        {searchOpen && (
+        {display.international && (
+          <p id={`${id}-country-hint`} className="mt-1.5 text-xs leading-relaxed text-slate-600">
+            {display.needsCountryChoice
+              ? copy.shared
+              : selected
+                ? copy.international
+                : copy.unresolved}
+          </p>
+        )}
+        {searchOpen && !countryLocked && (
           <div className="mt-2" id={`${id}-search`}>
             <label htmlFor={`${id}-search-input`} className="sr-only">
               {copy.search}
@@ -298,19 +345,19 @@ export function PhoneIdentityField({
             className="pointer-events-none absolute inset-y-0 left-3 flex items-center gap-2 text-slate-600"
           >
             <Phone size={17} />
-            {selected?.dialCode}
+            {!display.international && selected?.dialCode}
           </span>
           <input
             id={`${id}-phone`}
             type="tel"
             inputMode="tel"
-            autoComplete="tel-national"
+            autoComplete="tel"
             value={localNumber}
             disabled={disabled}
-            onChange={(event) => onNumberChange(event.target.value)}
+            onChange={(event) => changeNumber(event.target.value)}
             aria-invalid={!!error}
             aria-describedby={`${id}-hint${error ? ` ${id}-error` : ''}`}
-            className={`${fieldClass} ${selected ? 'pl-28' : 'pl-10'}`}
+            className={`${fieldClass} ${selected && !display.international ? 'pl-28' : 'pl-10'}`}
           />
         </div>
         <p id={`${id}-hint`} className="mt-1.5 text-xs leading-relaxed text-slate-600">
@@ -324,12 +371,12 @@ export function PhoneIdentityField({
       </div>
       <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
         <p id={`${id}-privacy`} className="text-xs leading-relaxed text-slate-600">
-          {copy.privacy}
+          {display.international ? copy.international : copy.privacy}
         </p>
         <button
           type="button"
           onClick={detectCountry}
-          disabled={disabled || locating}
+          disabled={disabled || locating || display.international}
           aria-describedby={`${id}-privacy`}
           className="mt-1 flex min-h-11 items-center gap-2 rounded-xl px-2 text-sm font-semibold text-slate-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 disabled:opacity-60"
         >

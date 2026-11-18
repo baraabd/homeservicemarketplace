@@ -105,17 +105,27 @@ for (const channel of CHANNELS)
           .getByLabel(lang === 'ar' ? 'الاسم الكامل' : 'Full Name', { exact: true })
           .fill(lang === 'ar' ? 'نورة أحمد' : 'Noura Ahmad');
         if (channel === 'whatsapp') {
-          await expect(page.getByTestId('dial-code-select')).toHaveValue('');
+          const country = page.getByTestId('dial-code-select');
+          const phone = page.getByLabel(
+            lang === 'ar' ? 'رقم الهاتف المسجل في واتساب' : 'WhatsApp phone number',
+            { exact: true },
+          );
+          await expect(country).toHaveValue('');
           await expect(page.getByText('United States (US)', { exact: true })).toHaveCount(0);
-          await page.getByTestId('dial-code-select').selectOption('SA');
-          await page
-            .getByLabel(lang === 'ar' ? 'رقم الهاتف المسجل في واتساب' : 'WhatsApp phone number', {
-              exact: true,
-            })
-            .fill('0501234567');
-          await expect(
-            page.getByTestId('dial-code-select').locator('option:checked'),
-          ).toContainText('🇸🇦');
+          await country.selectOption('SA');
+          await phone.fill('+963944123456');
+          await expect(country).toHaveValue('SY');
+          await expect(country.locator('option:checked')).toContainText('🇸🇾');
+          await expect(country).toBeDisabled();
+          await expect(phone).toHaveValue('+963944123456');
+          await page.setViewportSize({ width: 320, height: 844 });
+          await assertNoOverflow(page);
+          // Restore the Saudi fixture before the registration/OTP presentation flow.
+          await phone.fill('');
+          await expect(country).toBeEnabled();
+          await country.selectOption('SA');
+          await phone.fill('0501234567');
+          await expect(country.locator('option:checked')).toContainText('🇸🇦');
         }
         for (const width of WIDTHS) {
           await page.setViewportSize({ width, height: 844 });

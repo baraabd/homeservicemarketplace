@@ -46,3 +46,7 @@ An absent setting defaults to email; an invalid stored policy fails closed. Remo
 - [Meta Cloud API template object](https://whatsapp.github.io/WhatsApp-Nodejs-SDK/api-reference/types/TemplateObject/)
 
 No live WhatsApp recipient journey has been executed by the code-change task unless separate acceptance evidence explicitly records it.
+
+## Observed staging readiness — 18 November 2026
+
+A read-only Railway inspection of project `hsm-staging`, environment `staging`, service `api` returned variable names only, with values redacted. None of the six required `WHATSAPP_*` sender/template configuration variables listed above was present, including sealed variables. No deployment, setting change or message send was performed. Configure and verify those values before the hosted recipient acceptance; source tests alone do not make the channel operational.
