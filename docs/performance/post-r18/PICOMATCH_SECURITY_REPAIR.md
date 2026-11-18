@@ -44,7 +44,10 @@ without accepting unknown source changes.
 No historical R27 measurement is relabelled as new evidence. All three
 measurement jobs must run against the new candidate and controls.
 
-## Executed checks
+## Earlier repair checks
+
+The following results were collected before the unmatched-bracket follow-up.
+They are retained as historical evidence, not relabelled as final-head results.
 
 - PASS: pinned Node 24.21.0 / pnpm 10.32.1 frozen installation.
 - PASS: 62 security audit, exploit, installed-consumer and fork tests.
@@ -66,6 +69,27 @@ to match. The affected patterns are `*(a*|b)`, `+(*)c` (two assertions), and
 not skipped or weakened tests. Project glob/build consumers are checked
 separately. The exploit regression also times out against the official
 unfixed 4.0.7 tarball and completes against both patched forks.
+
+## Unmatched-bracket follow-up
+
+Review found a mismatch between the defensive wildcard guard and the parser:
+the guard entered character-class mode for an unmatched opening bracket while
+the parser interpreted that bracket literally. Both forks now check for a
+remaining closing bracket using one precomputed position. This preserves
+linear scanning and the existing literal fallback for repeated wildcard groups.
+
+Short-input compilation and compatibility regressions cover the malformed
+bracket cases in both major versions. Six selected test groups pass; the follow-up
+check excludes long-input and upstream attack reproduction cases. Changed-source
+lint and formatting pass. The 26 dependency-control and workflow regressions
+also pass. New dependency-only controls descend additively from
+baseline `e9cfb2344899a91ceedc7cbcf9bfc73acefda74d` and repair parent
+`8ef71b1b36995632ba4fdf3d837698c26b3f64ff`; all installed dependency digests and
+the workflow baseline are updated to their actual Git identities. The original
+PR base remains `d64d463666e94a68b007ba96d724998e7e928fdc`.
+
+Full final-head CI, official CodeQL results and real-service performance runs
+remain required. No gate, advisory policy or acceptance threshold is changed.
 
 ## Rollback and limits
 

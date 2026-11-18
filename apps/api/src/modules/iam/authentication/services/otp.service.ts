@@ -1,10 +1,16 @@
 import { BadRequestException, ForbiddenException, Injectable } from '@nestjs/common';
-import { createHash, createHmac, randomBytes, randomInt } from 'node:crypto';
+import { randomBytes, randomInt } from 'node:crypto';
 import type { PrismaTx, TokenPurpose, VerificationToken } from '@homeservicemarketplace/database';
 
 import { lockAuthAccount } from '../../../../infrastructure/persistence/iam/auth-account-lock';
 import { AppConfigService } from '../../../../config/app-config.service';
 import { VerificationTokenRepository } from '../../../../infrastructure/persistence/iam/verification-token.repository';
+import {
+  assertOtpChallengeId,
+  assertOtpCode,
+  hashOtpCode,
+  OTP_HASH_PREFIX,
+} from '../helpers/otp-codec';
 
 // Limits. The numbers are conservative: short-lived, few attempts, fewer
 // resends. Increasing them should be a deliberate security decision.
@@ -29,6 +35,13 @@ export interface IssuedOtpChallenge {
   expiresInSeconds: number;
 }
 
+/** Internal prepared material; never serialize the digest into an API response. */
+export interface PreparedOtpChallenge {
+  readonly challengeId: string;
+  readonly rawCode: string;
+  readonly tokenHash: string;
+}
+
 export interface OtpDeliveryBinding {
   channel: 'email' | 'whatsapp';
   destination: string;
@@ -48,6 +61,14 @@ export class OtpService {
     private readonly config: AppConfigService,
   ) {}
 
+  /** Anonymous account lookup paths prepare once even for neutral responses. */
+  async prepare(): Promise<PreparedOtpChallenge> {
+    const rawCode = generateNumericCode(OTP_CODE_LENGTH);
+    const challengeId = randomBytes(24).toString('base64url');
+    const tokenHash = await this.hashChallenge(rawCode, challengeId);
+    return { rawCode, challengeId, tokenHash };
+  }
+
   // --- Issue -------------------------------------------------------------
   // Creates a fresh challenge for the user, invalidating any outstanding
   // OTP of the same purpose in the same transaction. Returns the raw code
@@ -57,13 +78,12 @@ export class OtpService {
     purpose: OtpPurpose,
     tx?: PrismaTx,
     delivery?: OtpDeliveryBinding,
+    prepared?: PreparedOtpChallenge,
   ): Promise<IssuedOtpChallenge> {
     if (tx) await lockAuthAccount(tx, userId);
     await this.repo.invalidateOutstanding(userId, purpose, tx);
 
-    const rawCode = generateNumericCode(OTP_CODE_LENGTH);
-    const challengeId = randomBytes(24).toString('base64url');
-    const tokenHash = this.hashChallenge(rawCode, challengeId);
+    const { rawCode, challengeId, tokenHash } = prepared ?? (await this.prepare());
     const expiresAt = new Date(Date.now() + OTP_TTL_MINUTES * 60 * 1000);
 
     await this.repo.create(
@@ -140,10 +160,18 @@ export class OtpService {
     tx?: PrismaTx,
     allowedPurposes: OtpPurpose[] = ['REGISTRATION_OTP', 'LOGIN_OTP'],
   ): Promise<ConsumedOtp> {
+    assertOtpChallengeId(challengeId);
+    assertOtpCode(rawCode);
     let row = await this.repo.findByChallengeId(challengeId, tx);
     if (row && tx) {
       await lockAuthAccount(tx, row.userId);
       row = await this.repo.findByChallengeId(challengeId, tx);
+    }
+    if (!row) {
+      // Neutral envelopes must not be distinguishable by skipping verification
+      // work. Syntax was bounded above, so this always has the fixed KDF cost.
+      await this.hashChallenge(rawCode, challengeId);
+      throw new BadRequestException({ code: 'AUTH_OTP_INVALID' });
     }
     assertLiveOtp(row);
     if (!allowedPurposes.includes(row.purpose as OtpPurpose))
@@ -151,8 +179,11 @@ export class OtpService {
 
     // Re-check after the account lock. Reset revokes outstanding challenges
     // before releasing that same lock; no pre-reset OTP can create a new session.
-    // Legacy unexpired hashes remain valid; all new codes are challenge-scoped.
-    const supplied = this.hashChallenge(rawCode, challengeId, row.tokenHash);
+    // Pre-v4 codes require a resend; identity, destination and attempt counters
+    // remain intact. Never compute a deprecated fast digest for verification.
+    if (!row.tokenHash.startsWith(OTP_HASH_PREFIX))
+      throw new BadRequestException({ code: 'AUTH_OTP_EXPIRED' });
+    const supplied = await this.hashChallenge(rawCode, challengeId);
     const consumed = await this.repo.consumeByChallenge(
       challengeId,
       supplied,
@@ -202,10 +233,17 @@ export class OtpService {
     channel?: 'email' | 'whatsapp';
     destination?: string;
   }> {
+    assertOtpChallengeId(challengeId);
     let row = await this.repo.findByChallengeId(challengeId, tx);
     if (row && tx) {
       await lockAuthAccount(tx, row.userId);
       row = await this.repo.findByChallengeId(challengeId, tx);
+    }
+    if (!row) {
+      // Neutral registration/recovery envelopes contain well-formed random
+      // IDs too. A missing challenge performs the same one KDF as a live resend.
+      await this.hashChallenge(generateNumericCode(OTP_CODE_LENGTH), challengeId);
+      throw new BadRequestException({ code: 'AUTH_OTP_INVALID' });
     }
     assertLiveOtp(row);
     if (row!.resendCount >= OTP_MAX_RESENDS) {
@@ -213,10 +251,11 @@ export class OtpService {
     }
 
     let rawCode: string;
+    let tokenHash: string;
     do {
       rawCode = generateNumericCode(OTP_CODE_LENGTH);
-    } while (this.hashChallenge(rawCode, challengeId, row.tokenHash) === row.tokenHash);
-    const tokenHash = this.hashChallenge(rawCode, challengeId);
+      tokenHash = await this.hashChallenge(rawCode, challengeId);
+    } while (tokenHash === row.tokenHash);
     const expiresAt = new Date(Date.now() + OTP_TTL_MINUTES * 60 * 1000);
     const rotated = await this.repo.rotateLiveChallenge(
       challengeId,
@@ -243,33 +282,19 @@ export class OtpService {
     };
   }
 
-  // Domain-separated keyed hashing protects short numeric codes against an
-  // offline database-only guess. Rotating the signing secret expires pending
-  // keyed challenges; request a new code. Legacy live challenges drain naturally.
-  private hashChallenge(raw: string, challengeId: string, stored?: string): string {
-    if (stored && !stored.startsWith('otp-v3:')) {
-      return hashCode(raw, stored.startsWith('otp-v2:') ? challengeId : undefined);
-    }
+  // A server pepper protects database-only exposure; Argon2id adds bounded
+  // memory-hard work. Rotating the secret requires a resend for pending codes.
+  private hashChallenge(raw: string, challengeId: string): Promise<string> {
     const secret = this.config.get('JWT_ACCESS_SECRET');
     if (typeof secret !== 'string' || secret.length < 32)
       throw new Error('OTP hashing requires the validated authentication secret');
-    return hashCode(raw, challengeId, secret);
+    return hashOtpCode(raw, challengeId, secret);
   }
 
   // --- Helpers exposed for tests ----------------------------------------
-  static hashForTest(raw: string, challengeId?: string, secret?: string): string {
-    return hashCode(raw, challengeId, secret);
+  static hashForTest(raw: string, challengeId: string, secret: string): Promise<string> {
+    return hashOtpCode(raw, challengeId, secret);
   }
-}
-
-function hashCode(raw: string, challengeId?: string, secret?: string): string {
-  if (secret && challengeId)
-    return (
-      'otp-v3:' +
-      createHmac('sha256', secret).update(`hsm:email-otp:v3\0${challengeId}\0${raw}`).digest('hex')
-    );
-  if (!challengeId) return createHash('sha256').update(raw).digest('hex');
-  return 'otp-v2:' + createHash('sha256').update(`${challengeId}\0${raw}`).digest('hex');
 }
 
 function generateNumericCode(length: number): string {

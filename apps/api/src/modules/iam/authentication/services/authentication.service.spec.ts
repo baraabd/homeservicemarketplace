@@ -65,7 +65,7 @@ const legalAcceptance = {
   locale: 'en' as const,
 };
 
-function makeHarness() {
+function makeHarness(requireVerification = true) {
   const users = {
     findByEmail: jest.fn(),
     findByPhoneNumber: jest.fn(),
@@ -99,7 +99,13 @@ function makeHarness() {
 
   // OTP service double. The per-test expectations override these
   // mockResolvedValue defaults where needed (e.g. REGISTRATION_OTP path).
+  const preparedOtp = {
+    challengeId: 'chal-fake',
+    rawCode: '123456',
+    tokenHash: 'synthetic-argon2-otp-hash',
+  };
   const otp = {
+    prepare: jest.fn().mockResolvedValue(preparedOtp),
     issue: jest.fn().mockResolvedValue({
       challengeId: 'chal-fake',
       rawCode: '123456',
@@ -149,7 +155,7 @@ function makeHarness() {
   const config: AppConfigService = {
     get: (k: string) => {
       if (k === 'AUTH_ANTI_ENUM_DELAY_MS') return 0;
-      if (k === 'AUTH_REQUIRE_EMAIL_VERIFICATION') return true;
+      if (k === 'AUTH_REQUIRE_EMAIL_VERIFICATION') return requireVerification;
       return undefined;
     },
   } as unknown as AppConfigService;
@@ -212,6 +218,7 @@ function makeHarness() {
     passwords,
     verification,
     otp,
+    preparedOtp,
     sessions,
     attempts,
     tx,
@@ -257,10 +264,13 @@ describe('AuthenticationService', () => {
       // Registration pivoted from a link token (EMAIL_VERIFICATION) to a
       // short-form OTP challenge (REGISTRATION_OTP) — see otp.service.ts.
       // No session is issued here; the session is issued only on verify-otp.
-      expect(h.otp.issue).toHaveBeenCalledWith('new-u', 'REGISTRATION_OTP', expect.anything(), {
-        channel: 'email',
-        destination: 'ada@example.com',
-      });
+      expect(h.otp.issue).toHaveBeenCalledWith(
+        'new-u',
+        'REGISTRATION_OTP',
+        expect.anything(),
+        { channel: 'email', destination: 'ada@example.com' },
+        h.preparedOtp,
+      );
       expect(h.verification.issue).not.toHaveBeenCalled();
       expect(h.mail.send).toHaveBeenCalled();
       expect(h.audit.record).toHaveBeenCalledWith(
@@ -1118,10 +1128,13 @@ describe('WhatsApp authentication', () => {
       h.fakeTx,
     );
     expect(h.users.findByEmail).not.toHaveBeenCalled();
-    expect(h.otp.issue).toHaveBeenCalledWith('u-1', 'REGISTRATION_OTP', h.fakeTx, {
-      channel: 'whatsapp',
-      destination: phoneNumber,
-    });
+    expect(h.otp.issue).toHaveBeenCalledWith(
+      'u-1',
+      'REGISTRATION_OTP',
+      h.fakeTx,
+      { channel: 'whatsapp', destination: phoneNumber },
+      h.preparedOtp,
+    );
     expect(h.delivery.enqueue).toHaveBeenCalledWith(
       expect.objectContaining({
         channel: 'whatsapp',
@@ -1389,10 +1402,13 @@ describe('WhatsApp recovery and contact enrollment', () => {
     await expect(h.svc.forgotPasswordOtp(phoneNumber, ctx)).resolves.toMatchObject({
       channel: 'whatsapp',
     });
-    expect(h.otp.issue).toHaveBeenCalledWith('u-1', 'PASSWORD_RESET_OTP', h.fakeTx, {
-      channel: 'whatsapp',
-      destination: phoneNumber,
-    });
+    expect(h.otp.issue).toHaveBeenCalledWith(
+      'u-1',
+      'PASSWORD_RESET_OTP',
+      h.fakeTx,
+      { channel: 'whatsapp', destination: phoneNumber },
+      h.preparedOtp,
+    );
     expect(committedAtDelivery).toBe(true);
     expect(h.sessions.createForLogin).not.toHaveBeenCalled();
   });
@@ -1592,6 +1608,165 @@ describe('unfinished registration recovery', () => {
     expect(h.otp.issue).not.toHaveBeenCalled();
     expect(h.delivery.enqueue).not.toHaveBeenCalled();
   });
+});
+
+describe('anonymous OTP preparation work', () => {
+  const phoneNumber = '+966501234567';
+  const registration = {
+    email: 'ada@example.com',
+    password: 'a-reasonable-passphrase',
+    firstName: 'Ada',
+    lastName: 'Lovelace',
+    legalAcceptance,
+  };
+  const verifiedPhoneUser = () =>
+    makeUser({ email: null, emailVerifiedAt: null, phoneNumber, phoneVerifiedAt: new Date() });
+
+  it.each(['new', 'duplicate', 'uniqueness race', 'suppressed'] as const)(
+    'does exactly one OTP preparation before registration lookup for the %s path',
+    async (outcome) => {
+      const h = makeHarness();
+      h.users.findByEmail.mockResolvedValue(outcome === 'duplicate' ? makeUser() : null);
+      h.users.create.mockResolvedValue(
+        makeUser({ status: 'PENDING_VERIFICATION', emailVerifiedAt: null }),
+      );
+      if (outcome === 'uniqueness race') {
+        h.users.create.mockRejectedValue({ code: 'P2002', meta: { target: ['email'] } });
+      }
+      if (outcome === 'suppressed') {
+        jest.spyOn(h.delivery, 'enqueue').mockResolvedValue({ deliveryId: null, intent: null });
+      }
+
+      const response = await h.svc.register(registration, ctx);
+
+      expect(h.otp.prepare).toHaveBeenCalledTimes(1);
+      expect(h.otp.prepare.mock.invocationCallOrder[0]).toBeLessThan(
+        jest.mocked(h.tx.run).mock.invocationCallOrder[0]!,
+      );
+      expect(h.otp.prepare.mock.invocationCallOrder[0]).toBeLessThan(
+        h.users.findByEmail.mock.invocationCallOrder[0]!,
+      );
+      if (outcome === 'new' || outcome === 'suppressed') {
+        expect(h.otp.issue).toHaveBeenCalledTimes(1);
+        expect(h.otp.issue.mock.calls[0]![4]).toBe(h.preparedOtp);
+      } else {
+        expect(h.otp.issue).not.toHaveBeenCalled();
+        expect(h.delivery.enqueue).not.toHaveBeenCalled();
+      }
+      if (outcome !== 'new') expect(h.delivery.dispatch).not.toHaveBeenCalled();
+      expect(response).toMatchObject({ channel: 'email', codeLength: 6 });
+      expect(response).not.toHaveProperty('tokenHash');
+      expect(response).not.toHaveProperty('rawCode');
+      expect(h.sessions.createForLogin).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each(['known', 'unknown', 'unverified', 'inactive', 'suppressed'] as const)(
+    'does exactly one OTP preparation before recovery lookup for the %s path',
+    async (outcome) => {
+      const h = makeHarness();
+      h.users.findByPhoneNumber.mockResolvedValue(
+        outcome === 'unknown'
+          ? null
+          : {
+              ...verifiedPhoneUser(),
+              ...(outcome === 'unverified' ? { phoneVerifiedAt: null } : {}),
+              ...(outcome === 'inactive' ? { isActive: false } : {}),
+            },
+      );
+      jest.spyOn(h.delivery, 'dispatch').mockResolvedValue(undefined);
+      if (outcome === 'suppressed') {
+        jest.spyOn(h.delivery, 'enqueue').mockResolvedValue({ deliveryId: null, intent: null });
+      }
+
+      const response = await h.svc.forgotPasswordOtp(phoneNumber, ctx);
+
+      expect(h.otp.prepare).toHaveBeenCalledTimes(1);
+      expect(h.otp.prepare.mock.invocationCallOrder[0]).toBeLessThan(
+        jest.mocked(h.tx.run).mock.invocationCallOrder[0]!,
+      );
+      expect(h.otp.prepare.mock.invocationCallOrder[0]).toBeLessThan(
+        h.users.findByPhoneNumber.mock.invocationCallOrder[0]!,
+      );
+      if (outcome === 'known' || outcome === 'suppressed') {
+        expect(h.otp.issue).toHaveBeenCalledTimes(1);
+        expect(h.otp.issue.mock.calls[0]![4]).toBe(h.preparedOtp);
+      } else {
+        expect(h.otp.issue).not.toHaveBeenCalled();
+        expect(h.delivery.enqueue).not.toHaveBeenCalled();
+      }
+      if (outcome !== 'known') expect(h.delivery.dispatch).not.toHaveBeenCalled();
+      expect(response).toMatchObject({ channel: 'whatsapp', codeLength: 6 });
+      expect(response).not.toHaveProperty('tokenHash');
+      expect(response).not.toHaveProperty('rawCode');
+      expect(h.sessions.createForLogin).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each([
+    ['registration', 'new'],
+    ['registration', 'duplicate'],
+    ['recovery', 'known'],
+    ['recovery', 'unknown'],
+  ] as const)(
+    'awaits OTP preparation on %s %s before opening a transaction',
+    async (flow, outcome) => {
+      const h = makeHarness();
+      h.users.findByEmail.mockResolvedValue(outcome === 'duplicate' ? makeUser() : null);
+      h.users.create.mockResolvedValue(makeUser());
+      h.users.findByPhoneNumber.mockResolvedValue(outcome === 'known' ? verifiedPhoneUser() : null);
+      jest.spyOn(h.delivery, 'dispatch').mockResolvedValue(undefined);
+      let release!: () => void;
+      const pending = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      let began!: () => void;
+      const preparationStarted = new Promise<void>((resolve) => {
+        began = resolve;
+      });
+      h.otp.prepare.mockImplementation(async () => {
+        began();
+        await pending;
+        return h.preparedOtp;
+      });
+      let completed = false;
+      const response = (
+        flow === 'registration'
+          ? h.svc.register(registration, ctx)
+          : h.svc.forgotPasswordOtp(phoneNumber, ctx)
+      ).then((result) => {
+        completed = true;
+        return result;
+      });
+      try {
+        await preparationStarted;
+        expect(completed).toBe(false);
+        expect(h.tx.run).not.toHaveBeenCalled();
+        expect(h.users.findByEmail).not.toHaveBeenCalled();
+        expect(h.users.findByPhoneNumber).not.toHaveBeenCalled();
+        expect(h.otp.issue).not.toHaveBeenCalled();
+        expect(h.delivery.enqueue).not.toHaveBeenCalled();
+      } finally {
+        release();
+        await response;
+      }
+      expect(completed).toBe(true);
+      expect(h.otp.prepare).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  it.each(['new', 'duplicate'] as const)(
+    'skips OTP work uniformly when development registration verification is disabled: %s',
+    async (outcome) => {
+      const h = makeHarness(false);
+      h.users.findByEmail.mockResolvedValue(outcome === 'duplicate' ? makeUser() : null);
+      h.users.create.mockResolvedValue(makeUser());
+      await h.svc.register(registration, ctx);
+      expect(h.otp.prepare).not.toHaveBeenCalled();
+      expect(h.otp.issue).not.toHaveBeenCalled();
+      expect(h.delivery.enqueue).not.toHaveBeenCalled();
+    },
+  );
 });
 
 describe('anonymous authentication delivery timing', () => {

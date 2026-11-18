@@ -1,0 +1,149 @@
+{
+  "schemaVersion": 1,
+  "scope": "production Vite chunk bytes; no browser latency or hosted acceptance claim",
+  "compression": {
+    "gzip": "zlib level 1 (nginx.conf default)",
+    "brotli": "quality 11 (lower bound)"
+  },
+  "baseline": {
+    "measuredAt": "2026-11-18T06:52:37.754Z",
+    "commit": "41105986089bc13adb23bcd15d8211442d47793f",
+    "buildWallClockMs": 7881
+  },
+  "after": {
+    "measuredAt": "2026-11-18T06:55:17.308Z",
+    "commit": "41105986089bc13adb23bcd15d8211442d47793f",
+    "worktreeModified": true,
+    "buildWallClockMs": 7556,
+    "lockfileSha256": "0a0e9798d23c0891dc2b0e3bf0ab0a1122a2d38a91fc9f2718e61572c06a4c12",
+    "sourceSha256": {
+      "apps/web/src/app/components/admin/AdminRouteContent.tsx": "d54c59077983072affdd7107d82ecb44449a6565bbeebe59b50cea22cae0ce73",
+      "apps/web/src/app/components/auth/AuthScreens.tsx": "0eb6bf812f37406bbc73c0338c1eeb8758f03aae910b8f20b947eb467ff7bce5",
+      "apps/web/src/app/components/auth/SignUpScreen.tsx": "6e2694e5612e32a5e6a9d3e86080ecbbeff7661066814a7f7fddba32c68c4199",
+      "apps/web/src/app/components/auth/ForgotPasswordScreen.tsx": "bd841b734f4f214da14b2983e7ed4712f672424a6a1d115104a1a6242f488466",
+      "apps/web/src/app/components/auth/AuthLayout.tsx": "41066d0f3a2c97578c5e91f381740f9e618402d0c2a265f739a78f75a419da8e",
+      "apps/web/src/app/pages/AuthPages.tsx": "868bb0ad18022d95d19e92504bf582b79e3244b0d9f882eb563b8ccaa352f381"
+    }
+  },
+  "thresholdFile": "scripts/perf/post-r18/budgets.proposed.json",
+  "thresholdsModified": false,
+  "buildFlags": {
+    "VITE_API_URL": "http://127.0.0.1:4010"
+  },
+  "measurements": [
+    {
+      "name": "shell",
+      "beforeBrotliBytes": 189226,
+      "afterBrotliBytes": 189377,
+      "limitKiB": 185
+    },
+    {
+      "name": "auth",
+      "beforeBrotliBytes": 25969,
+      "afterBrotliBytes": 18926,
+      "limitKiB": 20
+    },
+    {
+      "name": "seeker-home",
+      "beforeBrotliBytes": 57880,
+      "afterBrotliBytes": 58243,
+      "limitKiB": 60
+    },
+    {
+      "name": "provider-workspace",
+      "beforeBrotliBytes": 35829,
+      "afterBrotliBytes": 36037,
+      "limitKiB": 40
+    },
+    {
+      "name": "provider-onboarding",
+      "beforeBrotliBytes": 76266,
+      "afterBrotliBytes": 76597,
+      "limitKiB": 75
+    },
+    {
+      "name": "admin",
+      "beforeBrotliBytes": 116949,
+      "afterBrotliBytes": 108305,
+      "limitKiB": 110
+    },
+    {
+      "name": "disputes",
+      "beforeBrotliBytes": 43332,
+      "afterBrotliBytes": 43362,
+      "limitKiB": 45
+    },
+    {
+      "name": "job-wizard",
+      "beforeBrotliBytes": 64985,
+      "afterBrotliBytes": 64988,
+      "limitKiB": 65
+    }
+  ],
+  "deferredRoutes": [
+    {
+      "name": "signup",
+      "source": "src/app/components/auth/SignUpScreen.tsx",
+      "parent": "auth",
+      "additionalBrotliBytes": 8119,
+      "coldRouteIncrementBrotliBytes": 27045
+    },
+    {
+      "name": "email-recovery",
+      "source": "src/app/components/auth/ForgotPasswordScreen.tsx",
+      "parent": "auth",
+      "additionalBrotliBytes": 3754,
+      "coldRouteIncrementBrotliBytes": 22680
+    },
+    {
+      "name": "whatsapp-recovery",
+      "source": "src/app/components/auth/WhatsAppPasswordRecovery.tsx",
+      "parent": "auth",
+      "additionalBrotliBytes": 1733,
+      "coldRouteIncrementBrotliBytes": 20659
+    },
+    {
+      "name": "admin-settings",
+      "source": "src/app/components/admin/SettingsSection.tsx",
+      "parent": "admin",
+      "additionalBrotliBytes": 11022,
+      "coldRouteIncrementBrotliBytes": 119327
+    }
+  ],
+  "forbiddenLibraryChecks": {
+    "recharts": "only admin-dashboard-charts",
+    "leaflet": "only job-wizard and address-map"
+  },
+  "localBundleChecks": {
+    "passed": 10,
+    "failed": 0
+  },
+  "notes": [
+    "Auth policy is still loaded before rendering forms. Phone/WhatsApp login inputs remain part of the initial auth dependency graph.",
+    "Signup, recovery and admin settings load automatically when their respective routes render; these deferred bytes still cost a network request on a cold visit.",
+    "The default auth/login increment is smaller; cold signup and settings totals are not claimed to be smaller. Separate chunks have compression and request overhead.",
+    "Thresholds, measurement classification and CI workflow were unchanged. Final-SHA remote CI must independently verify committed source."
+  ],
+  "verification": {
+    "webTypeScript": "PASS: tsc -b --pretty false",
+    "scopedLint": {
+      "errors": 0,
+      "existingWarnings": 1
+    },
+    "targetedTests": {
+      "files": 8,
+      "passed": 124,
+      "failed": 0
+    },
+    "fullWebSuite": {
+      "command": "pnpm --filter @homeservicemarketplace/web exec vitest run",
+      "filesPassed": 249,
+      "testsPassed": 3191,
+      "failed": 0,
+      "durationSeconds": 45.27,
+      "warnings": [
+        "Existing duplicate availability/timezone keys in provider-onboarding-v2/autosave/onboarding-exit.test.tsx"
+      ]
+    }
+  }
+}

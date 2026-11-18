@@ -529,10 +529,12 @@ for (const mode of ['dev', 'production-preview'] as const) {
           ];
     const errors: string[] = [];
     let failedApiRequests = 0;
+    let failedPolicyRequests = 0;
     page.on('pageerror', (error) => errors.push(error.message));
     await seedLanguage(page, 'en');
     await page.route('https://api.example.test/**', async (route) => {
       failedApiRequests += 1;
+      if (new URL(route.request().url()).pathname === '/v1/auth/config') failedPolicyRequests += 1;
       await route.abort('connectionrefused');
     });
     if (mode === 'dev') test.setTimeout(DEV_TEST_TIMEOUT_MS);
@@ -543,10 +545,24 @@ for (const mode of ['dev', 'production-preview'] as const) {
       await page.goto(server.baseURL);
       await expect(page.getByTestId('app-card-seeker')).toBeVisible();
       await page.getByTestId('app-card-seeker').click();
-      const email = page.locator('input[type="email"]');
-      await expect(email).toBeVisible();
-      await email.fill('startup-check@example.test');
-      await expect(email).toHaveValue('startup-check@example.test');
+      // The app remains usable without inventing an identity form before
+      // the server's current email/WhatsApp policy can be confirmed.
+      await expect(
+        page.getByRole('heading', { name: 'Sign-in options are unavailable', exact: true }),
+      ).toBeVisible();
+      await expect(page.locator('input')).toHaveCount(0);
+      const policyRequestsBeforeRetry = failedPolicyRequests;
+      await page.getByRole('button', { name: 'Try again', exact: true }).click();
+      await expect.poll(() => failedPolicyRequests).toBe(policyRequestsBeforeRetry + 1);
+      await expect(page.getByRole('button', { name: 'Try again', exact: true })).toBeEnabled();
+      await page.getByTestId('lang-toggle').click();
+      await expect(page.locator('html')).toHaveAttribute('lang', 'ar');
+      await expect(page.locator('html')).toHaveAttribute('dir', 'rtl');
+      await expect(
+        page.getByRole('heading', { name: 'تعذّر تحميل خيارات الدخول', exact: true }),
+      ).toBeVisible();
+      await expect(page.getByRole('button', { name: 'إعادة المحاولة', exact: true })).toBeEnabled();
+      await expect(page.locator('input')).toHaveCount(0);
       const interactiveMs = performance.now() - server.spawnedAt;
       await expect(page.locator('#startup-error')).toHaveCount(0);
       await expect(page.locator('vite-error-overlay')).toHaveCount(0);
@@ -560,9 +576,10 @@ for (const mode of ['dev', 'production-preview'] as const) {
             platform: process.platform,
             interactiveMs,
             start: 'owned server process spawn',
-            end: 'navigation and editable input acknowledged',
+            end: 'navigation, policy retry and language change acknowledged',
             api: 'controlled browser transport failure; no backend success claimed',
             failedApiRequests,
+            failedPolicyRequests,
             errors,
           },
           null,

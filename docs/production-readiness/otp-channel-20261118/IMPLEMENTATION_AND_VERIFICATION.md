@@ -17,7 +17,17 @@ The UI waits for public authentication configuration before showing credential f
 - Provider onboarding, review and administrator-access eligibility accept a verified authentication email or phone. A provider-profile phone proof remains a separate fact. Historical review snapshots remain compatible, while actual profile changes and live eligibility checks still block unsafe approvals.
 - Profile edit state uses immutable account identity so phone-only users and later email attachment cannot leak or discard another account's drafts.
 
-Three additive Prisma migrations expand account identity, delivery binding and purpose/audit enums. They were applied from scratch on a real PostgreSQL 16 test database. Existing email accounts and unbound legacy email tokens remain supported. Rolling back application code after creating phone-only users requires a compatible build; do not restore the old non-null email constraint over those users.
+Three additive Prisma migrations expand account identity, delivery binding and purpose/audit enums. They were applied from scratch on a real PostgreSQL 16 test database. Existing email accounts and opaque email links remain supported. Pre-v4 numeric OTPs require a resend: still-live challenges retain their identity, original delivery channel and destination, and attempt/resend limits. No migration expires token rows. Rolling back application code after creating phone-only users requires a compatible build; do not restore the old non-null email constraint over those users.
+
+### OTP digest hardening
+
+The official CodeQL SARIF for commit `64d338d5062ceba852dabf975bb71d086379858c` reported three `js/insufficient-password-hash` findings in the OTP codec. The reported flows originated in recovery/enrollment test results and their challenge IDs or generated numeric codes. Account passwords were already hashed with Argon2id; this was not an account-password storage defect.
+
+The OTP codec now uses versioned Argon2id (`otp-v4`, 19,456 KiB memory, two passes, one lane), with the cryptographically random challenge ID as its individual salt and the server authentication secret as an additional pepper. Its deterministic digest preserves database compare-and-swap and single-use behavior. No fast-digest fallback or scanner suppression remains.
+
+The deployment impact is limited to outstanding numeric OTPs, whose normal lifetime is five minutes. A pre-v4 code returns the existing expired-code response; resend upgrades a still-live challenge without changing its owner or destination or clearing attempt/resend limits. An expired or exhausted challenge still requires a fresh sign-in or recovery request. Account passwords, verified contacts and opaque email links are unaffected.
+
+Anonymous registration and WhatsApp recovery prepare one OTP digest before account lookup on both real and neutral paths, including duplicates and suppressed delivery. Persistence reuses that prepared work. Unknown well-formed verification/resend IDs also perform one digest operation. Malformed input and known expired, exhausted or wrong-purpose challenges are rejected before expensive work. Existing endpoint throttles, per-account transaction locks and native asynchronous Argon2 execution continue to apply; adding memory-hard work is not a substitute for those limits.
 
 ## Verification evidence
 
@@ -26,8 +36,9 @@ Runtime: Node 24.21.0 and pnpm 10.32.1, matching the repository pins.
 | Check                                                       | Observed result                                                                                                         |
 | ----------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
 | Prisma generation and fresh PostgreSQL migration deployment | Passed                                                                                                                  |
-| Four authentication/database integration suites             | 54 passed; 3 existing SMTP/Mailpit-only cases skipped because that service was not available                            |
-| Authentication/admin-access unit suites                     | 165 passed                                                                                                              |
+| Four authentication/database integration suites             | 57 passed; 3 existing SMTP/Mailpit-only cases skipped because that service was not available                            |
+| Authentication and OTP service unit suites                  | 146 passed, including neutral-path KDF work and pre-v4 resend compatibility                                             |
+| Complete hermetic API suite                                 | 326 suites, 5,909 tests passed; 107 service-gated suites / 1,977 tests skipped                                          |
 | Provider onboarding/verification regressions                | 377 passed                                                                                                              |
 | Provider review policy/service regressions                  | 40 passed                                                                                                               |
 | Delivery/channel/settings suites                            | 104 passed                                                                                                              |
@@ -61,3 +72,7 @@ Screenshots show only presentation fixtures. They do not prove backend persisten
 4. Run final-head remote CI and the committed Playwright matrix, plus full keyboard, 200% zoom and accessibility review.
 
 No production deployment, live WhatsApp delivery or universal defect-free guarantee is asserted by this evidence.
+
+## Initial bundle delivery
+
+The final production graph passes all ten existing bundle checks without changing thresholds. Auth is 18.5 KiB Brotli (20 KiB ceiling), administrator 105.8 KiB (110 KiB ceiling). Sign-up, recovery and administrator settings load at their actual route/interaction boundaries. Deferred costs and cold-route totals are disclosed in [bundle evidence](./BUNDLE_ROUTE_BOUNDARIES.md); these are build measurements, not hosted latency claims.

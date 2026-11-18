@@ -206,6 +206,29 @@ describe('server-selected authentication channel', () => {
     expect(screen.queryByText('Use a verification link instead')).toBeNull();
   });
 
+  it('registers in email mode without asking for or sending an unused phone number', async () => {
+    mock.onGet('/v1/auth/config').reply(200, { otpChannel: 'email', whatsappAvailable: false });
+    mock.onPost('/v1/auth/register').reply(202, {
+      ...challenge,
+      channel: 'email',
+      maskedDestination: 'n•••@example.test',
+    });
+    open('/signup');
+    await screen.findByTestId('auth-channel-email');
+    expect(document.querySelector('input[type="tel"]')).toBeNull();
+    setInput('input[type="text"]', 'Noura Ahmad');
+    fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+    setInput('input[type="email"]', 'noura@example.test');
+    setInput('input[type="password"]', 'Long-test-password-17');
+    fireEvent.click(await screen.findByRole('checkbox'));
+    fireEvent.click(screen.getByRole('button', { name: 'Create Account' }));
+    await screen.findByText('Verify your email');
+    const payload = JSON.parse(mock.history.post.find((r) => r.url === '/v1/auth/register')!.data);
+    expect(payload.email).toBe('noura@example.test');
+    expect(payload).not.toHaveProperty('phoneNumber');
+    expect(screen.getByText('Use a verification link instead')).toBeVisible();
+  });
+
   it('resets a WhatsApp-only account with a code and a new password', async () => {
     mock.onGet('/v1/auth/config').reply(200, { otpChannel: 'whatsapp', whatsappAvailable: true });
     mock.onPost('/v1/auth/forgot-password-otp').reply(202, challenge);

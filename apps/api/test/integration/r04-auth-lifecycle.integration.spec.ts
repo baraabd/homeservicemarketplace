@@ -376,6 +376,46 @@ suite('R04 account lifecycle invariants (real Postgres)', () => {
     expect(await prisma.session.count({ where: { userId: f.user.id } })).toBe(0);
   });
 
+  it.each(['a'.repeat(64), `otp-v2:${'b'.repeat(64)}`, `otp-v3:${'c'.repeat(64)}`])(
+    'upgrades a live pre-v4 OTP through resend without changing ownership or clearing limits',
+    async (legacyHash) => {
+      const f = await register();
+      const before = await prisma.verificationToken.update({
+        where: { challengeId: f.challenge.challengeId },
+        data: {
+          tokenHash: legacyHash,
+          attemptCount: 1,
+          deliveryChannel: null,
+          deliveryTarget: null,
+        },
+      });
+      await expect(s.auth.verifyOtp(f.challenge.challengeId, f.code, ctx)).rejects.toMatchObject({
+        response: { code: 'AUTH_OTP_EXPIRED' },
+      });
+      expect(
+        await prisma.verificationToken.findUniqueOrThrow({ where: { id: before.id } }),
+      ).toEqual(before);
+      expect(await prisma.session.count({ where: { userId: f.user.id } })).toBe(0);
+
+      await s.auth.resendOtp(f.challenge.challengeId, ctx);
+      const after = await prisma.verificationToken.findUniqueOrThrow({ where: { id: before.id } });
+      expect(after).toMatchObject({
+        userId: f.user.id,
+        challengeId: f.challenge.challengeId,
+        purpose: 'REGISTRATION_OTP',
+        attemptCount: 1,
+        resendCount: 1,
+        deliveryChannel: null,
+        deliveryTarget: null,
+        usedAt: null,
+      });
+      expect(after.tokenHash).toMatch(/^otp-v4:\$argon2id\$/);
+      await expect(
+        s.auth.verifyOtp(f.challenge.challengeId, mailCode(f.address), ctx),
+      ).resolves.toHaveProperty('issued.session.id');
+    },
+  );
+
   // PostgreSQL casts a timestamp-without-time-zone to the session timezone
   // when comparing it with timestamptz. Prisma stores these token fields in
   // UTC. Exercise the actual repository under both offset directions; keep

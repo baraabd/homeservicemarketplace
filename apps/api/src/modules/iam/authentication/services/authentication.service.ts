@@ -125,6 +125,9 @@ export class AuthenticationService {
       throw new BadRequestException({ code: 'AUTH_CHANNEL_CHANGED' });
 
     try {
+      // Perform the added OTP KDF once before identity lookup on both the real
+      // and neutral paths; a duplicate or suppressed delivery cannot skip it.
+      const prepared = requireVerification ? await this.otp.prepare() : undefined;
       const result = await this.tx.run(async (trx) => {
         const customer = await this.roles.findByName('customer', trx);
         if (!customer) {
@@ -185,7 +188,7 @@ export class AuthenticationService {
           return null;
         }
 
-        const challenge = await this.otp.issue(user.id, 'REGISTRATION_OTP', trx, contact);
+        const challenge = await this.otp.issue(user.id, 'REGISTRATION_OTP', trx, contact, prepared);
         await this.audit.record(
           {
             type: 'USER_REGISTERED',
@@ -780,6 +783,9 @@ export class AuthenticationService {
     const contact = contactIdentity({ phoneNumber });
     const neutral = fakeOtpEnvelope(contact);
     try {
+      // Account existence, verification and recipient suppression must not
+      // decide whether this anonymous request performs the OTP KDF.
+      const prepared = await this.otp.prepare();
       const result = await this.tx.run(async (trx) => {
         let user = await this.findByContact(contact, trx);
         if (!user) return null;
@@ -795,7 +801,13 @@ export class AuthenticationService {
           user.status !== 'ACTIVE'
         )
           return null;
-        const challenge = await this.otp.issue(user.id, 'PASSWORD_RESET_OTP', trx, contact);
+        const challenge = await this.otp.issue(
+          user.id,
+          'PASSWORD_RESET_OTP',
+          trx,
+          contact,
+          prepared,
+        );
         const ticket = await this.delivery.enqueue(
           {
             ...contact,

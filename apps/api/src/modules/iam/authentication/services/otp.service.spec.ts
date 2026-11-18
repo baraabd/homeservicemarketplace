@@ -4,6 +4,7 @@ import type { VerificationToken } from '@homeservicemarketplace/database';
 import { AppConfigService } from '../../../../config/app-config.service';
 import { VerificationTokenRepository } from '../../../../infrastructure/persistence/iam/verification-token.repository';
 import { OTP_MAX_ATTEMPTS, OTP_MAX_RESENDS, OtpService } from './otp.service';
+import * as otpCodec from '../helpers/otp-codec';
 
 // Service-level invariants for OTP issuance, verification, resend, and
 // lock-out. A fake repository backs every test — we're not testing Prisma,
@@ -146,7 +147,9 @@ describe('OtpService', () => {
       // Plaintext code must not be stored.
       const stored = rows()[0]!;
       expect(stored.tokenHash).not.toBe(out.rawCode);
-      expect(stored.tokenHash).toBe(OtpService.hashForTest(out.rawCode, out.challengeId, secret));
+      expect(stored.tokenHash).toBe(
+        await OtpService.hashForTest(out.rawCode, out.challengeId, secret),
+      );
     });
 
     it('invalidates any outstanding OTP of the same purpose for the user', async () => {
@@ -297,23 +300,41 @@ describe('OtpService', () => {
 });
 
 describe('R04 OTP hash scope and purpose boundaries', () => {
-  it('identical numeric codes in different challenges do not collide at rest', () => {
-    const one = OtpService.hashForTest('123456', 'challenge-one', secret);
-    const two = OtpService.hashForTest('123456', 'challenge-two', secret);
-    expect(one).toMatch(/^otp-v3:[a-f0-9]{64}$/);
+  it('identical numeric codes in different challenges do not collide at rest', async () => {
+    const one = await OtpService.hashForTest('123456', 'challenge-one-123456', secret);
+    const two = await OtpService.hashForTest('123456', 'challenge-two-123456', secret);
+    expect(one).toMatch(/^otp-v4:\$argon2id\$v=19\$m=19456,t=2,p=1\$/);
     expect(one).not.toBe(two);
   });
 
-  it('accepts an existing unexpired legacy challenge without a data rewrite', async () => {
-    const { repo, rows } = makeRepo();
-    const svc = new OtpService(repo, cfg);
-    const issued = await svc.issue('u-1', 'LOGIN_OTP');
-    rows()[0]!.tokenHash = OtpService.hashForTest(issued.rawCode);
-    await expect(svc.verify(issued.challengeId, issued.rawCode)).resolves.toEqual({
-      userId: 'u-1',
-      purpose: 'LOGIN_OTP',
-    });
-  });
+  it.each(['a'.repeat(64), `otp-v2:${'b'.repeat(64)}`, `otp-v3:${'c'.repeat(64)}`])(
+    'requires a resend for pre-v4 digest %s and preserves the existing challenge limits',
+    async (legacyHash) => {
+      const { repo, rows } = makeRepo();
+      const svc = new OtpService(repo, cfg);
+      const issued = await svc.issue('u-1', 'LOGIN_OTP');
+      rows()[0]!.tokenHash = legacyHash;
+      rows()[0]!.attemptCount = 2;
+      rows()[0]!.resendCount = 1;
+      await expect(svc.verify(issued.challengeId, issued.rawCode)).rejects.toMatchObject({
+        response: { code: 'AUTH_OTP_EXPIRED' },
+      });
+      expect(rows()[0]).toMatchObject({
+        tokenHash: legacyHash,
+        attemptCount: 2,
+        resendCount: 1,
+        usedAt: null,
+      });
+      expect(repo.consumeByChallenge).not.toHaveBeenCalled();
+      const rotated = await svc.resend(issued.challengeId);
+      expect(rows()[0]).toMatchObject({ attemptCount: 2, resendCount: 2, usedAt: null });
+      expect(rows()[0]!.tokenHash).toMatch(/^otp-v4:/);
+      await expect(svc.verify(issued.challengeId, rotated.rawCode)).resolves.toEqual({
+        userId: 'u-1',
+        purpose: 'LOGIN_OTP',
+      });
+    },
+  );
 
   it('does not accept a link-purpose token through the challenge path', async () => {
     const { repo, rows } = makeRepo();
@@ -327,12 +348,107 @@ describe('R04 OTP hash scope and purpose boundaries', () => {
   });
 });
 
-it('R04 database-only unkeyed guesses do not equal newly issued OTP hashes', () => {
-  const keyed = OtpService.hashForTest('123456', 'challenge', secret);
-  expect(keyed).not.toBe(OtpService.hashForTest('123456', 'challenge'));
-  expect(keyed).not.toBe(OtpService.hashForTest('123456'));
+it('R04 OTP hashing is deterministic for CAS and separates server peppers', async () => {
+  const challengeId = 'challenge-123456789';
+  const keyed = await OtpService.hashForTest('123456', challengeId, secret);
+  expect(keyed).toBe(await OtpService.hashForTest('123456', challengeId, secret));
   expect(keyed).not.toBe(
-    OtpService.hashForTest('123456', 'challenge', randomBytes(48).toString('hex')),
+    await OtpService.hashForTest('123456', challengeId, randomBytes(48).toString('hex')),
+  );
+  expect(keyed).not.toContain(secret);
+});
+
+describe('bounded OTP hashing work', () => {
+  afterEach(() => jest.restoreAllMocks());
+
+  it('persists prepared material without running a second KDF', async () => {
+    const { repo, rows } = makeRepo();
+    const svc = new OtpService(repo, cfg);
+    const hash = jest.spyOn(otpCodec, 'hashOtpCode');
+    const prepared = await svc.prepare();
+    expect(hash).toHaveBeenCalledTimes(1);
+    const issued = await svc.issue('u-1', 'LOGIN_OTP', undefined, undefined, prepared);
+    expect(hash).toHaveBeenCalledTimes(1);
+    expect(rows()[0]!.tokenHash).toBe(prepared.tokenHash);
+    expect(issued).toMatchObject({ challengeId: prepared.challengeId, rawCode: prepared.rawCode });
+    expect(issued).not.toHaveProperty('tokenHash');
+  });
+
+  it.each([
+    ['short', '123456'],
+    ['invalid challenge id', '123456'],
+    ['challenge-123456789', '12345'],
+    ['challenge-123456789', 'abc123'],
+  ])('rejects malformed challenge/code before lookup or KDF', async (id, code) => {
+    const { repo } = makeRepo();
+    const svc = new OtpService(repo, cfg);
+    const hash = jest.spyOn(otpCodec, 'hashOtpCode');
+    await expect(svc.verify(id, code)).rejects.toMatchObject({
+      response: { code: 'AUTH_OTP_INVALID' },
+    });
+    expect(hash).not.toHaveBeenCalled();
+    expect(repo.findByChallengeId).not.toHaveBeenCalled();
+  });
+
+  it.each(['short', 'invalid challenge id'])(
+    'rejects malformed resend IDs before lookup or KDF',
+    async (id) => {
+      const { repo } = makeRepo();
+      const svc = new OtpService(repo, cfg);
+      const hash = jest.spyOn(otpCodec, 'hashOtpCode');
+      await expect(svc.resend(id)).rejects.toMatchObject({
+        response: { code: 'AUTH_OTP_INVALID' },
+      });
+      expect(hash).not.toHaveBeenCalled();
+      expect(repo.findByChallengeId).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each([
+    { purpose: 'PASSWORD_RESET' as const },
+    { usedAt: new Date() },
+    { expiresAt: new Date(0) },
+    { attemptCount: OTP_MAX_ATTEMPTS },
+  ])('rejects unusable rows before KDF', async (patch) => {
+    const { repo, rows } = makeRepo();
+    const svc = new OtpService(repo, cfg);
+    const issued = await svc.issue('u-1', 'LOGIN_OTP');
+    Object.assign(rows()[0]!, patch);
+    const hash = jest.spyOn(otpCodec, 'hashOtpCode');
+    await expect(svc.verify(issued.challengeId, issued.rawCode)).rejects.toBeDefined();
+    await expect(svc.resend(issued.challengeId)).rejects.toBeDefined();
+    expect(hash).not.toHaveBeenCalled();
+  });
+
+  it('rejects an exhausted resend budget before KDF', async () => {
+    const { repo, rows } = makeRepo();
+    const svc = new OtpService(repo, cfg);
+    const issued = await svc.issue('u-1', 'LOGIN_OTP');
+    rows()[0]!.resendCount = OTP_MAX_RESENDS;
+    const hash = jest.spyOn(otpCodec, 'hashOtpCode');
+    await expect(svc.resend(issued.challengeId)).rejects.toMatchObject({
+      response: { code: 'AUTH_OTP_RESEND_EXCEEDED' },
+    });
+    expect(hash).not.toHaveBeenCalled();
+  });
+
+  it.each(['verify', 'resend'] as const)(
+    'performs one KDF for real and unknown well-formed %s challenges',
+    async (method) => {
+      const { repo } = makeRepo();
+      const svc = new OtpService(repo, cfg);
+      const issued = await svc.issue('u-1', 'LOGIN_OTP');
+      const hash = jest.spyOn(otpCodec, 'hashOtpCode');
+      if (method === 'verify') await svc.verify(issued.challengeId, issued.rawCode);
+      else await svc.resend(issued.challengeId);
+      expect(hash).toHaveBeenCalledTimes(1);
+      hash.mockClear();
+      const unknownId = randomBytes(24).toString('base64url');
+      await expect(
+        method === 'verify' ? svc.verify(unknownId, '123456') : svc.resend(unknownId),
+      ).rejects.toMatchObject({ response: { code: 'AUTH_OTP_INVALID' } });
+      expect(hash).toHaveBeenCalledTimes(1);
+    },
   );
 });
 
@@ -343,7 +459,7 @@ it('R04 infrastructure failures are not converted to committed bad-code verdicts
   const fakeTx = { $queryRaw: jest.fn() } as unknown as NonNullable<
     Parameters<typeof svc.verify>[2]
   >;
-  await expect(svc.verifyForLogin('challenge', '123456', fakeTx)).rejects.toThrow(
+  await expect(svc.verifyForLogin('challenge-123456789', '123456', fakeTx)).rejects.toThrow(
     'Synthetic database outage',
   );
 });

@@ -1,4 +1,6 @@
--- Additive identity expansion. Existing email accounts and pending email OTPs remain valid.
+-- Additive identity expansion: preserve existing accounts and challenge ownership/binding.
+-- The v4 OTP application codec requires a resend for pre-v4 pending codes;
+-- still-live challenges keep their identity and limits when resending. No rows are expired here.
 ALTER TABLE "User" ALTER COLUMN "email" DROP NOT NULL;
 ALTER TABLE "User" ADD COLUMN "phoneNumber" TEXT, ADD COLUMN "phoneVerifiedAt" TIMESTAMP(3);
 CREATE UNIQUE INDEX "User_phoneNumber_key" ON "User"("phoneNumber");

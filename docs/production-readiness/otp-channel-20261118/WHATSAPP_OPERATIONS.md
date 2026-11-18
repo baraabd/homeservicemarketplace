@@ -30,6 +30,7 @@ An absent setting defaults to email; an invalid stored policy fails closed. Remo
 ## Delivery integrity
 
 - OTP channel and recipient are pinned to the challenge; resends use that identity even if the default changes.
+- Deploying the v4 Argon2id OTP codec requires resending any pre-v4 numeric code still pending within its normal five-minute lifetime. A live resend preserves owner, channel, recipient and attempt/resend limits; no data migration expires challenges. Expired or exhausted challenges require a fresh sign-in/recovery request. Account passwords were already Argon2id and are unchanged; opaque email verification/recovery links are unchanged.
 - The existing `EmailDelivery` table and leased dispatcher carry both channels. The historical table name is retained to avoid duplicating queue/state-machine code.
 - Channel, recipient, and variables are sealed together with AES-256-GCM and message-key associated data. Old envelopes lacking a channel remain email.
 - WhatsApp uses only authentication templates. No SMTP fallback is attempted for a WhatsApp envelope.

@@ -31,6 +31,11 @@ The existing risky-extglob path then compiles the whole repeated group as a
 literal. This also applies when `maxExtglobRecursion: false` is requested: the
 recursion option cannot disable this security guard.
 
+An opening bracket only starts a character class when a closing bracket remains,
+matching the parser's literal treatment of an unmatched opening bracket. The
+last closing-bracket position is computed once, so malformed input does not
+introduce repeated scans or hide a wildcard from the guard.
+
 Compatibility change: unsafe repeated wildcard groups are treated literally.
 Ordinary `*.ts`, `**/*.ts`, brace expansion, negation and non-repeated extglobs
 keep their behavior. Already-safe nested literal extglobs retain upstream's
