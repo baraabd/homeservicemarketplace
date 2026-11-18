@@ -37,6 +37,14 @@ keep their behavior. Already-safe nested literal extglobs retain upstream's
 existing handling. This patch addresses the cited advisory; it does not claim
 to make every arbitrary regular-expression feature safe for untrusted inputs.
 
+CodeQL also identified an existing quadratic regex in `removeBackslashes()`.
+The fork replaces that helper with a linear scan that preserves bracket
+expressions and JavaScript line-terminator behavior. Differential testing
+against the official helper matched all 335,923 strings of up to seven
+characters over the bracket/backslash/letter/line-break alphabet. A bounded
+public `scan()` regression reproduces the upstream timeout on 100,000 escaped
+opening brackets and completes with the replacement.
+
 ## Verification
 
 `node --test scripts/security/picomatch-redos.test.cjs` checks both forks,

@@ -13,13 +13,21 @@ families with separately versioned, repository-owned forks. See their READMEs
 for source provenance, exact behavior changes, license and removal criteria.
 The security audit script and its zero-finding policy remain unchanged.
 
+CodeQL additionally identified the upstream `removeBackslashes()` regex as
+quadratic on repeated unmatched opening brackets. Both forks now use a
+linear scanner; no alert was dismissed or excluded. Its output matches the
+official helper for all 335,923 generated inputs of up to seven characters,
+including escapes and line terminators. The public scan regression times out
+on unmodified upstream code and completes on both forks. The upstream suite
+still has only the four documented intentional repeated-extglob differences.
+
 ## R27 comparison integrity
 
 The source changes are tooling dependency changes. They require a new pair of
 immutable dependency-only controls so a performance comparison cannot mix
 an old dependency graph with the repaired candidate. The new baseline is a
-child of the previous control `a2cd2b5e3a79eb608721bd632ebc8b3f31809281`.
-The repair control is a child of the PR base
+dependency-only descendant of the previous comparison controls.
+The repair control remains a descendant of the PR base
 `d64d463666e94a68b007ba96d724998e7e928fdc`.
 
 Both controls contain the exact candidate manifest, lockfile, existing
@@ -39,7 +47,7 @@ measurement jobs must run against the new candidate and controls.
 ## Executed checks
 
 - PASS: pinned Node 24.21.0 / pnpm 10.32.1 frozen installation.
-- PASS: 58 security audit, exploit, installed-consumer and fork tests.
+- PASS: 62 security audit, exploit, installed-consumer and fork tests.
 - PASS: full and production dependency audits, zero findings at all severities.
 - PASS: 26 R27 control and workflow tests, including same-tree backmerges;
   the complete governance suite passes all 631 tests.

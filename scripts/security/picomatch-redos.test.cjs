@@ -10,6 +10,44 @@ const root = path.resolve(__dirname, '../..');
 for (const major of [2, 4]) {
   const entry = process.env.PICOMATCH_UNDER_TEST || path.join(root, `vendor/picomatch-v${major}`);
   const pm = require(entry);
+  const utils = require(path.join(entry, 'lib/utils'));
+
+  test(`picomatch v${major}: unescaping preserves bracket and line-break semantics`, () => {
+    const cases = [
+      [String.raw`foo\bar`, 'foobar'],
+      [String.raw`[a\b]`, String.raw`[a\b]`],
+      [String.raw`\[a\]`, '[a]'],
+      [String.raw`[\]`, '[]'],
+      ['\\\n', '\\\n'],
+      ['\\\r', '\\\r'],
+      ['\\\u2028', '\\\u2028'],
+      ['\\\u2029', '\\\u2029'],
+      ['a\\\\', 'a\\'],
+      ['[a\\b\n]', '[a\\b\n]'],
+      ['[a\\b\nx]', '[ab\nx]'],
+      [String.raw`[[]\a`, '[[]a'],
+    ];
+    for (const [value, expected] of cases) {
+      assert.equal(utils.removeBackslashes(value), expected, JSON.stringify(value));
+    }
+  });
+
+  test(`picomatch v${major}: scanning unmatched brackets completes in a bounded subprocess`, () => {
+    const program = `
+      const assert = require('node:assert/strict');
+      const pm = require(process.argv[1]);
+      const input = String.fromCharCode(92, 91).repeat(100000);
+      assert.equal(pm.scan(input, { unescape: true }).base, '['.repeat(100000));
+    `;
+    const result = spawnSync(process.execPath, ['-e', program, entry], {
+      encoding: 'utf8',
+      timeout: 2000,
+      maxBuffer: 1024 * 1024,
+    });
+    assert.equal(result.error, undefined, result.error?.message);
+    assert.equal(result.signal, null);
+    assert.equal(result.status, 0, result.stderr);
+  });
 
   test(`picomatch v${major}: repeated wildcard bodies use the existing literal fallback`, () => {
     const patterns = [
