@@ -1,9 +1,11 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Check, Mail, MessageCircle, ShieldCheck } from 'lucide-react';
+import { useState } from 'react';
 import { useAuth } from '../../../lib/auth-provider';
 import { getAuthConfiguration } from '../../../lib/auth-channel';
 import { AUTH_CONFIG_QUERY_KEY } from '../../../lib/auth-policy-query';
-import { AdminContactEnrollment } from './AdminContactEnrollment';
+import { refreshVerifiedContact } from '../../../lib/auth-contact-api';
+import { AccountContactEnrollment } from '../account/AccountContactEnrollment';
 
 /** The server remains authoritative for provider readiness and verified ownership. */
 export function AuthChannelSetting({
@@ -29,8 +31,11 @@ export function AuthChannelSetting({
   });
   const verifiedPhone = Boolean(user?.phoneVerifiedAt && user.phoneNumber);
   const verifiedEmail = Boolean(user?.emailVerifiedAt && user.email);
-  const refreshIdentity = () => qc.invalidateQueries({ queryKey: ['auth', 'me'] });
   const ready = config.data?.whatsappAvailable === true;
+  const configKnown = config.isSuccess && !config.isFetching;
+  const canRequestWhatsApp = configKnown && ready;
+  const [hadWhatsAppReadiness, setHadWhatsAppReadiness] = useState(false);
+  if (canRequestWhatsApp && !hadWhatsAppReadiness) setHadWhatsAppReadiness(true);
   const explain = ar
     ? 'تطبق القناة المحفوظة على التسجيل والدخول في تطبيقات العميل والمهني والأدمن. الحسابات السابقة تحتفظ بطريقة دخول متاحة لها.'
     : 'The saved channel applies to customer, professional and admin sign-up and sign-in. Existing accounts keep an available sign-in method.';
@@ -144,19 +149,21 @@ export function AuthChannelSetting({
         </p>
       )}
       {!verifiedEmail && (
-        <AdminContactEnrollment
+        <AccountContactEnrollment
           channel="email"
           lang={lang}
           disabled={disabled}
-          onVerified={refreshIdentity}
+          canRequest={configKnown}
+          onVerified={() => refreshVerifiedContact(qc, user?.id ?? '', 'email')}
         />
       )}
-      {ready && !verifiedPhone && (
-        <AdminContactEnrollment
+      {(canRequestWhatsApp || hadWhatsAppReadiness) && !verifiedPhone && (
+        <AccountContactEnrollment
           channel="whatsapp"
           lang={lang}
           disabled={disabled}
-          onVerified={refreshIdentity}
+          canRequest={canRequestWhatsApp}
+          onVerified={() => refreshVerifiedContact(qc, user?.id ?? '', 'whatsapp')}
         />
       )}
       {verifiedEmail && (

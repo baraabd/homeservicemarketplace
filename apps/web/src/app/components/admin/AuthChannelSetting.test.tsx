@@ -1,13 +1,15 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { AuthChannelSetting } from './AuthChannelSetting';
 import { LanguageProvider } from '../../i18n/LanguageContext';
+import { AUTH_CONFIG_QUERY_KEY } from '../../../lib/auth-policy-query';
 
 const state = vi.hoisted(() => ({
   available: true,
   verified: true,
   emailVerified: true,
+  configFails: false,
   query: vi.fn(),
   request: vi.fn(),
   verify: vi.fn(),
@@ -15,6 +17,7 @@ const state = vi.hoisted(() => ({
 vi.mock('../../../lib/auth-provider', () => ({
   useAuth: () => ({
     user: {
+      id: 'admin-account',
       phoneNumber: '+966500000001',
       phoneVerifiedAt: state.verified ? '2026-11-18T00:00:00Z' : null,
       email: state.emailVerified ? 'admin@example.test' : null,
@@ -25,17 +28,27 @@ vi.mock('../../../lib/auth-provider', () => ({
 vi.mock('../../../lib/auth-channel', () => ({
   getAuthConfiguration: () => {
     state.query();
+    if (state.configFails) return Promise.reject(new Error('Readiness unavailable'));
     return Promise.resolve({ otpChannel: 'email', whatsappAvailable: state.available });
   },
 }));
-vi.mock('../../../lib/admin/admin-auth-channel-api', () => ({
-  requestAdminContactVerification: state.request,
-  verifyAdminContact: state.verify,
+vi.mock('../../../lib/auth-contact-api', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../../lib/auth-contact-api')>()),
+  requestContactVerification: state.request,
+  verifyContact: state.verify,
 }));
 
 function show(lang = 'en', value = 'email') {
   const change = vi.fn();
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  // AuthProvider owns this query in the app; keep its proof distinct from the mocked view.
+  qc.setQueryData(['auth', 'me'], {
+    id: 'admin-account',
+    email: 'admin@example.test',
+    emailVerifiedAt: '2026-11-18T00:00:00Z',
+    phoneNumber: '+966500000002',
+    phoneVerifiedAt: '2026-11-18T00:00:00Z',
+  });
   const invalidate = vi.spyOn(qc, 'invalidateQueries');
   const ui = () => (
     <QueryClientProvider client={qc}>
@@ -51,12 +64,13 @@ function show(lang = 'en', value = 'email') {
     </QueryClientProvider>
   );
   const view = render(ui());
-  return { change, invalidate, refresh: () => view.rerender(ui()) };
+  return { change, invalidate, qc, refresh: () => view.rerender(ui()) };
 }
 beforeEach(() => {
   state.available = true;
   state.verified = true;
   state.emailVerified = true;
+  state.configFails = false;
   state.query.mockClear();
   state.request.mockReset();
   state.verify.mockReset();
@@ -106,6 +120,7 @@ describe('Authentication channel settings', () => {
     state.available = false;
     const { change, invalidate, refresh } = show('en', 'whatsapp');
     await screen.findByText('Verify an email address first');
+    await waitFor(() => expect(screen.getByLabelText('Email address')).toBeEnabled());
     expect(screen.getByRole('radio', { name: /^Email/ })).toBeDisabled();
     fireEvent.change(screen.getByLabelText('Email address'), {
       target: { value: 'admin@example.test' },
@@ -130,7 +145,10 @@ describe('Authentication channel settings', () => {
       expect(state.verify).toHaveBeenCalledExactlyOnceWith('email', 'enroll-code', '123456'),
     );
     await screen.findByText('Email address verified.');
-    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['auth', 'me'] });
+    expect(invalidate).toHaveBeenCalledWith(
+      { queryKey: ['auth', 'me'], exact: true },
+      { throwOnError: true },
+    );
     // Only the freshly read account proof enables the setting; POST success alone does not.
     expect(screen.getByRole('radio', { name: /^Email/ })).toBeDisabled();
     state.emailVerified = true;
@@ -175,6 +193,50 @@ describe('Authentication channel settings', () => {
     expect(screen.getByRole('radio', { name: /WhatsApp/ })).toBeDisabled();
   });
 
+  it('retains the WhatsApp draft across readiness loss and completes an issued code after a config failure', async () => {
+    state.verified = false;
+    state.request.mockResolvedValue({
+      otpRequired: true,
+      challengeId: 'phone-code',
+      channel: 'whatsapp',
+      codeLength: 6,
+      expiresInSeconds: 300,
+    });
+    const { qc } = show();
+    const phone = await screen.findByLabelText('WhatsApp phone number');
+    fireEvent.change(phone, { target: { value: '+966500000002' } });
+    fireEvent.change(screen.getByLabelText('Current password'), {
+      target: { value: 'Current-password-27' },
+    });
+    state.available = false;
+    await act(() => qc.refetchQueries({ queryKey: AUTH_CONFIG_QUERY_KEY }));
+    expect(await screen.findByText(/first configure WhatsApp Business/)).toBeInTheDocument();
+    expect(phone).toHaveValue('+966500000002');
+    expect(phone).toBeDisabled();
+    expect(screen.getByLabelText('Current password')).toHaveValue('Current-password-27');
+    expect(screen.getByRole('button', { name: 'Send code to WhatsApp' })).toBeDisabled();
+    expect(state.request).not.toHaveBeenCalled();
+
+    state.available = true;
+    await act(() => qc.refetchQueries({ queryKey: AUTH_CONFIG_QUERY_KEY }));
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Send code to WhatsApp' })).toBeEnabled(),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Send code to WhatsApp' }));
+    const code = await screen.findByLabelText('Verification code sent to WhatsApp');
+    fireEvent.change(code, { target: { value: '123456' } });
+    state.configFails = true;
+    await act(() => qc.refetchQueries({ queryKey: AUTH_CONFIG_QUERY_KEY }));
+    expect(await screen.findByText('Could not load sign-in settings.')).toBeInTheDocument();
+    expect(code).toHaveValue('123456');
+    expect(code).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Verify number' })).toBeEnabled();
+    fireEvent.click(screen.getByRole('button', { name: 'Verify number' }));
+    expect(await screen.findByText('WhatsApp number verified.')).toBeInTheDocument();
+    expect(state.verify).toHaveBeenCalledExactlyOnceWith('whatsapp', 'phone-code', '123456');
+    expect(screen.getByRole('button', { name: 'Send code to WhatsApp' })).toBeDisabled();
+  });
+
   it.each([
     ['email', '٠١٢٣٤٥', true],
     ['whatsapp', '۰۱۲۳۴۵', false],
@@ -194,6 +256,7 @@ describe('Authentication channel settings', () => {
       const identity = await screen.findByLabelText(
         channel === 'email' ? 'Email address' : 'WhatsApp phone number',
       );
+      await waitFor(() => expect(identity).toBeEnabled());
       fireEvent.change(identity, {
         target: { value: channel === 'email' ? 'admin@example.test' : '+966500000002' },
       });

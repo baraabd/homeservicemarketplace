@@ -25,6 +25,8 @@ A real end-to-end acceptance must send a code to an explicitly designated test r
 4. Existing email accounts retain sign-in through their original verified email. Phone-only accounts retain WhatsApp sign-in after an email rollback. The selected global channel governs new registration and the default experience, not deletion of existing credentials.
 5. A phone-only administrator first links and verifies an email in Settings using the current password and the code delivered to that email. Switch back to email through Settings using an administrator with a verified email. Deleting `auth.otpChannel` also restores email and applies the same guard.
 
+Existing customers and professionals use their currently verified contact to sign in, then open Profile → Settings → Sign-in methods to link a missing WhatsApp number or email. Linking requires their current password and the code delivered to that destination. It does not create a second account, change the global channel, or copy the ordinary profile phone into login identity. A failed account refresh after successful code verification retries the refresh without consuming the code again.
+
 An absent setting defaults to email; an invalid stored policy fails closed. Removing provider credentials while WhatsApp is selected reports `whatsappAvailable: false` without hiding the selected channel. It does not silently reroute OTPs to email: explicit existing-email sign-in and authenticated administrator rollback remain available. Restore provider configuration or select a usable channel.
 
 ## Delivery integrity

@@ -105,6 +105,8 @@ await Promise.all([
   import('./screens/LiveJobsScreen'),
   import('./screens/MyBidsScreen'),
   import('./screens/ProviderProfileScreen'),
+  import('../profile/SettingsPage'),
+  import('../profile/AccountSignInSettings'),
 ]);
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -479,6 +481,17 @@ describe('ProviderApp — shell top bar identity', () => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('ProviderApp — Phase 5 profile actions', () => {
+  it('opens the protected account sign-in methods from provider profile Settings', async () => {
+    mock.onGet('/v1/auth/me').reply(200, MOCK_ME);
+    mock.onGet('/v1/me/provider/profile').reply(200, { profile: MOCK_PROFILE });
+    mock.onGet('/v1/auth/config').reply(200, { otpChannel: 'whatsapp', whatsappAvailable: true });
+    renderProvider('/provider/profile');
+    fireEvent.click(await screen.findByTestId('provider-menu-settings'));
+    expect(await screen.findByRole('heading', { name: 'Sign-in methods' })).toBeInTheDocument();
+    expect(await screen.findByLabelText('WhatsApp phone number')).toBeInTheDocument();
+    expect(screen.queryByTestId('provider-sign-out')).not.toBeInTheDocument();
+  });
+
   it('Sign Out calls /v1/auth/logout and the button reflects an in-flight state', async () => {
     mock.onGet('/v1/auth/me').reply(200, MOCK_ME);
     mock.onGet('/v1/me/provider/profile').reply(200, { profile: MOCK_PROFILE });

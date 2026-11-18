@@ -10,6 +10,8 @@ A pasted international number controls its displayed calling code. The country d
 
 The UI waits for public authentication configuration before showing credential forms. Loading and retry states avoid rendering the wrong channel while policy is unknown. Existing accounts retain a compatible login route during a channel transition; new registration follows the selected policy. A challenge retains its original channel and masked destination even if the administrator subsequently changes policy.
 
+Existing customers and professionals can open Settings from their profile to link a missing WhatsApp or email sign-in identity. This reuses the same password-confirmed OTP enrollment component as administrator Settings. Verified destinations are refreshed from `/auth/me`; changing the ordinary profile contact phone does not create or replace an authentication identity. A phone-only account can also add a verified email for a later channel rollback.
+
 ## Implementation boundaries
 
 - `infrastructure/auth-channel` owns policy, public configuration, transport selection and the Meta adapter. WhatsApp credentials exist only in deployment secrets.
@@ -35,24 +37,26 @@ Anonymous registration and WhatsApp recovery prepare one OTP digest before accou
 
 Runtime: Node 24.21.0 and pnpm 10.32.1, matching the repository pins.
 
-| Check                                                       | Observed result                                                                                                         |
-| ----------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
-| Prisma generation and fresh PostgreSQL migration deployment | Passed                                                                                                                  |
-| Four authentication/database integration suites             | 57 passed; 3 existing SMTP/Mailpit-only cases skipped because that service was not available                            |
-| Authentication and OTP service unit suites                  | 146 passed, including neutral-path KDF work and pre-v4 resend compatibility                                             |
-| Complete hermetic API suite                                 | 326 suites, 5,909 tests passed; 107 service-gated suites / 1,977 tests skipped                                          |
-| Provider onboarding/verification regressions                | 377 passed                                                                                                              |
-| Provider review policy/service regressions                  | 40 passed                                                                                                               |
-| Delivery/channel/settings suites                            | 104 passed                                                                                                              |
-| Complete web suite                                          | 250 files, 3,231 tests passed after the international-number consistency correction                                     |
-| OTP/phone numeral and related scoped regressions            | 152 passed, including Arabic typing, Persian paste-value changes, ASCII submission, leading zeroes and length limits    |
-| International phone/country consistency regressions         | 49 passed, including shared prefixes, full-number preservation and stale location cancellation                          |
-| Production bundle checks                                    | 10 passed against unchanged thresholds; auth 19.2 / 20 KiB and admin 105.8 / 110 KiB Brotli                             |
-| API and web TypeScript and production compilation           | Passed; web compilation used synthetic API origins, not a deployment                                                    |
-| Scoped changed-code lint and whitespace checks              | Passed                                                                                                                  |
-| Browser presentation matrix                                 | 72 layout observations: 2 channels × 3 applications × 2 languages × 6 requested viewport widths; no horizontal overflow |
+| Check                                                         | Observed result                                                                                                         |
+| ------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| Prisma generation and fresh PostgreSQL migration deployment   | Passed                                                                                                                  |
+| Four authentication/database integration suites               | 57 passed; 3 existing SMTP/Mailpit-only cases skipped because that service was not available                            |
+| Authentication and OTP service unit suites                    | 146 passed, including neutral-path KDF work and pre-v4 resend compatibility                                             |
+| Complete hermetic API suite                                   | 326 suites, 5,909 tests passed; 107 service-gated suites / 1,977 tests skipped                                          |
+| Provider onboarding/verification regressions                  | 377 passed                                                                                                              |
+| Provider review policy/service regressions                    | 40 passed                                                                                                               |
+| Delivery/channel/settings suites                              | 104 passed                                                                                                              |
+| Complete web suite                                            | 252 files, 3,261 tests passed after adding existing-account contact linking                                             |
+| OTP/phone numeral and related scoped regressions              | 152 passed, including Arabic typing, Persian paste-value changes, ASCII submission, leading zeroes and length limits    |
+| International phone/country consistency regressions           | 49 passed, including shared prefixes, full-number preservation and stale location cancellation                          |
+| Existing-account linking and shared administrator regressions | 75 passed, including both ordinary roles, verified-proof refresh, degraded retry and background-readiness failures      |
+| Role-neutral backend enrollment regressions                   | 156 passed across three focused service/DTO/HTTP suites; no backend changes were needed for ordinary-role access        |
+| Production bundle checks                                      | 10 passed against unchanged thresholds; auth 19.2 / 20 KiB and admin 106.2 / 110 KiB Brotli                             |
+| API and web TypeScript and production compilation             | Passed; web compilation used synthetic API origins, not a deployment                                                    |
+| Scoped changed-code lint and whitespace checks                | Passed                                                                                                                  |
+| Browser presentation matrix                                   | 72 layout observations: 2 channels × 3 applications × 2 languages × 6 requested viewport widths; no horizontal overflow |
 
-These counts refer to overlapping scoped runs and must not be summed into a total. Final-head remote CI results are recorded separately in the pull request. The complete API and web runs include the contact-shape and fresh-policy cache regressions; the latest web run also covers shared Arabic/Persian digit normalization and international-number display consistency. Build measurements used synthetic API origins (`https://api.example.test` for the earlier numeral measurement and a loopback URL for the final phone measurement). The source-bound [numeral summary](./BUNDLE_NUMERAL_SUMMARY.json) is retained as historical evidence; the [phone-consistency summary](./BUNDLE_PHONE_CONSISTENCY_SUMMARY.json) records the latest modified-worktree measurement separately from remote CI. Existing duplicate fixture-key warnings and the production chunk-size advisory remained nonblocking.
+These counts refer to overlapping scoped runs and must not be summed into a total. Final-head remote CI results are recorded separately in the pull request. The complete API and web runs include the contact-shape and fresh-policy cache regressions; the latest web run also covers shared Arabic/Persian digit normalization, international-number display consistency, and existing-account linking. Build measurements used synthetic API origins (`https://api.example.test` for the earlier numeral measurement and a loopback URL for the final phone measurement). The source-bound [numeral summary](./BUNDLE_NUMERAL_SUMMARY.json) is retained as historical evidence; the [phone-consistency summary](./BUNDLE_PHONE_CONSISTENCY_SUMMARY.json) records that modified-worktree measurement; the [account-linking summary](./BUNDLE_ACCOUNT_LINKING_SUMMARY.json) records the final build separately from remote CI. Existing duplicate fixture-key warnings and the production chunk-size advisory remained nonblocking.
 
 ### Browser observations
 
@@ -80,4 +84,4 @@ No production deployment, live WhatsApp delivery or universal defect-free guaran
 
 ## Initial bundle delivery
 
-The final production graph passes all ten existing bundle checks without changing thresholds. Auth is 19.2 KiB Brotli (20 KiB ceiling), administrator 105.8 KiB (110 KiB ceiling). Sign-up, recovery and administrator settings load at their actual route/interaction boundaries. Deferred costs and cold-route totals are disclosed in the [original route evidence](./BUNDLE_ROUTE_BOUNDARIES.md) and [latest phone-consistency measurement](./BUNDLE_PHONE_CONSISTENCY_SUMMARY.json); these are build measurements, not hosted latency claims.
+The final production graph passes all ten existing bundle checks without changing thresholds. Auth is 19.2 KiB Brotli (20 KiB ceiling), administrator 106.2 KiB (110 KiB ceiling). Sign-up, recovery and account/administrator settings load at their actual route/interaction boundaries. The final provider-onboarding chunk is 76,751 bytes against its unchanged 76,800-byte ceiling. Deferred costs and cold-route totals are disclosed in the [original route evidence](./BUNDLE_ROUTE_BOUNDARIES.md), [phone-consistency measurement](./BUNDLE_PHONE_CONSISTENCY_SUMMARY.json) and [final account-linking measurement](./BUNDLE_ACCOUNT_LINKING_SUMMARY.json); these are build measurements, not hosted latency claims.

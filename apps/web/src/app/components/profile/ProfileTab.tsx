@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { lazy, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import {
   User,
@@ -17,11 +17,15 @@ import {
 import { EditProfilePage } from './EditProfilePage';
 import { SavedAddressesPage } from './SavedAddressesPage';
 import { HelpSupportPage } from './HelpSupportPage';
-import { SettingsPage } from './SettingsPage';
+import { AsyncBoundary } from '../../AsyncBoundary';
 import { CompletedPostsPage } from './CompletedPostsPage';
 import { useLang } from '../../i18n/LanguageContext';
 import { AppNotification } from '../notifications/NotificationDrawer';
 import { useAuthIdentity } from '../../../lib/use-auth-identity';
+
+const SettingsPage = lazy(() =>
+  import('./SettingsPage').then((module) => ({ default: module.SettingsPage })),
+);
 
 // ─── Notification types ───────────────────────────────────────────────────────
 type NotifTypeKey = 'bid' | 'tracking' | 'confirmed' | 'message' | 'payment' | 'promo';
@@ -480,7 +484,11 @@ export function ProfileTab({
         {view === 'helpSupport' && (
           <HelpSupportPage key="help" experience="seeker" onBack={() => setView(null)} />
         )}
-        {view === 'settings' && <SettingsPage key="settings" onBack={() => setView(null)} />}
+        {view === 'settings' && (
+          <AsyncBoundary key="settings">
+            <SettingsPage onBack={() => setView(null)} />
+          </AsyncBoundary>
+        )}
       </AnimatePresence>
     </div>
   );

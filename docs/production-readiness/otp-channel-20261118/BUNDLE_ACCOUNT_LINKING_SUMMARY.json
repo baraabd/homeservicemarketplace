@@ -1,0 +1,289 @@
+{
+  "schemaVersion": 2,
+  "scope": "Shared account-contact linking and deferred customer/provider settings; local production byte measurements only",
+  "measuredAt": "2026-11-18T07:47:39.115Z",
+  "source": {
+    "baseCommit": "665b4b4a49fda97cb22e434cc3cd6902c165631b",
+    "branch": "feat/configurable-otp-channel-20261118",
+    "worktreeModified": true,
+    "lockfileSha256": "0a0e9798d23c0891dc2b0e3bf0ab0a1122a2d38a91fc9f2718e61572c06a4c12",
+    "sourceHashes": [
+      {
+        "path": "apps/web/src/app/components/account/AccountContactEnrollment.tsx",
+        "sha256": "66db929c622bd841467e79b7da6b7e2196ded7ccee366bb8c2ce1689ed674031"
+      },
+      {
+        "path": "apps/web/src/lib/auth-contact-api.ts",
+        "sha256": "990cc5544f64db22f718419752e1142a951ef88e7d2301adf978e68632ca3696"
+      },
+      {
+        "path": "apps/web/src/app/components/profile/AccountSignInSettings.tsx",
+        "sha256": "5f6d421db415e3c99ea5f22e5efd2f970e8f7d382512b0135def58d082c9cdfd"
+      },
+      {
+        "path": "apps/web/src/app/components/profile/SettingsPage.tsx",
+        "sha256": "9c354d19b34b99433af4d30d9bbfffdd19e484342abb2221d2e0102a4d4ad8db"
+      },
+      {
+        "path": "apps/web/src/app/components/profile/ProfileTab.tsx",
+        "sha256": "2684d8e33c358ef582ead278477e1dcc2f575deaaae49fdeeb4648be0872a295"
+      },
+      {
+        "path": "apps/web/src/app/components/provider/screens/ProviderProfileScreen.tsx",
+        "sha256": "b54db9911cf4bf7d2e6f5e476555b0956bacc2f563b39a1dbe3a43de5dac68d5"
+      },
+      {
+        "path": "apps/web/src/app/components/admin/AuthChannelSetting.tsx",
+        "sha256": "29079e7b12045b19c71ef26a671e83fd6b928a2e2a9dfe28ed47142f822ec3eb"
+      },
+      {
+        "path": "apps/web/src/app/components/admin/AdminRouteContent.tsx",
+        "sha256": "d54c59077983072affdd7107d82ecb44449a6565bbeebe59b50cea22cae0ce73"
+      },
+      {
+        "path": "apps/web/src/app/components/admin/SettingsSection.tsx",
+        "sha256": "98d000868bf9281f3918014e6befc5c5bdb4772d17964ba68ba533bdc027fa8e"
+      },
+      {
+        "path": "apps/web/src/app/components/auth/PhoneIdentityField.tsx",
+        "sha256": "c0525116104d2aef730c3be89bca89a1c85c1660e29fd6877927200584e15700"
+      },
+      {
+        "path": "apps/web/src/lib/phone-identity.ts",
+        "sha256": "a7da9aed4656c4433b7e4461593225cfdf9d63d8ef2bde0530c98dfe53ad4946"
+      },
+      {
+        "path": "apps/web/src/app/pages/AuthPages.tsx",
+        "sha256": "868bb0ad18022d95d19e92504bf582b79e3244b0d9f882eb563b8ccaa352f381"
+      },
+      {
+        "path": "apps/web/src/app/pages/HomePage.tsx",
+        "sha256": "01fa0d4437d8d4b3e52a30cd8523b0a450c03ae008fab154dd6f91af9c04234c"
+      },
+      {
+        "path": "apps/web/src/app/pages/ProviderPage.tsx",
+        "sha256": "c071f2d62c98eb0335b54d57fa7b7533f4cd66ce1320b79455984ba282add271"
+      },
+      {
+        "path": "apps/web/src/app/pages/AdminPage.tsx",
+        "sha256": "62c722499ca20735bf1de6f1f170f544893b0c96fcb01b7f1eabb2a4f596b9b4"
+      },
+      {
+        "path": "apps/web/src/app/routes.ts",
+        "sha256": "8da77c131bb2bc7c06db72d189f575c50edf55dfa8d1af2c363e8c20dfa5e7e4"
+      },
+      {
+        "path": "apps/web/vite.config.ts",
+        "sha256": "0b9304e71a1047ae9d4e049d743a5e01b09a988fab1454b17a7b58f81d869c72"
+      },
+      {
+        "path": "scripts/perf/post-r18/bundle-report.mjs",
+        "sha256": "d3561740fa862f049c453175314ef44e16cdcc436e205109350ad7d36cde1bbb"
+      },
+      {
+        "path": "scripts/perf/post-r18/check-budgets.mjs",
+        "sha256": "fdf8bbc7708c65d512f447b2465a0597ab8a39b76ce8b9792bd90b61eeab0eb9"
+      },
+      {
+        "path": "scripts/perf/post-r18/budgets.proposed.json",
+        "sha256": "f88e7225cba5daece30877a4d98580b004e9684a2fdf8c11108819013e13afb8"
+      }
+    ],
+    "sourceHashesStableDuringMeasurement": true
+  },
+  "compression": {
+    "gzip": "zlib level 1 (nginx.conf default)",
+    "brotli": "quality 11 (lower bound)"
+  },
+  "buildFlags": {
+    "VITE_API_URL": "http://127.0.0.1:4010"
+  },
+  "measurementBuildWallClockMs": 7932,
+  "thresholdFile": "scripts/perf/post-r18/budgets.proposed.json",
+  "thresholdSha256": "f88e7225cba5daece30877a4d98580b004e9684a2fdf8c11108819013e13afb8",
+  "thresholdsModified": false,
+  "measurementToolsModified": false,
+  "measurements": [
+    {
+      "name": "shell",
+      "brotliBytes": 189181,
+      "limitKiB": 185,
+      "remainingBytes": 259
+    },
+    {
+      "name": "auth",
+      "brotliBytes": 19657,
+      "limitKiB": 20,
+      "remainingBytes": 823
+    },
+    {
+      "name": "seeker-home",
+      "brotliBytes": 56911,
+      "limitKiB": 60,
+      "remainingBytes": 4529
+    },
+    {
+      "name": "provider-workspace",
+      "brotliBytes": 36137,
+      "limitKiB": 40,
+      "remainingBytes": 4823
+    },
+    {
+      "name": "provider-onboarding",
+      "brotliBytes": 76751,
+      "limitKiB": 75,
+      "remainingBytes": 49
+    },
+    {
+      "name": "admin",
+      "brotliBytes": 108699,
+      "limitKiB": 110,
+      "remainingBytes": 3941
+    },
+    {
+      "name": "disputes",
+      "brotliBytes": 43271,
+      "limitKiB": 45,
+      "remainingBytes": 2809
+    },
+    {
+      "name": "job-wizard",
+      "brotliBytes": 65059,
+      "limitKiB": 65,
+      "remainingBytes": 1501
+    }
+  ],
+  "deferredRoutes": [
+    {
+      "name": "signup",
+      "parent": "auth",
+      "stages": [
+        {
+          "source": "src/app/components/auth/SignUpScreen.tsx",
+          "additionalBrotliBytes": 8185,
+          "additionalJsChunks": 8
+        }
+      ],
+      "additionalBrotliBytes": 8185,
+      "additionalCssBrotliBytes": 0,
+      "additionalJsChunks": 8,
+      "coldRouteIncrementBrotliBytes": 27842
+    },
+    {
+      "name": "email-recovery",
+      "parent": "auth",
+      "stages": [
+        {
+          "source": "src/app/components/auth/ForgotPasswordScreen.tsx",
+          "additionalBrotliBytes": 3788,
+          "additionalJsChunks": 7
+        }
+      ],
+      "additionalBrotliBytes": 3788,
+      "additionalCssBrotliBytes": 0,
+      "additionalJsChunks": 7,
+      "coldRouteIncrementBrotliBytes": 23445
+    },
+    {
+      "name": "whatsapp-recovery",
+      "parent": "auth",
+      "stages": [
+        {
+          "source": "src/app/components/auth/WhatsAppPasswordRecovery.tsx",
+          "additionalBrotliBytes": 1760,
+          "additionalJsChunks": 1
+        }
+      ],
+      "additionalBrotliBytes": 1760,
+      "additionalCssBrotliBytes": 0,
+      "additionalJsChunks": 1,
+      "coldRouteIncrementBrotliBytes": 21417
+    },
+    {
+      "name": "admin-settings",
+      "parent": "admin",
+      "stages": [
+        {
+          "source": "src/app/components/admin/SettingsSection.tsx",
+          "additionalBrotliBytes": 12704,
+          "additionalJsChunks": 7
+        }
+      ],
+      "additionalBrotliBytes": 12704,
+      "additionalCssBrotliBytes": 0,
+      "additionalJsChunks": 7,
+      "coldRouteIncrementBrotliBytes": 121403
+    },
+    {
+      "name": "customer-account-settings",
+      "parent": "seeker-home",
+      "stages": [
+        {
+          "source": "src/app/components/profile/SettingsPage.tsx",
+          "additionalBrotliBytes": 3116,
+          "additionalJsChunks": 3
+        },
+        {
+          "source": "src/app/components/profile/AccountSignInSettings.tsx",
+          "additionalBrotliBytes": 9669,
+          "additionalJsChunks": 6
+        }
+      ],
+      "additionalBrotliBytes": 12785,
+      "additionalCssBrotliBytes": 0,
+      "additionalJsChunks": 9,
+      "coldRouteIncrementBrotliBytes": 69696
+    },
+    {
+      "name": "provider-account-settings",
+      "parent": "provider-workspace",
+      "stages": [
+        {
+          "source": "src/app/components/profile/SettingsPage.tsx",
+          "additionalBrotliBytes": 3029,
+          "additionalJsChunks": 3
+        },
+        {
+          "source": "src/app/components/profile/AccountSignInSettings.tsx",
+          "additionalBrotliBytes": 10884,
+          "additionalJsChunks": 8
+        }
+      ],
+      "additionalBrotliBytes": 13913,
+      "additionalCssBrotliBytes": 0,
+      "additionalJsChunks": 11,
+      "coldRouteIncrementBrotliBytes": 50050
+    }
+  ],
+  "bundleChecks": {
+    "passed": 10,
+    "failed": 0,
+    "budgetStatus": "PROPOSED_AWAITING_OWNER_APPROVAL",
+    "forbiddenLibraries": {
+      "recharts": "only admin-dashboard-charts",
+      "leaflet": "only job-wizard and address-map"
+    }
+  },
+  "productionBuild": {
+    "command": "VITE_API_URL=http://127.0.0.1:4010 pnpm --filter @homeservicemarketplace/web build",
+    "status": "PASS",
+    "includes": ["contracts TypeScript build", "web tsc -b", "Vite production build"],
+    "transformedModules": 3492,
+    "viteBuildSeconds": 8.93,
+    "warning": "Existing Vite warning for chunks larger than 500 kB; limits unchanged"
+  },
+  "reproduction": {
+    "build": "VITE_API_URL=http://127.0.0.1:4010 pnpm --filter @homeservicemarketplace/web build",
+    "measure": "node scripts/perf/post-r18/bundle-report.mjs --label account-contact-linking --out-json bundle-report.json",
+    "check": "node scripts/perf/post-r18/check-budgets.mjs --bundle bundle-report.json"
+  },
+  "notes": [
+    "Historical measurement evidence is unchanged. Source provenance describes a modified worktree rather than final-commit CI.",
+    "Initial role-journey ceilings are unchanged. Account enrollment is shared between admin and ordinary accounts without duplicate API wrappers.",
+    "Customer and provider settings load SettingsPage and then its immediately rendered AccountSignInSettings boundary. The deferred totals include both stages and their static dependencies; the second stage does not require a further user action.",
+    "Deferred costs exclude already loaded shell and the named parent journey only. No prior login, admin settings or other account-settings cache is assumed. Cold route increments exclude the shell.",
+    "Separate chunks retain real network, parse and execution costs. These measurements do not claim that cold settings routes shrink or load faster.",
+    "Provider onboarding retains only 49 bytes below its existing 75 KiB ceiling; the rounded 75.0 KiB result remains below the exact limit. Shell headroom is 259 bytes.",
+    "The synthetic API URL is a build fixture. Local bytes do not establish hosted latency, browser acceptance, WhatsApp delivery or production rollout readiness."
+  ]
+}

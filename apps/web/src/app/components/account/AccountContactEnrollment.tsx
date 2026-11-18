@@ -2,23 +2,22 @@ import { useId, useRef, useState } from 'react';
 import type { AuthOtpChannel, OtpChallengeResponse } from '@homeservicemarketplace/contracts';
 import { PhoneIdentityField } from '../auth/PhoneIdentityField';
 import { toE164Phone, isValidPhoneIdentity } from '../../../lib/phone-identity';
-import {
-  requestAdminContactVerification,
-  verifyAdminContact,
-} from '../../../lib/admin/admin-auth-channel-api';
+import { requestContactVerification, verifyContact } from '../../../lib/auth-contact-api';
 import { extractAuthError } from '../../../lib/auth-errors';
 import { normalizeDecimalDigits } from '../../../lib/normalize-decimal-digits';
 
-/** One password-confirmed ownership journey for either administrator contact. */
-export function AdminContactEnrollment({
+/** One password-confirmed ownership journey for either account contact. */
+export function AccountContactEnrollment({
   channel,
   lang,
   disabled,
+  canRequest = true,
   onVerified,
 }: {
   channel: AuthOtpChannel;
   lang: string;
   disabled: boolean;
+  canRequest?: boolean;
   onVerified: () => Promise<void>;
 }) {
   const ar = lang === 'ar';
@@ -30,6 +29,7 @@ export function AdminContactEnrollment({
   const [password, setPassword] = useState('');
   const [code, setCode] = useState('');
   const [challenge, setChallenge] = useState<OtpChallengeResponse | null>(null);
+  const [contactConfirmed, setContactConfirmed] = useState(false);
   const [busy, setBusy] = useState(false);
   const [feedback, setFeedback] = useState('');
   const flight = useRef(false);
@@ -38,18 +38,29 @@ export function AdminContactEnrollment({
     : /^[^\s@]+@[^\s@]+\.[^\s@]+$/u.test(email.trim());
   const validCode = /^\d{6}$/u.test(code);
   const contact = whatsapp ? toE164Phone(country, number) : email.trim();
+  const requestDisabled = disabled || busy || !canRequest;
   async function submit() {
-    if (flight.current || disabled || (challenge ? !validCode : !password || !validIdentity))
+    if (
+      flight.current ||
+      disabled ||
+      (challenge ? !contactConfirmed && !validCode : !canRequest || !password || !validIdentity)
+    )
       return;
     flight.current = true;
     setBusy(true);
     setFeedback('');
+    let confirmed = contactConfirmed;
     try {
       if (challenge) {
-        await verifyAdminContact(channel, challenge.challengeId, code);
+        if (!confirmed) {
+          await verifyContact(channel, challenge.challengeId, code);
+          confirmed = true;
+          setContactConfirmed(true);
+        }
         await onVerified();
         setCode('');
         setChallenge(null);
+        setContactConfirmed(false);
         setFeedback(
           whatsapp
             ? ar
@@ -60,19 +71,23 @@ export function AdminContactEnrollment({
               : 'Email address verified.',
         );
       } else {
-        setChallenge(await requestAdminContactVerification(channel, contact, password));
+        setChallenge(await requestContactVerification(channel, contact, password));
         setPassword('');
       }
     } catch (error) {
       const { status } = extractAuthError(error);
       setFeedback(
-        status === 429
+        confirmed
           ? ar
-            ? 'طلبات كثيرة. انتظر قليلًا ثم حاول مجددًا.'
-            : 'Too many requests. Please wait before trying again.'
-          : ar
-            ? 'تعذّر التحقق. راجع بيانات التواصل وكلمة المرور أو الرمز وحاول مجددًا.'
-            : 'Verification failed. Check the contact details, password or code and try again.',
+            ? 'تم قبول الرمز، لكن تعذّر تحديث بيانات الحساب. حدّث حالة التحقق للمتابعة.'
+            : 'The code was accepted, but account details could not refresh. Refresh verification to continue.'
+          : status === 429
+            ? ar
+              ? 'طلبات كثيرة. انتظر قليلًا ثم حاول مجددًا.'
+              : 'Too many requests. Please wait before trying again.'
+            : ar
+              ? 'تعذّر التحقق. راجع بيانات التواصل وكلمة المرور أو الرمز وحاول مجددًا.'
+              : 'Verification failed. Check the contact details, password or code and try again.',
       );
     } finally {
       flight.current = false;
@@ -95,8 +110,8 @@ export function AdminContactEnrollment({
       </h4>
       <p className="mt-2 text-sm leading-6 text-slate-600 dark:text-slate-300">
         {ar
-          ? 'لحماية وصولك إلى الإدارة، أكد ملكية وسيلة التواصل قبل اختيار قناة الدخول.'
-          : 'Protect your access to administration by verifying this contact before selecting its sign-in channel.'}
+          ? 'لحماية وصولك إلى حسابك، أكد ملكية وسيلة التواصل قبل استخدامها لتسجيل الدخول.'
+          : 'Protect access to your account by verifying this contact before using it to sign in.'}
       </p>
       <form
         className="mt-4 flex flex-col gap-4"
@@ -134,7 +149,7 @@ export function AdminContactEnrollment({
               dir="ltr"
               className="min-h-12 rounded-xl border border-slate-300 bg-transparent px-4 text-center text-xl tracking-widest dark:border-slate-600"
               required
-              disabled={disabled || busy}
+              disabled={disabled || busy || contactConfirmed}
             />
           </>
         ) : (
@@ -145,7 +160,7 @@ export function AdminContactEnrollment({
                 onCountryChange={setCountry}
                 localNumber={number}
                 onNumberChange={setNumber}
-                disabled={disabled || busy}
+                disabled={requestDisabled}
               />
             ) : (
               <>
@@ -161,7 +176,7 @@ export function AdminContactEnrollment({
                   dir="ltr"
                   className="min-h-12 rounded-xl border border-slate-300 bg-transparent px-4 text-base dark:border-slate-600"
                   required
-                  disabled={disabled || busy}
+                  disabled={requestDisabled}
                 />
               </>
             )}
@@ -176,35 +191,49 @@ export function AdminContactEnrollment({
               onChange={(e) => setPassword(e.target.value)}
               className="min-h-12 rounded-xl border border-slate-300 bg-transparent px-4 text-base dark:border-slate-600"
               required
-              disabled={disabled || busy}
+              disabled={requestDisabled}
             />
           </>
         )}
         <div className="flex flex-wrap gap-3">
           <button
             type="submit"
-            disabled={disabled || busy || (challenge ? !validCode : !password || !validIdentity)}
+            disabled={
+              disabled ||
+              busy ||
+              (challenge
+                ? !contactConfirmed && !validCode
+                : !canRequest || !password || !validIdentity)
+            }
             className="min-h-11 rounded-xl bg-blue-600 px-4 py-2 font-semibold text-white disabled:opacity-50"
           >
-            {busy
-              ? ar
-                ? 'جارٍ التحقق…'
-                : 'Verifying…'
-              : challenge
-                ? whatsapp
-                  ? ar
-                    ? 'تأكيد الرقم'
-                    : 'Verify number'
-                  : ar
-                    ? 'تأكيد البريد'
-                    : 'Verify email'
-                : whatsapp
-                  ? ar
-                    ? 'إرسال رمز إلى واتساب'
-                    : 'Send code to WhatsApp'
-                  : ar
-                    ? 'إرسال رمز إلى البريد'
-                    : 'Send code to email'}
+            {contactConfirmed
+              ? busy
+                ? ar
+                  ? 'جارٍ تحديث حالة التحقق…'
+                  : 'Refreshing verification…'
+                : ar
+                  ? 'تحديث حالة التحقق'
+                  : 'Refresh verification'
+              : busy
+                ? ar
+                  ? 'جارٍ التحقق…'
+                  : 'Verifying…'
+                : challenge
+                  ? whatsapp
+                    ? ar
+                      ? 'تأكيد الرقم'
+                      : 'Verify number'
+                    : ar
+                      ? 'تأكيد البريد'
+                      : 'Verify email'
+                  : whatsapp
+                    ? ar
+                      ? 'إرسال رمز إلى واتساب'
+                      : 'Send code to WhatsApp'
+                    : ar
+                      ? 'إرسال رمز إلى البريد'
+                      : 'Send code to email'}
           </button>
           {challenge && (
             <button
@@ -213,6 +242,7 @@ export function AdminContactEnrollment({
               onClick={() => {
                 setCode('');
                 setChallenge(null);
+                setContactConfirmed(false);
                 setFeedback('');
               }}
               className="min-h-11 rounded-xl px-4 py-2 text-sm underline"
