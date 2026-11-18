@@ -36,7 +36,7 @@ Runtime: Node 24.21.0 and pnpm 10.32.1, matching the repository pins.
 | Scoped changed-code lint and whitespace checks              | Passed                                                                                                                  |
 | Browser presentation matrix                                 | 72 layout observations: 2 channels × 3 applications × 2 languages × 6 requested viewport widths; no horizontal overflow |
 
-These counts refer to overlapping scoped runs and must not be summed into a total. Full-suite and remote CI results are recorded separately in the pull request.
+These counts refer to overlapping scoped runs and must not be summed into a total. Final-head remote CI results are recorded separately in the pull request. The complete API and web runs include the contact-shape and fresh-policy cache regressions.
 
 ### Browser observations
 
