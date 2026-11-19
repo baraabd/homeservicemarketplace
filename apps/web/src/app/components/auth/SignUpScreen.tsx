@@ -33,7 +33,8 @@ import {
   AUTH_EXPERIENCES,
   DEFAULT_EXPERIENCE_ID,
 } from '../../../lib/auth-experience';
-import { EmailOtpPanel, type LoginOtpChallenge } from './AuthScreens';
+import { DeferredOtpPanel } from './DeferredOtpPanel';
+import type { LoginOtpChallenge } from './otp-types';
 import { AuthTopBar, SwipeableScreen } from './AuthLayout';
 
 // Policy content loads only when its dialog is opened.
@@ -573,7 +574,7 @@ export function SignUpScreen({
 
           {/* ── Step 3: Email OTP verification ── */}
           {step === 3 && challenge && (
-            <EmailOtpPanel
+            <DeferredOtpPanel
               email={
                 challenge.maskedDestination ?? (channel === 'whatsapp' ? phoneNumber : email.trim())
               }

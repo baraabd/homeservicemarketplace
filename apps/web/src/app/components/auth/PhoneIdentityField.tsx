@@ -4,7 +4,6 @@ import { AUTH_EXPERIENCES, type AuthExperienceId } from '../../../lib/auth-exper
 import { COUNTRY_DIAL_CODES } from '../../../lib/country-dial-codes';
 import { getDevicePhoneCountry } from '../../../lib/phone-country';
 import { phoneCountryDisplay } from '../../../lib/phone-identity';
-import { reverseGeocodeViaNominatim } from '../../../lib/reverse-geocode';
 import { useLang } from '../../i18n/LanguageContext';
 import { CountryFlag } from './CountryFlag';
 
@@ -260,9 +259,15 @@ export function PhoneIdentityField({
           setLocationTarget(null);
           setLocationStatus('failed');
         }, 10_000);
-        void reverseGeocodeViaNominatim(lat, lng, lang, controller.signal)
+        // The optional geocoder is loaded only after explicit location consent.
+        // A cancelled edit must not share coordinates when its import resolves.
+        void import('../../../lib/reverse-geocode')
+          .then(({ reverseGeocodeViaNominatim }) => {
+            if (current !== generation.current || controller.signal.aborted) return null;
+            return reverseGeocodeViaNominatim(lat, lng, lang, controller.signal);
+          })
           .then((result) => {
-            if (current !== generation.current) return;
+            if (current !== generation.current || controller.signal.aborted || !result) return;
             if (requestTimeout.current !== null) clearTimeout(requestTimeout.current);
             requestTimeout.current = null;
             setLocationTarget(null);

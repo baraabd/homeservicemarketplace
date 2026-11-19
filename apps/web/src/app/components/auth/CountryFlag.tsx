@@ -4,9 +4,10 @@ import { countryFlag } from '../../../lib/phone-identity';
 
 // The small supported-country subset is bundled locally, with its MIT license.
 // SVGs display consistently even where the OS does not render flag emoji.
+// Keep their bytes out of the auth JavaScript; fetch only the selected asset.
 const FLAG_ASSETS = import.meta.glob<string>('../../../assets/country-flags/*.svg', {
   eager: true,
-  query: '?url',
+  query: '?url&no-inline',
   import: 'default',
 });
 

@@ -285,6 +285,7 @@ describe('phone country selection', () => {
     });
     render(<Harness />);
     fireEvent.click(screen.getByRole('button', { name: 'Use my location' }));
+    await waitFor(() => expect(reverseGeocodeViaNominatim).toHaveBeenCalledTimes(1));
     fireEvent.change(screen.getByLabelText('Country and calling code'), {
       target: { value: 'SE' },
     });
@@ -300,6 +301,24 @@ describe('phone country selection', () => {
       }),
     );
     expect(screen.getByLabelText('Country and calling code')).toHaveValue('SE');
+  });
+
+  it('does not share coordinates when a manual edit cancels the lazy geocoder import', async () => {
+    vi.stubGlobal('navigator', {
+      geolocation: {
+        getCurrentPosition: (success: PositionCallback) =>
+          success({ coords: { latitude: 36.2, longitude: 37.16 } } as GeolocationPosition),
+      },
+    });
+    render(<Harness />);
+    fireEvent.click(screen.getByRole('button', { name: 'Use my location' }));
+    fireEvent.change(screen.getByLabelText('Country and calling code'), {
+      target: { value: 'SE' },
+    });
+    await act(async () => {});
+    expect(reverseGeocodeViaNominatim).not.toHaveBeenCalled();
+    expect(screen.getByLabelText('Country and calling code')).toHaveValue('SE');
+    expect(screen.getByRole('button', { name: 'Use my location' })).toBeEnabled();
   });
 
   it('filters country choices by Arabic text and returns the ISO identity', () => {
@@ -451,6 +470,7 @@ describe('phone country selection', () => {
     });
     render(<Harness />);
     fireEvent.click(screen.getByRole('button', { name: 'Use my location' }));
+    await waitFor(() => expect(reverseGeocodeViaNominatim).toHaveBeenCalledTimes(1));
     const signal = vi.mocked(reverseGeocodeViaNominatim).mock.calls[0]![3] as AbortSignal;
     fireEvent.change(screen.getByLabelText('WhatsApp phone number'), {
       target: { value: '+963944123456' },
@@ -490,6 +510,7 @@ describe('phone country selection', () => {
       <PhoneIdentityField countryCode="SA" localNumber="" {...callbacks} />,
     );
     fireEvent.click(screen.getByRole('button', { name: 'Use my location' }));
+    await waitFor(() => expect(reverseGeocodeViaNominatim).toHaveBeenCalledTimes(1));
     const signal = vi.mocked(reverseGeocodeViaNominatim).mock.calls[0]![3] as AbortSignal;
     rerender(<PhoneIdentityField countryCode="SE" localNumber="0701234567" {...callbacks} />);
     expect(signal.aborted).toBe(true);

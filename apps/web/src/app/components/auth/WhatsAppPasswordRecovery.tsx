@@ -5,7 +5,8 @@ import type { AuthExperience } from '../../../lib/auth-experience';
 import { useLang, LangToggle } from '../../i18n/LanguageContext';
 import { Button } from '../ds/Button';
 import { TextField } from '../ds/TextField';
-import { EmailOtpPanel, type LoginOtpChallenge } from './AuthScreens';
+import { DeferredOtpPanel } from './DeferredOtpPanel';
+import type { LoginOtpChallenge } from './otp-types';
 import { AuthChannelNotice } from './AuthChannelNotice';
 import { PhoneIdentityField } from './PhoneIdentityField';
 import { toE164Phone, isValidPhoneIdentity } from '../../../lib/phone-identity';
@@ -188,7 +189,7 @@ export function WhatsAppPasswordRecovery({
               onChange={setConfirmation}
               disabled={busy}
             />
-            <EmailOtpPanel
+            <DeferredOtpPanel
               email={challenge.maskedDestination ?? phoneNumber}
               channel="whatsapp"
               codeLength={challenge.codeLength}

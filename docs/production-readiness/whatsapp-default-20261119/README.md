@@ -117,10 +117,76 @@ HTML response instead of the archive. No sandbox, network restriction, test
 assertion or application guard was changed to work around these restrictions.
 Consequently no local visual pass or new screenshot acceptance is claimed.
 
-The existing hosted Browser E2E job discovers this suite and uploads successful
-screenshots with `playwright-report`. Review the pull request's final-head check
-and its artifacts before treating the visual matrix as accepted. This document
-records the local publication snapshot; hosted check results live on the PR.
+### Hosted verification and screenshot review
+
+The initial published source was
+`993aff3b1529e52d4d12a8d00a3a0014d366b59f`. Its hosted results establish the
+following evidence; they must not be reported as checks of a later source head.
+
+| Check                                                                                             | Observed result                                                                                       |
+| ------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| [Browser E2E](https://github.com/baraabd/homeservicemarketplace/actions/runs/44514893122)         | 875 passing tests, including all 36 auth-channel presentation scenarios across three browser projects |
+| API hermetic scope in the same CI run                                                             | 326 suites / 5,918 tests passed; 108 suites / 1,982 integration-gated tests were outside this scope   |
+| API PostgreSQL/Redis scope in the same CI run                                                     | 417 suites / 7,792 tests passed; 17 suites / 108 separately gated tests were outside this scope       |
+| [Auth lifecycle](https://github.com/baraabd/homeservicemarketplace/actions/runs/44514892936)      | Missing-setting policy integration and real SMTP/browser verification passed                          |
+| [R26 security](https://github.com/baraabd/homeservicemarketplace/actions/runs/44514892818)        | Passed                                                                                                |
+| [Startup performance](https://github.com/baraabd/homeservicemarketplace/actions/runs/44514893007) | Passed                                                                                                |
+| Main CI real-service lanes                                                                        | Admin review, Phase 5 real routes, replica verification, auth cookies and Compose smoke passed        |
+
+The `playwright-report` artifact from that exact head contains the auth screenshots.
+Manual inspection covered WhatsApp login in all three experiences (Arabic and
+English), Provider Arabic signup and Admin Arabic OTP at 390px. The selected flags,
+calling prefixes, role colors and right-to-left layouts are visible and coherent.
+The real SMTP artifact was also reviewed for English invalid-credentials login at
+320px and Arabic expired-code signup at 390px. Those screenshots demonstrate the
+rendered states, not live WhatsApp delivery.
+
+The initial main CI run failed two pre-existing email-account login helpers, in
+R31 and Dispute, which still looked for an email field before selecting the email
+path. Those users are already active with verified email addresses. The follow-up
+changes select the real **I have an email account** action, assert the channel
+transition, then retain the existing password, OTP, session and authorization
+checks. The related CJS helper audit applies the same correction to six shared
+browser helpers; it introduces no policy override or response mock.
+
+The initial R27 run also caught auth-route JavaScript at 26.7 KiB Brotli against
+its unchanged 20 KiB budget. Its three source/browser measurement matrices passed,
+and the budget check correctly rejected the larger bundle. The follow-up keeps
+SVG flag bytes in separate local assets and defers the optional reverse-geocoder
+until the user requests location. Cancellation is checked after the import, before
+coordinates are shared. A focused regression proves that a manual edit during
+loading cancels the lookup. The whole country/phone/flag scope now has 99 passing
+tests.
+
+The shared OTP panel now loads at the challenge step, and the separate email-link
+verification page loads only on its route. Their existing handlers, verification
+state machine and rendered content were moved without semantic changes. OTP
+loading uses the existing accessible boundary; retry retains the parent challenge,
+does not request a second code, and respects verification/resend busy state.
+Language changes preserve entered digits. The affected auth and route-loading
+scope passed 138 tests, and TypeScript, production build and scoped formatting
+passed. The existing email-verification effect warning moved with its unchanged
+code; lint reported no errors.
+
+The existing R27 analyzer passed all ten bundle checks locally with the exact
+hosted API URL, `http://127.0.0.1:4327`, and the pinned toolchain:
+
+| Bundle measurement            | Brotli bytes | Unchanged limit (bytes) |
+| ----------------------------- | -----------: | ----------------------: |
+| Auth route increment          |       20,151 |                  20,480 |
+| Shared shell                  |      189,287 |                 189,440 |
+| Provider onboarding increment |       76,796 |                  76,800 |
+
+The final hosted measurement remains required for this follow-up, especially with
+the small onboarding margin. No budget, assertion, route coverage or required gate
+was relaxed. The local build graph confirms that flag SVG bytes, the optional
+reverse-geocoder, the OTP panel and the email-link page are not part of initial
+auth-route JavaScript.
+
+Review [PR #233](https://github.com/baraabd/homeservicemarketplace/pull/233) for
+the final source SHA, complete final-head checks and artifact links. This record
+distinguishes the initial hosted findings from the follow-up fixes; the PR records
+the final acceptance results without a self-referential source commit.
 
 ## Explicit email fixtures for existing SMTP journeys
 
