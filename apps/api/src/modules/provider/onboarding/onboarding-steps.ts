@@ -35,7 +35,7 @@ const STEP_FIELDS: Record<ProviderOnboardingStep, readonly string[]> = {
   // Individual or business. First because it changes what later steps ask for.
   PROVIDER_TYPE: ['providerType', 'legalBusinessName'],
   // Who they are and how to reach them.
-  IDENTITY: ['displayName', 'phoneNumber', 'emailVerified'],
+  IDENTITY: ['displayName', 'phoneNumber', 'emailVerified', 'contactVerified'],
   // Where they work.
   LOCATION: ['serviceAreaCity', 'serviceAreaCountry', 'serviceAreaRadiusKm'],
   // What they do. `serviceCategories` is the legacy grant count; `specialties`

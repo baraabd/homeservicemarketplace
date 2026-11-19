@@ -3,7 +3,9 @@ import type { RoleName } from '../enums/role-name';
 
 export interface MeResponse {
   id: string;
-  email: string;
+  email: string | null;
+  phoneNumber?: string | null;
+  phoneVerifiedAt?: string | null;
   firstName: string;
   lastName: string;
   status: AccountStatus;

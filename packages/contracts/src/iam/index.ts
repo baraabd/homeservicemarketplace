@@ -16,3 +16,6 @@ export * from './response/otp-challenge.response';
 // Phase 4 — the admin ACCESS-REQUEST axis, kept separate from AccountStatus
 // (authentication standing) and RoleName (authorization).
 export * from './admin-access';
+
+export * from './response/auth-channel.response';
+export * from './request/phone-auth.request';

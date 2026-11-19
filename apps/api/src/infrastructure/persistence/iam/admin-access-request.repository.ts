@@ -18,7 +18,15 @@ import { PrismaService } from '../../prisma/prisma.service';
 export type AdminAccessRequestWithApplicant = AdminAccessRequest & {
   user: Pick<
     User,
-    'id' | 'email' | 'firstName' | 'lastName' | 'status' | 'isActive' | 'emailVerifiedAt'
+    | 'id'
+    | 'email'
+    | 'firstName'
+    | 'lastName'
+    | 'status'
+    | 'isActive'
+    | 'emailVerifiedAt'
+    | 'phoneNumber'
+    | 'phoneVerifiedAt'
   > & {
     userRoles: Array<{ role: { name: string } }>;
   };
@@ -33,6 +41,8 @@ const APPLICANT_SELECT = {
     status: true,
     isActive: true,
     emailVerifiedAt: true,
+    phoneNumber: true,
+    phoneVerifiedAt: true,
     userRoles: { select: { role: { select: { name: true } } } },
   },
 } as const;

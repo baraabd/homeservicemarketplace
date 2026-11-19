@@ -1,56 +1,20 @@
-import { Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import { useNavigate } from 'react-router';
-import {
-  ChevronLeft,
-  ChevronRight,
-  Mail,
-  Lock,
-  Eye,
-  EyeOff,
-  User,
-  Phone,
-  AlertCircle,
-  CheckCircle2,
-  MapPin,
-  Send,
-  ArrowRight,
-  ArrowLeft,
-} from 'lucide-react';
+import { Mail, MessageCircle, Lock, Eye, EyeOff, CheckCircle2, ArrowLeft } from 'lucide-react';
 import { Button } from '../ds/Button';
 import { TextField } from '../ds/TextField';
-import { useSwipe } from '../../hooks/useSwipe';
-import { useQuery } from '@tanstack/react-query';
-import {
-  CURRENT_LEGAL_DOCUMENTS,
-  type LegalAcceptanceInput,
-} from '@homeservicemarketplace/contracts';
-import { getLegalDocuments } from '../../../lib/auth-api';
-// K02 — the policy dialog (Radix Dialog + full bilingual policy text) is
-// loaded only when a policy is opened, keeping it out of the auth chunk
-// (R27 +auth budget).
-const PolicyDialog = lazy(() =>
-  import('../../features/legal/components/PolicyDialog').then((m) => ({
-    default: m.PolicyDialog,
-  })),
-);
-import {
-  SIGNUP_CONSENT_COPY,
-  clearSignupDraft,
-  legalRefusalReason,
-  readSignupDraft,
-  writeSignupDraft,
-} from '../../features/legal/signup-consent';
 import { useLang, LangToggle } from '../../i18n/LanguageContext';
-import { COUNTRY_DIAL_CODES, dialForCountry } from '../../../lib/country-dial-codes';
-import { useGeoBootstrap } from '../../../lib/geo-bootstrap';
+import type { OtpChannel } from '../../../lib/auth-channel';
+import { PhoneIdentityField } from './PhoneIdentityField';
+import { toE164Phone, isValidPhoneIdentity } from '../../../lib/phone-identity';
+import { normalizeDecimalDigits } from '../../../lib/normalize-decimal-digits';
+import { AuthChannelNotice } from './AuthChannelNotice';
 import {
   extractAuthError,
   loginErrorMessage,
   otpErrorMessage,
   otpRecoveryAction,
   type OtpRecoveryAction,
-  registrationErrorMessage,
-  recoveryRequestErrorMessage,
 } from '../../../lib/auth-errors';
 import {
   type AuthExperience,
@@ -58,54 +22,14 @@ import {
   DEFAULT_EXPERIENCE_ID,
 } from '../../../lib/auth-experience';
 
-// ─── Back chevron (flips in RTL) ──────────────────────────────────────────────
-function BackChevron() {
-  const { dir } = useLang();
-  return dir === 'rtl' ? (
-    <ChevronRight size={20} className="text-slate-700" />
-  ) : (
-    <ChevronLeft size={20} className="text-slate-700" />
-  );
-}
-
-// ─── Shared top bar ───────────────────────────────────────────────────────────
-function AuthTopBar({ title, onBack }: { title: string; onBack: () => void }) {
-  const { lang } = useLang();
-  // K02 — at 200% zoom the language control wraps onto its own row instead
-  // of being pushed off-screen, and the title keeps whole words; the back
-  // control is named and 44px.
-  return (
-    <div className="sticky top-0 z-20 bg-white/96 backdrop-blur-md flex flex-wrap items-center justify-between gap-3 px-4 py-3.5 border-b border-slate-100 shadow-sm">
-      <div className="flex min-w-[8rem] flex-1 items-center gap-3">
-        <button
-          type="button"
-          onClick={onBack}
-          aria-label={lang === 'ar' ? 'رجوع' : 'Back'}
-          className="w-11 h-11 rounded-xl bg-slate-50 border border-slate-200 flex items-center justify-center active:scale-90 transition-all flex-shrink-0 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
-        >
-          <BackChevron />
-        </button>
-        <h2
-          className="min-w-0 text-slate-900"
-          style={{ fontSize: '16px', fontWeight: 700, overflowWrap: 'break-word' }}
-        >
-          {title}
-        </h2>
-      </div>
-      <div className="shrink-0">
-        <LangToggle />
-      </div>
-    </div>
-  );
-}
-
-// ─── Email OTP panel (shared between Login and SignUp) ────────────────────
+// ─── Channel-aware OTP panel (shared between Login and SignUp) ────────────────────
 // Reuses the boxed OTP aesthetic from the project's design history: six
 // amber-bordered squares that light up as digits arrive. Only the behavior
 // is new — it consumes the real challengeId the backend returned and POSTs
 // /v1/auth/verify-otp through the parent callback.
 interface EmailOtpPanelProps {
   email: string;
+  channel?: OtpChannel;
   codeLength: number;
   onVerify: (code: string) => Promise<void>;
   onResend: () => Promise<void>;
@@ -124,6 +48,7 @@ interface EmailOtpPanelProps {
 
 export function EmailOtpPanel({
   email,
+  channel = 'email',
   codeLength,
   onVerify,
   onResend,
@@ -152,16 +77,26 @@ export function EmailOtpPanel({
       <div
         className={`w-20 h-20 rounded-2xl ${experience.classes.iconChipBg} flex items-center justify-center`}
       >
-        <Mail size={32} className={experience.classes.iconChipText} />
+        {channel === 'whatsapp' ? (
+          <MessageCircle size={32} className="text-emerald-700" />
+        ) : (
+          <Mail size={32} className={experience.classes.iconChipText} />
+        )}
       </div>
       <div>
         <h3 className="text-slate-900" style={{ fontSize: '18px', fontWeight: 800 }}>
-          {lang === 'ar' ? 'تحقق من بريدك الإلكتروني' : 'Verify your email'}
+          {channel === 'whatsapp'
+            ? lang === 'ar'
+              ? 'تحقق من واتساب'
+              : 'Check WhatsApp'
+            : lang === 'ar'
+              ? 'تحقق من بريدك الإلكتروني'
+              : 'Verify your email'}
         </h3>
         <p className="text-slate-400 mt-1" style={{ fontSize: '13px' }}>
           {lang === 'ar'
-            ? `أدخل رمز التحقق المكوّن من ${codeLength} أرقام من بريدك الإلكتروني`
-            : `Enter the ${codeLength}-digit code from your email`}
+            ? `أدخل رمز التحقق المكوّن من ${codeLength} أرقام من ${channel === 'whatsapp' ? 'واتساب' : 'بريدك الإلكتروني'}`
+            : `Enter the ${codeLength}-digit code from ${channel === 'whatsapp' ? 'WhatsApp' : 'your email'}`}
           {email ? (
             <>
               {' '}
@@ -189,7 +124,11 @@ export function EmailOtpPanel({
         onClick={focusInput}
         onTouchStart={focusInput}
         role="group"
-        aria-label={`${codeLength}-digit verification code`}
+        aria-label={
+          lang === 'ar'
+            ? `رمز التحقق المكوّن من ${codeLength} أرقام`
+            : `${codeLength}-digit verification code`
+        }
       >
         {Array.from({ length: codeLength }).map((_, i) => (
           <div
@@ -219,7 +158,9 @@ export function EmailOtpPanel({
         autoComplete="one-time-code"
         maxLength={codeLength}
         value={code}
-        onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, codeLength))}
+        onChange={(e) =>
+          setCode(normalizeDecimalDigits(e.target.value).replace(/\D/gu, '').slice(0, codeLength))
+        }
         onKeyDown={(event) => {
           if (event.key === 'Enter' && canSubmit) {
             event.preventDefault();
@@ -229,7 +170,11 @@ export function EmailOtpPanel({
         disabled={isVerifying || isResending || recovery === 'restart'}
         aria-invalid={!!verifyError}
         aria-describedby={verifyError ? 'otp-verification-error' : undefined}
-        aria-label={`${codeLength}-digit verification code`}
+        aria-label={
+          lang === 'ar'
+            ? `رمز التحقق المكوّن من ${codeLength} أرقام`
+            : `${codeLength}-digit verification code`
+        }
         className="sr-only"
         autoFocus
       />
@@ -299,72 +244,6 @@ export function EmailOtpPanel({
   );
 }
 
-// ─── Password Strength ────────────────────────────────────────────────────────
-function PasswordStrength({ password }: { password: string }) {
-  const score =
-    (password.length >= 8 ? 1 : 0) +
-    (/[A-Z]/.test(password) ? 1 : 0) +
-    (/[0-9]/.test(password) ? 1 : 0) +
-    (/[^A-Za-z0-9]/.test(password) ? 1 : 0);
-
-  const config = [
-    { label: 'Too short', labelAr: 'قصير جداً', color: 'bg-slate-200' },
-    { label: 'Weak', labelAr: 'ضعيفة', color: 'bg-red-500' },
-    { label: 'Fair', labelAr: 'مقبولة', color: 'bg-amber-500' },
-    { label: 'Good', labelAr: 'جيدة', color: 'bg-yellow-400' },
-    { label: 'Strong', labelAr: 'قوية', color: 'bg-green-500' },
-  ];
-
-  const { lang } = useLang();
-  if (!password) return null;
-
-  return (
-    <div className="flex items-center gap-3 mt-1.5 px-1">
-      <div className="flex gap-1 flex-1">
-        {[1, 2, 3, 4].map((level) => (
-          <div
-            key={level}
-            className={`flex-1 h-1 rounded-full transition-all duration-300 ${
-              level <= score ? config[score].color : 'bg-slate-200'
-            }`}
-          />
-        ))}
-      </div>
-      <span className="text-slate-500 flex-shrink-0" style={{ fontSize: '11px', fontWeight: 500 }}>
-        {lang === 'ar' ? config[score].labelAr : config[score].label}
-      </span>
-    </div>
-  );
-}
-
-// ─── Swipeable wrapper ────────────────────────────────────────────────────────
-function SwipeableScreen({ onBack, children }: { onBack: () => void; children: React.ReactNode }) {
-  const { dir } = useLang();
-  const { onTouchStart, onTouchMove, onTouchEnd, dragX } = useSwipe({
-    onSwipeRight: dir === 'ltr' ? onBack : undefined,
-    onSwipeLeft: dir === 'rtl' ? onBack : undefined,
-    threshold: 70,
-    edgeStartOnly: true,
-    edgeWidth: 60,
-  });
-
-  return (
-    <div
-      className="flex flex-col"
-      style={{
-        minHeight: '100svh',
-        transform: `translateX(${dir === 'ltr' ? Math.max(dragX * 0.4, 0) : Math.min(dragX * 0.4, 0)}px)`,
-        transition: dragX !== 0 ? 'none' : 'transform 0.35s cubic-bezier(0.4,0,0.2,1)',
-      }}
-      onTouchStart={onTouchStart}
-      onTouchMove={onTouchMove}
-      onTouchEnd={onTouchEnd}
-    >
-      {children}
-    </div>
-  );
-}
-
 // ─────────────────────────────────────────────────────────────────────────────
 // LOGIN SCREEN — credentials (step 1) + OTP (step 2)
 //
@@ -374,13 +253,17 @@ function SwipeableScreen({ onBack, children }: { onBack: () => void; children: R
 // onOtpVerify resolves successfully.
 // ─────────────────────────────────────────────────────────────────────────────
 export interface LoginOtpChallenge {
+  channel?: OtpChannel;
+  maskedDestination?: string;
   challengeId: string;
   codeLength: number;
   expiresInSeconds: number;
 }
 
 interface LoginProps {
-  onLogin: (email: string, password: string) => Promise<LoginOtpChallenge>;
+  whatsappAvailable?: boolean;
+  channel?: OtpChannel;
+  onLogin: (identity: string, password: string, channel?: OtpChannel) => Promise<LoginOtpChallenge>;
   onOtpVerify: (challengeId: string, code: string) => Promise<void>;
   onOtpResend: (challengeId: string) => Promise<void>;
   onSignUp: () => void;
@@ -394,6 +277,8 @@ interface LoginProps {
 }
 
 export function LoginScreen({
+  channel = 'email',
+  whatsappAvailable = false,
   onLogin,
   onOtpVerify,
   onOtpResend,
@@ -406,6 +291,12 @@ export function LoginScreen({
   const { t, lang } = useLang();
   const navigate = useNavigate();
   const [email, setEmail] = useState('');
+  const [countryCode, setCountryCode] = useState('');
+  const [localNumber, setLocalNumber] = useState('');
+  const [identityOverride, setIdentityOverride] = useState<OtpChannel | null>(null);
+  const selectedChannel = identityOverride ?? channel;
+  const identity =
+    selectedChannel === 'whatsapp' ? toE164Phone(countryCode, localNumber) : email.trim();
   const [password, setPassword] = useState('');
   const [showPw, setShowPw] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -423,13 +314,23 @@ export function LoginScreen({
   const credentialsRevision = useRef(0);
 
   const handleLogin = async () => {
-    if (requestFlight.current) return;
+    if (requestFlight.current || (selectedChannel === 'whatsapp' && !whatsappAvailable)) return;
     setLoginError(undefined);
-    if (!email || !password) {
+    if (
+      !identity ||
+      !password ||
+      (selectedChannel === 'whatsapp' && !isValidPhoneIdentity(countryCode, localNumber))
+    ) {
       setLoginError({
         messages: {
-          en: 'Email Address / Password',
-          ar: 'البريد الإلكتروني / كلمة المرور',
+          en:
+            selectedChannel === 'whatsapp'
+              ? 'Enter a valid WhatsApp number and password.'
+              : 'Email Address / Password',
+          ar:
+            selectedChannel === 'whatsapp'
+              ? 'أدخل رقم واتساب صحيحًا وكلمة المرور.'
+              : 'البريد الإلكتروني / كلمة المرور',
         },
         code: null,
       });
@@ -439,7 +340,7 @@ export function LoginScreen({
     const revision = credentialsRevision.current;
     setIsLoading(true);
     try {
-      const out = await onLogin(email.trim(), password);
+      const out = await onLogin(identity, password, selectedChannel);
       // Inputs remain editable during the request. A reply for an earlier
       // draft must not offer recovery or an OTP challenge for the new draft.
       if (revision !== credentialsRevision.current) return;
@@ -454,8 +355,8 @@ export function LoginScreen({
       // framework text like "Unauthorized Exception" onto the login form.
       setLoginError({
         messages: {
-          en: loginErrorMessage(err, 'en'),
-          ar: loginErrorMessage(err, 'ar'),
+          en: loginErrorMessage(err, 'en', selectedChannel),
+          ar: loginErrorMessage(err, 'ar', selectedChannel),
         },
         code: extractAuthError(err).code,
       });
@@ -497,8 +398,8 @@ export function LoginScreen({
       await onOtpResend(challenge.challengeId);
       setResendNotice(
         lang === 'ar'
-          ? 'تم استلام الطلب. تحقق من بريدك واستخدم أحدث رمز يصلك.'
-          : 'Request received. Check your inbox and use the most recent code.',
+          ? 'تم استلام الطلب. استخدم أحدث رمز يصلك.'
+          : 'Request received. Use the most recent code you receive.',
       );
     } catch (err: unknown) {
       setOtpError({
@@ -567,16 +468,19 @@ export function LoginScreen({
       </div>
 
       {/* ── Card ── */}
-      <div className="flex-1 bg-white rounded-t-3xl -mt-6 px-6 pt-8 pb-6">
-        {!challenge && loginError?.code === 'AUTH_ACCOUNT_UNVERIFIED' && onRecoverVerification && (
-          <button
-            type="button"
-            className="text-slate-700 underline mb-3"
-            onClick={() => onRecoverVerification(email.trim())}
-          >
-            {lang === 'ar' ? 'طلب رابط للتحقق من البريد' : 'Request email verification'}
-          </button>
-        )}
+      <div className="relative mx-auto w-full max-w-lg flex-1 bg-white rounded-t-3xl -mt-6 px-6 pt-8 pb-6">
+        {!challenge &&
+          selectedChannel === 'email' &&
+          loginError?.code === 'AUTH_ACCOUNT_UNVERIFIED' &&
+          onRecoverVerification && (
+            <button
+              type="button"
+              className="text-slate-700 underline mb-3"
+              onClick={() => onRecoverVerification(email.trim())}
+            >
+              {lang === 'ar' ? 'طلب رابط للتحقق من البريد' : 'Request email verification'}
+            </button>
+          )}
         {banner && (
           <div className="mb-4 rounded-xl bg-green-50 border border-green-200 px-4 py-3">
             <p className="text-green-800" style={{ fontSize: '13px', fontWeight: 500 }}>
@@ -593,7 +497,8 @@ export function LoginScreen({
 
         {challenge ? (
           <EmailOtpPanel
-            email={email.trim()}
+            email={challenge.maskedDestination ?? identity}
+            channel={challenge.channel ?? selectedChannel}
             codeLength={challenge.codeLength}
             onVerify={handleOtpVerify}
             onResend={handleOtpResend}
@@ -615,19 +520,57 @@ export function LoginScreen({
           />
         ) : (
           <div className="flex flex-col gap-4">
-            <TextField
-              label={t('emailAddress')}
-              type="email"
-              autoComplete="email"
-              value={email}
-              onChange={(value) => {
-                setEmail(value);
-                setLoginError(undefined);
-                credentialsRevision.current += 1;
-              }}
-              error={loginError?.messages[lang]}
-              leadingIcon={<Mail size={16} />}
-            />
+            <AuthChannelNotice channel={selectedChannel} available={whatsappAvailable} />
+            {selectedChannel === 'whatsapp' ? (
+              <PhoneIdentityField
+                countryCode={countryCode}
+                onCountryChange={(value) => {
+                  setCountryCode(value);
+                  credentialsRevision.current += 1;
+                  setLoginError(undefined);
+                }}
+                localNumber={localNumber}
+                onNumberChange={(value) => {
+                  setLocalNumber(value);
+                  credentialsRevision.current += 1;
+                  setLoginError(undefined);
+                }}
+                error={loginError?.messages[lang]}
+              />
+            ) : (
+              <TextField
+                label={t('emailAddress')}
+                type="email"
+                autoComplete="email"
+                value={email}
+                onChange={(value) => {
+                  setEmail(value);
+                  setLoginError(undefined);
+                  credentialsRevision.current += 1;
+                }}
+                error={loginError?.messages[lang]}
+                leadingIcon={<Mail size={16} />}
+              />
+            )}
+            {(channel === 'whatsapp' || whatsappAvailable) && (
+              <button
+                type="button"
+                className="min-h-11 text-sm text-slate-700 underline"
+                onClick={() => {
+                  setIdentityOverride(selectedChannel === 'email' ? 'whatsapp' : 'email');
+                  setLoginError(undefined);
+                  credentialsRevision.current += 1;
+                }}
+              >
+                {selectedChannel === 'email'
+                  ? lang === 'ar'
+                    ? 'لدي حساب واتساب'
+                    : 'I have a WhatsApp account'
+                  : lang === 'ar'
+                    ? 'لدي حساب بريد إلكتروني'
+                    : 'I have an email account'}
+              </button>
+            )}
 
             <TextField
               label={t('password')}
@@ -647,7 +590,9 @@ export function LoginScreen({
                 <button
                   type="button"
                   onClick={() => setShowPw((v) => !v)}
-                  className="flex items-center justify-center w-5 h-5"
+                  aria-label={lang === 'ar' ? 'إظهار كلمة المرور' : 'Show password'}
+                  aria-pressed={showPw}
+                  className="flex items-center justify-center w-11 h-11 -me-3 rounded-xl focus-visible:outline-2 focus-visible:outline-blue-600"
                 >
                   {showPw ? <EyeOff size={16} /> : <Eye size={16} />}
                 </button>
@@ -667,7 +612,13 @@ export function LoginScreen({
             <Button
               variant="primary"
               tone={experience.id}
-              state={isLoading ? 'loading' : 'default'}
+              state={
+                isLoading
+                  ? 'loading'
+                  : selectedChannel === 'whatsapp' && !whatsappAvailable
+                    ? 'disabled'
+                    : 'default'
+              }
               fullWidth
               onClick={handleLogin}
             >
@@ -692,787 +643,5 @@ export function LoginScreen({
         )}
       </div>
     </div>
-  );
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// SIGN UP SCREEN — email OTP flow (aligned with backend IAM).
-//
-// Backend truth: POST /v1/auth/register returns 202 + an OTP challenge
-// envelope, and emails a 6-digit code. The session is issued only when
-// /v1/auth/verify-otp succeeds. This screen is a three-step wizard:
-//   Step 1 — Personal info (name + phone with auto-selected dial code,
-//            best-effort country badge). Phone is onboarding-only today and
-//            is NOT sent to the backend (no phone column yet).
-//   Step 2 — Email + password + terms. On "Create account" we POST the
-//            real register endpoint and receive the OTP challenge.
-//   Step 3 — Enter the emailed code. On success the parent navigates to
-//            the authenticated home.
-// ─────────────────────────────────────────────────────────────────────────────
-interface SignUpProps {
-  onBack: () => void;
-  onRecoverVerification?: (email: string) => void;
-  // Parent POSTs the credentials, receives the OTP challenge, and returns
-  // it so this screen can drive Step 3. Session issuance happens via the
-  // OTP callbacks below, NOT here.
-  onCredentialsSubmit: (data: {
-    name: string;
-    email: string;
-    password: string;
-    legalAcceptance: LegalAcceptanceInput;
-  }) => Promise<LoginOtpChallenge>;
-  onOtpVerify: (challengeId: string, code: string) => Promise<void>;
-  onOtpResend: (challengeId: string) => Promise<void>;
-  // Sprint 5.1.1: experience-aware theming. See LoginScreen prop
-  // comment for rationale.
-  experience?: AuthExperience;
-}
-
-export function SignUpScreen({
-  onBack,
-  onRecoverVerification,
-  onCredentialsSubmit,
-  onOtpVerify,
-  onOtpResend,
-  experience = AUTH_EXPERIENCES[DEFAULT_EXPERIENCE_ID],
-}: SignUpProps) {
-  const { t, lang } = useLang();
-  const geo = useGeoBootstrap();
-  const dialEntry = dialForCountry(geo.countryCode);
-
-  // K02 — a non-secret draft (never the password) survives a reload or a
-  // visit to a full policy page; the in-place policy dialog keeps everything
-  // in memory, so it needs no storage at all.
-  const draft = useMemo(readSignupDraft, []);
-  const [step, setStep] = useState<number>(draft?.step ?? 1); // 1 = info, 2 = credentials, 3 = OTP
-  const [name, setName] = useState(draft?.name ?? '');
-  // Phone is split into a dial code the user can override + the local number.
-  const [dialCode, setDialCode] = useState<string>(dialEntry.dialCode);
-  const [localNumber, setLocalNumber] = useState('');
-  const [email, setEmail] = useState(draft?.email ?? '');
-  const [password, setPassword] = useState('');
-  const [showPw, setShowPw] = useState(false);
-  const [acceptance, setAcceptance] = useState<LegalAcceptanceInput | null>(null);
-  const [policyOpen, setPolicyOpen] = useState<'terms' | 'privacy' | null>(null);
-  const legalQuery = useQuery({
-    queryKey: ['legal', 'documents'],
-    queryFn: getLegalDocuments,
-    staleTime: 5 * 60_000,
-  });
-  const legalDocs = legalQuery.data;
-  const termsDoc = legalDocs?.documents.find((d) => d.kind === 'TERMS_OF_SERVICE');
-  const privacyDoc = legalDocs?.documents.find((d) => d.kind === 'PRIVACY_NOTICE');
-  // The dialog renders the policy text shipped with this web build. During a
-  // rolling release it can lag behind the API's current document versions.
-  const samePolicies =
-    termsDoc?.version === CURRENT_LEGAL_DOCUMENTS.TERMS_OF_SERVICE.version &&
-    privacyDoc?.version === CURRENT_LEGAL_DOCUMENTS.PRIVACY_NOTICE.version;
-  const legalReady = samePolicies && legalDocs?.acceptanceOpen === true;
-  const agreed =
-    legalReady &&
-    acceptance !== null &&
-    acceptance.termsVersion === termsDoc?.version &&
-    acceptance.privacyVersion === privacyDoc?.version &&
-    acceptance.locale === lang;
-  useEffect(() => {
-    if (acceptance && !agreed) setAcceptance(null);
-  }, [acceptance, agreed]);
-  const consentCopy = SIGNUP_CONSENT_COPY[lang === 'ar' ? 'ar' : 'en'];
-
-  useEffect(() => {
-    if (step < 3) writeSignupDraft({ step, name, email });
-  }, [step, name, email]);
-  const [isLoading, setIsLoading] = useState(false);
-  const [signUpError, setSignUpError] = useState<string | undefined>();
-  const [dialCodeTouched, setDialCodeTouched] = useState(false);
-  const [challenge, setChallenge] = useState<LoginOtpChallenge | null>(null);
-  const [isVerifying, setIsVerifying] = useState(false);
-  const [isResending, setIsResending] = useState(false);
-  const [otpError, setOtpError] = useState<Record<'en' | 'ar', string> | undefined>();
-  const [otpRecovery, setOtpRecovery] = useState<OtpRecoveryAction>(null);
-  const [resendNotice, setResendNotice] = useState<string | undefined>();
-  const requestFlight = useRef(false);
-
-  // If the geo fallback resolves AFTER mount (rare; `useGeoBootstrap`
-  // resolves synchronously on initial render), keep the dial code in sync
-  // until the user edits it.
-  useEffect(() => {
-    if (dialCodeTouched) return;
-    if (dialEntry.dialCode !== dialCode) setDialCode(dialEntry.dialCode);
-  }, [dialEntry.dialCode, dialCode, dialCodeTouched]);
-
-  // Registration persists names/email/password only. Do not require a phone
-  // number that the current account contract does not accept or save.
-  const canStep1 = name.trim().length > 2;
-  const canStep2 = email.includes('@') && password.length >= 12 && agreed && legalReady;
-
-  const goNext = async () => {
-    if (requestFlight.current) return;
-    if (step === 1) {
-      setStep(2);
-      return;
-    }
-    if (step === 2) {
-      requestFlight.current = true;
-      setIsLoading(true);
-      setSignUpError(undefined);
-      try {
-        if (!canStep2 || !acceptance) return;
-        const issued = await onCredentialsSubmit({
-          name,
-          email: email.trim(),
-          password,
-          legalAcceptance: acceptance,
-        });
-        clearSignupDraft();
-        setChallenge(issued);
-        setOtpRecovery(null);
-        setOtpError(undefined);
-        setResendNotice(undefined);
-        setStep(3);
-      } catch (err: unknown) {
-        if (legalRefusalReason(err) === 'LEGAL_VERSION_STALE') {
-          // The policy changed while the form was open: the box is cleared
-          // so the person accepts the version they can now read.
-          setAcceptance(null);
-          void legalQuery.refetch();
-          setSignUpError(consentCopy.stale);
-        } else if (legalRefusalReason(err) === 'LEGAL_ACCEPTANCE_CLOSED') {
-          setAcceptance(null);
-          void legalQuery.refetch();
-          setSignUpError(consentCopy.closed);
-        } else {
-          setSignUpError(
-            lang === 'ar'
-              ? 'تعذر تأكيد التسجيل. تحقق من البيانات وحاول مجدداً.'
-              : registrationErrorMessage(err),
-          );
-        }
-      } finally {
-        requestFlight.current = false;
-        setIsLoading(false);
-      }
-      return;
-    }
-    // Step 3 has its own primary CTA inside EmailOtpPanel — the sticky
-    // bottom CTA is hidden in that step (see render below).
-  };
-
-  const handleOtpVerify = async (code: string) => {
-    if (!challenge || requestFlight.current || otpRecovery === 'restart') return;
-    requestFlight.current = true;
-    setIsVerifying(true);
-    setOtpError(undefined);
-    try {
-      await onOtpVerify(challenge.challengeId, code);
-      // Parent takes over (navigation to /home / returnTo).
-    } catch (err: unknown) {
-      setOtpError({
-        en: otpErrorMessage(err, 'verify', 'en'),
-        ar: otpErrorMessage(err, 'verify', 'ar'),
-      });
-      const recovery = otpRecoveryAction(err, 'verify');
-      if (recovery) setOtpRecovery(recovery);
-    } finally {
-      requestFlight.current = false;
-      setIsVerifying(false);
-    }
-  };
-
-  const handleOtpResend = async () => {
-    if (!challenge || requestFlight.current || otpRecovery !== null) return;
-    requestFlight.current = true;
-    setIsResending(true);
-    setResendNotice(undefined);
-    setOtpError(undefined);
-    try {
-      await onOtpResend(challenge.challengeId);
-      setResendNotice(
-        lang === 'ar'
-          ? 'تم استلام الطلب. تحقق من بريدك واستخدم أحدث رمز يصلك.'
-          : 'Request received. Check your inbox and use the most recent code.',
-      );
-    } catch (err: unknown) {
-      setOtpError({
-        en: otpErrorMessage(err, 'resend', 'en'),
-        ar: otpErrorMessage(err, 'resend', 'ar'),
-      });
-      const recovery = otpRecoveryAction(err, 'resend');
-      if (recovery) setOtpRecovery(recovery);
-    } finally {
-      requestFlight.current = false;
-      setIsResending(false);
-    }
-  };
-
-  if (step < 3 && legalDocs && !legalReady) {
-    return (
-      <SwipeableScreen onBack={onBack}>
-        <div className="flex min-h-svh flex-col bg-white">
-          <AuthTopBar title={t('createAccount')} onBack={onBack} />
-          <main className="mx-auto flex w-full max-w-md flex-col gap-4 px-6 py-8">
-            <h2 role="status" className="text-lg font-semibold text-slate-900">
-              {legalDocs.acceptanceOpen ? consentCopy.updateRequired : consentCopy.closed}
-            </h2>
-            <a className="min-h-11 underline" href="/legal/terms">
-              {consentCopy.readTerms}
-            </a>
-            <a className="min-h-11 underline" href="/legal/privacy">
-              {consentCopy.readPrivacy}
-            </a>
-            <Button variant="primary" tone={experience.id} onClick={onBack}>
-              {t('login')}
-            </Button>
-            {legalDocs.acceptanceOpen && (
-              <button
-                type="button"
-                className="min-h-11 underline"
-                onClick={() => window.location.reload()}
-              >
-                {consentCopy.reload}
-              </button>
-            )}
-          </main>
-        </div>
-      </SwipeableScreen>
-    );
-  }
-
-  const stepLabels = [t('accountInfo'), t('createAccount'), t('verification')];
-
-  return (
-    <SwipeableScreen onBack={step > 1 ? () => setStep((s) => s - 1) : onBack}>
-      <div className="flex flex-col bg-white" style={{ height: '100svh' }}>
-        <AuthTopBar
-          title={t('createAccount')}
-          onBack={step > 1 ? () => setStep((s) => s - 1) : onBack}
-        />
-
-        <div
-          className="flex-1 overflow-y-auto px-6 py-6"
-          style={{
-            scrollbarWidth: 'none',
-            // Phase 1 Bug 1 — guarantee that the iOS safe-area inset
-            // (home-bar / bottom gesture area) is never under the
-            // sticky-bottom CTA. The form's own footer takes care of
-            // its own padding; this is an additional gutter so any
-            // future floating element (e.g. the desktop watermark)
-            // can never re-creep over the scrollable content.
-            paddingBottom: 'calc(1.5rem + env(safe-area-inset-bottom, 0px))',
-          }}
-        >
-          <div className="mb-6">
-            <h2 className="text-slate-900 mb-1" style={{ fontSize: '22px', fontWeight: 800 }}>
-              {t('letsGetStarted')}
-            </h2>
-            <p className="text-slate-400" style={{ fontSize: '14px' }}>
-              {t('fillDetails')}
-            </p>
-          </div>
-
-          {/* Step indicator */}
-          <div className="flex items-center gap-2 mb-6">
-            {stepLabels.map((label, i) => (
-              <div key={label} className="flex min-w-0 items-center gap-2 flex-1">
-                <div
-                  className={`flex items-center justify-center w-7 h-7 rounded-full flex-shrink-0 transition-all ${
-                    i + 1 < step
-                      ? `${experience.classes.accentBg} text-white`
-                      : i + 1 === step
-                        ? `${experience.classes.accentBg} text-white ring-2 ${experience.classes.activeRing}`
-                        : 'bg-slate-100 text-slate-400'
-                  }`}
-                  style={{ fontSize: '11px', fontWeight: 800 }}
-                >
-                  {i + 1 < step ? (
-                    <svg
-                      width="10"
-                      height="10"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="white"
-                      strokeWidth="3.5"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    >
-                      <polyline points="20 6 9 17 4 12" />
-                    </svg>
-                  ) : (
-                    i + 1
-                  )}
-                </div>
-                <span
-                  style={{
-                    fontSize: '10px',
-                    fontWeight: i + 1 <= step ? 700 : 400,
-                    color: i + 1 <= step ? experience.accentHex : '#94a3b8',
-                  }}
-                >
-                  {label}
-                </span>
-                {i < stepLabels.length - 1 && (
-                  <div
-                    className={`flex-1 h-0.5 rounded-full ${i + 1 < step ? experience.classes.activeConnector : 'bg-slate-100'}`}
-                  />
-                )}
-              </div>
-            ))}
-          </div>
-
-          {/* ── Step 1: Personal Info ── */}
-          {step === 1 && (
-            <div className="flex flex-col gap-4">
-              <TextField
-                label={t('fullName')}
-                value={name}
-                onChange={setName}
-                leadingIcon={<User size={16} />}
-                hint={t('nameOnId')}
-              />
-
-              {/* Phone number: country dial code + local number. Dial code is
-                  editable; we pre-select from best-effort geo/locale. Phone
-                  is onboarding-only and not persisted yet (see PR notes). */}
-              <div>
-                <label
-                  className="text-slate-600 mb-1.5 block"
-                  style={{ fontSize: '12px', fontWeight: 600 }}
-                >
-                  {t('phoneNumber')}
-                </label>
-                <div className="flex items-stretch gap-2">
-                  <div className="relative">
-                    <select
-                      data-testid="dial-code-select"
-                      aria-label={lang === 'ar' ? 'رمز الاتصال بالدولة' : 'Country calling code'}
-                      value={dialCode}
-                      onChange={(e) => {
-                        setDialCode(e.target.value);
-                        setDialCodeTouched(true);
-                      }}
-                      className="appearance-none h-12 rounded-2xl border-2 border-slate-200 bg-white pl-3 pr-7 text-slate-700"
-                      style={{ fontSize: '13px', fontWeight: 600 }}
-                    >
-                      {COUNTRY_DIAL_CODES.map((c) => (
-                        <option key={c.iso2} value={c.dialCode}>
-                          {c.iso2} {c.dialCode}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div className="flex-1">
-                    <TextField
-                      label={t('phoneNumber')}
-                      autoComplete="tel-national"
-                      type="tel"
-                      value={localNumber}
-                      onChange={setLocalNumber}
-                      leadingIcon={<Phone size={16} />}
-                      hint={
-                        lang === 'ar'
-                          ? 'اختياري، لا يُحفظ في خطوة التسجيل.'
-                          : 'Optional; not saved during registration.'
-                      }
-                    />
-                  </div>
-                </div>
-              </div>
-
-              {/* Location badge — reflects what we actually resolved.
-                  Only claims a real fix when the browser gave one. */}
-              <div className="bg-slate-50 rounded-2xl border border-slate-200 px-4 py-3 flex items-center gap-3">
-                <div
-                  className={`w-8 h-8 rounded-xl ${experience.classes.iconChipBg} flex items-center justify-center flex-shrink-0`}
-                >
-                  <MapPin size={14} className={experience.classes.iconChipText} />
-                </div>
-                <div>
-                  <p className="text-slate-700" style={{ fontSize: '13px', fontWeight: 600 }}>
-                    {geo.countryCode
-                      ? `${dialEntry.name} (${geo.countryCode})`
-                      : 'Country not detected'}
-                  </p>
-                  <p className="text-slate-400" style={{ fontSize: '11px' }}>
-                    {geo.source === 'geo'
-                      ? 'Detected from device location'
-                      : geo.source === 'locale'
-                        ? 'Inferred from browser locale'
-                        : geo.source === 'timezone'
-                          ? 'Inferred from timezone'
-                          : 'Select your country dial code above'}
-                  </p>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* ── Step 2: Account Credentials ── */}
-          {step === 2 && (
-            <div className="flex flex-col gap-4">
-              <TextField
-                label={t('emailAddress')}
-                type="email"
-                autoComplete="email"
-                value={email}
-                onChange={setEmail}
-                leadingIcon={<Mail size={16} />}
-              />
-              <div>
-                <TextField
-                  label={t('password')}
-                  type={showPw ? 'text' : 'password'}
-                  autoComplete="new-password"
-                  value={password}
-                  onChange={setPassword}
-                  leadingIcon={<Lock size={16} />}
-                  hint={t('minPassword')}
-                  trailingIcon={
-                    <button
-                      type="button"
-                      onClick={() => setShowPw((v) => !v)}
-                      aria-label={consentCopy.showPassword}
-                      aria-pressed={showPw}
-                      className="flex items-center justify-center w-11 h-11 -me-3 rounded-xl focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
-                    >
-                      {showPw ? (
-                        <EyeOff size={18} aria-hidden="true" />
-                      ) : (
-                        <Eye size={18} aria-hidden="true" />
-                      )}
-                    </button>
-                  }
-                />
-                <PasswordStrength password={password} />
-              </div>
-
-              <div className="flex flex-col gap-2" data-testid="signup-consent">
-                <div className="flex items-start gap-3">
-                  <input
-                    id="signup-consent"
-                    type="checkbox"
-                    checked={agreed}
-                    onChange={(event) =>
-                      setAcceptance(
-                        event.target.checked && legalReady && termsDoc && privacyDoc
-                          ? {
-                              termsVersion: termsDoc.version,
-                              privacyVersion: privacyDoc.version,
-                              locale: lang,
-                            }
-                          : null,
-                      )
-                    }
-                    disabled={!legalReady}
-                    aria-describedby="signup-consent-links"
-                    className="mt-0.5 h-6 w-6 shrink-0 cursor-pointer accent-blue-600 disabled:cursor-not-allowed"
-                  />
-                  <label
-                    htmlFor="signup-consent"
-                    className="cursor-pointer text-slate-700"
-                    style={{ fontSize: '15px', lineHeight: '1.5' }}
-                  >
-                    {consentCopy.statement}
-                  </label>
-                </div>
-                <p
-                  id="signup-consent-links"
-                  className="flex flex-wrap gap-x-4 ps-9"
-                  style={{ fontSize: '15px' }}
-                >
-                  {(['terms', 'privacy'] as const).map((id) => (
-                    <a
-                      key={id}
-                      href={id === 'terms' ? '/legal/terms' : '/legal/privacy'}
-                      onClick={(event) => {
-                        // A plain click reads the policy in place; a
-                        // modified or middle click opens the real page.
-                        if (
-                          event.metaKey ||
-                          event.ctrlKey ||
-                          event.shiftKey ||
-                          event.altKey ||
-                          event.button !== 0
-                        )
-                          return;
-                        event.preventDefault();
-                        setPolicyOpen(id);
-                      }}
-                      className={`inline-flex min-h-11 items-center underline underline-offset-2 font-semibold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 ${experience.classes.accentText}`}
-                    >
-                      {id === 'terms' ? consentCopy.readTerms : consentCopy.readPrivacy}
-                    </a>
-                  ))}
-                </p>
-                {legalQuery.isPending ? (
-                  <p className="ps-9 text-slate-500" style={{ fontSize: '14px' }} role="status">
-                    {consentCopy.loading}
-                  </p>
-                ) : legalQuery.isError ? (
-                  <p className="ps-9 text-red-600" style={{ fontSize: '14px' }} role="alert">
-                    {consentCopy.loadFailed}{' '}
-                    <button
-                      type="button"
-                      onClick={() => void legalQuery.refetch()}
-                      className="inline-flex min-h-11 items-center underline font-semibold"
-                    >
-                      {consentCopy.retry}
-                    </button>
-                  </p>
-                ) : null}
-              </div>
-              {policyOpen !== null ? (
-                <Suspense fallback={null}>
-                  <PolicyDialog
-                    id={policyOpen}
-                    lang={lang === 'ar' ? 'ar' : 'en'}
-                    onClose={() => setPolicyOpen(null)}
-                  />
-                </Suspense>
-              ) : null}
-            </div>
-          )}
-
-          {/* ── Step 3: Email OTP verification ── */}
-          {step === 3 && challenge && (
-            <EmailOtpPanel
-              email={email.trim()}
-              codeLength={challenge.codeLength}
-              onVerify={handleOtpVerify}
-              onResend={handleOtpResend}
-              isVerifying={isVerifying}
-              isResending={isResending}
-              verifyError={otpError?.[lang]}
-              recovery={otpRecovery}
-              resendNotice={resendNotice}
-              experience={experience}
-              onRestart={() =>
-                onRecoverVerification ? onRecoverVerification(email.trim()) : onBack()
-              }
-              restartLabel={
-                lang === 'ar' ? 'طلب رابط تحقق بدلاً من الرمز' : 'Use a verification link instead'
-              }
-            />
-          )}
-
-          <div className="h-4" />
-        </div>
-
-        {/* Sticky bottom CTA — hidden on Step 3 because the OTP panel
-            ships its own primary action. */}
-        {step !== 3 && (
-          <div className="bg-white border-t border-slate-100 px-6 py-4 shadow-[0_-4px_20px_rgba(0,0,0,0.06)]">
-            {signUpError && (
-              <p
-                role="alert"
-                className="text-red-500 text-center mb-2"
-                style={{ fontSize: '13px' }}
-              >
-                {signUpError}
-              </p>
-            )}
-            <Button
-              variant="primary"
-              tone={experience.id}
-              state={
-                isLoading
-                  ? 'loading'
-                  : (step === 1 && !canStep1) || (step === 2 && !canStep2)
-                    ? 'disabled'
-                    : 'default'
-              }
-              fullWidth
-              onClick={goNext}
-              leadingIcon={step < 2 ? <ArrowRight size={16} /> : <CheckCircle2 size={16} />}
-            >
-              {step === 2 ? t('register') : t('next')}
-            </Button>
-            <p className="text-center text-slate-400 mt-3" style={{ fontSize: '12px' }}>
-              {t('alreadyHaveAccount')}{' '}
-              <button onClick={onBack} className={`${experience.classes.accentText} font-semibold`}>
-                {t('login')}
-              </button>
-            </p>
-          </div>
-        )}
-      </div>
-    </SwipeableScreen>
-  );
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// FORGOT PASSWORD SCREEN — wired to POST /v1/auth/forgot-password.
-//
-// The backend returns 202 for both existing and unknown emails
-// (anti-enumeration). We always show the "check inbox" success state on a
-// 2xx response, and keep the user on the form with an error hint on a
-// network/5xx failure.
-// ─────────────────────────────────────────────────────────────────────────────
-interface ForgotPwProps {
-  onBack: () => void;
-  onSubmit: (email: string) => Promise<void>;
-  // Sprint 5.1.1: experience-aware theming.
-  experience?: AuthExperience;
-}
-
-export function ForgotPasswordScreen({
-  onBack,
-  onSubmit,
-  experience = AUTH_EXPERIENCES[DEFAULT_EXPERIENCE_ID],
-}: ForgotPwProps) {
-  const { t, lang } = useLang();
-  const [email, setEmail] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
-  const [submitted, setSubmitted] = useState(false);
-  const [error, setError] = useState<string | undefined>();
-
-  const requestFlight = useRef(false);
-  const handleSend = async () => {
-    if (!email || requestFlight.current) return;
-    requestFlight.current = true;
-    setIsLoading(true);
-    setError(undefined);
-    try {
-      await onSubmit(email.trim());
-      setSubmitted(true);
-    } catch (err: unknown) {
-      setError(
-        lang === 'ar'
-          ? 'تعذر تأكيد الطلب. حاول مجدداً بعد قليل.'
-          : recoveryRequestErrorMessage(err),
-      );
-    } finally {
-      requestFlight.current = false;
-      setIsLoading(false);
-    }
-  };
-
-  return (
-    <SwipeableScreen onBack={onBack}>
-      <div className="flex flex-col bg-white" style={{ minHeight: '100svh' }}>
-        <AuthTopBar title={t('resetPassword')} onBack={onBack} />
-
-        <div className="flex-1 px-6 py-8">
-          {submitted ? (
-            <div className="flex flex-col items-center text-center py-8">
-              <div className="relative mb-6">
-                <div className="w-24 h-24 rounded-full bg-green-100 flex items-center justify-center">
-                  <CheckCircle2 size={44} className="text-green-500" />
-                </div>
-                <div
-                  className={`absolute -top-1 -end-1 w-8 h-8 rounded-full ${experience.classes.accentBg} flex items-center justify-center shadow-md`}
-                >
-                  <Send size={14} className="text-white" />
-                </div>
-              </div>
-              <h2 className="text-slate-900 mb-2" style={{ fontSize: '22px', fontWeight: 800 }}>
-                {t('checkInbox')}
-              </h2>
-              <p
-                className="text-slate-400 mb-2 max-w-[260px]"
-                style={{ fontSize: '14px', lineHeight: '1.6' }}
-              >
-                {lang === 'ar'
-                  ? 'تم استلام الطلب. إذا كان الحساب مؤهلاً فستصلك تعليمات الاستعادة.'
-                  : 'Request received. If the account is eligible, check your inbox for recovery instructions.'}
-              </p>
-              <div
-                className={`inline-flex items-center gap-2 ${experience.classes.softBg} border ${experience.classes.softBorder} rounded-2xl px-4 py-2 mb-8`}
-              >
-                <Mail size={14} className={experience.classes.accentText} />
-                <span
-                  className={experience.classes.accentText}
-                  style={{ fontSize: '14px', fontWeight: 600 }}
-                >
-                  {email}
-                </span>
-              </div>
-              <Button variant="primary" tone={experience.id} fullWidth onClick={onBack}>
-                {t('backToLogin')}
-              </Button>
-              <div className="mt-4">
-                <Button
-                  variant="text"
-                  tone={experience.id}
-                  onClick={() => {
-                    // Take the user back to the form so they can re-submit
-                    // against the real endpoint (we don't auto-resend here).
-                    setSubmitted(false);
-                    setError(undefined);
-                  }}
-                >
-                  {t('resendEmail')}
-                </Button>
-              </div>
-            </div>
-          ) : (
-            <>
-              <div className="flex justify-center mb-6">
-                <div className="relative">
-                  <div
-                    className={`w-20 h-20 rounded-2xl ${experience.classes.iconChipBg} flex items-center justify-center`}
-                  >
-                    <Lock size={32} className={experience.classes.iconChipText} />
-                  </div>
-                  <div className="absolute -top-2 -end-2 w-8 h-8 rounded-full bg-blue-500 flex items-center justify-center shadow-md">
-                    <Mail size={14} className="text-white" />
-                  </div>
-                </div>
-              </div>
-
-              <h2 className="text-slate-900 mb-2" style={{ fontSize: '22px', fontWeight: 800 }}>
-                {t('forgotPasswordTitle')}
-              </h2>
-              <p className="text-slate-400 mb-8" style={{ fontSize: '14px', lineHeight: '1.7' }}>
-                {t('forgotPasswordDesc')}
-              </p>
-
-              <div className="flex flex-col gap-5">
-                <TextField
-                  label={t('emailAddress')}
-                  type="email"
-                  autoComplete="email"
-                  onEnter={() => {
-                    void handleSend();
-                  }}
-                  value={email}
-                  onChange={setEmail}
-                  leadingIcon={<Mail size={16} />}
-                />
-
-                <Button
-                  variant="primary"
-                  tone={experience.id}
-                  state={isLoading ? 'loading' : !email ? 'disabled' : 'default'}
-                  fullWidth
-                  onClick={handleSend}
-                  leadingIcon={<Send size={16} />}
-                >
-                  {t('sendResetLink')}
-                </Button>
-
-                {error && (
-                  <p role="alert" className="text-red-500 text-center" style={{ fontSize: '13px' }}>
-                    {error}
-                  </p>
-                )}
-
-                <div className="flex items-start gap-2 bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3">
-                  <AlertCircle size={14} className="text-slate-400 flex-shrink-0 mt-0.5" />
-                  <p className="text-slate-500" style={{ fontSize: '12px', lineHeight: '1.5' }}>
-                    {t('resetExpiry')}
-                  </p>
-                </div>
-
-                <div className="flex justify-center mt-2">
-                  <Button variant="text" tone={experience.id} onClick={onBack}>
-                    {t('backToLogin')}
-                  </Button>
-                </div>
-              </div>
-            </>
-          )}
-        </div>
-      </div>
-    </SwipeableScreen>
   );
 }

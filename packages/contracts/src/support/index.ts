@@ -27,7 +27,7 @@ export interface SupportTicketDetailView extends SupportTicketSummaryView {
 export interface AdminSupportTicketSummaryView extends SupportTicketSummaryView {
   requester: {
     id: string;
-    email: string;
+    email: string | null;
     firstName: string;
     lastName: string;
   };

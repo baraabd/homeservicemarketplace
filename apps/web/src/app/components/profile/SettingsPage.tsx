@@ -1,15 +1,20 @@
-import { useState } from 'react';
+import { lazy, useState } from 'react';
 import { Link, useNavigate } from 'react-router';
 import { useAuth } from '../../../lib/auth-provider';
 // @ts-ignore – motion/react is the correct package path
 import { motion, AnimatePresence } from 'motion/react';
 import { ChevronLeft, ChevronRight, LogOut, AlertTriangle } from 'lucide-react';
 import { useLang, LangToggle } from '../../i18n/LanguageContext';
+import { AsyncBoundary } from '../../AsyncBoundary';
 import {
   LEGAL_PAGES,
   legalPath,
   type LegalPageId,
 } from '../../features/legal/copy/legal-documents.copy';
+
+const AccountSignInSettings = lazy(() =>
+  import('./AccountSignInSettings').then((module) => ({ default: module.AccountSignInSettings })),
+);
 
 // ─── Reusable Toggle ──────────────────────────────────────────────────────────
 function SettingsToggle({
@@ -97,7 +102,7 @@ interface SettingsPageProps {
 export function SettingsPage({ onBack }: SettingsPageProps) {
   const { lang, dir, darkMode, toggleDarkMode } = useLang();
   const navigate = useNavigate();
-  const { logout } = useAuth();
+  const { logout, user } = useAuth();
 
   const [signOutModal, setSignOutModal] = useState(false);
 
@@ -172,6 +177,11 @@ export function SettingsPage({ onBack }: SettingsPageProps) {
 
         {/* Body */}
         <div className="flex-1 overflow-y-auto px-4 py-4" style={{ scrollbarWidth: 'none' }}>
+          {user && (
+            <AsyncBoundary>
+              <AccountSignInSettings />
+            </AsyncBoundary>
+          )}
           {/* ── Appearance ── */}
           <Section title={L.appearance}>
             <SettingsToggle

@@ -128,6 +128,31 @@ export function ReviewDossier({
                 {text(p.legalBusinessName)}
               </ReviewField>
             )}
+            <ReviewField label={t.accountContact}>
+              {p?.contactVerified === undefined ? (
+                t.notCaptured
+              ) : (
+                <ReviewBadge tone={p.contactVerified ? 'success' : 'neutral'}>
+                  {p.contactVerified ? t.proven : t.unproven}
+                </ReviewBadge>
+              )}
+            </ReviewField>
+            <ReviewField label={t.accountPhone}>
+              <span dir="ltr">
+                {p?.accountPhoneNumber === undefined ? t.notCaptured : text(p.accountPhoneNumber)}
+              </span>
+              {p?.accountPhoneNumber && (
+                <div>
+                  {p.accountPhoneVerified === undefined ? (
+                    t.notCaptured
+                  ) : (
+                    <ReviewBadge tone={p.accountPhoneVerified ? 'success' : 'neutral'}>
+                      {p.accountPhoneVerified ? t.proven : t.unproven}
+                    </ReviewBadge>
+                  )}
+                </div>
+              )}
+            </ReviewField>
             <ReviewField label={t.email}>
               <span dir="ltr">{text(p?.email)}</span>
               {p?.email && (

@@ -1029,3 +1029,73 @@ describe('EditProfilePage — first answer versus a different account', () => {
     expect(screen.queryByDisplayValue('Ada Typed')).toBeNull();
   });
 });
+
+describe('EditProfilePage — immutable phone account identity', () => {
+  const PHONE_ME = {
+    ...MOCK_ME_ADA,
+    email: null,
+    emailVerifiedAt: null,
+    phoneNumber: '+966501234567',
+  };
+  const PHONE_PROFILE = {
+    ...MOCK_PROFILE,
+    userId: PHONE_ME.id,
+    email: null,
+    phoneNumber: PHONE_ME.phoneNumber,
+  };
+  const nameField = () => screen.getByLabelText(/full name|الاسم الكامل/i) as HTMLInputElement;
+
+  it('preserves a phone-only user’s early edit when their first profile arrives', async () => {
+    mock.onGet('/v1/auth/me').reply(200, PHONE_ME);
+    let release!: (value: [number, unknown]) => void;
+    mock.onGet('/v1/me/profile').replyOnce(
+      () =>
+        new Promise<[number, unknown]>((resolve) => {
+          release = resolve;
+        }),
+    );
+    renderEdit();
+    await waitFor(() => expect(qc.getQueryData(['auth', 'me'])).toMatchObject({ id: 'u1' }));
+    fireEvent.change(nameField(), { target: { value: 'Typed Early' } });
+    release([200, { profile: PHONE_PROFILE }]);
+    await screen.findByDisplayValue(PHONE_ME.phoneNumber);
+    expect(nameField().value).toBe('Typed Early');
+  });
+
+  it('preserves edits when the same account later attaches an email', async () => {
+    mock.onGet('/v1/auth/me').reply(200, PHONE_ME);
+    mock.onGet('/v1/me/profile').reply(200, { profile: PHONE_PROFILE });
+    renderEdit();
+    await screen.findByDisplayValue('Ada Lovelace');
+    fireEvent.change(nameField(), { target: { value: 'Unsaved Phone Account Edit' } });
+    qc.setQueryData(['seeker', 'profile', 'get'], {
+      profile: {
+        ...PHONE_PROFILE,
+        email: 'ada@example.com',
+        updatedAt: '2026-05-01T00:00:00.000Z',
+      },
+    });
+    await screen.findByDisplayValue('ada@example.com');
+    expect(nameField().value).toBe('Unsaved Phone Account Edit');
+  });
+
+  it('clears edits between phone-only accounts even if both profile timestamps match', async () => {
+    mock.onGet('/v1/auth/me').reply(200, PHONE_ME);
+    mock.onGet('/v1/me/profile').reply(200, { profile: PHONE_PROFILE });
+    renderEdit();
+    await screen.findByDisplayValue('Ada Lovelace');
+    fireEvent.change(nameField(), { target: { value: 'Private Unsaved Edit' } });
+    qc.setQueryData(['auth', 'me'], { ...PHONE_ME, id: 'u2', firstName: 'Grace' });
+    qc.setQueryData(['seeker', 'profile', 'get'], {
+      profile: {
+        ...PHONE_PROFILE,
+        userId: 'u2',
+        displayName: 'Grace Hopper',
+        phoneNumber: '+966509876543',
+      },
+    });
+    await waitFor(() => expect(nameField().value).toBe('Grace Hopper'));
+    expect(screen.queryByDisplayValue('Private Unsaved Edit')).toBeNull();
+    expect(screen.getByDisplayValue('+966509876543')).toBeInTheDocument();
+  });
+});

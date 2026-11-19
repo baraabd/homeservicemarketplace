@@ -80,8 +80,20 @@ export function savedReviewSnapshot(value: unknown): ProviderReviewSnapshot | nu
 
 /** Compare provider input, excluding platform decisions and moving catalogue labels. */
 export function submittedContent(snapshot: ProviderReviewSnapshot) {
+  // These describe live account ownership, not edits to the provider's
+  // application. Older schemaVersion 1 snapshots predate account phone auth.
+  // Keep them in reviewRevision and the live eligibility gate, but never use
+  // their presence or verification timestamps to invent a content revision.
+  const {
+    accountPhoneNumber: _accountPhoneNumber,
+    accountPhoneVerified: _accountPhoneVerified,
+    contactVerified: _contactVerified,
+    emailVerified: _emailVerified,
+    phoneVerifiedAt: _phoneVerifiedAt,
+    ...submittedProfile
+  } = snapshot.profile;
   return {
-    profile: snapshot.profile,
+    profile: submittedProfile,
     services: {
       primaryGroupIds: [...snapshot.services.primaryGroupIds].sort(),
       primarySpecialtyId: snapshot.services.primarySpecialtyId,
@@ -112,13 +124,19 @@ export function reviewBlockers(
 ): AdminProviderReviewBlocker[] {
   const blockers: AdminProviderReviewBlocker[] = [];
   const { profile, submission, verificationCase: kase } = data;
+  const contact = data.current.profile;
+  const contactVerified =
+    contact.contactVerified ??
+    (Boolean(contact.email && contact.emailVerified) ||
+      Boolean(contact.accountPhoneNumber && contact.accountPhoneVerified));
   if (!canDecide) blockers.push({ code: 'PERMISSION_REQUIRED' });
   if (profile.userId === actorUserId) blockers.push({ code: 'SELF_REVIEW' });
   if (
     !profile.user ||
     !profile.user.isActive ||
     profile.user.deletedAt ||
-    profile.user.status !== 'ACTIVE'
+    profile.user.status !== 'ACTIVE' ||
+    !contactVerified
   ) {
     blockers.push({ code: 'ACCOUNT_INELIGIBLE' });
   }

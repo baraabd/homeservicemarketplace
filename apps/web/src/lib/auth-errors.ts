@@ -65,9 +65,31 @@ const LOGIN_ERROR_COPY = {
   },
 } as const;
 
-export function loginErrorMessage(err: unknown, lang: 'en' | 'ar' = 'en'): string {
+export function loginErrorMessage(
+  err: unknown,
+  lang: 'en' | 'ar' = 'en',
+  channel: 'email' | 'whatsapp' = 'email',
+): string {
   const { code, status } = extractAuthError(err);
-  const copy = LOGIN_ERROR_COPY[lang];
+  const emailCopy = LOGIN_ERROR_COPY[lang];
+  const copy =
+    channel === 'email'
+      ? emailCopy
+      : {
+          ...emailCopy,
+          invalid:
+            lang === 'ar'
+              ? 'رقم واتساب أو كلمة المرور غير صحيحة.'
+              : 'Incorrect WhatsApp number or password.',
+          validation:
+            lang === 'ar'
+              ? 'تحقق من رقم واتساب وكلمة المرور ثم حاول مجددًا.'
+              : 'Check your WhatsApp number and password and try again.',
+          unverified:
+            lang === 'ar'
+              ? 'تحقق من رقم واتساب لإكمال الدخول.'
+              : 'Verify your WhatsApp number to continue.',
+        };
   switch (code) {
     case 'AUTH_INVALID_CREDENTIALS':
       return copy.invalid;

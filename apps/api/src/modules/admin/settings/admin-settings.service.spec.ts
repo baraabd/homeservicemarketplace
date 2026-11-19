@@ -1,3 +1,4 @@
+import type { AuthChannelService } from '../../../infrastructure/auth-channel/auth-channel.service';
 import type {
   PlatformSettingRepository,
   PlatformSettingRow,
@@ -96,7 +97,9 @@ function makeMocks(initialRows: PlatformSettingRow[] = []): Mocks {
 }
 
 function makeService(m: Mocks): AdminSettingsService {
-  return new AdminSettingsService(m.settings, m.history, m.audit, tx);
+  return new AdminSettingsService(m.settings, m.history, m.audit, tx, {
+    assertSelectable: jest.fn().mockResolvedValue(undefined),
+  } as unknown as AuthChannelService);
 }
 
 describe('AdminSettingsService.getBulk', () => {
@@ -396,4 +399,46 @@ describe('AdminSettingsService — setting history', () => {
     expect(out.key).toBe('retired_key');
     expect(out.items).toEqual([]);
   });
+});
+
+describe('OTP channel settings authority', () => {
+  it.each(['bulk', 'keyed'] as const)(
+    'rejects an unsupported channel on the %s path',
+    async (path) => {
+      const m = makeMocks();
+      const service = makeService(m);
+      await expect(
+        path === 'bulk'
+          ? service.updateBulk('admin-1', { 'auth.otpChannel': 'sms' })
+          : service.upsert('admin-1', 'auth.otpChannel', 'sms'),
+      ).rejects.toMatchObject({ status: 400 });
+      expect(m.settings.upsert).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each(['bulk', 'keyed', 'delete'] as const)(
+    'never bypasses provider/admin readiness through the %s path',
+    async (path) => {
+      const m = makeMocks([makeRow({ key: 'auth.otpChannel', value: 'whatsapp' })]);
+      const guard = jest.fn().mockRejectedValue(new Error('contact must be verified'));
+      const service = new AdminSettingsService(m.settings, m.history, m.audit, tx, {
+        assertSelectable: guard,
+      } as unknown as AuthChannelService);
+      await expect(
+        path === 'bulk'
+          ? service.updateBulk('admin-1', { 'auth.otpChannel': 'whatsapp' })
+          : path === 'keyed'
+            ? service.upsert('admin-1', 'auth.otpChannel', 'whatsapp')
+            : service.remove('admin-1', 'auth.otpChannel'),
+      ).rejects.toThrow('contact must be verified');
+      expect(guard).toHaveBeenCalledWith(
+        path === 'delete' ? 'email' : 'whatsapp',
+        'admin-1',
+        expect.anything(),
+      );
+      expect(m.settings.upsert).not.toHaveBeenCalled();
+      expect(m.settings.delete).not.toHaveBeenCalled();
+      expect(m.history.append).not.toHaveBeenCalled();
+    },
+  );
 });

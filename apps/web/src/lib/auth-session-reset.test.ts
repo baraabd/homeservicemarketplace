@@ -4,7 +4,9 @@ import { clearAuthSession } from './auth-session-reset';
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
-  const promise = new Promise<T>((done) => { resolve = done; });
+  const promise = new Promise<T>((done) => {
+    resolve = done;
+  });
   return { promise, resolve };
 }
 
@@ -15,9 +17,13 @@ describe('S04 authenticated query cancellation', () => {
     client.setQueryData(['auth', 'me'], oldUser);
     client.setQueryData(['provider', 'private-profile'], { private: true });
     const response = deferred<typeof oldUser>();
-    const fetch = client.fetchQuery({
-      queryKey: ['auth', 'me'], queryFn: () => response.promise, staleTime: 0,
-    }).catch(() => undefined);
+    const fetch = client
+      .fetchQuery({
+        queryKey: ['auth', 'me'],
+        queryFn: () => response.promise,
+        staleTime: 0,
+      })
+      .catch(() => undefined);
     expect(client.isFetching({ queryKey: ['auth', 'me'] })).toBe(1);
     await clearAuthSession(client);
     response.resolve(oldUser);
@@ -45,7 +51,22 @@ describe('S04 authenticated query cancellation', () => {
       client.setQueryData([namespace, 'private'], { owner: 'old' });
     }
     await clearAuthSession(client);
-    expect(client.getQueryCache().getAll().map((query) => query.queryKey)).toEqual([['auth', 'me']]);
+    expect(
+      client
+        .getQueryCache()
+        .getAll()
+        .map((query) => query.queryKey),
+    ).toEqual([['auth', 'me']]);
+    client.clear();
+  });
+  it('retains only public auth policy while cancelling private work', async () => {
+    const client = new QueryClient();
+    const policy = { otpChannel: 'whatsapp', whatsappAvailable: true };
+    client.setQueryData(['auth', 'config'], policy);
+    client.setQueryData(['admin', 'settings'], { private: true });
+    await clearAuthSession(client);
+    expect(client.getQueryData(['auth', 'config'])).toEqual(policy);
+    expect(client.getQueryData(['admin', 'settings'])).toBeUndefined();
     client.clear();
   });
 });

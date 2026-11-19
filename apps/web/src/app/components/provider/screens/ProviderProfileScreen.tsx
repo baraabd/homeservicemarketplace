@@ -8,7 +8,8 @@
 // is now its own module behind its own route; behaviour is unchanged by this
 // move.
 
-import { useState } from 'react';
+import { lazy, useState } from 'react';
+import { AsyncBoundary } from '../../../AsyncBoundary';
 import { useLang } from '../../../i18n/LanguageContext';
 import { PortfolioSection } from '../portfolio/PortfolioSection';
 import { ProviderVerificationScreen } from '../../../features/provider-verification/components/ProviderVerificationScreen';
@@ -31,7 +32,12 @@ import {
   Clock,
   LogOut,
   CreditCard,
+  Settings,
 } from 'lucide-react';
+
+const SettingsPage = lazy(() =>
+  import('../../profile/SettingsPage').then((module) => ({ default: module.SettingsPage })),
+);
 
 // ─── Provider Profile ─────────────────────────────────────────────────────────
 // Tailwind palette for skill chips. Cycled by index so the chip colours
@@ -73,7 +79,7 @@ export function ProviderProfileScreen() {
   // at apps/web/src/app/components/profile/ProfileTab.tsx:467). When
   // the user finishes editing they hit Back which sets view=null and
   // returns here.
-  const [view, setView] = useState<'editProfile' | null>(null);
+  const [view, setView] = useState<'editProfile' | 'settings' | null>(null);
   // Phase 5 Bug 4 — debounce double-clicks on Sign Out so the user
   // can't fire two logout requests while the auth-provider is still
   // tearing down the session.
@@ -111,6 +117,13 @@ export function ProviderProfileScreen() {
 
   if (view === 'editProfile') {
     return <EditProfilePage onBack={() => setView(null)} appContext="provider" />;
+  }
+  if (view === 'settings') {
+    return (
+      <AsyncBoundary>
+        <SettingsPage onBack={() => setView(null)} />
+      </AsyncBoundary>
+    );
   }
 
   const profile = profileQuery.data?.profile ?? null;
@@ -430,6 +443,12 @@ export function ProviderProfileScreen() {
               label: L.myPlan,
               onClick: () => navigate('/provider/my-plan'),
               testId: 'provider-menu-my-plan',
+            },
+            {
+              icon: <Settings size={16} />,
+              label: L.settings,
+              onClick: () => setView('settings'),
+              testId: 'provider-menu-settings',
             },
           ].map(({ icon, label, onClick, testId }, i) => (
             <button

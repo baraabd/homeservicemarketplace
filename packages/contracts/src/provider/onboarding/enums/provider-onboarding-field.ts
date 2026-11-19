@@ -14,8 +14,10 @@ export const PROVIDER_ONBOARDING_FIELDS = [
   'bio',
   /** Contact phone number — must be present AND verified. */
   'phoneNumber',
-  /** The account's email must be verified before an application is reviewable. */
+  /** Legacy issue field retained for earlier snapshots and clients. */
   'emailVerified',
+  /** The account must have a verified email or authentication phone. */
+  'contactVerified',
   'serviceAreaCity',
   'serviceAreaCountry',
   'serviceAreaRadiusKm',

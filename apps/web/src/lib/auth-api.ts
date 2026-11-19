@@ -18,7 +18,8 @@ import { withAuthCookieLock } from './auth-cookie-lock';
 // must await before treating the user as authenticated.
 
 export interface RegisterInput {
-  email: string;
+  email?: string;
+  phoneNumber?: string;
   password: string;
   firstName: string;
   lastName: string;
@@ -52,7 +53,8 @@ export async function getLegalDocuments(): Promise<LegalDocumentsResponse> {
 }
 
 export interface LoginInput {
-  email: string;
+  email?: string;
+  phoneNumber?: string;
   password: string;
 }
 
@@ -114,4 +116,27 @@ export async function verifyEmail(token: string): Promise<void> {
 
 export async function resendVerification(email: string): Promise<void> {
   await api.post('/v1/auth/resend-verification', { email });
+}
+
+export async function forgotPasswordOtp(phoneNumber: string): Promise<OtpChallengeResponse> {
+  const { data } = await api.post<OtpChallengeResponse>('/v1/auth/forgot-password-otp', {
+    phoneNumber,
+  });
+  return data;
+}
+
+export async function resetPasswordOtp(
+  challengeId: string,
+  code: string,
+  newPassword: string,
+): Promise<void> {
+  await withAuthCookieLock(authRequestScope(), async () => {
+    await api.post(
+      '/v1/auth/reset-password-otp',
+      { challengeId, code, newPassword },
+      { timeout: 15_000 },
+    );
+    recordSessionEnded();
+    window.dispatchEvent(new Event('auth:credentials-reset'));
+  });
 }

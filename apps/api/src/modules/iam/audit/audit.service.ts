@@ -42,6 +42,9 @@ const ALLOWED_METADATA_KEYS = new Set<string>([
   'familyId',
   'jti',
   'reason',
+  // Server-owned OTP metadata; contact values and codes remain excluded.
+  'channel',
+  'purpose',
   'provider',
   'outcome',
   'previousStatus',

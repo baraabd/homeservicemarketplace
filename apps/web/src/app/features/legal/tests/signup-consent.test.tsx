@@ -55,7 +55,7 @@ function renderSignup(state: unknown = { returnTo: '/provider/onboarding' }) {
 }
 
 async function goToStep2() {
-  await waitFor(() => expect(document.querySelector('input[type="tel"]')).toBeTruthy());
+  await waitFor(() => expect(document.querySelector('input[type="text"]')).toBeTruthy());
   const name = document.querySelectorAll('input')[0] as HTMLInputElement;
   await act(async () => {
     fireEvent.change(name, { target: { value: 'Noura Alharbi' } });
@@ -78,6 +78,7 @@ beforeEach(() => {
   window.sessionStorage.clear();
   window.localStorage.clear();
   mock = new MockAdapter(api);
+  mock.onGet('/v1/auth/config').reply(200, { otpChannel: 'email', whatsappAvailable: false });
   qc = createAuthQueryClient();
   mock.onGet('/v1/auth/me').reply(401, {});
   mock.onPost('/v1/auth/refresh').reply(401, {});

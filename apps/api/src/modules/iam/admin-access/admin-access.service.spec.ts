@@ -148,6 +148,39 @@ describe('AdminAccessService', () => {
   });
 
   describe('submit — grants nothing', () => {
+    it('accepts a verified WhatsApp-only applicant without granting a role', async () => {
+      const { service, requests, users } = build({
+        user: {
+          ...APPLICANT,
+          email: null,
+          emailVerifiedAt: null,
+          phoneNumber: '+966501234567',
+          phoneVerifiedAt: new Date('2026-11-18T00:00:00Z'),
+        },
+      });
+
+      await expect(service.submit(APPLICANT.id, {})).resolves.toMatchObject({ status: 'PENDING' });
+      expect(requests.create).toHaveBeenCalledWith(
+        { userId: APPLICANT.id, justification: null },
+        undefined,
+      );
+      expect(users.assignRole).not.toHaveBeenCalled();
+    });
+
+    it('rejects an orphan phone verification timestamp without an account phone', async () => {
+      const { service, requests } = build({
+        user: {
+          ...APPLICANT,
+          emailVerifiedAt: null,
+          phoneNumber: null,
+          phoneVerifiedAt: new Date('2026-11-18T00:00:00Z'),
+        },
+      });
+
+      await expect(service.submit(APPLICANT.id, {})).rejects.toMatchObject({ status: 400 });
+      expect(requests.create).not.toHaveBeenCalled();
+    });
+
     it('creates a PENDING request and audits it', async () => {
       const { service, requests, audit, users } = build();
       const summary = await service.submit('u-applicant', { justification: 'I run operations.' });
@@ -189,6 +222,24 @@ describe('AdminAccessService', () => {
   });
 
   describe('approve — the grant', () => {
+    it('approves a verified WhatsApp-only applicant and revokes existing sessions', async () => {
+      const { service, users, sessions } = build({
+        request: makeRequest({
+          user: {
+            ...APPLICANT,
+            email: null,
+            emailVerifiedAt: null,
+            phoneNumber: '+966501234567',
+            phoneVerifiedAt: new Date('2026-11-18T00:00:00Z'),
+          },
+        }),
+      });
+
+      await service.approve('admin-reviewer', 'req-1', {});
+      expect(users.assignRole).toHaveBeenCalledWith(APPLICANT.id, 'role-admin', undefined);
+      expect(sessions.revokeAllForUser).toHaveBeenCalledWith(APPLICANT.id, undefined);
+    });
+
     it('grants ONLY the admin role', async () => {
       const { service, users } = build();
       await service.approve('admin-reviewer', 'req-1', {});
@@ -283,6 +334,18 @@ describe('AdminAccessService', () => {
       ['suspended', { status: 'SUSPENDED', isActive: false }],
       ['deactivated', { isActive: false }],
       ['unverified', { emailVerifiedAt: null }],
+      [
+        'unverified phone',
+        { emailVerifiedAt: null, phoneNumber: '+966501234567', phoneVerifiedAt: null },
+      ],
+      [
+        'orphan phone timestamp',
+        {
+          emailVerifiedAt: null,
+          phoneNumber: null,
+          phoneVerifiedAt: new Date('2026-11-18T00:00:00Z'),
+        },
+      ],
     ])('refuses to grant admin to a %s account', async (_label, userOver) => {
       // A dormant grant on a suspended account springs to life the moment the
       // account is restored — the reviewer must resolve the account axis first.

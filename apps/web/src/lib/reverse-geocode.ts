@@ -65,6 +65,7 @@ export interface ReverseGeocodeOk {
    *  fields matched (rare, but possible for remote points). */
   city: string;
   country: string;
+  countryCode?: string;
   lat: number;
   lng: number;
 }

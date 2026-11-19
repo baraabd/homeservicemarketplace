@@ -205,6 +205,10 @@ export async function stubApi(page: Page, options: StubOptions = {}): Promise<vo
       if (url.includes(fragment)) return json(body);
     }
 
+    if (route.request().method() === 'GET' && new URL(url).pathname === '/v1/auth/config') {
+      return json({ otpChannel: 'email', whatsappAvailable: false });
+    }
+
     if (new URL(url).pathname === '/v1/legal/documents') {
       return json({ documents: Object.values(CURRENT_LEGAL_DOCUMENTS), acceptanceOpen: true });
     }

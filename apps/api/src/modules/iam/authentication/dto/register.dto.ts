@@ -2,6 +2,8 @@ import { Type } from 'class-transformer';
 import {
   IsDefined,
   IsEmail,
+  IsOptional,
+  Matches,
   IsIn,
   IsString,
   Length,
@@ -32,9 +34,15 @@ export class LegalAcceptanceDto implements LegalAcceptanceInput {
 }
 
 export class RegisterDto implements RegisterRequest {
+  @IsOptional()
   @IsEmail()
   @MaxLength(254)
-  email!: string;
+  email?: string;
+
+  @IsOptional()
+  @IsString()
+  @Matches(/^\+[1-9][0-9]{6,14}$/)
+  phoneNumber?: string;
 
   // Upper bound prevents argon2 DoS; lower bound is a baseline entropy floor.
   @IsString()

@@ -11,6 +11,7 @@ import type { VerifyOtpRequest } from '@homeservicemarketplace/contracts';
 export class VerifyOtpDto implements VerifyOtpRequest {
   @IsString()
   @Length(16, 256)
+  @Matches(/^[A-Za-z0-9_-]+$/u)
   challengeId!: string;
 
   @IsString()

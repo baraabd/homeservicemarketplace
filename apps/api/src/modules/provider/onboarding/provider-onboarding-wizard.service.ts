@@ -1,3 +1,4 @@
+import { hasVerifiedAuthenticationContact } from '../../../shared/identity/verified-contact';
 import { Injectable, Logger } from '@nestjs/common';
 import {
   ADMIN_SETTINGS_SCHEMA,
@@ -1624,6 +1625,7 @@ export class ProviderOnboardingWizardService {
       serviceAreaRadiusKm: p.serviceAreaRadiusKm,
       serviceCategoryCount: p.serviceCategories.length,
       emailVerified: ctx.emailVerified,
+      contactVerified: ctx.contactVerified,
 
       providerType: p.providerType ?? null,
       legalBusinessName: p.legalBusinessName ?? null,
@@ -1726,7 +1728,8 @@ export class ProviderOnboardingWizardService {
       market: profile.serviceAreaCountryCode
         ? await this.markets.findEnabled(profile.serviceAreaCountryCode, tx).catch(() => null)
         : null,
-      emailVerified: user?.emailVerifiedAt != null,
+      emailVerified: Boolean(user?.email && user.emailVerifiedAt),
+      contactVerified: hasVerifiedAuthenticationContact(user),
       // The shared profile include already narrows this to LIVE pending rows
       // (PENDING and not superseded), so there is nothing further to filter —
       // and re-filtering here on a projection that no longer carries `status`
@@ -2012,6 +2015,7 @@ interface OnboardingContext {
    *  zone a stored schedule may be reported in. */
   market: Awaited<ReturnType<MarketRegistryService['findEnabled']>>;
   emailVerified: boolean;
+  contactVerified: boolean;
   pendingApplicationCategoryIds: string[];
   /** Newest first. Only the wizard reads these — see buildContext. */
   rejectedApplications: {

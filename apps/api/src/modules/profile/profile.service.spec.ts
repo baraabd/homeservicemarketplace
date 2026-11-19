@@ -90,12 +90,35 @@ describe('ProfileService', () => {
       expect(out.profile.displayName).toBe('Ada Lovelace');
       expect(out.profile.initials).toBe('AL');
       expect(out.profile.email).toBe('ada@example.com');
+      expect(out.profile.userId).toBe('user-1');
       // Wire fields are ISO strings.
       expect(typeof out.profile.updatedAt).toBe('string');
       // Internal fields never leak.
       expect(out.profile).not.toHaveProperty('id');
-      expect(out.profile).not.toHaveProperty('userId');
       expect(out.profile).not.toHaveProperty('passwordHash');
+    });
+
+    it('keeps a stable account ID and verified account phone when the account has no email or profile', async () => {
+      const m = makeMocks({
+        users: {
+          findById: jest.fn().mockResolvedValue(
+            makeUser({
+              id: 'phone-user',
+              email: null,
+              phoneNumber: '+966501234567',
+              firstName: '',
+              lastName: '',
+            }),
+          ),
+        },
+        profiles: { findByUserId: jest.fn().mockResolvedValue(null) },
+      });
+      expect((await makeService(m).get('phone-user')).profile).toMatchObject({
+        userId: 'phone-user',
+        email: null,
+        phoneNumber: '+966501234567',
+        displayName: '+966501234567',
+      });
     });
 
     it('returns the profile with all-null editable fields when no UserProfile row exists', async () => {
@@ -177,6 +200,7 @@ describe('ProfileService', () => {
       expect(out.profile.displayName).toBe('Grace Hopper');
       expect(out.profile.initials).toBe('GH');
       expect(out.profile.city).toBe('New York');
+      expect(out.profile.userId).toBe('user-1');
     });
 
     it('rejects with NOT_FOUND if the user disappears mid-transaction', async () => {

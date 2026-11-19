@@ -641,17 +641,34 @@ describe('Authentication controller (e2e)', () => {
       expect(JSON.stringify(res.body)).not.toMatch(/stack|at Function|at Object/);
     });
 
-    it('GET /v1/auth/me → 200 with safe shape (no passwordHash, no mfaSecret) when authenticated', async () => {
+    it.each([
+      {
+        identity: 'email',
+        email: 'ada@example.com',
+        emailVerifiedAt: new Date('2024-01-01T00:00:00Z'),
+        phoneNumber: null,
+        phoneVerifiedAt: null,
+      },
+      {
+        identity: 'WhatsApp',
+        email: null,
+        emailVerifiedAt: null,
+        phoneNumber: '+966501234567',
+        phoneVerifiedAt: new Date('2026-11-18T00:00:00Z'),
+      },
+    ])('GET /v1/auth/me → 200 with safe shape for $identity identity', async (contact) => {
       app = await bootApp();
       fakeAuthedUser = { id: 'u-1', sessionId: 'sess-1', jti: 'j', roles: ['customer'] };
       userRepo.findById.mockResolvedValueOnce({
         id: 'u-1',
-        email: 'ada@example.com',
+        email: contact.email,
+        phoneNumber: contact.phoneNumber,
         passwordHash: '$argon2id$leaky',
         firstName: 'Ada',
         lastName: 'Lovelace',
         status: 'ACTIVE',
-        emailVerifiedAt: new Date('2024-01-01T00:00:00Z'),
+        emailVerifiedAt: contact.emailVerifiedAt,
+        phoneVerifiedAt: contact.phoneVerifiedAt,
         mfaEnabled: false,
         mfaSecret: Buffer.from('secret-must-not-leak'),
       });
@@ -661,11 +678,13 @@ describe('Authentication controller (e2e)', () => {
       expect(res.status).toBe(200);
       expect(res.body).toEqual({
         id: 'u-1',
-        email: 'ada@example.com',
+        email: contact.email,
+        phoneNumber: contact.phoneNumber,
         firstName: 'Ada',
         lastName: 'Lovelace',
         status: 'ACTIVE',
-        emailVerifiedAt: '2024-01-01T00:00:00.000Z',
+        emailVerifiedAt: contact.emailVerifiedAt?.toISOString() ?? null,
+        phoneVerifiedAt: contact.phoneVerifiedAt?.toISOString() ?? null,
         mfaEnabled: false,
         roles: ['customer'],
       });

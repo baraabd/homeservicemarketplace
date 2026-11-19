@@ -22,6 +22,7 @@ let qc: QueryClient;
 
 beforeEach(() => {
   mock = new MockAdapter(api);
+  mock.onGet('/v1/auth/config').reply(200, { otpChannel: 'email', whatsappAvailable: false });
   qc = createAuthQueryClient();
 });
 

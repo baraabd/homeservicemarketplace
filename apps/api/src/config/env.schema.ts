@@ -392,6 +392,28 @@ const baseEnvSchema = z.object({
   // until then a single env-driven rate is the right granularity.
   PROVIDER_PLATFORM_FEE_BPS: z.coerce.number().int().min(0).max(10_000).default(1000),
 
+  // WhatsApp Cloud API authentication templates. Credentials never enter platform settings.
+  WHATSAPP_ACCESS_TOKEN: z.string().max(4096).optional(),
+  WHATSAPP_PHONE_NUMBER_ID: z
+    .string()
+    .regex(/^[0-9]{5,32}$/)
+    .optional(),
+  WHATSAPP_GRAPH_API_VERSION: z
+    .string()
+    .regex(/^v[0-9]{1,3}\.[0-9]{1,2}$/)
+    .optional(),
+  WHATSAPP_AUTH_TEMPLATE_NAME: z
+    .string()
+    .regex(/^[a-z0-9_]{1,512}$/)
+    .optional(),
+  WHATSAPP_AUTH_TEMPLATE_LANGUAGE: z
+    .string()
+    .regex(/^[a-z]{2,3}(?:_[A-Z]{2})?$/)
+    .optional(),
+  // Explicit operator assertion after Meta approves an AUTHENTICATION / COPY_CODE template.
+  WHATSAPP_AUTH_TEMPLATE_APPROVED: trueish.default(false),
+  WHATSAPP_REQUEST_TIMEOUT_MS: z.coerce.number().int().min(1_000).max(30_000).default(10_000),
+
   // --- SMTP / Mail ---------------------------------------------------------
   // When SMTP_HOST is set the API uses Nodemailer; otherwise InMemoryMailAdapter.
   SMTP_HOST: z.string().optional(),

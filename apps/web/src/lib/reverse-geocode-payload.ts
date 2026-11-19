@@ -2,6 +2,7 @@ export interface ParsedGeocodeAddress {
   formattedAddress: string;
   city: string;
   country: string;
+  countryCode?: string;
 }
 
 function object(value: unknown): value is Record<string, unknown> {
@@ -19,5 +20,11 @@ export function parseGeocodeAddress(payload: unknown): ParsedGeocodeAddress | nu
   const address = object(payload.address) ? payload.address : {};
   const localityFields = ['city', 'town', 'village', 'hamlet', 'municipality', 'county', 'state'];
   const city = localityFields.map((key) => text(address[key])).find(Boolean) ?? '';
-  return { formattedAddress, city, country: text(address.country) };
+  const countryCode = text(address.country_code).toUpperCase();
+  return {
+    formattedAddress,
+    city,
+    country: text(address.country),
+    ...(/^[A-Z]{2}$/u.test(countryCode) ? { countryCode } : {}),
+  };
 }
