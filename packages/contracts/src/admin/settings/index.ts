@@ -13,6 +13,8 @@
 //
 // Mutations write ADMIN_SETTING_UPDATED audit rows with before/after.
 
+import { DEFAULT_AUTH_OTP_CHANNEL } from '../../iam/response/auth-channel.response';
+
 // ─── Whitelist of admin-editable settings ───────────────────────
 //
 // Each entry defines:
@@ -46,8 +48,8 @@ export const ADMIN_SETTINGS_SCHEMA: readonly AdminSettingFieldSchema[] = [
     key: 'auth.otpChannel',
     type: 'string',
     description:
-      'Default sign-up and sign-in verification channel for all three applications. Existing accounts retain access through their verified contact method.',
-    default: 'email',
+      'Default verification channel for sign-in across all three applications and for customer and provider sign-up. Existing accounts retain access through their verified contact method.',
+    default: DEFAULT_AUTH_OTP_CHANNEL,
     options: ['email', 'whatsapp'],
   },
   // ── R17-D: four settings no product code reads ──────────────────────

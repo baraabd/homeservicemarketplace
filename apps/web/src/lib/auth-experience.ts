@@ -78,6 +78,9 @@ export interface AuthExperience {
     accentText: string;
     // Step-indicator ring colour for the active step.
     activeRing: string;
+    // Accessible field and action focus colours shared by auth controls.
+    focusRing: string;
+    focusOutline: string;
     // Step-indicator connector for completed steps.
     activeConnector: string;
     // Chip / icon backgrounds inside the SignUp wizard.
@@ -110,6 +113,8 @@ export const AUTH_EXPERIENCES: Readonly<Record<AuthExperienceId, AuthExperience>
       softBorder: 'border-amber-100',
       accentText: 'text-amber-600',
       activeRing: 'ring-amber-200',
+      focusRing: 'focus:ring-amber-600',
+      focusOutline: 'focus-visible:outline-amber-600',
       activeConnector: 'bg-amber-300',
       iconChipBg: 'bg-amber-100',
       iconChipText: 'text-amber-600',
@@ -129,6 +134,8 @@ export const AUTH_EXPERIENCES: Readonly<Record<AuthExperienceId, AuthExperience>
       softBorder: 'border-blue-100',
       accentText: 'text-blue-600',
       activeRing: 'ring-blue-200',
+      focusRing: 'focus:ring-blue-600',
+      focusOutline: 'focus-visible:outline-blue-600',
       activeConnector: 'bg-blue-300',
       iconChipBg: 'bg-blue-100',
       iconChipText: 'text-blue-600',
@@ -148,6 +155,8 @@ export const AUTH_EXPERIENCES: Readonly<Record<AuthExperienceId, AuthExperience>
       softBorder: 'border-slate-200',
       accentText: 'text-slate-700',
       activeRing: 'ring-slate-300',
+      focusRing: 'focus:ring-slate-600',
+      focusOutline: 'focus-visible:outline-slate-600',
       activeConnector: 'bg-slate-400',
       iconChipBg: 'bg-slate-100',
       iconChipText: 'text-slate-700',

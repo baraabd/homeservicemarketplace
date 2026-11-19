@@ -25,6 +25,28 @@ async function assertNoOverflow(page: Page) {
   }
 }
 
+async function assertPhoneControls(page: Page, country: string) {
+  await expect(page.getByTestId('dial-code-select')).toHaveValue(country);
+  const flag = page.getByTestId('selected-country-flag');
+  await expect(flag).toHaveAttribute('data-country', country);
+  await expect(flag.locator('img')).toBeVisible();
+  await expect
+    .poll(() =>
+      flag
+        .locator('img')
+        .evaluate((image: HTMLImageElement) => image.complete && image.naturalWidth > 0),
+    )
+    .toBe(true);
+  for (const control of await page
+    .locator('[data-testid="dial-code-select"], input[type="tel"]')
+    .all()) {
+    expect((await control.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+    expect(
+      await control.evaluate((element) => Number.parseFloat(getComputedStyle(element).fontSize)),
+    ).toBeGreaterThanOrEqual(16);
+  }
+}
+
 for (const channel of CHANNELS)
   for (const app of APPS)
     for (const lang of LANGUAGES) {
@@ -70,6 +92,7 @@ for (const channel of CHANNELS)
         await expect(page.getByTestId(`auth-hero-${app}`)).toBeVisible();
         await expect(page.getByTestId(`auth-channel-${channel}`)).toBeVisible();
         await expect(page.locator('html')).toHaveAttribute('dir', lang === 'ar' ? 'rtl' : 'ltr');
+        if (channel === 'whatsapp') await assertPhoneControls(page, 'US');
         for (const width of WIDTHS) {
           await page.setViewportSize({ width, height: 844 });
           await assertNoOverflow(page);
@@ -110,12 +133,14 @@ for (const channel of CHANNELS)
             lang === 'ar' ? 'رقم الهاتف المسجل في واتساب' : 'WhatsApp phone number',
             { exact: true },
           );
-          await expect(country).toHaveValue('');
-          await expect(page.getByText('United States (US)', { exact: true })).toHaveCount(0);
+          // Device locale is pinned to en-US independently of the UI language.
+          await expect(country).toHaveValue('US');
+          await expect(country.locator('option:checked')).toContainText('+1');
+          await assertPhoneControls(page, 'US');
           await country.selectOption('SA');
           await phone.fill('+963944123456');
           await expect(country).toHaveValue('SY');
-          await expect(country.locator('option:checked')).toContainText('🇸🇾');
+          await assertPhoneControls(page, 'SY');
           await expect(country).toBeDisabled();
           await expect(phone).toHaveValue('+963944123456');
           await page.setViewportSize({ width: 320, height: 844 });
@@ -125,7 +150,7 @@ for (const channel of CHANNELS)
           await expect(country).toBeEnabled();
           await country.selectOption('SA');
           await phone.fill('0501234567');
-          await expect(country.locator('option:checked')).toContainText('🇸🇦');
+          await assertPhoneControls(page, 'SA');
         }
         for (const width of WIDTHS) {
           await page.setViewportSize({ width, height: 844 });

@@ -1,0 +1,63 @@
+{
+  "scope": "Local built API -> HTTP -> real PostgreSQL policy read, optional unmocked Chromium forms",
+  "externalServicesTouched": false,
+  "apiMocks": false,
+  "otpSends": 0,
+  "fixtureWrites": [
+    {
+      "operation": "create",
+      "key": "auth.otpChannel",
+      "value": "email",
+      "actor": "isolated fixture"
+    },
+    {
+      "operation": "delete",
+      "key": "auth.otpChannel",
+      "actor": "isolated fixture"
+    }
+  ],
+  "http": [
+    {
+      "phase": "missing persisted setting",
+      "status": 200,
+      "body": {
+        "otpChannel": "whatsapp",
+        "whatsappAvailable": false
+      },
+      "noStore": true,
+      "credentialedCorsOrigin": "http://127.0.0.1:4173"
+    },
+    {
+      "phase": "explicit email override without API restart",
+      "status": 200,
+      "body": {
+        "otpChannel": "email",
+        "whatsappAvailable": false
+      },
+      "noStore": true,
+      "credentialedCorsOrigin": "http://127.0.0.1:4173"
+    },
+    {
+      "phase": "missing setting restored without API restart",
+      "status": 200,
+      "body": {
+        "otpChannel": "whatsapp",
+        "whatsappAvailable": false
+      },
+      "noStore": true,
+      "credentialedCorsOrigin": "http://127.0.0.1:4173"
+    }
+  ],
+  "browser": [],
+  "passed": true,
+  "preflight": {
+    "status": 204,
+    "exactAllowedOrigin": "http://127.0.0.1:4173"
+  },
+  "persistedAuthEffects": {
+    "users": 0,
+    "tokens": 0,
+    "deliveries": 0
+  },
+  "databaseDisposed": true
+}

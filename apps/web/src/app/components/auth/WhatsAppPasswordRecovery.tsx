@@ -12,7 +12,7 @@ import { toE164Phone, isValidPhoneIdentity } from '../../../lib/phone-identity';
 import { otpErrorMessage, otpRecoveryAction } from '../../../lib/auth-errors';
 
 export function WhatsAppPasswordRecovery({
-  available = true,
+  available = false,
   experience,
   onBack,
   onUseEmail,
@@ -137,6 +137,7 @@ export function WhatsAppPasswordRecovery({
                 : 'If this number belongs to an eligible account, you will receive a recovery code on WhatsApp.'}
             </p>
             <PhoneIdentityField
+              experience={experience.id}
               countryCode={countryCode}
               onCountryChange={setCountryCode}
               localNumber={number}

@@ -75,6 +75,8 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - name: Verify operator diagnostic input, redaction and read-only contracts
         run: node --test scripts/diagnostics/auth-state.test.cjs
+      - name: Verify disposable email policy fixture guards
+        run: node --test scripts/testing/email-auth-fixture.test.cjs
       - name: Build database and apply existing migrations to disposable database
         run: |
           set -euo pipefail
@@ -83,10 +85,16 @@ jobs:
           pnpm --filter @homeservicemarketplace/database migrate:deploy
           pnpm --filter @homeservicemarketplace/database build
           pnpm --filter @homeservicemarketplace/database seed
+      - name: Verify missing-setting WhatsApp default and guarded policy changes
+        env:
+          RUN_DB_INTEGRATION: '1'
+        run: pnpm --filter @homeservicemarketplace/api exec jest test/integration/auth-channel-policy.integration.spec.ts --runInBand
       - name: Exercise real transaction, expiry, counter and revocation regressions
         env:
           RUN_DB_INTEGRATION: '1'
         run: pnpm --filter @homeservicemarketplace/api exec jest test/integration/r04-auth-lifecycle.integration.spec.ts test/integration/auth-state-diagnostic.integration.spec.ts --runInBand
+      - name: Select email for disposable SMTP browser fixtures
+        run: NODE_ENV=test APP_ENV=test node scripts/testing/email-auth-fixture.cjs --scope r04
       - name: Build actual API and production browser bundle
         env:
           VITE_API_URL: http://127.0.0.1:4010

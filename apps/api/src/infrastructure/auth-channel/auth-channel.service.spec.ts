@@ -16,12 +16,32 @@ function harness(value?: unknown, configured = false) {
 }
 
 describe('server-owned OTP channel', () => {
-  it('defaults to email and exposes only a safe availability boolean', async () => {
-    await expect(harness().service.getPublicConfig()).resolves.toEqual({
-      otpChannel: 'email',
-      whatsappAvailable: false,
-    });
+  it.each([false, true])(
+    'defaults to WhatsApp while exposing provider availability separately (%s)',
+    async (configured) => {
+      await expect(harness(undefined, configured).service.getPublicConfig()).resolves.toEqual({
+        otpChannel: 'whatsapp',
+        whatsappAvailable: configured,
+      });
+    },
+  );
+
+  it('requires a configured provider before the default channel can deliver a challenge', async () => {
+    await expect(harness().service.getChannel()).rejects.toMatchObject({ status: 503 });
+    await expect(harness(undefined, true).service.getChannel()).resolves.toBe('whatsapp');
   });
+
+  it.each([false, true])(
+    'preserves an explicit email preference with WhatsApp availability %s',
+    async (configured) => {
+      const { service } = harness('email', configured);
+      await expect(service.getPublicConfig()).resolves.toEqual({
+        otpChannel: 'email',
+        whatsappAvailable: configured,
+      });
+      await expect(service.getChannel()).resolves.toBe('email');
+    },
+  );
 
   it('keeps a valid WhatsApp preference readable during provider outage for email recovery and rollback', async () => {
     const { service } = harness('whatsapp', false);

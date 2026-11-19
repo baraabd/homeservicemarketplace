@@ -25,6 +25,13 @@ describe('countryFromTimezone', () => {
     expect(countryFromTimezone('Asia/Riyadh')).toBe('SA');
   });
 
+  it.each([
+    ['Europe/Stockholm', 'SE'],
+    ['Asia/Damascus', 'SY'],
+  ])('maps the supported timezone %s to %s', (timezone, country) => {
+    expect(countryFromTimezone(timezone)).toBe(country);
+  });
+
   it('returns null for timezones not in the allowlist', () => {
     // An obscure-but-valid tz that we intentionally don't map.
     expect(countryFromTimezone('Pacific/Chatham')).toBeNull();

@@ -101,6 +101,8 @@ jobs:
         run: |
           set -euo pipefail
           cp -R ../harness/scripts/perf/post-r18/. scripts/perf/post-r18/
+          mkdir -p scripts/testing
+          cp ../harness/scripts/testing/email-auth-fixture.cjs ../harness/scripts/testing/email-auth-fixture.test.cjs scripts/testing/
           git diff --exit-code -- apps packages infra .github/workflows pnpm-lock.yaml
           cp ../harness/apps/web/playwright.r27.config.ts apps/web/playwright.r27.config.ts
           mkdir -p apps/web/r27-tests
@@ -111,7 +113,7 @@ jobs:
       - name: Harness regressions and source identity
         run: |
           set -euo pipefail
-          node --test scripts/perf/post-r18/lib/*.test.mjs
+          node --test scripts/testing/email-auth-fixture.test.cjs scripts/perf/post-r18/lib/*.test.mjs
           git diff --exit-code -- pnpm-lock.yaml
       - name: Start explicitly disposable services on this job's VM
         run: |

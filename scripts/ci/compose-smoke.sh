@@ -260,6 +260,13 @@ step "Initialize signup access data on the disposable Compose database"
 "${DC[@]}" exec -T -e ALLOW_PROD_SEED=true api node node_modules/@homeservicemarketplace/database/dist/seed.js --access-only
 ok "system roles and permissions are ready for registration"
 
+# This smoke journey specifically asserts SMTP delivery. Select that policy
+# only in the already guarded disposable database; leave the API environment
+# and the production seed/default unchanged. The host needs no Prisma install.
+NODE_ENV=test APP_ENV=test node scripts/testing/email-auth-fixture.cjs --compose-sql |
+  "${DC[@]}" exec -T postgres psql -U postgres -d homeservicemarketplace -v ON_ERROR_STOP=1
+ok "explicit email policy is ready for the disposable SMTP journey"
+
 step "7. OTP flow through real SMTP (Mailpit)"
 STAMP="$(date +%s)-$RANDOM"
 EMAIL="smoke-$STAMP@example.test"

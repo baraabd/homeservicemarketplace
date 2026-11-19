@@ -72,7 +72,7 @@ export function LoginPage() {
   });
 
   return (
-    <AuthConfigurationGate>
+    <AuthConfigurationGate experience={experience}>
       {(channel, whatsappAvailable) => (
         <LoginScreen
           channel={channel}
@@ -148,7 +148,7 @@ export function SignUpPage() {
   const experience = resolveAuthExperience({ explicit: state?.app, returnTo });
 
   return (
-    <AuthConfigurationGate>
+    <AuthConfigurationGate experience={experience}>
       {(channel, whatsappAvailable) => (
         <AsyncBoundary>
           <SignUpScreen
@@ -224,7 +224,7 @@ export function ForgotPasswordPage() {
   const experience = resolveAuthExperience({ explicit: state?.app, returnTo });
   const [recoveryChannel, setRecoveryChannel] = useState<'email' | 'whatsapp' | null>(null);
   return (
-    <AuthConfigurationGate>
+    <AuthConfigurationGate experience={experience}>
       {(channel, whatsappAvailable) =>
         (recoveryChannel ?? channel) === 'whatsapp' ? (
           <AsyncBoundary>

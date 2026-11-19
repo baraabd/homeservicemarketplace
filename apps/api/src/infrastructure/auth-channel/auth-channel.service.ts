@@ -1,5 +1,9 @@
 import { Injectable } from '@nestjs/common';
-import type { AuthChannelConfiguration, AuthOtpChannel } from '@homeservicemarketplace/contracts';
+import {
+  DEFAULT_AUTH_OTP_CHANNEL,
+  type AuthChannelConfiguration,
+  type AuthOtpChannel,
+} from '@homeservicemarketplace/contracts';
 import type { PrismaTx } from '@homeservicemarketplace/database';
 
 import { AppError } from '../../shared/errors/app-error';
@@ -24,7 +28,7 @@ export class AuthChannelService {
 
   private async getSelectedChannel(tx?: PrismaTx): Promise<AuthOtpChannel> {
     const row = await this.settings.findByKey(AUTH_OTP_CHANNEL_SETTING, tx);
-    if (!row) return 'email';
+    if (!row) return DEFAULT_AUTH_OTP_CHANNEL;
     if (row.value !== 'email' && row.value !== 'whatsapp')
       throw new AppError(
         'DEPENDENCY_UNAVAILABLE',

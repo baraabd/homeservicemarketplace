@@ -3,6 +3,7 @@ import { ArrowRight, CheckCircle2, Eye, EyeOff, Lock, Mail, User } from 'lucide-
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   CURRENT_LEGAL_DOCUMENTS,
+  DEFAULT_AUTH_OTP_CHANNEL,
   type LegalAcceptanceInput,
 } from '@homeservicemarketplace/contracts';
 import { Button } from '../ds/Button';
@@ -82,7 +83,7 @@ function PasswordStrength({ password }: { password: string }) {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // SIGN UP SCREEN — server-selected identity, credentials, then OTP verification.
-// Country is chosen manually or resolved only after explicit location consent.
+// Country is suggested from device settings; precise location remains opt-in.
 // ─────────────────────────────────────────────────────────────────────────────
 interface SignUpProps {
   channel?: OtpChannel;
@@ -107,8 +108,8 @@ interface SignUpProps {
 }
 
 export function SignUpScreen({
-  channel = 'email',
-  whatsappAvailable = true,
+  channel = DEFAULT_AUTH_OTP_CHANNEL,
+  whatsappAvailable = false,
   onBack,
   onRecoverVerification,
   onCredentialsSubmit,
@@ -418,6 +419,7 @@ export function SignUpScreen({
               <AuthChannelNotice channel={channel} available={whatsappAvailable} />
               {channel === 'whatsapp' && (
                 <PhoneIdentityField
+                  experience={experience.id}
                   countryCode={countryCode}
                   onCountryChange={setCountryCode}
                   localNumber={localNumber}

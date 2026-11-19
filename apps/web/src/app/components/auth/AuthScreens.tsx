@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { Mail, MessageCircle, Lock, Eye, EyeOff, CheckCircle2, ArrowLeft } from 'lucide-react';
+import { DEFAULT_AUTH_OTP_CHANNEL } from '@homeservicemarketplace/contracts';
 import { Button } from '../ds/Button';
 import { TextField } from '../ds/TextField';
 import { useLang, LangToggle } from '../../i18n/LanguageContext';
@@ -277,7 +278,7 @@ interface LoginProps {
 }
 
 export function LoginScreen({
-  channel = 'email',
+  channel = DEFAULT_AUTH_OTP_CHANNEL,
   whatsappAvailable = false,
   onLogin,
   onOtpVerify,
@@ -523,6 +524,7 @@ export function LoginScreen({
             <AuthChannelNotice channel={selectedChannel} available={whatsappAvailable} />
             {selectedChannel === 'whatsapp' ? (
               <PhoneIdentityField
+                experience={experience.id}
                 countryCode={countryCode}
                 onCountryChange={(value) => {
                   setCountryCode(value);
