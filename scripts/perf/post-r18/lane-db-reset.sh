@@ -16,4 +16,7 @@ docker exec "$container" dropdb -U r27 --if-exists --force hsm_r27_perf
 docker exec "$container" createdb -U r27 hsm_r27_perf
 pnpm --filter @homeservicemarketplace/database migrate:deploy
 pnpm --filter @homeservicemarketplace/database seed >/dev/null
+# The query/browser fixtures register through SMTP. Reapply their explicit
+# policy after every reset, including both immutable measurement runtimes.
+NODE_ENV=test APP_ENV=test node scripts/testing/email-auth-fixture.cjs --scope r27
 echo 'lane database recreated, migrated and seeded'

@@ -5,6 +5,7 @@ import {
 } from '../../../infrastructure/auth-channel/auth-channel.service';
 import {
   ADMIN_SETTINGS_SCHEMA,
+  DEFAULT_AUTH_OTP_CHANNEL,
   type AdminSettingsBulkResponse,
   type AdminSettingValue,
   type AdminSettingsValues,
@@ -268,7 +269,7 @@ export class AdminSettingsService {
       await this.requireCurrentAdmin(adminUserId, tx);
       await this.lockKeys([key], tx);
       if (key === AUTH_OTP_CHANNEL_SETTING)
-        await this.channels.assertSelectable('email', adminUserId, tx);
+        await this.channels.assertSelectable(DEFAULT_AUTH_OTP_CHANNEL, adminUserId, tx);
       const previous = await this.settings.findByKey(key, tx);
       if (!previous) throw new AppError('NOT_FOUND', 'Setting not found.', 404);
       await this.settings.delete(key, tx);

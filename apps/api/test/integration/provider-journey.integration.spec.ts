@@ -16,6 +16,7 @@ import { join } from 'node:path';
 
 import { fixtureEmailDomain, acquireAdvisoryLocks, type HeldLock } from '../support/db-isolation';
 import { currentLegalAcceptance } from '../support/legal-acceptance';
+import { withEmailAuthenticationPolicy } from '../support/auth-channel';
 
 // Sprint 9B.13 — the whole provider journey, through the REAL application.
 //
@@ -425,10 +426,11 @@ d('Provider journey, flags ON (real AppModule, real Postgres, real Redis)', () =
     const { MAIL_PORT } = require('../../src/infrastructure/mail/mail.port');
     mail = new InMemoryMailAdapter();
 
-    const moduleRef = await Test.createTestingModule({ imports: [AppModule] })
-      .overrideProvider(MAIL_PORT)
-      .useValue(mail)
-      .compile();
+    const moduleRef = await withEmailAuthenticationPolicy(
+      Test.createTestingModule({ imports: [AppModule] })
+        .overrideProvider(MAIL_PORT)
+        .useValue(mail),
+    ).compile();
 
     app = moduleRef.createNestApplication();
 

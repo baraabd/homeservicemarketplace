@@ -1,6 +1,7 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Check, Mail, MessageCircle, ShieldCheck } from 'lucide-react';
 import { useState } from 'react';
+import { DEFAULT_AUTH_OTP_CHANNEL } from '@homeservicemarketplace/contracts';
 import { useAuth } from '../../../lib/auth-provider';
 import { getAuthConfiguration } from '../../../lib/auth-channel';
 import { AUTH_CONFIG_QUERY_KEY } from '../../../lib/auth-policy-query';
@@ -37,8 +38,8 @@ export function AuthChannelSetting({
   const [hadWhatsAppReadiness, setHadWhatsAppReadiness] = useState(false);
   if (canRequestWhatsApp && !hadWhatsAppReadiness) setHadWhatsAppReadiness(true);
   const explain = ar
-    ? 'تطبق القناة المحفوظة على التسجيل والدخول في تطبيقات العميل والمهني والأدمن. الحسابات السابقة تحتفظ بطريقة دخول متاحة لها.'
-    : 'The saved channel applies to customer, professional and admin sign-up and sign-in. Existing accounts keep an available sign-in method.';
+    ? 'تحدد القناة المحفوظة طريقة الدخول الافتراضية في تطبيقات العميل والمهني والأدمن، وطريقة إنشاء حسابات العملاء والمهنيين. الحسابات السابقة تحتفظ بطريقة دخول متاحة لها.'
+    : 'The saved channel sets the default sign-in method for Customer, Professional and Admin, and sign-up for customer and professional accounts. Existing accounts keep an available sign-in method.';
   return (
     <section
       className="rounded-3xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-900 sm:p-6"
@@ -46,12 +47,21 @@ export function AuthChannelSetting({
       dir={ar ? 'rtl' : 'ltr'}
     >
       <div className="mb-5 flex items-start gap-3">
-        <ShieldCheck className="mt-1 shrink-0 text-blue-600" size={24} aria-hidden />
+        <ShieldCheck
+          className="mt-1 shrink-0 text-slate-700 dark:text-slate-300"
+          size={24}
+          aria-hidden
+        />
         <div className="min-w-0">
           <h3 id="auth-channel-title" className="text-lg font-bold text-slate-900 dark:text-white">
             {ar ? 'طريقة التسجيل ورموز التحقق' : 'Sign-up and verification codes'}
           </h3>
           <p className="mt-2 text-sm leading-6 text-slate-600 dark:text-slate-300">{explain}</p>
+          <p className="mt-2 text-sm leading-6 text-slate-600 dark:text-slate-300">
+            {ar
+              ? 'واتساب هو الخيار الافتراضي. يمكنك حفظ البريد الإلكتروني بدلًا منه، وسيبقى اختيارك مطبقًا حتى تغيّره.'
+              : 'WhatsApp is the default. Save Email instead to keep it as the default until you change it.'}
+          </p>
         </div>
       </div>
       <fieldset disabled={disabled || config.isPending || config.isError}>
@@ -59,7 +69,7 @@ export function AuthChannelSetting({
           {ar ? 'اختر قناة رموز التحقق' : 'Choose verification channel'}
         </legend>
         <div className="grid gap-3 sm:grid-cols-2">
-          {(['email', 'whatsapp'] as const).map((channel) => {
+          {(['whatsapp', 'email'] as const).map((channel) => {
             const whatsapp = channel === 'whatsapp';
             const selected = value === channel;
             const unavailable = whatsapp ? !ready || !verifiedPhone : !verifiedEmail;
@@ -67,7 +77,7 @@ export function AuthChannelSetting({
             return (
               <label
                 key={channel}
-                className={`relative flex cursor-pointer flex-col gap-3 rounded-2xl border-2 p-4 transition-colors focus-within:ring-2 focus-within:ring-blue-500 focus-within:ring-offset-2 ${selected ? 'border-blue-600 bg-white dark:bg-slate-800' : 'border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-800'} ${unavailable ? 'cursor-not-allowed opacity-65' : ''}`}
+                className={`relative flex cursor-pointer flex-col gap-3 rounded-2xl border-2 p-4 transition-colors focus-within:ring-2 focus-within:ring-slate-600 focus-within:ring-offset-2 ${selected ? 'border-slate-700 bg-white dark:border-slate-300 dark:bg-slate-800' : 'border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-800'} ${unavailable ? 'cursor-not-allowed opacity-65' : ''}`}
               >
                 <div className="flex items-center gap-3">
                   <input
@@ -77,7 +87,7 @@ export function AuthChannelSetting({
                     checked={selected}
                     onChange={() => onChange(channel)}
                     disabled={unavailable}
-                    className="h-5 w-5 accent-blue-600"
+                    className="h-5 w-5 shrink-0 accent-slate-700"
                   />
                   <Icon
                     size={22}
@@ -99,6 +109,11 @@ export function AuthChannelSetting({
                     />
                   )}
                 </div>
+                {channel === DEFAULT_AUTH_OTP_CHANNEL && (
+                  <span className="w-fit rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-800 dark:bg-emerald-950 dark:text-emerald-200">
+                    {ar ? 'الخيار الافتراضي للمنصة' : 'Platform default'}
+                  </span>
+                )}
                 <span className="text-sm leading-6 text-slate-600 dark:text-slate-300">
                   {whatsapp
                     ? ar
@@ -150,6 +165,7 @@ export function AuthChannelSetting({
       )}
       {!verifiedEmail && (
         <AccountContactEnrollment
+          experience="admin"
           channel="email"
           lang={lang}
           disabled={disabled}
@@ -159,6 +175,7 @@ export function AuthChannelSetting({
       )}
       {(canRequestWhatsApp || hadWhatsAppReadiness) && !verifiedPhone && (
         <AccountContactEnrollment
+          experience="admin"
           channel="whatsapp"
           lang={lang}
           disabled={disabled}

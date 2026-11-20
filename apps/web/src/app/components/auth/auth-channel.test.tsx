@@ -186,48 +186,60 @@ describe('server-selected authentication channel', () => {
     });
   });
 
-  it('registers without requiring or sending an email and hides email-link recovery', async () => {
-    mock.onGet('/v1/auth/config').reply(200, { otpChannel: 'whatsapp', whatsappAvailable: true });
-    mock.onPost('/v1/auth/register').reply(202, challenge);
-    open('/signup', 'provider');
-    await screen.findByTestId('auth-channel-whatsapp');
-    setInput('input[type="text"]', 'Noura Ahmad');
-    setInput('input[type="tel"]', '+963912345678');
-    fireEvent.click(screen.getByRole('button', { name: 'Next' }));
-    await waitFor(() => expect(document.querySelector('input[type="password"]')).not.toBeNull());
-    expect(document.querySelector('input[type="email"]')).toBeNull();
-    setInput('input[type="password"]', 'Long-test-password-17');
-    fireEvent.click(await screen.findByRole('checkbox'));
-    fireEvent.click(screen.getByRole('button', { name: 'Create Account' }));
-    await screen.findByText('Check WhatsApp');
-    const payload = JSON.parse(mock.history.post.find((r) => r.url === '/v1/auth/register')!.data);
-    expect(payload.phoneNumber).toBe('+963912345678');
-    expect(payload).not.toHaveProperty('email');
-    expect(screen.queryByText('Use a verification link instead')).toBeNull();
-  });
+  it.each(['seeker', 'provider', 'admin'] as const)(
+    'registers in the %s experience without requiring email or accepting a role from the UI',
+    async (app) => {
+      mock.onGet('/v1/auth/config').reply(200, { otpChannel: 'whatsapp', whatsappAvailable: true });
+      mock.onPost('/v1/auth/register').reply(202, challenge);
+      open('/signup', app);
+      await screen.findByTestId('auth-channel-whatsapp');
+      setInput('input[type="text"]', 'Noura Ahmad');
+      setInput('input[type="tel"]', '+963912345678');
+      fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+      await waitFor(() => expect(document.querySelector('input[type="password"]')).not.toBeNull());
+      expect(document.querySelector('input[type="email"]')).toBeNull();
+      setInput('input[type="password"]', 'Long-test-password-17');
+      fireEvent.click(await screen.findByRole('checkbox'));
+      fireEvent.click(screen.getByRole('button', { name: 'Create Account' }));
+      await screen.findByText('Check WhatsApp');
+      const payload = JSON.parse(
+        mock.history.post.find((r) => r.url === '/v1/auth/register')!.data,
+      );
+      expect(payload.phoneNumber).toBe('+963912345678');
+      expect(payload).not.toHaveProperty('email');
+      expect(payload).not.toHaveProperty('role');
+      expect(payload).not.toHaveProperty('roles');
+      expect(screen.queryByText('Use a verification link instead')).toBeNull();
+    },
+  );
 
-  it('registers in email mode without asking for or sending an unused phone number', async () => {
-    mock.onGet('/v1/auth/config').reply(200, { otpChannel: 'email', whatsappAvailable: false });
-    mock.onPost('/v1/auth/register').reply(202, {
-      ...challenge,
-      channel: 'email',
-      maskedDestination: 'n•••@example.test',
-    });
-    open('/signup');
-    await screen.findByTestId('auth-channel-email');
-    expect(document.querySelector('input[type="tel"]')).toBeNull();
-    setInput('input[type="text"]', 'Noura Ahmad');
-    fireEvent.click(screen.getByRole('button', { name: 'Next' }));
-    setInput('input[type="email"]', 'noura@example.test');
-    setInput('input[type="password"]', 'Long-test-password-17');
-    fireEvent.click(await screen.findByRole('checkbox'));
-    fireEvent.click(screen.getByRole('button', { name: 'Create Account' }));
-    await screen.findByText('Verify your email');
-    const payload = JSON.parse(mock.history.post.find((r) => r.url === '/v1/auth/register')!.data);
-    expect(payload.email).toBe('noura@example.test');
-    expect(payload).not.toHaveProperty('phoneNumber');
-    expect(screen.getByText('Use a verification link instead')).toBeVisible();
-  });
+  it.each(['seeker', 'provider', 'admin'] as const)(
+    'honors saved email policy for %s signup without asking for an unused phone number',
+    async (app) => {
+      mock.onGet('/v1/auth/config').reply(200, { otpChannel: 'email', whatsappAvailable: false });
+      mock.onPost('/v1/auth/register').reply(202, {
+        ...challenge,
+        channel: 'email',
+        maskedDestination: 'n•••@example.test',
+      });
+      open('/signup', app);
+      await screen.findByTestId('auth-channel-email');
+      expect(document.querySelector('input[type="tel"]')).toBeNull();
+      setInput('input[type="text"]', 'Noura Ahmad');
+      fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+      setInput('input[type="email"]', 'noura@example.test');
+      setInput('input[type="password"]', 'Long-test-password-17');
+      fireEvent.click(await screen.findByRole('checkbox'));
+      fireEvent.click(screen.getByRole('button', { name: 'Create Account' }));
+      await screen.findByText('Verify your email');
+      const payload = JSON.parse(
+        mock.history.post.find((r) => r.url === '/v1/auth/register')!.data,
+      );
+      expect(payload.email).toBe('noura@example.test');
+      expect(payload).not.toHaveProperty('phoneNumber');
+      expect(screen.getByText('Use a verification link instead')).toBeVisible();
+    },
+  );
 
   it('resets a WhatsApp-only account with a code and a new password', async () => {
     mock.onGet('/v1/auth/config').reply(200, { otpChannel: 'whatsapp', whatsappAvailable: true });

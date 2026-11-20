@@ -14,6 +14,7 @@ import { fixtureEmailDomain } from '../support/db-isolation';
 import { clearAuthRateBudget } from '../support/rate-limit-reset';
 import { makeTestSecret } from '../support/test-secrets';
 import { currentLegalAcceptance } from '../support/legal-acceptance';
+import { withEmailAuthenticationPolicy } from '../support/auth-channel';
 
 // Derived, never written: a literal here is indistinguishable from a real
 // key to the CI secret scanner. See test/support/test-secrets.ts.
@@ -40,10 +41,11 @@ const SECRET = makeTestSecret('provider-upgrade-session');
 // future change that "helpfully" made upgrade mint a new token would fail here
 // rather than silently invalidate the reasoning behind the client-side repair.
 //
-// NOTHING IS MOCKED. Real AppModule, real JwtAuthGuard, real RolesGuard, real
+// Real AppModule, real JwtAuthGuard, real RolesGuard, real
 // ProviderCapabilityGuard, real CsrfGuard, real cookies, real Postgres, real
-// Redis, real session rotation. The only substitution is the mail transport,
-// because an OTP is deliberately readable only by whoever received the mail.
+// Redis, real session rotation. The email policy is explicit for this journey;
+// the mail transport is in-memory because an OTP is deliberately readable only
+// by whoever received the mail. Global policy persistence has its own DB suite.
 //
 // Gated by RUN_DB_INTEGRATION=1.
 
@@ -242,10 +244,11 @@ d('Provider upgrade → session rotation → provider access (real Postgres / Re
     const { MAIL_PORT } = require('../../src/infrastructure/mail/mail.port');
     mail = new InMemoryMailAdapter();
 
-    const moduleRef = await Test.createTestingModule({ imports: [AppModule] })
-      .overrideProvider(MAIL_PORT)
-      .useValue(mail)
-      .compile();
+    const moduleRef = await withEmailAuthenticationPolicy(
+      Test.createTestingModule({ imports: [AppModule] })
+        .overrideProvider(MAIL_PORT)
+        .useValue(mail),
+    ).compile();
 
     app = moduleRef.createNestApplication();
 

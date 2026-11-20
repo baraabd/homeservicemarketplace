@@ -69,6 +69,13 @@ async function run(data) {
   try {
     // ── Real password/OTP login, honouring Retry-After on a shared IP budget.
     await page.goto(`${data.web}/login`);
+    // The fixture already owns a verified email identity. Select its real
+    // sign-in path without changing the platform's initial WhatsApp policy.
+    await expect(page.getByTestId('auth-channel-whatsapp')).toBeVisible({ timeout: 180000 });
+    await page
+      .getByRole('button', { name: /^(I have an email account|لدي حساب بريد إلكتروني)$/u })
+      .click();
+    await expect(page.getByTestId('auth-channel-email')).toBeVisible();
     await page.locator('input[type=email]').waitFor({ timeout: 180000 });
     await page.locator('input[type=email]').fill(data.admin.email);
     await page.locator('input[type=password]').fill(data.admin.password);

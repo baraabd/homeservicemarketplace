@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
-import { MapPin, Phone, Search } from 'lucide-react';
+import { ChevronDown, MapPin, Phone, Search } from 'lucide-react';
+import { AUTH_EXPERIENCES, type AuthExperienceId } from '../../../lib/auth-experience';
 import { COUNTRY_DIAL_CODES } from '../../../lib/country-dial-codes';
-import { countryFlag, phoneCountryDisplay } from '../../../lib/phone-identity';
-import { reverseGeocodeViaNominatim } from '../../../lib/reverse-geocode';
+import { getDevicePhoneCountry } from '../../../lib/phone-country';
+import { phoneCountryDisplay } from '../../../lib/phone-identity';
 import { useLang } from '../../i18n/LanguageContext';
+import { CountryFlag } from './CountryFlag';
 
 interface PhoneIdentityFieldProps {
   countryCode: string;
@@ -12,6 +14,7 @@ interface PhoneIdentityFieldProps {
   onNumberChange: (value: string) => void;
   disabled?: boolean;
   error?: string;
+  experience?: AuthExperienceId;
 }
 
 const ARABIC_COUNTRIES: Readonly<Record<string, string>> = {
@@ -56,6 +59,7 @@ const ARABIC_COUNTRIES: Readonly<Record<string, string>> = {
 const COPY = {
   en: {
     country: 'Country and calling code',
+    countryHint: 'Check the selected country. Its calling code is added automatically.',
     choose: 'Choose country',
     search: 'Search countries',
     number: 'WhatsApp phone number',
@@ -77,6 +81,7 @@ const COPY = {
   },
   ar: {
     country: 'الدولة ومفتاح الاتصال',
+    countryHint: 'تحقق من الدولة المختارة. يُضاف مفتاح الاتصال تلقائياً.',
     choose: 'اختر الدولة',
     search: 'ابحث عن الدولة',
     number: 'رقم الهاتف المسجل في واتساب',
@@ -96,10 +101,10 @@ const COPY = {
   },
 } as const;
 
-const fieldClass =
-  'min-h-12 w-full min-w-0 rounded-2xl border-2 border-slate-200 bg-white px-3 py-3 text-base text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-600 disabled:bg-slate-50 disabled:text-slate-500';
+const baseFieldClass =
+  'min-h-12 w-full min-w-0 rounded-2xl border-2 bg-white px-3 py-3 text-base text-slate-900 focus:outline-none focus:ring-2 disabled:bg-slate-50 disabled:text-slate-500';
 
-/** No location, locale or timezone lookup runs until the person requests it. */
+/** Device hints suggest the initial country; coordinates remain strictly opt-in. */
 export function PhoneIdentityField({
   countryCode,
   onCountryChange,
@@ -107,17 +112,38 @@ export function PhoneIdentityField({
   onNumberChange,
   disabled = false,
   error,
+  experience = 'seeker',
 }: PhoneIdentityFieldProps) {
-  const { lang } = useLang();
+  const { lang, dir } = useLang();
   const copy = COPY[lang];
+  const theme = AUTH_EXPERIENCES[experience].classes;
+  const fieldClass = `${baseFieldClass} border-slate-200 ${theme.focusRing}`;
   const id = useId();
   const [search, setSearch] = useState('');
   const [searchOpen, setSearchOpen] = useState(false);
-  const [locating, setLocating] = useState(false);
+  const [locationTarget, setLocationTarget] = useState<{
+    countryCode: string;
+    localNumber: string;
+  } | null>(null);
+  const locating = locationTarget !== null;
   const [locationStatus, setLocationStatus] = useState<'denied' | 'failed' | 'found' | null>(null);
   const generation = useRef(0);
   const request = useRef<AbortController | null>(null);
   const requestTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const initialized = useRef(false);
+  const automaticCountry = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (initialized.current || disabled) return;
+    initialized.current = true;
+    // Restored national digits without a country also remain untouched: a
+    // device hint must not silently reinterpret an existing phone number.
+    if (countryCode.trim() || localNumber.trim()) return;
+    const suggestion = getDevicePhoneCountry();
+    automaticCountry.current = suggestion;
+    onCountryChange(suggestion);
+  }, [countryCode, localNumber, onCountryChange, disabled]);
+
   const display = useMemo(
     () => phoneCountryDisplay(countryCode, localNumber),
     [countryCode, localNumber],
@@ -144,6 +170,7 @@ export function PhoneIdentityField({
 
   const cancelRequest = useCallback(() => {
     request.current?.abort();
+    request.current = null;
     if (requestTimeout.current !== null) clearTimeout(requestTimeout.current);
     requestTimeout.current = null;
   }, []);
@@ -156,11 +183,19 @@ export function PhoneIdentityField({
     [cancelRequest],
   );
   useEffect(() => {
-    if (!disabled && !display.international) return;
+    // Parent-driven restoration/edits invalidate a pending GPS result too.
     generation.current += 1;
     cancelRequest();
-  }, [disabled, display.international, cancelRequest]);
-  if ((disabled || display.international) && locating) setLocating(false);
+  }, [disabled, countryCode, localNumber, cancelRequest]);
+  if (
+    locationTarget &&
+    (disabled ||
+      display.international ||
+      locationTarget.countryCode !== countryCode ||
+      locationTarget.localNumber !== localNumber)
+  ) {
+    setLocationTarget(null);
+  }
 
   function selectCountry(value: string) {
     if (
@@ -171,7 +206,8 @@ export function PhoneIdentityField({
       return;
     generation.current += 1;
     cancelRequest();
-    setLocating(false);
+    automaticCountry.current = null;
+    setLocationTarget(null);
     setLocationStatus(null);
     onCountryChange(value);
     setSearch('');
@@ -181,9 +217,15 @@ export function PhoneIdentityField({
   function changeNumber(value: string) {
     generation.current += 1;
     cancelRequest();
-    setLocating(false);
+    setLocationTarget(null);
     setLocationStatus(null);
-    const next = phoneCountryDisplay(countryCode, value);
+    // Locale/timezone hints cannot identify a country for shared prefixes
+    // such as +1. Keep only an explicit/restored choice when pasting one.
+    const next = phoneCountryDisplay(
+      automaticCountry.current === countryCode ? '' : countryCode,
+      value,
+    );
+    if (next.international) automaticCountry.current = null;
     if (next.international && next.country?.iso2 !== countryCode) {
       onCountryChange(next.country?.iso2 ?? '');
     }
@@ -203,7 +245,7 @@ export function PhoneIdentityField({
     cancelRequest();
     const controller = new AbortController();
     request.current = controller;
-    setLocating(true);
+    setLocationTarget({ countryCode, localNumber });
     navigator.geolocation.getCurrentPosition(
       (position) => {
         if (current !== generation.current) return;
@@ -214,20 +256,27 @@ export function PhoneIdentityField({
           if (current !== generation.current) return;
           generation.current += 1;
           controller.abort();
-          setLocating(false);
+          setLocationTarget(null);
           setLocationStatus('failed');
         }, 10_000);
-        void reverseGeocodeViaNominatim(lat, lng, lang, controller.signal)
+        // The optional geocoder is loaded only after explicit location consent.
+        // A cancelled edit must not share coordinates when its import resolves.
+        void import('../../../lib/reverse-geocode')
+          .then(({ reverseGeocodeViaNominatim }) => {
+            if (current !== generation.current || controller.signal.aborted) return null;
+            return reverseGeocodeViaNominatim(lat, lng, lang, controller.signal);
+          })
           .then((result) => {
-            if (current !== generation.current) return;
+            if (current !== generation.current || controller.signal.aborted || !result) return;
             if (requestTimeout.current !== null) clearTimeout(requestTimeout.current);
             requestTimeout.current = null;
-            setLocating(false);
+            setLocationTarget(null);
             const iso2 = result.status === 'ok' ? result.countryCode : undefined;
             if (!iso2 || !COUNTRY_DIAL_CODES.some((entry) => entry.iso2 === iso2)) {
               setLocationStatus('failed');
               return;
             }
+            automaticCountry.current = null;
             onCountryChange(iso2);
             setSearch('');
             setSearchOpen(false);
@@ -237,13 +286,13 @@ export function PhoneIdentityField({
             if (current !== generation.current) return;
             if (requestTimeout.current !== null) clearTimeout(requestTimeout.current);
             requestTimeout.current = null;
-            setLocating(false);
+            setLocationTarget(null);
             setLocationStatus('failed');
           });
       },
       () => {
         if (current !== generation.current) return;
-        setLocating(false);
+        setLocationTarget(null);
         setLocationStatus('denied');
       },
       { enableHighAccuracy: false, timeout: 10_000, maximumAge: 60_000 },
@@ -251,7 +300,7 @@ export function PhoneIdentityField({
   }
 
   return (
-    <div className="flex min-w-0 flex-col gap-3">
+    <div className="flex min-w-0 flex-col gap-3" dir={dir}>
       <div>
         <label
           htmlFor={`${id}-country`}
@@ -260,31 +309,41 @@ export function PhoneIdentityField({
           {copy.country}
         </label>
         <div className="flex items-start gap-2">
-          <select
-            id={`${id}-country`}
-            data-testid="dial-code-select"
-            className={fieldClass}
-            value={selected?.iso2 ?? ''}
-            disabled={disabled || countryLocked}
-            aria-describedby={display.international ? `${id}-country-hint` : undefined}
-            onChange={(event) => selectCountry(event.target.value)}
-          >
-            <option value="">{copy.choose}</option>
-            {selected && !countries.some((entry) => entry.iso2 === selected.iso2) && (
-              <option value={selected.iso2}>
-                {countryFlag(selected.iso2)}{' '}
-                {lang === 'ar' ? (ARABIC_COUNTRIES[selected.iso2] ?? selected.name) : selected.name}{' '}
-                {selected.dialCode}
-              </option>
-            )}
-            {countries.map((entry) => (
-              <option key={entry.iso2} value={entry.iso2}>
-                {countryFlag(entry.iso2)}{' '}
-                {lang === 'ar' ? (ARABIC_COUNTRIES[entry.iso2] ?? entry.name) : entry.name}{' '}
-                {entry.dialCode}
-              </option>
-            ))}
-          </select>
+          <div className="relative min-w-0 flex-1">
+            <span className="pointer-events-none absolute inset-y-0 start-3 flex items-center">
+              <CountryFlag iso2={selected?.iso2} />
+            </span>
+            <select
+              id={`${id}-country`}
+              data-testid="dial-code-select"
+              className={`${fieldClass} appearance-none ps-14 pe-9`}
+              value={selected?.iso2 ?? ''}
+              disabled={disabled || countryLocked}
+              aria-describedby={`${id}-country-hint`}
+              onChange={(event) => selectCountry(event.target.value)}
+            >
+              <option value="">{copy.choose}</option>
+              {selected && !countries.some((entry) => entry.iso2 === selected.iso2) && (
+                <option value={selected.iso2}>
+                  {lang === 'ar'
+                    ? (ARABIC_COUNTRIES[selected.iso2] ?? selected.name)
+                    : selected.name}{' '}
+                  {`\u2066${selected.dialCode}\u2069`}
+                </option>
+              )}
+              {countries.map((entry) => (
+                <option key={entry.iso2} value={entry.iso2}>
+                  {lang === 'ar' ? (ARABIC_COUNTRIES[entry.iso2] ?? entry.name) : entry.name}{' '}
+                  {`\u2066${entry.dialCode}\u2069`}
+                </option>
+              ))}
+            </select>
+            <ChevronDown
+              size={17}
+              aria-hidden="true"
+              className="pointer-events-none absolute end-3 top-1/2 -translate-y-1/2 text-slate-500"
+            />
+          </div>
           <button
             type="button"
             disabled={disabled || countryLocked}
@@ -295,20 +354,20 @@ export function PhoneIdentityField({
               setSearchOpen((value) => !value);
               setSearch('');
             }}
-            className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border-2 border-slate-200 text-slate-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 disabled:opacity-50"
+            className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border-2 border-slate-200 text-slate-700 focus-visible:outline-2 focus-visible:outline-offset-2 ${theme.focusOutline} disabled:opacity-50`}
           >
             <Search size={19} aria-hidden="true" />
           </button>
         </div>
-        {display.international && (
-          <p id={`${id}-country-hint`} className="mt-1.5 text-xs leading-relaxed text-slate-600">
-            {display.needsCountryChoice
+        <p id={`${id}-country-hint`} className="mt-1.5 text-xs leading-relaxed text-slate-600">
+          {!display.international
+            ? copy.countryHint
+            : display.needsCountryChoice
               ? copy.shared
               : selected
                 ? copy.international
                 : copy.unresolved}
-          </p>
-        )}
+        </p>
         {searchOpen && !countryLocked && (
           <div className="mt-2" id={`${id}-search`}>
             <label htmlFor={`${id}-search-input`} className="sr-only">
@@ -345,7 +404,9 @@ export function PhoneIdentityField({
             className="pointer-events-none absolute inset-y-0 left-3 flex items-center gap-2 text-slate-600"
           >
             <Phone size={17} />
-            {!display.international && selected?.dialCode}
+            {!display.international && selected && (
+              <bdi className="font-semibold tabular-nums">{selected.dialCode}</bdi>
+            )}
           </span>
           <input
             id={`${id}-phone`}
@@ -357,7 +418,7 @@ export function PhoneIdentityField({
             onChange={(event) => changeNumber(event.target.value)}
             aria-invalid={!!error}
             aria-describedby={`${id}-hint${error ? ` ${id}-error` : ''}`}
-            className={`${fieldClass} ${selected && !display.international ? 'pl-28' : 'pl-10'}`}
+            className={`${baseFieldClass} ${theme.focusRing} ${error ? 'border-red-600' : 'border-slate-200'} ${selected && !display.international ? 'pl-28' : 'pl-10'}`}
           />
         </div>
         <p id={`${id}-hint`} className="mt-1.5 text-xs leading-relaxed text-slate-600">
@@ -378,7 +439,7 @@ export function PhoneIdentityField({
           onClick={detectCountry}
           disabled={disabled || locating || display.international}
           aria-describedby={`${id}-privacy`}
-          className="mt-1 flex min-h-11 items-center gap-2 rounded-xl px-2 text-sm font-semibold text-slate-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 disabled:opacity-60"
+          className={`mt-1 flex min-h-11 items-center gap-2 rounded-xl px-2 text-sm font-semibold text-slate-700 focus-visible:outline-2 focus-visible:outline-offset-2 ${theme.focusOutline} disabled:opacity-60`}
         >
           <MapPin size={17} aria-hidden="true" />
           {locating ? copy.locating : copy.locate}

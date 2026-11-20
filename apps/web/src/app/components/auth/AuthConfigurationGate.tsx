@@ -5,12 +5,19 @@ import { getAuthConfiguration, type OtpChannel } from '../../../lib/auth-channel
 import { useLang, LangToggle } from '../../i18n/LanguageContext';
 import { Button } from '../ds/Button';
 import { AUTH_CONFIG_QUERY_KEY } from '../../../lib/auth-policy-query';
+import {
+  AUTH_EXPERIENCES,
+  DEFAULT_EXPERIENCE_ID,
+  type AuthExperience,
+} from '../../../lib/auth-experience';
 
 /** Do not guess the identity field while the server's policy is unknown. */
 export function AuthConfigurationGate({
   children,
+  experience = AUTH_EXPERIENCES[DEFAULT_EXPERIENCE_ID],
 }: {
   children: (channel: OtpChannel, whatsappAvailable: boolean) => ReactNode;
+  experience?: AuthExperience;
 }) {
   const { lang } = useLang();
   const query = useQuery({
@@ -33,7 +40,10 @@ export function AuthConfigurationGate({
         <LangToggle />
         {query.isPending || query.isFetching ? (
           <>
-            <Loader2 className="animate-spin text-slate-600" aria-hidden="true" />
+            <Loader2
+              className={`animate-spin ${experience.classes.accentText}`}
+              aria-hidden="true"
+            />
             <p role="status">
               {lang === 'ar' ? 'جارٍ تجهيز تسجيل الدخول…' : 'Preparing secure sign in…'}
             </p>
@@ -50,6 +60,7 @@ export function AuthConfigurationGate({
             </p>
             <Button
               variant="primary"
+              tone={experience.id}
               onClick={() => void query.refetch()}
               leadingIcon={<RefreshCcw size={18} />}
             >

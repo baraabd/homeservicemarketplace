@@ -5,6 +5,7 @@ import { toE164Phone, isValidPhoneIdentity } from '../../../lib/phone-identity';
 import { requestContactVerification, verifyContact } from '../../../lib/auth-contact-api';
 import { extractAuthError } from '../../../lib/auth-errors';
 import { normalizeDecimalDigits } from '../../../lib/normalize-decimal-digits';
+import type { AuthExperienceId } from '../../../lib/auth-experience';
 
 /** One password-confirmed ownership journey for either account contact. */
 export function AccountContactEnrollment({
@@ -12,12 +13,14 @@ export function AccountContactEnrollment({
   lang,
   disabled,
   canRequest = true,
+  experience,
   onVerified,
 }: {
   channel: AuthOtpChannel;
   lang: string;
   disabled: boolean;
   canRequest?: boolean;
+  experience?: AuthExperienceId;
   onVerified: () => Promise<void>;
 }) {
   const ar = lang === 'ar';
@@ -156,6 +159,7 @@ export function AccountContactEnrollment({
           <>
             {whatsapp ? (
               <PhoneIdentityField
+                experience={experience}
                 countryCode={country}
                 onCountryChange={setCountry}
                 localNumber={number}

@@ -151,6 +151,10 @@ async function login(current: Session, account: Account): Promise<Response> {
   const previous = privateJson<Delivery>(account.otpFile).id;
   // Enter the protected route so the real returnTo and auth-boundary logic run.
   await page.goto(`${baseUrl}${planPath(account.subscriptionId)}`);
+  // These are existing verified email accounts. Keep the product's WhatsApp
+  // default and enter through its real alternate sign-in path.
+  await expect(page.getByTestId('auth-channel-whatsapp')).toBeVisible();
+  await page.getByRole('button', { name: 'I have an email account', exact: true }).click();
   await expect(page.locator('input[type="email"]')).toBeVisible();
   await page.locator('input[type="email"]').fill(account.email);
   await page.locator('input[type="password"]').fill(account.password);

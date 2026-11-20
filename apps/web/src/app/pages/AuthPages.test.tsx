@@ -179,7 +179,9 @@ describe('VerifyEmailPage — consumes token from URL', () => {
         }),
     );
     renderAt('/verify-email?token=arabic-token', 'ar');
-    expect(screen.getByRole('heading', { name: 'جارٍ التحقق من بريدك الإلكتروني…' })).toBeVisible();
+    expect(
+      await screen.findByRole('heading', { name: 'جارٍ التحقق من بريدك الإلكتروني…' }),
+    ).toBeVisible();
     await waitFor(() => expect(finishBootstrap).toBeDefined());
     expect(mock.history.post.filter((r) => r.url === '/v1/auth/verify-email')).toHaveLength(0);
     await act(async () => {

@@ -476,6 +476,11 @@ async function verify(config, inherited) {
     await command('migrations', ['--filter', DATABASE, 'migrate:deploy']);
     await command('database-build', ['--filter', DATABASE, 'build']);
     await command('seed', ['--filter', DATABASE, 'seed']);
+    await command(
+      'email-auth-fixture',
+      ['exec', 'node', 'scripts/testing/email-auth-fixture.cjs', '--scope', 'r25'],
+      { NODE_ENV: 'test', R25_SESSION: config.session },
+    );
     const jestReport = raw('api-results.json');
     await command(
       'api-integration',

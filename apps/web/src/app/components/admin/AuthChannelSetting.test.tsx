@@ -85,6 +85,15 @@ beforeEach(() => {
   state.verify.mockResolvedValue(undefined);
 });
 describe('Authentication channel settings', () => {
+  it('explains the WhatsApp default while retaining an explicitly saved email selection', async () => {
+    const { change } = show();
+    await screen.findByText(/Your verified number/);
+    expect(screen.getByText('Platform default')).toBeVisible();
+    expect(screen.getByText(/WhatsApp is the default/)).toHaveTextContent(/until you change it/);
+    expect(screen.getByRole('radio', { name: /^Email/ })).toBeChecked();
+    expect(screen.getByRole('radio', { name: /WhatsApp/ })).not.toBeChecked();
+    expect(change).not.toHaveBeenCalled();
+  });
   it('changes the draft only and explains the unsaved selection', async () => {
     const { change } = show();
     const radio = await screen.findByRole('radio', { name: /WhatsApp/ });
