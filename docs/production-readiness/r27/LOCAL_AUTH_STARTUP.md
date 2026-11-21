@@ -137,6 +137,16 @@ fresh-policy loading and labeled CSS 200% reflow. CSS reflow is not browser
 chrome zoom. Its policy listener is a fixture; real backend evidence above is
 separate. Hosted final-head screenshots must be inspected before acceptance.
 
+The broader browser suite also exposed a pre-existing keyboard-test race in
+`e2e/rtl.spec.ts`. In the recorded tablet trace, `focus()` targeted the pending
+gate's language button, but the successful configuration response replaced
+that gate with the ready login form before the global Enter key was sent.
+The focused node therefore no longer existed. The scoped test correction waits
+for the ready form's existing `auth-hero-seeker` landmark before focusing the
+button. Keyboard/language assertions, timeouts, workers and production behavior
+are unchanged. The first failed run remains historical evidence; acceptance
+requires a new complete run on the follow-up SHA.
+
 ## Immutable R27 successor controls
 
 The dependency-control validator hashes complete manifest blobs. The two

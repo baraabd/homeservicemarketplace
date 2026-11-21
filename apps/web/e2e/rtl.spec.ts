@@ -156,6 +156,8 @@ test.describe('RTL layout geometry', () => {
 
   test('the language toggle is reachable and operable by KEYBOARD alone', async ({ page }) => {
     await page.goto('/login');
+    // The loading gate has its own toggle, which is replaced by the ready form.
+    await expect(page.getByTestId('auth-hero-seeker')).toBeVisible();
     const toggle = langToggle(page);
     await toggle.focus();
     await page.keyboard.press('Enter');
