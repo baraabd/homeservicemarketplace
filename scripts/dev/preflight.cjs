@@ -18,6 +18,15 @@ async function apiPort(root = ROOT, environment = process.env) {
 }
 
 async function availablePort(port, host) {
+  // A default-family listener may use IPv6 without excluding an existing
+  // IPv4 listener on Windows. Check loopback directly, then other IPv4
+  // interfaces, before retaining Node's default-family/fallback behavior.
+  // Explicit-host callers (including Vite) keep their single-host probe.
+  if (host === undefined) {
+    for (const ipv4 of ['127.0.0.1', '0.0.0.0']) {
+      if (!(await availablePort(port, ipv4))) return false;
+    }
+  }
   return new Promise((resolve) => {
     const server = net.createServer();
     const timer = setTimeout(() => {

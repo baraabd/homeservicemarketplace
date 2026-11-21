@@ -395,6 +395,10 @@ test('production, wrong pnpm and unsupported flags cannot initiate preparation',
 
 test('runtime mismatch and occupied API port stop before any generated changes', async (t) => {
   const options = await fixture(t);
+  const generatedFiles = ['schema.prisma', '.hsm-generation.json'];
+  const before = await Promise.all(
+    generatedFiles.map((file) => fs.readFile(path.join(options.root, GENERATED, file))),
+  );
   await assert.rejects(
     prepareWorkspace({
       ...options,
@@ -418,6 +422,12 @@ test('runtime mismatch and occupied API port stop before any generated changes',
   );
   assert.equal(server.listening, true);
   assert.deepEqual(await commands(options.root), []);
+  assert.deepEqual(
+    await Promise.all(
+      generatedFiles.map((file) => fs.readFile(path.join(options.root, GENERATED, file))),
+    ),
+    before,
+  );
 });
 
 test('normal dev hooks prepare before read-only preflight; doctor remains read-only', async () => {
