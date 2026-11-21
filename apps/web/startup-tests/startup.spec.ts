@@ -22,6 +22,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   expectNoHorizontalPageOverflow,
+  expectVisibleFocusIndicator,
   seedLanguage,
   signedInAdmin,
   stubApi,
@@ -129,7 +130,7 @@ async function serve(
   port: number,
   info: TestInfo,
   name: string,
-  options: { env?: Record<string, string>; awaitDependencyOptimizer?: boolean } = {},
+  options: { env?: NodeJS.ProcessEnv; awaitDependencyOptimizer?: boolean } = {},
 ) {
   let output = '';
   let failure: Error | undefined;
@@ -247,6 +248,12 @@ test.beforeAll(async () => {
   await copyFile(
     path.join(repoRoot, cspDirectory, 'web-csp.cjs'),
     path.join(scratch, cspDirectory, 'web-csp.cjs'),
+  );
+  const devDirectory = path.join('scripts', 'dev');
+  await mkdir(path.join(scratch, devDirectory), { recursive: true });
+  await copyFile(
+    path.join(repoRoot, devDirectory, 'api-endpoint.cjs'),
+    path.join(scratch, devDirectory, 'api-endpoint.cjs'),
   );
   for (const file of ['package.json', 'pnpm-workspace.yaml', 'tsconfig.base.json']) {
     await copyFile(path.join(repoRoot, file), path.join(scratch, file));
@@ -491,6 +498,237 @@ test('real pnpm dev renders public and Admin routes with the stale config still 
     console.log('FIXED_STARTUP', JSON.stringify(evidence));
   } finally {
     await server.close();
+  }
+});
+
+test('real pnpm dev derives the API origin and recovers fresh sign-in policy for every app', async ({
+  browser,
+}, info) => {
+  test.setTimeout(DEV_TEST_TIMEOUT_MS);
+  const pnpm = process.env.npm_execpath;
+  expect(pnpm, 'Use pnpm test:startup').toBeTruthy();
+  const webPort = 5201;
+  const webOrigin = `http://127.0.0.1:${webPort}`;
+  type Policy = { otpChannel: 'email' | 'whatsapp'; whatsappAvailable: boolean };
+  let policy: Policy | undefined;
+  let holdPolicy = false;
+  let releasePolicy: (() => void) | undefined;
+  const apiRequests: Array<{ method: string; pathname: string; origin?: string }> = [];
+  // Real browser HTTP and CORS against an owned listener; policy responses are
+  // deterministic fixtures, not evidence of a real backend or OTP delivery.
+  const api = createServer((request, response) => {
+    const pathname = new URL(request.url ?? '/', 'http://localhost').pathname;
+    const method = request.method ?? 'GET';
+    apiRequests.push({ method, pathname, origin: request.headers.origin });
+    response.setHeader('Access-Control-Allow-Origin', webOrigin);
+    response.setHeader('Access-Control-Allow-Credentials', 'true');
+    response.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+    response.setHeader('Access-Control-Allow-Headers', 'X-Client-Kind');
+    response.setHeader('Cache-Control', 'no-store');
+    if (method === 'OPTIONS') {
+      response.writeHead(204).end();
+      return;
+    }
+    const send = (status: number, body: unknown) => {
+      response.writeHead(status, { 'Content-Type': 'application/json' });
+      response.end(JSON.stringify(body));
+    };
+    if (method === 'GET' && pathname === '/v1/auth/config') {
+      const currentPolicy = policy;
+      if (!currentPolicy) {
+        send(503, { error: { code: 'DEPENDENCY_UNAVAILABLE' } });
+      } else if (holdPolicy) {
+        const release = () => send(200, currentPolicy);
+        releasePolicy = release;
+        response.once('close', () => {
+          if (releasePolicy === release) releasePolicy = undefined;
+        });
+      } else send(200, currentPolicy);
+      return;
+    }
+    send(pathname === '/v1/auth/me' ? 401 : 404, { error: { code: 'UNAUTHORIZED' } });
+  });
+  await new Promise<void>((resolve, reject) => {
+    api.once('error', reject);
+    api.listen(0, 'localhost', () => {
+      api.off('error', reject);
+      resolve();
+    });
+  });
+  const address = api.address();
+  if (!address || typeof address === 'string') throw new Error('Expected an owned API listener');
+  const apiOrigin = `http://localhost:${address.port}`;
+  const scenarios = [
+    { app: 'seeker', otpChannel: 'email', whatsappAvailable: false },
+    { app: 'provider', otpChannel: 'whatsapp', whatsappAvailable: false },
+    { app: 'admin', otpChannel: 'whatsapp', whatsappAvailable: true },
+  ] as const;
+  const evidence: Array<Record<string, unknown>> = [];
+  let server: Awaited<ReturnType<typeof serve>> | undefined;
+  try {
+    server = await serve(
+      [pnpm!, 'run', 'dev', ...cliFlags(webPort)],
+      webPort,
+      info,
+      'derived-api-dev',
+      {
+        // undefined removes the inherited CI value from the spawned process.
+        // The isolated checkout contains no copied private .env files.
+        env: { VITE_API_URL: undefined, PORT: String(address.port) },
+        awaitDependencyOptimizer: true,
+      },
+    );
+    for (const lang of ['en', 'ar'] as const) {
+      const context = await browser.newContext({
+        viewport: { width: 390, height: 844 },
+        locale: 'en-US',
+      });
+      const page = await context.newPage();
+      const errors: string[] = [];
+      const policyRequests: string[] = [];
+      page.on('pageerror', (error) => errors.push(error.message));
+      page.on('request', (request) => {
+        if (new URL(request.url()).pathname === '/v1/auth/config')
+          policyRequests.push(request.url());
+      });
+      const capture = async (name: string) => {
+        await page.evaluate(() => document.fonts.ready);
+        const screenshot = info.outputPath(`${name}.png`);
+        await page.screenshot({ path: screenshot, fullPage: true, animations: 'disabled' });
+        await info.attach(name, { path: screenshot, contentType: 'image/png' });
+      };
+      try {
+        await seedLanguage(page, lang);
+        await page.goto(`${server.baseURL}/select`);
+        for (const [index, scenario] of scenarios.entries()) {
+          policy = undefined;
+          const requestsBeforeEntry = policyRequests.length;
+          await page.getByTestId(`app-card-${scenario.app}`).click();
+          await expect(page).toHaveURL(/\/login(?:[?#]|$)/);
+          await expect(
+            page.getByRole('heading', {
+              name: lang === 'ar' ? 'تعذّر تحميل خيارات الدخول' : 'Sign-in options are unavailable',
+              exact: true,
+            }),
+          ).toBeVisible();
+          await expect(page.getByRole('alert')).toHaveText(
+            lang === 'ar'
+              ? 'خدمة تسجيل الدخول غير متاحة مؤقتًا. يرجى إعادة المحاولة بعد قليل.'
+              : 'The sign-in service is temporarily unavailable. Please try again shortly.',
+          );
+          await expect(page.locator('html')).toHaveAttribute('lang', lang);
+          await expect(page.locator('html')).toHaveAttribute('dir', lang === 'ar' ? 'rtl' : 'ltr');
+          await expect(page.locator('input')).toHaveCount(0);
+          const retry = page.getByRole('button', {
+            name: lang === 'ar' ? 'إعادة المحاولة' : 'Try again',
+            exact: true,
+          });
+          await expect(retry).toHaveAttribute('data-tone', scenario.app);
+          const label = `policy-unavailable-${scenario.app}-${lang}`;
+          for (const width of [320, 390, 430, 768, 1024, 1440]) {
+            await page.setViewportSize({ width, height: 844 });
+            await expectNoHorizontalPageOverflow(page);
+            await expect(retry).toBeVisible();
+            if (width === 1440 || (width === 320 && index === 0))
+              await capture(`${label}-${width}`);
+          }
+          await page.setViewportSize({ width: 390, height: 844 });
+          await page.getByTestId('lang-toggle').focus();
+          await page.keyboard.press('Tab');
+          await expect(retry).toBeFocused();
+          await expectVisibleFocusIndicator(retry, 'Policy retry');
+          expect((await retry.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+          await capture(`${label}-keyboard-390`);
+          // Explicit CSS 200% reflow evidence, not a claim of browser chrome zoom.
+          await page.setViewportSize({ width: 768, height: 844 });
+          await page.locator('html').evaluate((element) => {
+            element.style.zoom = '2';
+          });
+          await expectNoHorizontalPageOverflow(page);
+          await expect(retry).toBeFocused();
+          await capture(`${label}-css-zoom-200`);
+          await page.locator('html').evaluate((element) => {
+            element.style.zoom = '';
+          });
+          await page.setViewportSize({ width: 390, height: 844 });
+          expect(policyRequests.slice(requestsBeforeEntry)).toEqual([
+            `${apiOrigin}/v1/auth/config`,
+          ]);
+
+          policy = {
+            otpChannel: scenario.otpChannel,
+            whatsappAvailable: scenario.whatsappAvailable,
+          };
+          holdPolicy = true;
+          await page.keyboard.press('Enter');
+          await expect.poll(() => typeof releasePolicy).toBe('function');
+          // Even a warm cache from the preceding app cannot open credentials
+          // while the restored service's fresh response is still in flight.
+          await expect(page.getByRole('status')).toHaveText(
+            lang === 'ar' ? 'جارٍ تجهيز تسجيل الدخول…' : 'Preparing secure sign in…',
+          );
+          await expect(page.locator('input')).toHaveCount(0);
+          holdPolicy = false;
+          releasePolicy!();
+          await expect(page.getByTestId(`auth-hero-${scenario.app}`)).toBeVisible();
+          await expect(page.getByTestId(`auth-channel-${scenario.otpChannel}`)).toBeVisible();
+          const whatsapp = scenario.otpChannel === 'whatsapp';
+          await expect(page.locator(`input[type="${whatsapp ? 'tel' : 'email'}"]`)).toBeVisible();
+          await expect(page.locator(`input[type="${whatsapp ? 'email' : 'tel'}"]`)).toHaveCount(0);
+          const login = page.getByRole('button', {
+            name: lang === 'ar' ? 'دخول' : 'Log In',
+            exact: true,
+          });
+          if (whatsapp && !scenario.whatsappAvailable) await expect(login).toBeDisabled();
+          else await expect(login).toBeEnabled();
+          expect(policyRequests.slice(requestsBeforeEntry)).toEqual([
+            `${apiOrigin}/v1/auth/config`,
+            `${apiOrigin}/v1/auth/config`,
+          ]);
+          evidence.push({
+            app: scenario.app,
+            lang,
+            restoredPolicy: policy,
+            cachedPriorPolicy: index > 0,
+            policyRequests: policyRequests.slice(requestsBeforeEntry),
+            widths: [320, 390, 430, 768, 1024, 1440],
+            keyboardRetry: true,
+            cssZoomPercent: 200,
+          });
+          await page.getByRole('button', { name: 'Apps', exact: true }).click();
+          await expect(page.getByTestId('app-card-seeker')).toBeVisible();
+        }
+        expect(errors).toEqual([]);
+      } finally {
+        await context.close();
+      }
+    }
+    const receivedPolicyRequests = apiRequests.filter(
+      (request) => request.method === 'GET' && request.pathname === '/v1/auth/config',
+    );
+    expect(receivedPolicyRequests).toHaveLength(scenarios.length * 2 * 2);
+    expect(receivedPolicyRequests.every((request) => request.origin === webOrigin)).toBe(true);
+    expect(apiRequests.filter((request) => request.method === 'POST')).toEqual([]);
+    await info.attach('derived-api-policy-evidence', {
+      body: JSON.stringify(
+        {
+          api: 'owned HTTP/CORS fixture; not real backend, account or delivery acceptance',
+          configuredApiPort: address.port,
+          explicitViteApiUrl: false,
+          apiOrigin,
+          evidence,
+        },
+        null,
+        2,
+      ),
+      contentType: 'application/json',
+    });
+  } finally {
+    await server?.close();
+    await new Promise<void>((resolve, reject) => {
+      api.close((error) => (error ? reject(error) : resolve()));
+      api.closeAllConnections();
+    });
   }
 });
 

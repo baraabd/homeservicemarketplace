@@ -2,11 +2,10 @@
 const fs = require('node:fs/promises');
 const path = require('node:path');
 const net = require('node:net');
-const { parseEnv } = require('node:util');
 const { ROOT, toolchainProblems } = require('../runtime/toolchain.cjs');
 const { workspaceStateProblems } = require('./workspace-state.cjs');
+const { API_ENV_PATHS, apiPort: configuredApiPort } = require('./api-endpoint.cjs');
 
-const API_ENV_PATHS = ['apps/api/.env.local', 'apps/api/.env', '.env.local', '.env'];
 const OUTPUTS = [
   'main.js',
   'config/env.schema.js',
@@ -15,24 +14,19 @@ const OUTPUTS = [
 ];
 
 async function apiPort(root = ROOT, environment = process.env) {
-  // Match ConfigModule's order: earlier files win, then the process wins.
-  // Values are never printed, and no environment variable is mutated.
-  const values = {};
-  for (const file of [...API_ENV_PATHS].reverse()) {
-    try {
-      Object.assign(values, parseEnv(await fs.readFile(path.join(root, file), 'utf8')));
-    } catch (error) {
-      if (error.code !== 'ENOENT')
-        throw new Error('An API environment file is unreadable', { cause: error });
-    }
-  }
-  const port = Number(environment.PORT ?? values.PORT ?? 4000);
-  if (!Number.isInteger(port) || port < 1 || port > 65535)
-    throw new Error('API PORT must be an integer between 1 and 65535');
-  return port;
+  return configuredApiPort(root, environment);
 }
 
 async function availablePort(port, host) {
+  // A default-family listener may use IPv6 without excluding an existing
+  // IPv4 listener on Windows. Check loopback directly, then other IPv4
+  // interfaces, before retaining Node's default-family/fallback behavior.
+  // Explicit-host callers (including Vite) keep their single-host probe.
+  if (host === undefined) {
+    for (const ipv4 of ['127.0.0.1', '0.0.0.0']) {
+      if (!(await availablePort(port, ipv4))) return false;
+    }
+  }
   return new Promise((resolve) => {
     const server = net.createServer();
     const timer = setTimeout(() => {

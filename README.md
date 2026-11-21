@@ -120,21 +120,24 @@ pnpm --filter @homeservicemarketplace/api dev
 pnpm --filter @homeservicemarketplace/web dev
 ```
 
-The web app binds to `http://localhost:5173` and talks to the API at
-`http://localhost:4000` via `VITE_API_URL` (see `apps/web/.env`). If the
-browser shows `net::ERR_CONNECTION_REFUSED` for `/v1/auth/...` or
-`/v1/me/addresses`, the API process is not running — start it with the
-command above (or `pnpm docker:up:app`).
+The web app binds to `http://localhost:5173`. In development, a blank or unset
+`VITE_API_URL` follows the API's configured `PORT` (default `4000`). An explicit
+web `VITE_API_URL` always wins and must be an absolute HTTP(S) API origin without
+`/v1`. Production builds require it explicitly. Restart Vite after changing
+these settings.
 
-The API binds to `http://localhost:4000`.
+Normal API startup safely regenerates stale Prisma artifacts when installed
+dependency pins are current; a failed generation stops startup. For dependency
+repair, API-origin/CORS diagnostics, and the "sign-in options could not be
+loaded" screen, see [workspace recovery](docs/development/workspace-recovery.md).
 
 ### Health & metrics endpoints
 
-| Endpoint            | Purpose                                                               |
-| ------------------- | --------------------------------------------------------------------- |
-| `GET /health/live`  | Liveness probe — `200` whenever the process is running.               |
+| Endpoint            | Purpose                                                                  |
+| ------------------- | ------------------------------------------------------------------------ |
+| `GET /health/live`  | Liveness probe — `200` whenever the process is running.                  |
 | `GET /health/ready` | Readiness probe — checks the configured dependency set; Mongo is opt-in. |
-| `GET /metrics`      | Prometheus exposition format from the application registry.           |
+| `GET /metrics`      | Prometheus exposition format from the application registry.              |
 
 Quick check:
 

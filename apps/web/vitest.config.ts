@@ -8,10 +8,9 @@ import viteConfig from './vite.config';
 // vite.config sees this invocation as a non-production call and skips the
 // VITE_API_URL requirement (tests use axios-mock-adapter; no real URL
 // needed).
-const resolvedViteConfig =
-  typeof viteConfig === 'function'
-    ? viteConfig({ command: 'serve', mode: 'test', isSsrBuild: false, isPreview: false })
-    : viteConfig;
+const resolvedViteConfig = await (typeof viteConfig === 'function'
+  ? viteConfig({ command: 'serve', mode: 'test', isSsrBuild: false, isPreview: false })
+  : viteConfig);
 
 export default mergeConfig(
   resolvedViteConfig,

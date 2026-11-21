@@ -5,6 +5,32 @@ starts. The browser cannot connect to an API that never started. Installed
 Prisma/Sharp version mismatches and an outdated generated Prisma Client are
 local workspace-state problems, not evidence of a PostgreSQL connection failure.
 
+## Normal startup after pulling a schema change
+
+`pnpm dev`, `pnpm --filter @homeservicemarketplace/api dev` and API `dev:fast`
+now prepare derived Prisma artifacts before their existing preflight. When the
+installed dependency pins are correct but generated artifacts are stale,
+missing or incomplete, preparation runs the existing guarded generator, checks
+freshness, typechecks the API, then checks freshness again before startup can
+continue. A current workspace is a no-op. To run just that stage:
+
+```sh
+pnpm dev:prepare
+```
+
+Preparation uses the pinned pnpm that invoked the package script, never a
+shell-resolved replacement. It stops if the API port is already in use, the
+generator cannot safely replace its engine, a source/output path is redirected,
+dependency pins disagree, or generation/typechecking fails. It does not install
+dependencies, change the lockfile or environment files, run migrations, kill
+processes, or contact the database. Missing or mismatched dependencies still
+require the explicit `dev:repair` procedure below.
+
+`pnpm dev:doctor` and direct `scripts/dev/preflight.cjs` invocations remain
+read-only for dependency and Prisma diagnostics. They do not automatically
+regenerate the client. The separate PowerShell launcher described below keeps
+its read-only preflight; run `pnpm dev:prepare` before it when necessary.
+
 ## Recovery on Windows, macOS and Linux
 
 Stop this repository's API and web watchers in their terminals first. On
@@ -35,8 +61,9 @@ not silently upgrade dependencies or repair a manifest/lockfile disagreement.
 This is an explicit, development-only operation. It installs dependencies,
 regenerates Prisma code and builds the API's workspace dependencies. It does not
 run migrations, reset a database, remove Docker volumes, rewrite `.env` files,
-remove uploads, kill processes or start the API. Normal `dev` and `dev:doctor`
-keep their existing checks; neither installs packages to bypass a failed check.
+remove uploads, kill processes or start the API. Normal `dev` prepares only
+derived Prisma artifacts as described above; `dev:doctor` remains read-only.
+Neither installs packages to bypass a failed dependency check.
 Package-manager lifecycle output remains local: do not publish raw logs that
 might contain private configuration or registry credentials.
 
@@ -87,10 +114,65 @@ the dependency metadata, generated schema and API typecheck. Native-module
 loading, database readiness and browser flows still require their own checks.
 A separate CI workflow exercises real Sharp encoding on Windows and Linux.
 
+## Login says that sign-in options could not be loaded
+
+The login and registration gates request `GET /v1/auth/config` before showing
+credentials. If API predev failed, Nest never started and this request cannot
+succeed. A wrong API origin, CORS rejection, timeout, HTTP error or malformed
+response can produce the same screen; the screenshot alone does not identify
+which one occurred. An unavailable WhatsApp provider by itself is not a failed
+configuration request: the API returns `whatsappAvailable: false` with a valid
+policy, and the interface handles that availability separately.
+
+After the API starts, verify both endpoints (replace `4000` with its actual
+port):
+
+```powershell
+Invoke-RestMethod -Uri "http://localhost:4000/health/ready"
+Invoke-RestMethod -Uri "http://localhost:4000/v1/auth/config"
+```
+
+The configuration response must have `otpChannel` (`whatsapp` or `email`) and
+boolean `whatsappAvailable`. An existing admin email choice remains valid;
+development preparation does not overwrite it. A missing channel setting uses
+the backend's WhatsApp default. A readiness failure or missing database schema
+needs its own correction; generating the client does not apply migrations.
+
+Start the frontend in a second terminal:
+
+```powershell
+pnpm --filter @homeservicemarketplace/web dev
+```
+
+For local development, an unset or blank `VITE_API_URL` follows the API's `PORT`
+(default `4000`). The shared resolver uses the same precedence as Nest:
+process `PORT`, then `apps/api/.env.local`, `apps/api/.env`, root `.env.local`,
+root `.env`. Only the resulting public `http://localhost:<port>` origin enters
+the browser; backend credentials are never copied into browser configuration.
+Root `pnpm dev` also forwards the process `PORT` through Turbo to both tasks.
+
+An explicit `VITE_API_URL` in the web environment always takes precedence.
+Check existing `apps/web/.env` / `.env.local` and process variables if it still
+points at an old port; either correct it or leave it blank to use the local API
+port. Restart Vite after changing this configuration. The value must be an
+absolute HTTP(S) origin, for example `http://localhost:4010`, without `/v1`,
+credentials, a query or a fragment. Invalid explicit values now stop Vite with
+an actionable configuration error instead of failing later at the login gate.
+Production builds still require an explicit `VITE_API_URL`; preview and tests
+never infer it from private API files.
+
+In the browser Network panel, the `/v1/auth/config` request must target that
+origin and return JSON with HTTP 200. For a cross-origin frontend such as
+`http://localhost:5173`, the backend's configured `FRONTEND_URL` / `CORS_ORIGINS`
+must allow the exact frontend origin, including its port. A successful
+PowerShell request alone does not prove browser CORS. The gate's retry button
+fetches fresh server policy; it never substitutes an old cached setting or
+pretends the service is available.
+
 ## Regression coverage
 
 ```sh
-node --test scripts/dev/repair.test.cjs scripts/dev/workspace-state.test.cjs
+node --test scripts/dev/repair.test.cjs scripts/dev/prepare-workspace.test.cjs scripts/dev/workspace-state.test.cjs scripts/dev/api-endpoint.test.cjs scripts/dev/preflight.test.cjs
 ```
 
 The recovery tests use a fake package-manager process to reproduce the four
@@ -102,6 +184,12 @@ These fixture tests do not claim that a real package installation or API boot
 has completed. `.github/workflows/dev-workspace-recovery.yml` separately runs
 frozen installation, generation, API typechecking and native Sharp encoding
 against actual dependencies on hosted Windows and Linux runners.
+It also makes only the ignored generated schema stale, then runs real
+`pnpm dev:prepare` and a second no-op preparation. API-origin tests cover file
+precedence, explicit overrides, malformed origins, production build guards and
+private-env isolation. Browser startup regressions use the real Vite
+configuration and a labeled HTTP policy fixture; real backend and provider
+acceptance remain separate evidence.
 
 ## Reference behavior
 
@@ -138,7 +226,8 @@ their versions. It therefore passed with an engine older than the client.
 ### What the tooling does now
 
 The `generate` script (`packages/database/scripts/generate-client.cjs`) is
-the only generation path: `dev:repair`, CI and the API image all use it.
+the only generation path: automatic dev preparation, `dev:repair`, CI and the
+API image all use it.
 Each run:
 
 1. Takes a per-checkout lock. A concurrent run waits up to 2 minutes, then
