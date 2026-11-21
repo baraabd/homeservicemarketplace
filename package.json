@@ -6,7 +6,8 @@
     "node": "24.21.0"
   },
   "scripts": {
-    "dev": "node scripts/dev/preflight.cjs && turbo run dev --parallel",
+    "dev": "node scripts/dev/prepare-workspace.cjs && node scripts/dev/preflight.cjs && turbo run dev --parallel",
+    "dev:prepare": "node scripts/dev/prepare-workspace.cjs",
     "dev:doctor": "node scripts/dev/preflight.cjs --check-only",
     "dev:repair": "node scripts/dev/repair.cjs",
     "runtime:check": "node scripts/runtime/toolchain.cjs",
