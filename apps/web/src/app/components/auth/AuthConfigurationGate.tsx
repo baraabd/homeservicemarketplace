@@ -55,8 +55,8 @@ export function AuthConfigurationGate({
             </h1>
             <p role="alert" className="max-w-sm text-slate-600">
               {lang === 'ar'
-                ? 'تحقق من اتصالك وأعد المحاولة.'
-                : 'Check your connection and try again.'}
+                ? 'خدمة تسجيل الدخول غير متاحة مؤقتًا. يرجى إعادة المحاولة بعد قليل.'
+                : 'The sign-in service is temporarily unavailable. Please try again shortly.'}
             </p>
             <Button
               variant="primary"

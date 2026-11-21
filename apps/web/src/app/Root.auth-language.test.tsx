@@ -122,11 +122,13 @@ describe.each(['seeker', 'provider', 'admin'] as const)(
         expect(screen.getByLabelText('كلمة المرور', { exact: true })).toHaveValue(password);
         expect(onLogin).not.toHaveBeenCalled();
 
+        // The language animation is settled; lazy loading and findBy need the real clock.
+        vi.useRealTimers();
         await act(async () => {
           fireEvent.click(screen.getByRole('button', { name: 'دخول', exact: true }));
         });
         expect(onLogin).toHaveBeenCalledExactlyOnceWith(identity, password, channel);
-        expect(screen.getByTestId('otp-input')).toBeInTheDocument();
+        expect(await screen.findByTestId('otp-input')).toBeInTheDocument();
         expect(onOtpVerify).not.toHaveBeenCalled();
       },
     );

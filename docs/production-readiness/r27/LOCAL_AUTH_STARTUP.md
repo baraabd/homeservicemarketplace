@@ -1,0 +1,181 @@
+# Local authentication startup repair
+
+Mode A: repair native development startup and the public authentication
+configuration gate. Base: `83c6ba5b195207751fb7033163858f06724a7014`.
+This document records pre-publication evidence. The PR body carries the final
+head SHA and its hosted acceptance results; previous green runs are not proof
+for a newer commit. No hosted rollout or provider delivery is claimed here.
+
+## Cause and scope
+
+The supplied API log stops in `predev`: its generated Prisma Client does not
+match the current source schema. Nest therefore never starts. A separately
+started Vite frontend can still render `/login`, but `GET /v1/auth/config`
+cannot succeed without the API. The supplied screenshot matches the shared
+`AuthConfigurationGate` error state.
+
+Source inspection also found that web development defaulted to port `4000`
+independently of the API's configurable `PORT`, and explicit malformed
+`VITE_API_URL` values were validated only for builds. The screenshot alone
+does not establish the user's actual port, CORS or database state.
+
+| Observed gap                                            | Repair                                                                                                     | Acceptance boundary                                                        |
+| ------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------- |
+| Stale derived Prisma blocks normal dev startup          | Prepare eligible artifacts with the existing guarded generator, then API typecheck and freshness checks    | No install, upgrade, migration, process termination or database connection |
+| Web and API can select different local ports            | Share the API port resolver with Node-side Vite configuration; pass process `PORT` through Turbo dev tasks | Explicit web API origin wins; production still requires it                 |
+| Invalid development origin reaches the login error gate | Validate absolute HTTP(S) origins before Vite serves the app                                               | No path, credentials, query or fragment; no private values in errors       |
+| Configuration failure blames the user's connection      | Localized sign-in-service-unavailable copy with the existing retry                                         | Fresh backend policy remains authoritative; role styling/layout unchanged  |
+
+No API route, schema, migration, contract, feature flag, admin setting, cookie,
+CSRF/CORS policy, WhatsApp readiness policy or provider credential was changed.
+The default WhatsApp policy and an explicitly persisted email choice remain
+owned by the backend. Configuration failure never enables a cached or guessed
+credential form.
+
+## Implementation boundaries
+
+- `prepare-workspace.cjs` distinguishes generated artifacts from dependency or
+  schema failures using structured inspection results. A current workspace is
+  a no-op. It verifies the pinned local Prisma CLI/client and Sharp dependencies,
+  checkout-local source/output paths, the API port, the lockfile and resulting
+  freshness. Existing generator lock/engine/completion-record checks remain in
+  force. Every failed step prevents startup.
+- Root/API package hooks run preparation before the existing preflight.
+  `dev:doctor`, direct dependency diagnostics and the optional PowerShell
+  launcher's preflight remain read-only. Explicit dependency recovery remains
+  `pnpm dev:repair`.
+- `api-endpoint.cjs` uses the existing Nest/preflight environment precedence.
+  Vite loads this filesystem-backed CommonJS helper through Node's
+  `createRequire`, avoiding config bundler rewrites of `require`. Vitest awaits
+  the asynchronous config and never reads backend env files for URL inference.
+  Only the public origin enters the client define.
+- The gate's production change is two strings. No new client imports, network
+  waterfalls, hooks, retry loops, lazy boundaries or accessibility attributes
+  were introduced. The Root language test hands off from its fake animation
+  clock to real timers before awaiting a lazy OTP component; its assertions
+  are retained.
+- Windows/Ubuntu recovery CI runs the fixture regressions and makes only the
+  ignored generated schema stale, then exercises real preparation and checks
+  that a second preparation preserves the completion record.
+- Startup browser CI copies the new exact helper into its isolated checkout.
+  Its added real-Vite test uses a labeled HTTP policy fixture, no request
+  interception, and covers all three app entries in Arabic and English.
+
+Shared-path coordination: integration owns root manifest, Vite/Vitest/Turbo,
+preflight extraction, documentation and workflow wiring; runtime owns the
+structured inspector/preparation implementation; frontend owns gate tests and
+startup browser coverage. The runtime slice was handed back before final
+integration. The R01 reservation register was inspected; no schema/contracts,
+environment schema, app-module, route graph or lockfile edit was required.
+
+## Executed local evidence
+
+Runtime: Node `24.21.0`, pnpm `10.32.1`.
+
+```sh
+node --test --test-reporter=spec scripts/dev/api-endpoint.test.cjs scripts/dev/prepare-workspace.test.cjs scripts/dev/preflight.test.cjs scripts/dev/workspace-state.test.cjs scripts/dev/repair.test.cjs scripts/dev/start-api.test.cjs scripts/dev/review-runtime.test.cjs
+```
+
+PASS: 100 cases, 98 passed, no failures. Two existing platform skips on this
+Linux host: real Windows engine locking and optional PowerShell availability.
+The hosted Windows lane remains responsible for executing those native cases.
+The new coverage includes 20 preparation cases and 10 endpoint cases.
+
+```sh
+pnpm --filter @homeservicemarketplace/web exec vitest run src/app/components/auth/auth-channel.test.tsx src/app/Root.auth-language.test.tsx src/lib/api.test.ts
+```
+
+PASS: 3 files, 57 tests, no failures/skips. Network failure, timeout, malformed
+HTML response, Arabic/manual retry and cached-policy isolation are covered.
+
+PASS: API build; actual stale-generated-client preparation through
+`pnpm dev:prepare`; API typecheck; a second preparation with an unchanged
+completion record; source schema and manifest/lockfile hashes unchanged.
+Generation used the real installed Prisma CLI/native engine and did not
+install packages or apply migrations.
+
+PASS: web production build with an explicit local API origin; Vite config
+typecheck; full `typecheck:e2e`; scoped ESLint/Prettier and diff checks. Vite's
+existing large-chunk advisory remains visible; no warning threshold changed.
+
+PASS: real built API against a unique disposable PostgreSQL database and Redis:
+
+- `/health/ready`: HTTP 200, PostgreSQL and Redis up.
+- `/v1/auth/config`: HTTP 200 and `no-store`; missing policy gives WhatsApp with
+  unavailable delivery, a temporary saved email policy is preserved, and its
+  deletion restores WhatsApp in the same process.
+- Credentialed CORS allows exactly `http://localhost:5173`; the OPTIONS request
+  allowing `X-Client-Kind` returns 204. Origin `http://localhost:5174` receives
+  no allow-origin header.
+- Zero users, verification tokens, deliveries and remaining settings. Zero OTP
+  sends. Temporary database/services were disposed. These are HTTP/backend
+  checks, not proof of browser execution or provider delivery.
+
+PASS: exact Vite config copy with synthetic env files and real HTTP transforms
+of `src/lib/api.ts`: API-file port `4010`, process override `4011`, explicit web
+origin `4020` each become the expected public `API_BASE_URL`. Private fixture
+values never enter the client code/environment. Production config rejects a
+missing origin despite a local `PORT` and accepts an explicit HTTPS origin.
+
+LOCAL BROWSER BLOCKED: the source/config startup test passed, but the new
+browser test could not launch because the expected Playwright headless-shell
+binary is absent. It failed before its body; no browser screenshots or visual
+PASS were claimed locally. The existing hosted Windows/Ubuntu startup workflow
+will provide browser execution and screenshots for final-head review.
+
+The new browser case retains its existing budgets/workers and checks six
+widths (320/390/430/768/1024/1440), AR/EN, role tone, keyboard retry/focus,
+fresh-policy loading and labeled CSS 200% reflow. CSS reflow is not browser
+chrome zoom. Its policy listener is a fixture; real backend evidence above is
+separate. Hosted final-head screenshots must be inspected before acceptance.
+
+## Immutable R27 successor controls
+
+The dependency-control validator hashes complete manifest blobs. The two
+development-script edits change those hashes despite unchanged dependency
+versions, lockfile and vendor sources. This successor uses the existing
+control procedure without changing the validator, inventory, measurement
+commands, performance budgets or historical acceptance evidence.
+
+| Control  | Commit                                     | Parent                                     | Tree                                       |
+| -------- | ------------------------------------------ | ------------------------------------------ | ------------------------------------------ |
+| Baseline | `21d79b4aa3eef60fe92dbba7b888f10153f35758` | `ad1beac0397fe2c1ae9d4c0e5a89cbb65e67cb33` | `1a397687d05b57da78a448d63fecf53926849436` |
+| Repair   | `64badf994c28eca864e239d3236d03e097ec98dc` | `83c6ba5b195207751fb7033163858f06724a7014` | `67891ac058cd673f3da35cd563e1eede4fe3b61c` |
+
+Each control changes only `package.json` and `apps/api/package.json`; all 25
+registered blobs must match the candidate. The retained baseline ref is
+`perf/r27-local-startup-baseline-20261121`. The repair control becomes a real
+second-parent ancestor of the complete fix through an ordinary content merge;
+that merge must retain the complete fix's identical tree. No first-parent
+application commit is left with a missing preparation helper.
+
+These controls are measurement inputs, **not supported native-dev checkouts**:
+their new preparation hooks reference a helper absent from historical runtime
+trees. R27 does not execute those hooks. It explicitly generates/builds the
+API, starts `apps/api/dist/main.js` through Node, and launches installed Vite
+directly for dev/preview. Root installation hooks, API build commands, web
+manifest and measured application code remain unchanged in each control. The
+native recovery workflow separately tests the new preparation behavior.
+
+The active control record names the actual base as `originalPrBase`, retains
+all full-blob digests, and pins these new objects. The former record and control
+objects remain available at the immutable base commit; their historical
+results are not relabeled as this experiment. Final-head R27 must run anew.
+
+## Rollout and rollback
+
+Publish the scoped branch/PR, require its final-head CI, official CodeQL,
+Windows/Ubuntu startup/recovery evidence and R27 results, then use the existing
+user-authorized merge. No protection change or direct develop update is part
+of this work. Hosted API/Vercel deployment and actual WhatsApp delivery retain
+their separate pending prerequisites and are not required to repair localhost.
+
+After the accepted merge, the user's Windows checkout still needs to pull the
+changes and restart its terminals. Existing explicit API origins and local
+database/service configuration are intentional settings and are not silently
+rewritten. See `docs/development/workspace-recovery.md` for the concrete startup
+and diagnostics commands.
+
+Rollback is an ordinary revert of the scoped repair through a reviewed PR;
+there is no database migration or persistent policy change to reverse. Do not
+reset user databases, delete lockfiles or disable preflight to recover.

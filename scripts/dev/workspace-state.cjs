@@ -6,6 +6,7 @@ const { createRequire } = require('node:module');
 const {
   schemaFingerprint,
   generationProblems,
+  generatorOutput,
 } = require('../../packages/database/scripts/prisma-generation.cjs');
 
 const ROOT = path.resolve(__dirname, '../..');
@@ -37,6 +38,10 @@ const GENERATION_MESSAGES = {
     'The Prisma schema does not name the generated client output. Restore packages/database/prisma/schema.prisma from the selected revision.',
 };
 
+function issue(category, code, message) {
+  return { category, code, message };
+}
+
 async function json(file) {
   return JSON.parse(await fs.readFile(file, 'utf8'));
 }
@@ -51,12 +56,21 @@ async function readableFile(file) {
   }
 }
 
-async function installedPackage(consumer, name) {
+async function installedPackage(consumer, name, entryName = name) {
+  // pnpm links each declared direct dependency into its consumer workspace.
+  // A missing local link must not be hidden by NODE_PATH/global packages.
+  const local = path.join(consumer, 'node_modules', name);
+  if (!(await fs.stat(local)).isDirectory()) throw new Error('dependency-link-unavailable');
+  const packageRoot = await fs.realpath(local);
   const resolve = createRequire(path.join(consumer, 'package.json')).resolve;
   // Resolution checks that an entry exists but never evaluates it. In
   // particular, sharp's native decoder must remain lazy during API startup.
-  const entry = resolve(name);
+  const entry = resolve(entryName);
   if (!(await readableFile(entry))) throw new Error('dependency-entry-unavailable');
+  const relativeEntry = path.relative(packageRoot, await fs.realpath(entry));
+  if (relativeEntry.startsWith('..') || path.isAbsolute(relativeEntry)) {
+    throw new Error('dependency-entry-outside-consumer-package');
+  }
   // sharp exports its entry but not ./package.json. Walk from the resolved
   // entry to its owning package instead of requiring an unexported subpath.
   let directory = path.dirname(entry);
@@ -86,7 +100,11 @@ async function prismaProblems(root) {
     if (typeof declaredVersion !== 'string' || !declaredVersion) throw new Error('missing-pin');
   } catch {
     problems.push(
-      `Database workspace metadata is missing or invalid. Restore packages/database/package.json from the selected revision, then run ${INSTALL}.`,
+      issue(
+        'dependency',
+        'database-metadata-invalid',
+        `Database workspace metadata is missing or invalid. Restore packages/database/package.json from the selected revision, then run ${INSTALL}.`,
+      ),
     );
   }
   try {
@@ -97,12 +115,20 @@ async function prismaProblems(root) {
     installedVersion = installed.version;
     if (declaredVersion && installedVersion !== declaredVersion) {
       problems.push(
-        `Installed Prisma client does not match the workspace pin. Stop the API watcher, run ${INSTALL}, then ${GENERATE} and ${TYPECHECK}.`,
+        issue(
+          'dependency',
+          'prisma-client-version-mismatch',
+          `Installed Prisma client does not match the workspace pin. Stop the API watcher, run ${INSTALL}, then ${GENERATE} and ${TYPECHECK}.`,
+        ),
       );
     }
   } catch {
     problems.push(
-      `Prisma client dependency is missing or unreadable from packages/database. Run ${INSTALL}, then ${GENERATE} and ${TYPECHECK}.`,
+      issue(
+        'dependency',
+        'prisma-client-unavailable',
+        `Prisma client dependency is missing or unreadable from packages/database. Run ${INSTALL}, then ${GENERATE} and ${TYPECHECK}.`,
+      ),
     );
   }
 
@@ -111,7 +137,11 @@ async function prismaProblems(root) {
     if (!sourceSchema.trim()) throw new Error('empty-schema');
   } catch {
     problems.push(
-      'Prisma source schema is missing or unreadable. Restore packages/database/prisma/schema.prisma from the selected revision before generating the client.',
+      issue(
+        'schema',
+        'schema-unreadable',
+        'Prisma source schema is missing or unreadable. Restore packages/database/prisma/schema.prisma from the selected revision before generating the client.',
+      ),
     );
   }
 
@@ -120,7 +150,11 @@ async function prismaProblems(root) {
   );
   if (complete.some((exists) => !exists)) {
     problems.push(
-      `Generated Prisma client is incomplete. Stop the API watcher, run ${GENERATE}, then ${TYPECHECK}.`,
+      issue(
+        'generated',
+        'outputs-incomplete',
+        `Generated Prisma client is incomplete. Stop the API watcher, run ${GENERATE}, then ${TYPECHECK}.`,
+      ),
     );
     return problems;
   }
@@ -129,7 +163,11 @@ async function prismaProblems(root) {
     const generatedSchema = await fs.readFile(path.join(generated, 'schema.prisma'), 'utf8');
     if (sourceSchema && schemaFingerprint(sourceSchema) !== schemaFingerprint(generatedSchema)) {
       problems.push(
-        `Generated Prisma client is stale for the current schema. Stop the API watcher, run ${GENERATE}, then ${TYPECHECK}.`,
+        issue(
+          'generated',
+          'schema-stale',
+          `Generated Prisma client is stale for the current schema. Stop the API watcher, run ${GENERATE}, then ${TYPECHECK}.`,
+        ),
       );
     }
     const metadata = await json(path.join(generated, 'package.json'));
@@ -139,12 +177,20 @@ async function prismaProblems(root) {
       (installedVersion && metadata.version !== installedVersion)
     ) {
       problems.push(
-        `Generated Prisma client version does not match its dependency. Run ${INSTALL}, stop the API watcher, then run ${GENERATE} and ${TYPECHECK}.`,
+        issue(
+          'generated',
+          'generated-version-mismatch',
+          `Generated Prisma client version does not match its dependency. Run ${INSTALL}, stop the API watcher, then run ${GENERATE} and ${TYPECHECK}.`,
+        ),
       );
     }
   } catch {
     problems.push(
-      `Generated Prisma client metadata is unreadable. Stop the API watcher, run ${GENERATE}, then ${TYPECHECK}.`,
+      issue(
+        'generated',
+        'generated-metadata-unreadable',
+        `Generated Prisma client metadata is unreadable. Stop the API watcher, run ${GENERATE}, then ${TYPECHECK}.`,
+      ),
     );
   }
   if (problems.length) return problems;
@@ -154,11 +200,17 @@ async function prismaProblems(root) {
     schemaPath: path.join(database, 'prisma/schema.prisma'),
     expectedClientVersion: installedVersion ?? declaredVersion,
   });
-  return [
-    ...new Set(
-      codes.map((code) => GENERATION_MESSAGES[code] ?? GENERATION_MESSAGES['record-invalid']),
+  return [...new Set(codes)].map((code) =>
+    issue(
+      ['schema-unreadable', 'generator-output-unknown'].includes(code)
+        ? 'schema'
+        : Object.hasOwn(GENERATION_MESSAGES, code)
+          ? 'generated'
+          : 'unknown',
+      code,
+      GENERATION_MESSAGES[code] ?? GENERATION_MESSAGES['record-invalid'],
     ),
-  ];
+  );
 }
 
 async function sharpProblems(root) {
@@ -177,20 +229,115 @@ async function sharpProblems(root) {
     return [];
   } catch {
     return [
-      `API sharp dependency is missing, unreadable or does not match its workspace pin. Run ${INSTALL}, then ${TYPECHECK}.`,
+      issue(
+        'dependency',
+        'sharp-unavailable',
+        `API sharp dependency is missing, unreadable or does not match its workspace pin. Run ${INSTALL}, then ${TYPECHECK}.`,
+      ),
     ];
   }
+}
+
+async function assertUnredirectedEntries(directory) {
+  let entries;
+  try {
+    entries = await fs.readdir(directory, { withFileTypes: true });
+  } catch (error) {
+    if (error.code === 'ENOENT') return;
+    throw error;
+  }
+  for (const entry of entries) {
+    if (entry.isSymbolicLink()) throw new Error('redirected-generated-entry');
+    if (entry.isDirectory()) await assertUnredirectedEntries(path.join(directory, entry.name));
+  }
+}
+
+/** Additional read-only prerequisites for automatic generation. Normal
+ * diagnostics retain their existing contract, including when CLI dev
+ * dependencies are deliberately absent from a production installation. */
+async function generationPrerequisites(root) {
+  const problems = [];
+  const database = path.join(root, 'packages/database');
+  try {
+    const manifest = await json(path.join(database, 'package.json'));
+    const pin = manifest.devDependencies?.prisma;
+    // Prisma's package root can export a types-only path that is absent in
+    // its published archive. Inspect the CLI entry the guarded generator runs.
+    const installed = await installedPackage(database, 'prisma', 'prisma/build/index.js');
+    if (
+      !/^\d+\.\d+\.\d+$/u.test(pin ?? '') ||
+      pin !== manifest.dependencies?.['@prisma/client'] ||
+      installed.name !== 'prisma' ||
+      installed.version !== pin
+    )
+      throw new Error('cli-pin');
+  } catch {
+    problems.push(
+      issue(
+        'dependency',
+        'prisma-cli-unavailable',
+        `The installed Prisma CLI is missing or does not match the exact workspace pin. Stop the watchers and run pnpm dev:repair.`,
+      ),
+    );
+  }
+  try {
+    const schemaPath = path.join(database, 'prisma/schema.prisma');
+    const schema = await fs.readFile(schemaPath, 'utf8');
+    const output = generatorOutput(schemaPath, schema);
+    if (output !== path.join(database, 'generated/prisma')) throw new Error('output-path');
+    // Automatic preparation may only replace this checkout's derived client,
+    // never files reached through a symlink/junction to another workspace.
+    for (const relative of [
+      'packages',
+      'packages/database',
+      'packages/database/prisma',
+      'packages/database/generated',
+      'packages/database/generated/prisma',
+    ]) {
+      try {
+        const entry = await fs.lstat(path.join(root, relative));
+        if (entry.isSymbolicLink() || !entry.isDirectory()) throw new Error('redirected-output');
+      } catch (error) {
+        if (error.code !== 'ENOENT') throw error;
+      }
+    }
+    if ((await fs.lstat(schemaPath)).isSymbolicLink()) throw new Error('redirected-schema');
+    await assertUnredirectedEntries(output);
+  } catch {
+    problems.push(
+      issue(
+        'schema',
+        'generator-output-unsafe',
+        'Automatic Prisma preparation requires the source schema and generated client directory in this checkout. Restore the schema/output path or inspect the redirected directory before generating manually.',
+      ),
+    );
+  }
+  return problems;
+}
+
+/** Structured categories are the decision boundary for dev preparation;
+ * callers must never infer permission to regenerate from diagnostic text. */
+async function inspectWorkspaceState(root = ROOT, { forGeneration = false } = {}) {
+  const results = await Promise.all([
+    prismaProblems(root),
+    sharpProblems(root),
+    ...(forGeneration ? [generationPrerequisites(root)] : []),
+  ]);
+  const issues = results.flat();
+  return {
+    issues,
+    canRegenerate: issues.length > 0 && issues.every((entry) => entry.category === 'generated'),
+  };
 }
 
 /** Read-only diagnostics. No module loading, generation, installation, cache
  * repair, environment loading, database connection or migration occurs here.
  * Every message is controlled text; raw filesystem/package errors stay private. */
 async function workspaceStateProblems(root = ROOT) {
-  const results = await Promise.all([prismaProblems(root), sharpProblems(root)]);
-  return results.flat();
+  return (await inspectWorkspaceState(root)).issues.map((entry) => entry.message);
 }
 
-module.exports = { workspaceStateProblems };
+module.exports = { workspaceStateProblems, inspectWorkspaceState };
 
 if (require.main === module) {
   if (process.argv.length > 2) {

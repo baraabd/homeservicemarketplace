@@ -20,8 +20,11 @@ concurrency:
 # Successor experiment with independently verified dependency-only controls.
 # G1 remains 40cdac5... in its immutable gate; its historical R27 comparison
 # has a different lock digest and must not be relabelled comparable.
+# The local-startup successor refreshes two full manifest blobs only. R27's
+# compiled-API/direct-Vite entry points do not invoke the new native-dev hooks.
+# See docs/production-readiness/r27/LOCAL_AUTH_STARTUP.md for control limitations.
 env:
-  R27_BASELINE_SHA: ad1beac0397fe2c1ae9d4c0e5a89cbb65e67cb33
+  R27_BASELINE_SHA: 21d79b4aa3eef60fe92dbba7b888f10153f35758
   R27_CANDIDATE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
 
 jobs:

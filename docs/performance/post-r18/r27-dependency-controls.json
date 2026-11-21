@@ -1,12 +1,12 @@
 {
   "schemaVersion": 1,
-  "experiment": "picomatch-security-20261118",
-  "priorBaseline": "e9cfb2344899a91ceedc7cbcf9bfc73acefda74d",
-  "originalPrBase": "d64d463666e94a68b007ba96d724998e7e928fdc",
+  "experiment": "local-auth-startup-manifests-20261121",
+  "priorBaseline": "ad1beac0397fe2c1ae9d4c0e5a89cbb65e67cb33",
+  "originalPrBase": "83c6ba5b195207751fb7033163858f06724a7014",
   "dependencySha256": {
-    "apps/api/package.json": "8b861c1ce9a35120f980c382733e658f42c7ec2e2681e906543d4c2967988b59",
+    "apps/api/package.json": "608f907afa9088e72aa1cde93f4f5cf41f1cb2905f947747c45c7d1233674e2b",
     "apps/web/package.json": "16a0c6a4abfe68591b54c73765b301500d3be37037d2ca298458efdba647fac7",
-    "package.json": "ec3251d4263d62dcb80de3eb083e4cb4e79d028802acb332162b60a4a0abeca2",
+    "package.json": "6c0e02d0f07c8c6be4ba06a75ff7f32cd95a169b5de5b2a024f8d695c3e792ca",
     "pnpm-lock.yaml": "0a0e9798d23c0891dc2b0e3bf0ab0a1122a2d38a91fc9f2718e61572c06a4c12",
     "vendor/deepmerge/index.cjs": "8b51276b1720fd68734add9e48cf000d36c15de1775d116fbc03c8bc2110dcf3",
     "vendor/deepmerge/index.d.ts": "d9fe3cb82c11b576a7ea5886ae5de649c8242b20d0a1418fb8203b42453ffd41",
@@ -31,13 +31,13 @@
     "vendor/picomatch-v4/posix.js": "5695ff5dfcd5a338a40630bd506056f2950bcb08fe1cc068519cbbfe60add480"
   },
   "baseline": {
-    "commit": "ad1beac0397fe2c1ae9d4c0e5a89cbb65e67cb33",
-    "tree": "6e838d5b1b7904112df1ec5de989ff7f9d2ea37e",
-    "parent": "e9cfb2344899a91ceedc7cbcf9bfc73acefda74d"
+    "commit": "21d79b4aa3eef60fe92dbba7b888f10153f35758",
+    "tree": "1a397687d05b57da78a448d63fecf53926849436",
+    "parent": "ad1beac0397fe2c1ae9d4c0e5a89cbb65e67cb33"
   },
   "repair": {
-    "commit": "b9c64b1a498f662dc3df899906e1ba3e9ae713e1",
-    "tree": "2b0a25d4a1f53e46c6176ebc7cec1f65b5680134",
-    "parent": "8ef71b1b36995632ba4fdf3d837698c26b3f64ff"
+    "commit": "64badf994c28eca864e239d3236d03e097ec98dc",
+    "tree": "67891ac058cd673f3da35cd563e1eede4fe3b61c",
+    "parent": "83c6ba5b195207751fb7033163858f06724a7014"
   }
 }

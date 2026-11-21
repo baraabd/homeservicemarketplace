@@ -189,7 +189,7 @@ test('malformed metadata and a missing source schema never reveal raw file conte
 
 async function preflightFixture(t) {
   const root = await fixture(t);
-  for (const name of ['preflight.cjs', 'workspace-state.cjs']) {
+  for (const name of ['preflight.cjs', 'api-endpoint.cjs', 'workspace-state.cjs']) {
     await write(root, `scripts/dev/${name}`, await fs.readFile(path.join(__dirname, name), 'utf8'));
   }
   const generation = 'packages/database/scripts/prisma-generation.cjs';

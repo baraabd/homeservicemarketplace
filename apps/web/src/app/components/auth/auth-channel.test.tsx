@@ -95,6 +95,71 @@ describe('server-selected authentication channel', () => {
     expect(document.querySelector('input[type="email"]')).toBeNull();
   });
 
+  it.each(['network failure', 'timeout', 'HTML response'] as const)(
+    'keeps cached credentials hidden after a policy %s and recovers from a fresh response',
+    async (failure) => {
+      const client = createAuthQueryClient();
+      client.setQueryData(AUTH_CONFIG_QUERY_KEY, {
+        otpChannel: 'whatsapp',
+        whatsappAvailable: true,
+      });
+      const request = mock.onGet('/v1/auth/config');
+      if (failure === 'network failure') request.networkErrorOnce();
+      else if (failure === 'timeout') request.timeoutOnce();
+      else request.replyOnce(200, '<!doctype html><html>Application shell</html>');
+      mock.onGet('/v1/auth/config').reply(200, { otpChannel: 'email', whatsappAvailable: false });
+
+      open('/login', 'provider', client);
+      await screen.findByRole('heading', { name: 'Sign-in options are unavailable' });
+      expect(screen.getByRole('alert')).toHaveTextContent(
+        'The sign-in service is temporarily unavailable. Please try again shortly.',
+      );
+      expect(document.querySelector('input')).toBeNull();
+      expect(mock.history.get.filter((item) => item.url === '/v1/auth/config')).toHaveLength(1);
+      expect(mock.history.post).toHaveLength(0);
+
+      fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+      await screen.findByTestId('auth-channel-email');
+      expect(screen.getByTestId('auth-hero-provider')).toBeVisible();
+      expect(document.querySelector('input[type="email"]')).not.toBeNull();
+      expect(document.querySelector('input[type="tel"]')).toBeNull();
+      expect(mock.history.get.filter((item) => item.url === '/v1/auth/config')).toHaveLength(2);
+      expect(mock.history.post).toHaveLength(0);
+    },
+  );
+
+  it('recovers in Arabic without changing the server-reported WhatsApp availability', async () => {
+    localStorage.setItem('hsm.lang', 'ar');
+    mock.onGet('/v1/auth/config').networkErrorOnce();
+    mock.onGet('/v1/auth/config').reply(200, { otpChannel: 'whatsapp', whatsappAvailable: false });
+
+    open('/login', 'admin');
+    await screen.findByRole('heading', { name: 'تعذّر تحميل خيارات الدخول' });
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      'خدمة تسجيل الدخول غير متاحة مؤقتًا. يرجى إعادة المحاولة بعد قليل.',
+    );
+    expect(document.documentElement).toHaveAttribute('lang', 'ar');
+    expect(document.documentElement).toHaveAttribute('dir', 'rtl');
+    expect(document.querySelector('input')).toBeNull();
+
+    fireEvent.click(screen.getByTestId('lang-toggle'));
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      'The sign-in service is temporarily unavailable. Please try again shortly.',
+    );
+    fireEvent.click(screen.getByTestId('lang-toggle'));
+    expect(mock.history.get.filter((item) => item.url === '/v1/auth/config')).toHaveLength(1);
+
+    fireEvent.click(screen.getByRole('button', { name: 'إعادة المحاولة' }));
+    await screen.findByTestId('auth-channel-whatsapp');
+    expect(screen.getByTestId('auth-hero-admin')).toBeVisible();
+    expect(document.documentElement).toHaveAttribute('dir', 'rtl');
+    expect(document.querySelector('input[type="tel"]')).not.toBeNull();
+    expect(document.querySelector('input[type="email"]')).toBeNull();
+    expect(screen.getByRole('button', { name: 'دخول', exact: true })).toBeDisabled();
+    expect(mock.history.get.filter((item) => item.url === '/v1/auth/config')).toHaveLength(2);
+    expect(mock.history.post).toHaveLength(0);
+  });
+
   it('keeps typed credentials mounted while a confirmed policy refreshes in the background', async () => {
     const client = createAuthQueryClient();
     mock.onGet('/v1/auth/config').replyOnce(200, { otpChannel: 'email', whatsappAvailable: true });
