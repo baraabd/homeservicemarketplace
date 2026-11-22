@@ -18,6 +18,9 @@ function adapter(overrides: Record<string, unknown> = {}) {
 }
 
 describe('WhatsApp authentication transport', () => {
+  beforeEach(() =>
+    jest.spyOn(globalThis, 'fetch').mockRejectedValue(new Error('Unexpected provider request')),
+  );
   afterEach(() => jest.restoreAllMocks());
 
   it('posts an approved authentication copy-code template to the fixed Meta origin', async () => {
@@ -99,5 +102,29 @@ describe('WhatsApp authentication transport', () => {
     await expect(adapter().sendCode('+966500000001', '012345')).rejects.toMatchObject({
       code: 'ECONNECTION',
     });
+  });
+
+  it('keeps Meta selected when unrelated Green API credentials are also present', async () => {
+    const fetcher = jest
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(new Response(JSON.stringify({ messages: [{ id: 'wamid.test' }] })));
+    await adapter({
+      WHATSAPP_PROVIDER: 'meta',
+      GREEN_API_URL: 'https://7107.api.greenapi.com',
+      GREEN_API_ID_INSTANCE: '7107000000',
+      GREEN_API_TOKEN: 'green-test-token-not-real',
+    }).sendCode('+966500000001', '012345');
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    expect(fetcher.mock.calls[0]![0]).toBe('https://graph.facebook.com/v27.0/123456789/messages');
+  });
+
+  it('does not fall back to Meta for an unrecognized provider', async () => {
+    const fetcher = jest.spyOn(globalThis, 'fetch');
+    const transport = adapter({ WHATSAPP_PROVIDER: 'unknown' });
+    expect(transport.isConfigured()).toBe(false);
+    await expect(transport.sendCode('+966500000001', '012345')).rejects.toMatchObject({
+      code: 'EAUTH',
+    });
+    expect(fetcher).not.toHaveBeenCalled();
   });
 });
