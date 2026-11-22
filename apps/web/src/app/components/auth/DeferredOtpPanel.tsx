@@ -32,6 +32,7 @@ export function DeferredOtpPanel({
               : 'The verification form could not load. Try again to continue.'}
           </p>
           <Button
+            contrast="strong"
             variant="primary"
             tone={props.experience?.id ?? 'seeker'}
             state={busy ? 'disabled' : 'default'}

@@ -298,15 +298,15 @@ export function LoginScreen({
         {/* Back to app selector — top-left */}
         <button
           onClick={() => navigate('/select')}
-          className="absolute top-5 start-5 flex items-center gap-1.5 bg-white/20 hover:bg-white/30 active:scale-95 transition-all rounded-xl px-3 py-2 border border-white/20"
+          className={`absolute top-5 start-5 flex min-h-11 items-center gap-1.5 bg-white hover:bg-slate-50 active:scale-95 transition-all rounded-xl px-3 py-2 border border-white/20 ${experience.classes.accentText}`}
         >
-          <ArrowLeft size={14} className="text-white rtl:rotate-180" />
-          <span className="text-white/90" style={{ fontSize: '12px', fontWeight: 600 }}>
-            Apps
-          </span>
+          <ArrowLeft size={14} className="rtl:rotate-180" />
+          <span style={{ fontSize: '12px', fontWeight: 600 }}>Apps</span>
         </button>
 
-        <div className="relative flex flex-col items-center text-center">
+        <div
+          className={`relative flex flex-col items-center text-center ${experience.id === 'seeker' ? 'text-slate-950' : 'text-white'}`}
+        >
           <div
             className={`w-16 h-16 rounded-2xl bg-white/20 border border-white/30 flex items-center justify-center mb-4 shadow-xl ${experience.heroShadow}`}
           >
@@ -315,7 +315,7 @@ export function LoginScreen({
               height="28"
               viewBox="0 0 24 24"
               fill="none"
-              stroke="white"
+              stroke="currentColor"
               strokeWidth="2.2"
               strokeLinecap="round"
               strokeLinejoin="round"
@@ -323,10 +323,8 @@ export function LoginScreen({
               <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z" />
             </svg>
           </div>
-          <h1 className="text-white" style={{ fontSize: '28px', fontWeight: 800 }}>
-            {experience.brand.title}
-          </h1>
-          <p className="text-white/70 mt-1" style={{ fontSize: '13px' }}>
+          <h1 style={{ fontSize: '28px', fontWeight: 800 }}>{experience.brand.title}</h1>
+          <p className="mt-1" style={{ fontSize: '13px' }}>
             {experience.brand.subtitle}
           </p>
         </div>
@@ -356,7 +354,7 @@ export function LoginScreen({
         <h2 className="text-slate-900 mb-1" style={{ fontSize: '22px', fontWeight: 800 }}>
           {t('welcomeBack')}
         </h2>
-        <p className="text-slate-400 mb-6" style={{ fontSize: '14px' }}>
+        <p className="text-slate-600 mb-6" style={{ fontSize: '14px' }}>
           {t('signInContinue')}
         </p>
 
@@ -416,6 +414,7 @@ export function LoginScreen({
               />
             ) : (
               <TextField
+                contrast="strong"
                 label={t('emailAddress')}
                 type="email"
                 autoComplete="email"
@@ -432,6 +431,7 @@ export function LoginScreen({
             {selectedChannel === 'email' && (
               <>
                 <TextField
+                  contrast="strong"
                   label={t('password')}
                   type={showPw ? 'text' : 'password'}
                   autoComplete="current-password"
@@ -461,7 +461,7 @@ export function LoginScreen({
                 <div className="flex justify-end -mt-2">
                   <button
                     onClick={onForgotPassword}
-                    className={`${experience.classes.accentText} active:opacity-70 transition-opacity`}
+                    className={`${experience.classes.accentText} active:underline`}
                     style={{ fontSize: '13px', fontWeight: 600 }}
                   >
                     {t('forgotPassword')}
@@ -471,6 +471,7 @@ export function LoginScreen({
             )}
 
             <Button
+              contrast="strong"
               variant="primary"
               tone={experience.id}
               state={
@@ -498,7 +499,7 @@ export function LoginScreen({
               {t('noAccount')}{' '}
               <button
                 onClick={onSignUp}
-                className={`${experience.classes.accentText} active:opacity-70`}
+                className={`${experience.classes.accentText} active:underline`}
                 style={{ fontWeight: 700 }}
               >
                 {t('signUp')}

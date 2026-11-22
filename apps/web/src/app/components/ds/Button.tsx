@@ -15,6 +15,8 @@ export interface ButtonProps {
   state?: ButtonState;
   size?: ButtonSize;
   tone?: ButtonTone;
+  /** Opt-in for auth controls; leaves existing product button palettes unchanged. */
+  contrast?: 'default' | 'strong';
   fullWidth?: boolean;
   leadingIcon?: ReactNode;
   children: ReactNode;
@@ -109,12 +111,20 @@ const TONE_VARIANTS: Record<ButtonTone, Record<ButtonVariant, Record<ButtonState
   },
 };
 
+const STRONG_SEEKER_VARIANTS: Record<ButtonVariant, string> = {
+  primary:
+    'bg-amber-700 text-white shadow-md shadow-amber-200 hover:bg-amber-800 active:scale-95 active:shadow-sm',
+  secondary: 'border-2 border-amber-700 text-amber-700 bg-white hover:bg-amber-50 active:scale-95',
+  text: 'text-amber-700 hover:bg-amber-50 active:scale-95',
+};
+
 // ─── Button ───────────────────────────────────────────────────────────────────
 export function Button({
   variant = 'primary',
   state = 'default',
   size = 'md',
   tone = 'seeker',
+  contrast = 'default',
   fullWidth = false,
   leadingIcon,
   children,
@@ -122,6 +132,10 @@ export function Button({
 }: ButtonProps) {
   const disabled = state === 'disabled';
   const loading = state === 'loading';
+  const variantClasses =
+    contrast === 'strong' && !disabled
+      ? `${tone === 'seeker' ? STRONG_SEEKER_VARIANTS[variant] : TONE_VARIANTS[tone][variant].default}${loading ? ' cursor-not-allowed' : ''}`
+      : TONE_VARIANTS[tone][variant][state];
 
   // 4-px grid: sm=32px, md=48px, lg=56px height
   const sizes: Record<ButtonSize, string> = {
@@ -138,7 +152,7 @@ export function Button({
       className={[
         'inline-flex items-center justify-center font-semibold transition-all duration-150 select-none',
         sizes[size],
-        TONE_VARIANTS[tone][variant][state],
+        variantClasses,
         fullWidth ? 'w-full' : '',
         disabled ? 'cursor-not-allowed' : '',
       ].join(' ')}

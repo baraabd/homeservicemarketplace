@@ -90,7 +90,7 @@ export function EmailOtpPanel({
               ? 'تحقق من بريدك الإلكتروني'
               : 'Verify your email'}
         </h3>
-        <p className="text-slate-400 mt-1" style={{ fontSize: '13px' }}>
+        <p className="text-slate-600 mt-1" style={{ fontSize: '13px' }}>
           {lang === 'ar'
             ? `أدخل رمز التحقق المكوّن من ${codeLength} أرقام من ${channel === 'whatsapp' ? 'واتساب' : 'بريدك الإلكتروني'}`
             : `Enter the ${codeLength}-digit code from ${channel === 'whatsapp' ? 'WhatsApp' : 'your email'}`}
@@ -131,12 +131,12 @@ export function EmailOtpPanel({
           <div
             key={i}
             data-testid={`otp-box-${i}`}
-            className={`min-w-0 h-14 rounded-2xl border-2 flex items-center justify-center transition-all ${
+            className={`min-w-0 h-14 rounded-2xl border-2 flex items-center justify-center transition-all ${experience.classes.accentText} ${
               code.length > i
                 ? `${experience.classes.accentBorder} ${experience.classes.softBg}`
                 : 'border-slate-200 bg-slate-50'
             }`}
-            style={{ fontSize: '24px', fontWeight: 700, color: experience.accentHex }}
+            style={{ fontSize: '24px', fontWeight: 700 }}
           >
             {code[i] ?? ''}
           </div>
@@ -183,7 +183,7 @@ export function EmailOtpPanel({
         <p
           id="otp-verification-error"
           role="alert"
-          className="text-red-500"
+          className="text-red-700"
           style={{ fontSize: '13px' }}
         >
           {verifyError}
@@ -192,6 +192,7 @@ export function EmailOtpPanel({
 
       {expired && onRequestNewCode ? (
         <Button
+          contrast="strong"
           variant="primary"
           tone={experience.id}
           fullWidth
@@ -204,6 +205,7 @@ export function EmailOtpPanel({
         </Button>
       ) : (
         <Button
+          contrast="strong"
           variant="primary"
           tone={experience.id}
           fullWidth
@@ -228,7 +230,7 @@ export function EmailOtpPanel({
           type="button"
           onClick={() => void onResend()}
           disabled={isResending || isVerifying || recovery !== null || resendLimitReached}
-          className={`${experience.classes.accentText} min-h-11 active:opacity-70 disabled:opacity-50`}
+          className={`${experience.classes.accentText} min-h-11 active:underline disabled:opacity-50`}
           style={{ fontSize: '13px', fontWeight: 600 }}
         >
           {lang === 'ar'

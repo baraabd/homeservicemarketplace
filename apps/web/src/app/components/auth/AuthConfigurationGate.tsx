@@ -59,6 +59,7 @@ export function AuthConfigurationGate({
                 : 'The sign-in service is temporarily unavailable. Please try again shortly.'}
             </p>
             <Button
+              contrast="strong"
               variant="primary"
               tone={experience.id}
               onClick={() => void query.refetch()}
