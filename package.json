@@ -9,8 +9,6 @@
     "dev": "node scripts/dev/prepare-workspace.cjs && node scripts/dev/preflight.cjs && turbo run dev --parallel",
     "dev:prepare": "node scripts/dev/prepare-workspace.cjs",
     "dev:doctor": "node scripts/dev/preflight.cjs --check-only",
-    "whatsapp:doctor": "node scripts/dev/whatsapp-doctor.cjs",
-    "whatsapp:doctor:test": "node --test scripts/dev/whatsapp-doctor.test.cjs",
     "dev:repair": "node scripts/dev/repair.cjs",
     "runtime:check": "node scripts/runtime/toolchain.cjs",
     "preinstall": "node scripts/runtime/toolchain.cjs",

@@ -127,14 +127,14 @@ async function runDoctor({
   log = console.log,
 } = {}) {
   if (args.length === 1 && args[0] === '--help') {
-    log('Usage: pnpm whatsapp:doctor [--check-connection]');
+    log('Usage: node scripts/dev/whatsapp-doctor.cjs [--check-connection]');
     log(
       'Default: local configuration only. --check-connection: read GREEN-API instance state; never send a message.',
     );
     return { exitCode: 0, connectionChecked: false };
   }
   if (args.length > 1 || (args.length === 1 && args[0] !== '--check-connection')) {
-    log('FAIL Usage: pnpm whatsapp:doctor [--check-connection]');
+    log('FAIL Usage: node scripts/dev/whatsapp-doctor.cjs [--check-connection]');
     return { exitCode: 1, connectionChecked: false };
   }
   let values;
@@ -150,7 +150,11 @@ async function runDoctor({
   );
   for (const issue of issues) log(`FAIL ${issue}`);
   if (issues.length) return { exitCode: 1, configured: false, connectionChecked: false };
-  log(`PASS ${provider} local settings are complete and have valid formats.`);
+  log(
+    provider === 'greenapi'
+      ? 'PASS greenapi local settings are complete and have valid formats.'
+      : 'PASS meta local settings are complete and have valid formats.',
+  );
   log(
     'INFO Local configuration does not verify credentials, provider approval, the saved OTP channel, or message delivery. Restart the API after changes and inspect GET /v1/auth/config.',
   );

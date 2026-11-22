@@ -97,7 +97,7 @@ WHATSAPP_REQUEST_TIMEOUT_MS=10000
 افحص الإعدادات المحلية أولًا:
 
 ```powershell
-pnpm whatsapp:doctor
+node scripts/dev/whatsapp-doctor.cjs
 ```
 
 يعرض الأمر أسماء المتغيرات الناقصة أو غير الصحيحة دون قيمها. لا يرسل رسالة، ولا يغير قاعدة البيانات، ولا يعدل الملفات أو قناة المصادقة. نجاحه يخص إعدادات واتساب المحددة فقط؛ تظل بقية إعدادات تشغيل API خاضعة لتحقق التطبيق عند الإقلاع.
@@ -105,7 +105,7 @@ pnpm whatsapp:doctor
 مع GREEN-API فقط، يوجد فحص اتصال اختياري للقراءة:
 
 ```powershell
-pnpm whatsapp:doctor --check-connection
+node scripts/dev/whatsapp-doctor.cjs --check-connection
 ```
 
 يرسل هذا الأمر طلب `GET getStateInstance` واحدًا إلى المزوّد. النجاح المتوقع `authorized`. لا يرسل OTP ولا يعيد ربط الحساب أو يغير إعداداته. لا يطبع الرابط المحتوي على المفتاح أو رسالة الخطأ الخام من المزوّد. إذا انتهى بمهلة أو ظهرت حالة غير مخولة، تحقق من لوحة GREEN-API والاتصال بالشبكة.
