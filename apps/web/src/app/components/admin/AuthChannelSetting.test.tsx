@@ -89,7 +89,14 @@ describe('Authentication channel settings', () => {
     const { change } = show();
     await screen.findByText(/Your verified number/);
     expect(screen.getByText('Platform default')).toBeVisible();
-    expect(screen.getByText(/WhatsApp is the default/)).toHaveTextContent(/until you change it/);
+    expect(screen.getByText(/WhatsApp is the initial choice/)).toHaveTextContent(
+      'users see only the saved method',
+    );
+    expect(screen.getByText(/The saved channel is the only sign-in method/)).toHaveTextContent(
+      'verified contact for the selected channel',
+    );
+    expect(screen.getByText(/Phone → WhatsApp code → Sign in/)).toBeVisible();
+    expect(screen.queryByText(/Phone → Password/)).toBeNull();
     expect(screen.getByRole('radio', { name: /^Email/ })).toBeChecked();
     expect(screen.getByRole('radio', { name: /WhatsApp/ })).not.toBeChecked();
     expect(change).not.toHaveBeenCalled();

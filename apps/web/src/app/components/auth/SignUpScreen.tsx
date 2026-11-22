@@ -102,7 +102,7 @@ interface SignUpProps {
     legalAcceptance: LegalAcceptanceInput;
   }) => Promise<LoginOtpChallenge>;
   onOtpVerify: (challengeId: string, code: string) => Promise<void>;
-  onOtpResend: (challengeId: string) => Promise<void>;
+  onOtpResend: (challengeId: string) => Promise<{ expiresInSeconds: number }>;
   // Sprint 5.1.1: experience-aware theming. See LoginScreen prop
   // comment for rationale.
   experience?: AuthExperience;
@@ -166,6 +166,8 @@ export function SignUpScreen({
   const [isLoading, setIsLoading] = useState(false);
   const [signUpError, setSignUpError] = useState<string | undefined>();
   const [challenge, setChallenge] = useState<LoginOtpChallenge | null>(null);
+  const [expiresAt, setExpiresAt] = useState<number | undefined>();
+  const [codeRevision, setCodeRevision] = useState(0);
   const [isVerifying, setIsVerifying] = useState(false);
   const [isResending, setIsResending] = useState(false);
   const [otpError, setOtpError] = useState<Record<'en' | 'ar', string> | undefined>();
@@ -203,8 +205,12 @@ export function SignUpScreen({
           password,
           legalAcceptance: acceptance,
         });
+        if (!Number.isFinite(issued.expiresInSeconds) || issued.expiresInSeconds <= 0)
+          throw new Error('The verification request could not be confirmed.');
         clearSignupDraft();
-        setChallenge(issued);
+        setChallenge({ ...issued, channel: issued.channel ?? channel });
+        setExpiresAt(Date.now() + issued.expiresInSeconds * 1000);
+        setCodeRevision((current) => current + 1);
         setOtpRecovery(null);
         setOtpError(undefined);
         setResendNotice(undefined);
@@ -246,7 +252,13 @@ export function SignUpScreen({
   };
 
   const handleOtpVerify = async (code: string) => {
-    if (!challenge || requestFlight.current || otpRecovery === 'restart') return;
+    if (
+      !challenge ||
+      requestFlight.current ||
+      otpRecovery === 'restart' ||
+      (expiresAt !== undefined && Date.now() >= expiresAt)
+    )
+      return;
     requestFlight.current = true;
     setIsVerifying(true);
     setOtpError(undefined);
@@ -260,6 +272,7 @@ export function SignUpScreen({
       });
       const recovery = otpRecoveryAction(err, 'verify');
       if (recovery) setOtpRecovery(recovery);
+      if (extractAuthError(err).code === 'AUTH_OTP_EXPIRED') setExpiresAt(Date.now());
     } finally {
       requestFlight.current = false;
       setIsVerifying(false);
@@ -267,13 +280,21 @@ export function SignUpScreen({
   };
 
   const handleOtpResend = async () => {
-    if (!challenge || requestFlight.current || otpRecovery !== null) return;
+    if (
+      !challenge ||
+      requestFlight.current ||
+      otpRecovery !== null ||
+      (expiresAt !== undefined && Date.now() >= expiresAt)
+    )
+      return;
     requestFlight.current = true;
     setIsResending(true);
     setResendNotice(undefined);
     setOtpError(undefined);
     try {
-      await onOtpResend(challenge.challengeId);
+      const renewed = await onOtpResend(challenge.challengeId);
+      setExpiresAt(Date.now() + renewed.expiresInSeconds * 1000);
+      setCodeRevision((current) => current + 1);
       setResendNotice(
         lang === 'ar'
           ? 'تم استلام الطلب. استخدم أحدث رمز يصلك.'
@@ -286,6 +307,7 @@ export function SignUpScreen({
       });
       const recovery = otpRecoveryAction(err, 'resend');
       if (recovery) setOtpRecovery(recovery);
+      if (extractAuthError(err).code === 'AUTH_OTP_EXPIRED') setExpiresAt(Date.now());
     } finally {
       requestFlight.current = false;
       setIsResending(false);
@@ -576,10 +598,13 @@ export function SignUpScreen({
           {step === 3 && challenge && (
             <DeferredOtpPanel
               email={
-                challenge.maskedDestination ?? (channel === 'whatsapp' ? phoneNumber : email.trim())
+                challenge.maskedDestination ??
+                ((challenge.channel ?? channel) === 'whatsapp' ? phoneNumber : email.trim())
               }
               channel={challenge.channel ?? channel}
               codeLength={challenge.codeLength}
+              expiresAt={expiresAt}
+              codeRevision={codeRevision}
               onVerify={handleOtpVerify}
               onResend={handleOtpResend}
               isVerifying={isVerifying}

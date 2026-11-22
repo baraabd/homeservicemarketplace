@@ -55,7 +55,13 @@ export async function getLegalDocuments(): Promise<LegalDocumentsResponse> {
 export interface LoginInput {
   email?: string;
   phoneNumber?: string;
-  password: string;
+  /** Email sign-in requires a password; WhatsApp sign-in requests an OTP with a phone only. */
+  password?: string;
+}
+
+export interface OtpResendResponse {
+  success: true;
+  expiresInSeconds: number;
 }
 
 export async function register(data: RegisterInput): Promise<OtpChallengeResponse> {
@@ -77,8 +83,16 @@ export async function verifyOtp(challengeId: string, code: string): Promise<void
   });
 }
 
-export async function resendOtp(challengeId: string): Promise<void> {
-  await api.post('/v1/auth/resend-otp', { challengeId });
+export async function resendOtp(challengeId: string): Promise<OtpResendResponse> {
+  const { data } = await api.post<OtpResendResponse>('/v1/auth/resend-otp', { challengeId });
+  if (
+    !data ||
+    data.success !== true ||
+    !Number.isFinite(data.expiresInSeconds) ||
+    data.expiresInSeconds <= 0
+  )
+    throw new Error('The verification request could not be confirmed.');
+  return data;
 }
 
 export async function getMe(signal?: AbortSignal): Promise<MeResponse> {

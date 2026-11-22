@@ -31,15 +31,15 @@ export function AuthChannelNotice({
         {whatsapp && !available && (
           <p role="status" className="mt-2 font-semibold">
             {lang === 'ar'
-              ? 'التحقق عبر واتساب غير متاح مؤقتًا. استخدم حساب البريد الإلكتروني إن وُجد، أو حاول لاحقًا.'
-              : 'WhatsApp verification is temporarily unavailable. Use an existing email account or try again later.'}
+              ? 'التحقق عبر واتساب غير متاح مؤقتًا. يرجى المحاولة لاحقًا.'
+              : 'WhatsApp verification is temporarily unavailable. Please try again later.'}
           </p>
         )}
         <p className="mt-1 text-sm leading-6">
           {whatsapp
             ? lang === 'ar'
-              ? 'استخدم رقمك المرتبط بواتساب. سيصلك رمز آمن لتأكيد هويتك.'
-              : 'Use your WhatsApp number. We will send a secure code to verify your identity.'
+              ? 'أدخل رقمك المرتبط بواتساب لطلب رمز التحقق.'
+              : 'Enter your WhatsApp number to request a verification code.'
             : lang === 'ar'
               ? 'سيصلك رمز تحقق إلى بريدك الإلكتروني.'
               : 'A verification code will be sent to your email address.'}

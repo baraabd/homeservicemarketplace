@@ -3,6 +3,14 @@ import * as argon2 from 'argon2';
 
 export const OTP_HASH_PREFIX = 'otp-v4:';
 
+// A public namespace identifies the response policy for anonymous phone login.
+// It grants no authority: repositories always look up the complete opaque ID.
+export const WHATSAPP_LOGIN_CHALLENGE_PREFIX = 'wa_login_';
+
+export function isWhatsAppLoginChallenge(challengeId: string): boolean {
+  return /^wa_login_[A-Za-z0-9_-]{32}$/u.test(challengeId);
+}
+
 export function assertOtpChallengeId(challengeId: string): void {
   if (typeof challengeId !== 'string' || !/^[A-Za-z0-9_-]{16,256}$/u.test(challengeId))
     throw new BadRequestException({ code: 'AUTH_OTP_INVALID' });

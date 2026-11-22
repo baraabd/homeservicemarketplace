@@ -722,7 +722,11 @@ suite('R04 account lifecycle invariants (real Postgres)', () => {
       status: 'ACTIVE',
     });
     expect(activated.user.phoneVerifiedAt).toBeInstanceOf(Date);
-    const login = await s.auth.login({ phoneNumber, password }, ctx);
+    await expect(s.auth.login({ phoneNumber }, ctx)).rejects.toMatchObject({
+      response: { code: 'AUTH_CHANNEL_CHANGED' },
+    });
+    capture.channel.mockResolvedValue('whatsapp');
+    const login = await s.auth.login({ phoneNumber }, ctx);
     expect(login.channel).toBe('whatsapp');
     await s.auth.verifyOtp(login.challengeId, capture.code(), ctx);
     expect(await prisma.session.count({ where: { userId: f.user.id, revokedAt: null } })).toBe(2);
@@ -733,7 +737,7 @@ suite('R04 account lifecycle invariants (real Postgres)', () => {
     const phoneNumber = uniquePhone();
     const f = await registerPhone(phoneNumber);
     await s.auth.verifyOtp(f.challenge.challengeId, capture.code(), ctx);
-    const staleLogin = await s.auth.login({ phoneNumber, password }, ctx);
+    const staleLogin = await s.auth.login({ phoneNumber }, ctx);
     const staleCode = capture.code();
     const recovery = await s.auth.forgotPasswordOtp(phoneNumber, ctx);
     const recoveryCode = capture.code();
@@ -765,10 +769,16 @@ suite('R04 account lifecycle invariants (real Postgres)', () => {
     await expect(
       s.auth.resetPasswordOtp(recovery.challengeId, recoveryCode, password, ctx),
     ).rejects.toBeDefined();
-    await expect(s.auth.login({ phoneNumber, password }, ctx)).rejects.toBeDefined();
-    await expect(s.auth.login({ phoneNumber, password: replacement }, ctx)).resolves.toHaveProperty(
-      'challengeId',
-    );
+    // Password reset still changes the password used by contact enrollment,
+    // while a WhatsApp sign-in proves possession through its new OTP alone.
+    const updated = await prisma.user.findUniqueOrThrow({ where: { id: f.user.id } });
+    await expect(s.passwords.verify(updated.passwordHash, password)).resolves.toBe(false);
+    await expect(s.passwords.verify(updated.passwordHash, replacement)).resolves.toBe(true);
+    const nextLogin = await s.auth.login({ phoneNumber }, ctx);
+    expect(await prisma.session.count({ where: { userId: f.user.id, revokedAt: null } })).toBe(0);
+    await expect(
+      s.auth.verifyOtp(nextLogin.challengeId, capture.code(), ctx),
+    ).resolves.toHaveProperty('issued.session.id');
   });
 
   it('enrolls a verified phone on an existing email account only after password and phone proof', async () => {
@@ -791,7 +801,7 @@ suite('R04 account lifecycle invariants (real Postgres)', () => {
     expect(linked).toMatchObject({ email: existing.address, phoneNumber, status: 'ACTIVE' });
     expect(linked.phoneVerifiedAt).toBeInstanceOf(Date);
     expect(linked.emailVerifiedAt).toBeInstanceOf(Date);
-    const challenge = await s.auth.login({ phoneNumber, password }, ctx);
+    const challenge = await s.auth.login({ phoneNumber }, ctx);
     await expect(
       s.auth.verifyOtp(challenge.challengeId, capture.code(), ctx),
     ).resolves.toHaveProperty('issued.session.id');
@@ -903,7 +913,10 @@ suite('R04 account lifecycle invariants (real Postgres)', () => {
     expect(updated.emailVerifiedAt).toBeInstanceOf(Date);
     expect(updated.phoneVerifiedAt).toBeInstanceOf(Date);
     capture.channel.mockResolvedValue('email');
-    const login = await s.auth.login({ phoneNumber: updated.phoneNumber, password }, ctx);
+    await expect(s.auth.login({ phoneNumber: updated.phoneNumber! }, ctx)).rejects.toMatchObject({
+      response: { code: 'AUTH_CHANNEL_CHANGED' },
+    });
+    const login = await s.auth.login({ email: destination, password }, ctx);
     expect(login.channel).toBe('email');
     expect(capture.captured.at(-1)).toMatchObject({
       channel: 'email',

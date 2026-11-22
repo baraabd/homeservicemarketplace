@@ -38,12 +38,14 @@ function renderLogin(experience: 'seeker' | 'provider' | 'admin', channel: OtpCh
     channel,
   };
   const onLogin = vi
-    .fn<(email: string, password: string) => Promise<LoginOtpChallenge>>()
+    .fn<(identity: string, password: string | undefined) => Promise<LoginOtpChallenge>>()
     .mockResolvedValue(challenge);
   const onOtpVerify = vi
     .fn<(challengeId: string, code: string) => Promise<void>>()
     .mockResolvedValue(undefined);
-  const onOtpResend = vi.fn<(challengeId: string) => Promise<void>>().mockResolvedValue(undefined);
+  const onOtpResend = vi
+    .fn<(challengeId: string) => Promise<{ success: true; expiresInSeconds: number }>>()
+    .mockResolvedValue({ success: true, expiresInSeconds: 300 });
   router = createMemoryRouter(
     [
       {
@@ -83,9 +85,11 @@ function enterCredentials(identity: string, password: string, channel: OtpChanne
       target: { value: identity },
     },
   );
-  fireEvent.change(screen.getByLabelText('Password', { exact: true }), {
-    target: { value: password },
-  });
+  if (channel === 'email') {
+    fireEvent.change(screen.getByLabelText('Password', { exact: true }), {
+      target: { value: password },
+    });
+  }
 }
 
 async function toggleLanguage() {
@@ -119,15 +123,26 @@ describe.each(['seeker', 'provider', 'admin'] as const)(
             { exact: true },
           ),
         ).toHaveValue(identity);
-        expect(screen.getByLabelText('كلمة المرور', { exact: true })).toHaveValue(password);
+        if (channel === 'email')
+          expect(screen.getByLabelText('كلمة المرور', { exact: true })).toHaveValue(password);
+        else expect(screen.queryByLabelText('كلمة المرور', { exact: true })).toBeNull();
         expect(onLogin).not.toHaveBeenCalled();
 
         // The language animation is settled; lazy loading and findBy need the real clock.
         vi.useRealTimers();
         await act(async () => {
-          fireEvent.click(screen.getByRole('button', { name: 'دخول', exact: true }));
+          fireEvent.click(
+            screen.getByRole('button', {
+              name: channel === 'whatsapp' ? 'إرسال رمز التحقق' : 'دخول',
+              exact: true,
+            }),
+          );
         });
-        expect(onLogin).toHaveBeenCalledExactlyOnceWith(identity, password, channel);
+        expect(onLogin).toHaveBeenCalledExactlyOnceWith(
+          identity,
+          channel === 'email' ? password : undefined,
+          channel,
+        );
         expect(await screen.findByTestId('otp-input')).toBeInTheDocument();
         expect(onOtpVerify).not.toHaveBeenCalled();
       },
@@ -143,7 +158,12 @@ describe.each(['seeker', 'provider', 'admin'] as const)(
           channel,
         );
         await act(async () => {
-          fireEvent.click(screen.getByRole('button', { name: 'Log In', exact: true }));
+          fireEvent.click(
+            screen.getByRole('button', {
+              name: channel === 'whatsapp' ? 'Send verification code' : 'Log In',
+              exact: true,
+            }),
+          );
         });
         fireEvent.change(screen.getByTestId('otp-input'), { target: { value: '123' } });
 
@@ -155,6 +175,7 @@ describe.each(['seeker', 'provider', 'admin'] as const)(
           }),
         ).toBeVisible();
         expect(screen.getByTestId('otp-input')).toHaveValue('123');
+        expect(screen.getByTestId('otp-countdown')).toHaveTextContent('05:00');
         expect(screen.queryByLabelText('كلمة المرور', { exact: true })).toBeNull();
         expect(screen.getByRole('button', { name: 'تأكيد', exact: true })).toBeDisabled();
 
@@ -168,6 +189,7 @@ describe.each(['seeker', 'provider', 'admin'] as const)(
           }),
         ).toBeVisible();
         expect(screen.getByTestId('otp-input')).toHaveValue('123');
+        expect(screen.getByTestId('otp-countdown')).toHaveTextContent('05:00');
         expect(onLogin).toHaveBeenCalledTimes(1);
         expect(onOtpVerify).not.toHaveBeenCalled();
         expect(onOtpResend).not.toHaveBeenCalled();

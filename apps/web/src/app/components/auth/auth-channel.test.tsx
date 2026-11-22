@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import MockAdapter from 'axios-mock-adapter';
 import { MemoryRouter, Route, Routes } from 'react-router';
 import { CURRENT_LEGAL_DOCUMENTS } from '@homeservicemarketplace/contracts';
@@ -155,7 +155,7 @@ describe('server-selected authentication channel', () => {
     expect(document.documentElement).toHaveAttribute('dir', 'rtl');
     expect(document.querySelector('input[type="tel"]')).not.toBeNull();
     expect(document.querySelector('input[type="email"]')).toBeNull();
-    expect(screen.getByRole('button', { name: 'دخول', exact: true })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'إرسال رمز التحقق', exact: true })).toBeDisabled();
     expect(mock.history.get.filter((item) => item.url === '/v1/auth/config')).toHaveLength(2);
     expect(mock.history.post).toHaveLength(0);
   });
@@ -205,51 +205,69 @@ describe('server-selected authentication channel', () => {
   });
 
   for (const app of ['seeker', 'provider', 'admin'] as const)
-    it(`uses WhatsApp identity and keeps ${app} branding`, async () => {
+    it.each(['en', 'ar'] as const)(`uses only phone and OTP for ${app} in %s`, async (lang) => {
+      localStorage.setItem('hsm.lang', lang);
       mock.onGet('/v1/auth/config').reply(200, { otpChannel: 'whatsapp', whatsappAvailable: true });
       mock.onPost('/v1/auth/login').reply(202, challenge);
       open('/login', app);
       await screen.findByTestId(`auth-hero-${app}`);
+      expect(document.querySelector('input[type="password"]')).toBeNull();
+      expect(document.querySelector('input[type="email"]')).toBeNull();
+      expect(
+        screen.queryByRole('button', {
+          name: /forgot password|نسيت كلمة المرور|I have an email|لدي حساب بالبريد/i,
+        }),
+      ).toBeNull();
       setInput('input[type="tel"]', '+966501234567');
-      setInput('input[type="password"]', 'Long-test-password-17');
-      fireEvent.click(screen.getByRole('button', { name: 'Log In' }));
-      await screen.findByText('Check WhatsApp');
+      fireEvent.click(
+        screen.getByRole('button', {
+          name: lang === 'ar' ? 'إرسال رمز التحقق' : 'Send verification code',
+        }),
+      );
+      await screen.findByText(lang === 'ar' ? 'تحقق من واتساب' : 'Check WhatsApp');
       expect(JSON.parse(mock.history.post.find((r) => r.url === '/v1/auth/login')!.data)).toEqual({
         phoneNumber: '+966501234567',
-        password: 'Long-test-password-17',
       });
       expect(screen.queryByText('Verify your email')).toBeNull();
       expect(screen.getByText('+966 •••• 4567')).toBeVisible();
+      expect(screen.getByTestId('otp-countdown')).toHaveTextContent('05:00');
     });
 
-  it('keeps existing email login reachable during a WhatsApp provider outage', async () => {
+  it('keeps WhatsApp as the only method during a provider outage', async () => {
     mock.onGet('/v1/auth/config').reply(200, { otpChannel: 'whatsapp', whatsappAvailable: false });
     open('/login');
     await screen.findByText(
-      'WhatsApp verification is temporarily unavailable. Use an existing email account or try again later.',
+      'WhatsApp verification is temporarily unavailable. Please try again later.',
     );
-    expect(screen.getByRole('button', { name: 'Log In' })).toBeDisabled();
-    fireEvent.click(screen.getByRole('button', { name: 'I have an email account' }));
-    expect(document.querySelector('input[type="email"]')).not.toBeNull();
-    expect(screen.getByRole('button', { name: 'Log In' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Send verification code' })).toBeDisabled();
+    expect(screen.queryByRole('button', { name: 'I have an email account' })).toBeNull();
+    expect(document.querySelector('input[type="email"]')).toBeNull();
+    expect(document.querySelector('input[type="password"]')).toBeNull();
+    expect(mock.history.post).toHaveLength(0);
   });
 
-  it('retains an email login path and follows the challenge delivery channel', async () => {
-    mock.onGet('/v1/auth/config').reply(200, { otpChannel: 'whatsapp', whatsappAvailable: true });
-    mock
-      .onPost('/v1/auth/login')
-      .reply(202, { ...challenge, channel: 'email', maskedDestination: 'a•••@example.test' });
-    open('/login');
-    fireEvent.click(await screen.findByRole('button', { name: 'I have an email account' }));
-    setInput('input[type="email"]', 'a@example.test');
-    setInput('input[type="password"]', 'Long-test-password-17');
-    fireEvent.click(screen.getByRole('button', { name: 'Log In' }));
-    await screen.findByText('Verify your email');
-    expect(JSON.parse(mock.history.post.find((r) => r.url === '/v1/auth/login')!.data)).toEqual({
-      email: 'a@example.test',
-      password: 'Long-test-password-17',
-    });
-  });
+  it.each(['seeker', 'provider', 'admin'] as const)(
+    'uses email and password only for %s under email policy',
+    async (app) => {
+      mock.onGet('/v1/auth/config').reply(200, { otpChannel: 'email', whatsappAvailable: true });
+      mock
+        .onPost('/v1/auth/login')
+        .reply(202, { ...challenge, channel: 'email', maskedDestination: 'a•••@example.test' });
+      open('/login', app);
+      await screen.findByTestId('auth-channel-email');
+      expect(screen.getByTestId(`auth-hero-${app}`)).toBeVisible();
+      expect(document.querySelector('input[type="tel"]')).toBeNull();
+      expect(screen.queryByRole('button', { name: /WhatsApp account/i })).toBeNull();
+      setInput('input[type="email"]', 'a@example.test');
+      setInput('input[type="password"]', 'Long-test-password-17');
+      fireEvent.click(screen.getByRole('button', { name: 'Log In' }));
+      await screen.findByText('Verify your email');
+      expect(JSON.parse(mock.history.post.find((r) => r.url === '/v1/auth/login')!.data)).toEqual({
+        email: 'a@example.test',
+        password: 'Long-test-password-17',
+      });
+    },
+  );
 
   it.each(['seeker', 'provider', 'admin'] as const)(
     'registers in the %s experience without requiring email or accepting a role from the UI',
@@ -306,24 +324,69 @@ describe('server-selected authentication channel', () => {
     },
   );
 
-  it('resets a WhatsApp-only account with a code and a new password', async () => {
+  it('returns a WhatsApp password-recovery visit to phone-only sign-in', async () => {
     mock.onGet('/v1/auth/config').reply(200, { otpChannel: 'whatsapp', whatsappAvailable: true });
-    mock.onPost('/v1/auth/forgot-password-otp').reply(202, challenge);
-    mock.onPost('/v1/auth/reset-password-otp').reply(200, { success: true });
-    open('/forgot-password');
+    open('/forgot-password', 'provider');
+    await screen.findByTestId('auth-channel-whatsapp');
+    expect(screen.getByTestId('auth-hero-provider')).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Send verification code' })).toBeEnabled();
+    expect(document.querySelector('input[type="password"]')).toBeNull();
+    expect(document.querySelector('input[type="email"]')).toBeNull();
+    expect(mock.history.post).toHaveLength(0);
+  });
+
+  it('refreshes a changed policy after a rejected new login request', async () => {
+    mock
+      .onGet('/v1/auth/config')
+      .replyOnce(200, { otpChannel: 'whatsapp', whatsappAvailable: true });
+    mock.onGet('/v1/auth/config').reply(200, { otpChannel: 'email', whatsappAvailable: true });
+    mock.onPost('/v1/auth/login').reply(409, { error: { code: 'AUTH_CHANNEL_CHANGED' } });
+    open('/login');
     await screen.findByTestId('auth-channel-whatsapp');
     setInput('input[type="tel"]', '+966501234567');
-    fireEvent.click(screen.getByRole('button', { name: 'Send recovery code' }));
-    await screen.findByText('Check WhatsApp');
-    const passwords = document.querySelectorAll('input[type="password"]');
-    passwords.forEach((input) =>
-      fireEvent.change(input, { target: { value: 'New-long-password-27' } }),
-    );
-    setInput('[data-testid="otp-input"]', '123456');
-    fireEvent.click(screen.getByRole('button', { name: 'Confirm' }));
-    await screen.findByText('Password updated');
+    fireEvent.click(screen.getByRole('button', { name: 'Send verification code' }));
+    await screen.findByTestId('auth-channel-email');
+    expect(document.querySelector('input[type="tel"]')).toBeNull();
+    expect(document.querySelector('input[type="password"]')).not.toBeNull();
     expect(
-      JSON.parse(mock.history.post.find((r) => r.url === '/v1/auth/reset-password-otp')!.data),
-    ).toEqual({ challengeId: 'abc123', code: '123456', newPassword: 'New-long-password-27' });
+      screen.getByText(
+        'The selected sign-in method has changed. Continue with the method now shown.',
+      ),
+    ).toBeVisible();
+    expect(mock.history.post).toHaveLength(1);
+  });
+
+  it('keeps an issued WhatsApp challenge and partial code during an admin policy change', async () => {
+    const client = createAuthQueryClient();
+    mock
+      .onGet('/v1/auth/config')
+      .replyOnce(200, { otpChannel: 'whatsapp', whatsappAvailable: true });
+    mock.onGet('/v1/auth/config').reply(200, { otpChannel: 'email', whatsappAvailable: true });
+    mock.onPost('/v1/auth/login').reply(202, challenge);
+    mock.onPost('/v1/auth/verify-otp').reply(400, { error: { code: 'AUTH_OTP_INVALID' } });
+    open('/login', 'admin', client);
+    await screen.findByTestId('auth-channel-whatsapp');
+    setInput('input[type="tel"]', '+966501234567');
+    fireEvent.click(screen.getByRole('button', { name: 'Send verification code' }));
+    const codeInput = await screen.findByTestId('otp-input');
+    fireEvent.change(codeInput, { target: { value: '123' } });
+    await act(async () => {
+      await client.refetchQueries({ queryKey: AUTH_CONFIG_QUERY_KEY });
+    });
+    expect(screen.getByText('Check WhatsApp')).toBeVisible();
+    expect(screen.getByTestId('otp-input')).toBe(codeInput);
+    expect(codeInput).toHaveValue('123');
+    expect(document.querySelector('input[type="email"]')).toBeNull();
+    fireEvent.change(codeInput, { target: { value: '123456' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm' }));
+    await waitFor(() =>
+      expect(
+        mock.history.post.filter((request) => request.url === '/v1/auth/verify-otp'),
+      ).toHaveLength(1),
+    );
+    expect(
+      JSON.parse(mock.history.post.find((request) => request.url === '/v1/auth/verify-otp')!.data),
+    ).toEqual({ challengeId: challenge.challengeId, code: '123456' });
+    expect(mock.history.post.filter((request) => request.url === '/v1/auth/login')).toHaveLength(1);
   });
 });

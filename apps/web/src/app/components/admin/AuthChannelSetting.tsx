@@ -38,8 +38,8 @@ export function AuthChannelSetting({
   const [hadWhatsAppReadiness, setHadWhatsAppReadiness] = useState(false);
   if (canRequestWhatsApp && !hadWhatsAppReadiness) setHadWhatsAppReadiness(true);
   const explain = ar
-    ? 'تحدد القناة المحفوظة طريقة الدخول الافتراضية في تطبيقات العميل والمهني والأدمن، وطريقة إنشاء حسابات العملاء والمهنيين. الحسابات السابقة تحتفظ بطريقة دخول متاحة لها.'
-    : 'The saved channel sets the default sign-in method for Customer, Professional and Admin, and sign-up for customer and professional accounts. Existing accounts keep an available sign-in method.';
+    ? 'تحدد القناة المحفوظة طريقة الدخول الوحيدة في تطبيقات العميل والمهني والأدمن، وطريقة إنشاء حسابات العملاء والمهنيين. تأكد من أن المستخدمين لديهم وسيلة اتصال موثقة للقناة المختارة قبل التبديل. رموز التحقق المطلوبة قبل التبديل تظل صالحة حتى انتهاء مدتها.'
+    : 'The saved channel is the only sign-in method for Customer, Professional and Admin, and sets sign-up for customer and professional accounts. Before switching, make sure users have a verified contact for the selected channel. Codes requested before a switch remain valid until they expire.';
   return (
     <section
       className="rounded-3xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-900 sm:p-6"
@@ -59,8 +59,8 @@ export function AuthChannelSetting({
           <p className="mt-2 text-sm leading-6 text-slate-600 dark:text-slate-300">{explain}</p>
           <p className="mt-2 text-sm leading-6 text-slate-600 dark:text-slate-300">
             {ar
-              ? 'واتساب هو الخيار الافتراضي. يمكنك حفظ البريد الإلكتروني بدلًا منه، وسيبقى اختيارك مطبقًا حتى تغيّره.'
-              : 'WhatsApp is the default. Save Email instead to keep it as the default until you change it.'}
+              ? 'واتساب هو الخيار الأولي. يمكنك اختيار البريد الإلكتروني وحفظه؛ وسيُعرض للمستخدمين الخيار المحفوظ فقط حتى تغيّره.'
+              : 'WhatsApp is the initial choice. Save Email to use it instead; users see only the saved method until you change it.'}
           </p>
         </div>
       </div>
@@ -128,8 +128,8 @@ export function AuthChannelSetting({
                   <br />
                   {whatsapp
                     ? ar
-                      ? 'رقم الهاتف ← كلمة المرور ← رمز واتساب'
-                      : 'Phone → Password → WhatsApp code'
+                      ? 'رقم الهاتف ← رمز واتساب ← تسجيل الدخول'
+                      : 'Phone → WhatsApp code → Sign in'
                     : ar
                       ? 'البريد ← كلمة المرور ← رمز البريد'
                       : 'Email → Password → Email code'}

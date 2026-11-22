@@ -63,13 +63,10 @@ async function run(data) {
       page.setDefaultTimeout(30000);
       pages[role] = page;
       await page.goto(`${data.web}/login`);
-      // These precreated accounts have verified email identities. Exercise
-      // their real recovery path while retaining the platform's WhatsApp default.
-      await expect(page.getByTestId('auth-channel-whatsapp')).toBeVisible({ timeout: 30000 });
-      await page
-        .getByRole('button', { name: /^(I have an email account|لدي حساب بريد إلكتروني)$/u })
-        .click();
-      await expect(page.getByTestId('auth-channel-email')).toBeVisible();
+      // Email is explicitly selected by the real-API fixture. The alternate
+      // method is absent, as it is on the production sign-in surface.
+      await expect(page.getByTestId('auth-channel-email')).toBeVisible({ timeout: 30000 });
+      await expect(page.getByTestId('auth-channel-whatsapp')).toHaveCount(0);
       await page.locator('input[type=email]').fill(data.credentials[role].email);
       await page.locator('input[type=password]').fill(data.credentials[role].password);
       const response = page.waitForResponse(

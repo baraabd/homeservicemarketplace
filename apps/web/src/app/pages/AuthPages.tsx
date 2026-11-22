@@ -1,5 +1,6 @@
 import { lazy, useCallback, useMemo, useRef, useState } from 'react';
-import { useLocation, useNavigate, useSearchParams } from 'react-router';
+import { Navigate, useLocation, useNavigate, useSearchParams } from 'react-router';
+import { useQueryClient } from '@tanstack/react-query';
 import { CheckCircle2, Eye, EyeOff, Lock, Mail, RefreshCcw } from 'lucide-react';
 import { useAuth } from '../../lib/auth-provider';
 import * as authApi from '../../lib/auth-api';
@@ -12,6 +13,7 @@ import { LoginScreen } from '../components/auth/AuthScreens';
 import { Button } from '../components/ds/Button';
 import { TextField } from '../components/ds/TextField';
 import { AuthConfigurationGate } from '../components/auth/AuthConfigurationGate';
+import { AUTH_CONFIG_QUERY_KEY } from '../../lib/auth-policy-query';
 import { AsyncBoundary } from '../AsyncBoundary';
 
 // Login does not fetch sign-up policy orchestration or recovery-only forms.
@@ -25,11 +27,6 @@ const ForgotPasswordScreen = lazy(() =>
 );
 const SignUpScreen = lazy(() =>
   import('../components/auth/SignUpScreen').then((module) => ({ default: module.SignUpScreen })),
-);
-const WhatsAppPasswordRecovery = lazy(() =>
-  import('../components/auth/WhatsAppPasswordRecovery').then((module) => ({
-    default: module.WhatsAppPasswordRecovery,
-  })),
 );
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -46,6 +43,7 @@ const WhatsAppPasswordRecovery = lazy(() =>
 // ─────────────────────────────────────────────────────────────────────────────
 export function LoginPage() {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const location = useLocation();
   const [searchParams] = useSearchParams();
   const { login, user } = useAuth();
@@ -82,10 +80,11 @@ export function LoginPage() {
           whatsappAvailable={whatsappAvailable}
           experience={experience}
           onLogin={async (identity, password, selectedChannel) => {
-            return login({
-              ...(selectedChannel === 'whatsapp' ? { phoneNumber: identity } : { email: identity }),
-              password,
-            });
+            return login(
+              selectedChannel === 'whatsapp'
+                ? { phoneNumber: identity }
+                : { email: identity, password },
+            );
           }}
           onOtpVerify={async (challengeId: string, code: string) => {
             await verifyOtp(challengeId, code);
@@ -110,9 +109,10 @@ export function LoginPage() {
             });
             navigate(dest, { replace: true });
           }}
-          onOtpResend={async (challengeId: string) => {
-            await resendOtp(challengeId);
-          }}
+          onOtpResend={resendOtp}
+          onChannelChanged={() =>
+            queryClient.invalidateQueries({ queryKey: AUTH_CONFIG_QUERY_KEY })
+          }
           onRecoverVerification={(email) =>
             navigate('/check-email', { state: { app: experience.id, returnTo, email } })
           }
@@ -200,9 +200,7 @@ export function SignUpPage() {
               });
               navigate(dest, { replace: true });
             }}
-            onOtpResend={async (challengeId: string) => {
-              await resendOtp(challengeId);
-            }}
+            onOtpResend={resendOtp}
           />
         </AsyncBoundary>
       )}
@@ -225,23 +223,14 @@ export function ForgotPasswordPage() {
   } | null;
   const returnTo = sanitizeAuthReturnTo(state?.returnTo);
   const experience = resolveAuthExperience({ explicit: state?.app, returnTo });
-  const [recoveryChannel, setRecoveryChannel] = useState<'email' | 'whatsapp' | null>(null);
   return (
     <AuthConfigurationGate experience={experience}>
-      {(channel, whatsappAvailable) =>
-        (recoveryChannel ?? channel) === 'whatsapp' ? (
-          <AsyncBoundary>
-            <WhatsAppPasswordRecovery
-              available={whatsappAvailable}
-              experience={experience}
-              onBack={() => navigate('/login', { state: { app: experience.id, returnTo } })}
-              onUseEmail={() => setRecoveryChannel('email')}
-            />
-          </AsyncBoundary>
+      {(channel) =>
+        channel === 'whatsapp' ? (
+          <Navigate to="/login" replace state={{ app: experience.id, returnTo }} />
         ) : (
           <AsyncBoundary>
             <ForgotPasswordScreen
-              onUseWhatsApp={whatsappAvailable ? () => setRecoveryChannel('whatsapp') : undefined}
               experience={experience}
               onBack={() => navigate('/login', { state: { app: experience.id, returnTo } })}
               onSubmit={async (email) => {

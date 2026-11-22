@@ -713,10 +713,12 @@ describe.each(['en', 'ar'] as const)('OTP challenge recovery (%s)', (lang) => {
       const alert = await screen.findByRole('alert');
       expect(alert).toHaveTextContent(lang === 'ar' ? 'خيار الاستعادة' : 'recovery option');
       expect(alert).not.toHaveTextContent('private-server-detail');
-      expect(screen.getByRole('button', { name: resendLabel })).toBeDisabled();
+      const retryResend = screen.queryByRole('button', { name: resendLabel });
+      if (code === 'AUTH_OTP_EXPIRED') expect(retryResend).toBeNull();
+      else expect(retryResend).toBeDisabled();
       expect(screen.getByRole('button', { name: confirmLabel })).toBeDisabled();
       expect(screen.getByTestId('otp-input')).toBeDisabled();
-      fireEvent.click(screen.getByRole('button', { name: resendLabel }));
+      if (retryResend) fireEvent.click(retryResend);
       expect(
         mock.history.post.filter((request) => request.url === '/v1/auth/resend-otp'),
       ).toHaveLength(1);
@@ -739,7 +741,7 @@ describe.each(['en', 'ar'] as const)('OTP challenge recovery (%s)', (lang) => {
     expect(await screen.findByRole('alert')).toHaveTextContent(
       lang === 'ar' ? 'خيار الاستعادة' : 'recovery option',
     );
-    expect(screen.getByRole('button', { name: resendLabel })).toBeDisabled();
+    expect(screen.queryByRole('button', { name: resendLabel })).toBeNull();
     fireEvent.click(
       screen.getByRole('button', {
         name: lang === 'ar' ? 'طلب رابط تحقق بدلاً من الرمز' : 'Use a verification link instead',
@@ -791,7 +793,9 @@ describe.each(['en', 'ar'] as const)('OTP challenge recovery (%s)', (lang) => {
         lang === 'ar' ? 'خيار الاستعادة' : 'recovery option',
       );
       expect(screen.getByRole('button', { name: confirmLabel })).toBeDisabled();
-      expect(screen.getByRole('button', { name: resendLabel })).toBeDisabled();
+      if (code === 'AUTH_OTP_EXPIRED')
+        expect(screen.queryByRole('button', { name: resendLabel })).toBeNull();
+      else expect(screen.getByRole('button', { name: resendLabel })).toBeDisabled();
       fireEvent.keyDown(screen.getByTestId('otp-input'), { key: 'Enter' });
       expect(
         mock.history.post.filter((request) => request.url === '/v1/auth/verify-otp'),
@@ -800,7 +804,7 @@ describe.each(['en', 'ar'] as const)('OTP challenge recovery (%s)', (lang) => {
     },
   );
 
-  it('keeps localized recovery and entered digits on a language switch, then resets for a new challenge', async () => {
+  it('keeps localized recovery and clears expired digits on a language switch, then resets for a new challenge', async () => {
     mock.onPost('/v1/auth/resend-otp').reply(400, { error: { code: 'AUTH_OTP_EXPIRED' } });
     await openOtp();
     fireEvent.change(screen.getByTestId('otp-input'), { target: { value: '123456' } });
@@ -810,7 +814,7 @@ describe.each(['en', 'ar'] as const)('OTP challenge recovery (%s)', (lang) => {
     expect(screen.getByRole('alert')).toHaveTextContent(
       lang === 'en' ? 'خيار الاستعادة' : 'recovery option',
     );
-    expect(screen.getByTestId('otp-input')).toHaveValue('123456');
+    expect(screen.getByTestId('otp-input')).toHaveValue('');
     expect(screen.getByTestId('otp-input')).toBeDisabled();
     fireEvent.click(
       screen.getByRole('button', {

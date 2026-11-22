@@ -6,6 +6,7 @@ import { Button } from '../ds/Button';
 import { TextField } from '../ds/TextField';
 import { useLang, LangToggle } from '../../i18n/LanguageContext';
 import type { OtpChannel } from '../../../lib/auth-channel';
+import type { OtpResendResponse } from '../../../lib/auth-api';
 import { PhoneIdentityField } from './PhoneIdentityField';
 import { toE164Phone, isValidPhoneIdentity } from '../../../lib/phone-identity';
 import { AuthChannelNotice } from './AuthChannelNotice';
@@ -26,7 +27,8 @@ import {
 } from '../../../lib/auth-experience';
 
 // ─────────────────────────────────────────────────────────────────────────────
-// LOGIN SCREEN — credentials (step 1) + OTP (step 2)
+// LOGIN SCREEN — server-selected identity (step 1) + OTP (step 2).
+// WhatsApp uses phone possession; email retains its password challenge.
 //
 // onLogin returns the OTP challenge issued by the backend. When the login
 // response resolves, this screen transitions to the OTP panel in the same
@@ -37,9 +39,14 @@ import {
 interface LoginProps {
   whatsappAvailable?: boolean;
   channel?: OtpChannel;
-  onLogin: (identity: string, password: string, channel?: OtpChannel) => Promise<LoginOtpChallenge>;
+  onLogin: (
+    identity: string,
+    password: string | undefined,
+    channel?: OtpChannel,
+  ) => Promise<LoginOtpChallenge>;
   onOtpVerify: (challengeId: string, code: string) => Promise<void>;
-  onOtpResend: (challengeId: string) => Promise<void>;
+  onOtpResend: (challengeId: string) => Promise<OtpResendResponse>;
+  onChannelChanged?: () => Promise<void>;
   onSignUp: () => void;
   onForgotPassword: () => void;
   onRecoverVerification?: (email: string) => void;
@@ -56,6 +63,7 @@ export function LoginScreen({
   onLogin,
   onOtpVerify,
   onOtpResend,
+  onChannelChanged,
   onSignUp,
   onForgotPassword,
   onRecoverVerification,
@@ -67,8 +75,7 @@ export function LoginScreen({
   const [email, setEmail] = useState('');
   const [countryCode, setCountryCode] = useState('');
   const [localNumber, setLocalNumber] = useState('');
-  const [identityOverride, setIdentityOverride] = useState<OtpChannel | null>(null);
-  const selectedChannel = identityOverride ?? channel;
+  const selectedChannel = channel;
   const identity =
     selectedChannel === 'whatsapp' ? toE164Phone(countryCode, localNumber) : email.trim();
   const [password, setPassword] = useState('');
@@ -79,31 +86,54 @@ export function LoginScreen({
     code: string | null;
   }>();
   const [challenge, setChallenge] = useState<LoginOtpChallenge | null>(null);
+  const [challengeIdentity, setChallengeIdentity] = useState('');
+  const [expiresAt, setExpiresAt] = useState<number | undefined>();
+  const [codeRevision, setCodeRevision] = useState(0);
   const [isVerifying, setIsVerifying] = useState(false);
   const [isResending, setIsResending] = useState(false);
   const [otpError, setOtpError] = useState<Record<'en' | 'ar', string> | undefined>();
   const [otpRecovery, setOtpRecovery] = useState<OtpRecoveryAction>(null);
-  const [resendNotice, setResendNotice] = useState<string | undefined>();
+  const [resendNotice, setResendNotice] = useState<Record<'en' | 'ar', string> | undefined>();
+  const [resendCount, setResendCount] = useState(0);
   const requestFlight = useRef(false);
   const credentialsRevision = useRef(0);
+
+  const acceptChallenge = (
+    issued: LoginOtpChallenge,
+    recipient: string,
+    issuedChannel: OtpChannel,
+  ) => {
+    if (!Number.isFinite(issued.expiresInSeconds) || issued.expiresInSeconds <= 0)
+      throw new Error('The verification request could not be confirmed.');
+    // Preserve the issued channel and recipient if the administrator changes
+    // policy while this challenge is still live. New requests use fresh policy.
+    setChallenge({ ...issued, channel: issued.channel ?? issuedChannel });
+    setChallengeIdentity(recipient);
+    setExpiresAt(Date.now() + issued.expiresInSeconds * 1000);
+    setCodeRevision((current) => current + 1);
+    setResendCount(0);
+    setOtpRecovery(null);
+    setOtpError(undefined);
+    setResendNotice(undefined);
+  };
 
   const handleLogin = async () => {
     if (requestFlight.current || (selectedChannel === 'whatsapp' && !whatsappAvailable)) return;
     setLoginError(undefined);
     if (
       !identity ||
-      !password ||
+      (selectedChannel === 'email' && !password) ||
       (selectedChannel === 'whatsapp' && !isValidPhoneIdentity(countryCode, localNumber))
     ) {
       setLoginError({
         messages: {
           en:
             selectedChannel === 'whatsapp'
-              ? 'Enter a valid WhatsApp number and password.'
+              ? 'Enter a valid WhatsApp number.'
               : 'Email Address / Password',
           ar:
             selectedChannel === 'whatsapp'
-              ? 'أدخل رقم واتساب صحيحًا وكلمة المرور.'
+              ? 'أدخل رقم واتساب صحيحًا.'
               : 'البريد الإلكتروني / كلمة المرور',
         },
         code: null,
@@ -114,14 +144,15 @@ export function LoginScreen({
     const revision = credentialsRevision.current;
     setIsLoading(true);
     try {
-      const out = await onLogin(identity, password, selectedChannel);
+      const out = await onLogin(
+        identity,
+        selectedChannel === 'email' ? password : undefined,
+        selectedChannel,
+      );
       // Inputs remain editable during the request. A reply for an earlier
       // draft must not offer recovery or an OTP challenge for the new draft.
       if (revision !== credentialsRevision.current) return;
-      setChallenge(out);
-      setOtpRecovery(null);
-      setOtpError(undefined);
-      setResendNotice(undefined);
+      acceptChallenge(out, identity, selectedChannel);
     } catch (err: unknown) {
       if (revision !== credentialsRevision.current) return;
       // Map the backend's stable error CODE to user copy here — never
@@ -134,6 +165,7 @@ export function LoginScreen({
         },
         code: extractAuthError(err).code,
       });
+      if (extractAuthError(err).code === 'AUTH_CHANNEL_CHANGED') await onChannelChanged?.();
     } finally {
       requestFlight.current = false;
       setIsLoading(false);
@@ -141,7 +173,13 @@ export function LoginScreen({
   };
 
   const handleOtpVerify = async (code: string) => {
-    if (!challenge || requestFlight.current || otpRecovery === 'restart') return;
+    if (
+      !challenge ||
+      requestFlight.current ||
+      otpRecovery === 'restart' ||
+      (expiresAt !== undefined && Date.now() >= expiresAt)
+    )
+      return;
     requestFlight.current = true;
     setIsVerifying(true);
     setOtpError(undefined);
@@ -156,6 +194,7 @@ export function LoginScreen({
       });
       const recovery = otpRecoveryAction(err, 'verify');
       if (recovery) setOtpRecovery(recovery);
+      if (extractAuthError(err).code === 'AUTH_OTP_EXPIRED') setExpiresAt(Date.now());
     } finally {
       requestFlight.current = false;
       setIsVerifying(false);
@@ -163,18 +202,27 @@ export function LoginScreen({
   };
 
   const handleOtpResend = async () => {
-    if (!challenge || requestFlight.current || otpRecovery !== null) return;
+    if (
+      !challenge ||
+      requestFlight.current ||
+      otpRecovery !== null ||
+      (challenge.channel === 'whatsapp' && resendCount >= 3) ||
+      (expiresAt !== undefined && Date.now() >= expiresAt)
+    )
+      return;
     requestFlight.current = true;
     setIsResending(true);
     setResendNotice(undefined);
     setOtpError(undefined);
     try {
-      await onOtpResend(challenge.challengeId);
-      setResendNotice(
-        lang === 'ar'
-          ? 'تم استلام الطلب. استخدم أحدث رمز يصلك.'
-          : 'Request received. Use the most recent code you receive.',
-      );
+      const renewed = await onOtpResend(challenge.challengeId);
+      setExpiresAt(Date.now() + renewed.expiresInSeconds * 1000);
+      setCodeRevision((current) => current + 1);
+      setResendCount((current) => current + 1);
+      setResendNotice({
+        ar: 'تم استلام الطلب. استخدم أحدث رمز يصلك.',
+        en: 'Request received. Use the most recent code you receive.',
+      });
     } catch (err: unknown) {
       setOtpError({
         en: otpErrorMessage(err, 'resend', 'en'),
@@ -182,6 +230,49 @@ export function LoginScreen({
       });
       const recovery = otpRecoveryAction(err, 'resend');
       if (recovery) setOtpRecovery(recovery);
+      if (extractAuthError(err).code === 'AUTH_OTP_EXPIRED') setExpiresAt(Date.now());
+    } finally {
+      requestFlight.current = false;
+      setIsResending(false);
+    }
+  };
+
+  const handleRequestNewCode = async () => {
+    if (
+      !challenge ||
+      selectedChannel !== 'whatsapp' ||
+      challenge.channel !== 'whatsapp' ||
+      !whatsappAvailable ||
+      requestFlight.current ||
+      expiresAt === undefined ||
+      Date.now() < expiresAt
+    )
+      return;
+    requestFlight.current = true;
+    setIsResending(true);
+    setOtpError(undefined);
+    setResendNotice(undefined);
+    try {
+      const issued = await onLogin(challengeIdentity, undefined, 'whatsapp');
+      acceptChallenge(issued, challengeIdentity, 'whatsapp');
+    } catch (error: unknown) {
+      if (extractAuthError(error).code === 'AUTH_CHANNEL_CHANGED') {
+        setChallenge(null);
+        setExpiresAt(undefined);
+        setLoginError({
+          messages: {
+            en: loginErrorMessage(error, 'en', 'whatsapp'),
+            ar: loginErrorMessage(error, 'ar', 'whatsapp'),
+          },
+          code: 'AUTH_CHANNEL_CHANGED',
+        });
+        await onChannelChanged?.();
+      } else {
+        setOtpError({
+          en: loginErrorMessage(error, 'en', 'whatsapp'),
+          ar: loginErrorMessage(error, 'ar', 'whatsapp'),
+        });
+      }
     } finally {
       requestFlight.current = false;
       setIsResending(false);
@@ -271,19 +362,30 @@ export function LoginScreen({
 
         {challenge ? (
           <DeferredOtpPanel
-            email={challenge.maskedDestination ?? identity}
+            email={challenge.maskedDestination ?? challengeIdentity}
             channel={challenge.channel ?? selectedChannel}
             codeLength={challenge.codeLength}
+            expiresAt={expiresAt}
+            codeRevision={codeRevision}
             onVerify={handleOtpVerify}
             onResend={handleOtpResend}
+            onRequestNewCode={
+              challenge.channel === 'whatsapp' &&
+              selectedChannel === 'whatsapp' &&
+              whatsappAvailable
+                ? handleRequestNewCode
+                : undefined
+            }
             isVerifying={isVerifying}
             isResending={isResending}
+            resendLimitReached={challenge.channel === 'whatsapp' && resendCount >= 3}
             verifyError={otpError?.[lang]}
             recovery={otpRecovery}
-            resendNotice={resendNotice}
+            resendNotice={resendNotice?.[lang]}
             experience={experience}
             onRestart={() => {
               setChallenge(null);
+              setExpiresAt(undefined);
               setOtpRecovery(null);
               setPassword('');
               setLoginError(undefined);
@@ -327,62 +429,46 @@ export function LoginScreen({
                 leadingIcon={<Mail size={16} />}
               />
             )}
-            {(channel === 'whatsapp' || whatsappAvailable) && (
-              <button
-                type="button"
-                className="min-h-11 text-sm text-slate-700 underline"
-                onClick={() => {
-                  setIdentityOverride(selectedChannel === 'email' ? 'whatsapp' : 'email');
-                  setLoginError(undefined);
-                  credentialsRevision.current += 1;
-                }}
-              >
-                {selectedChannel === 'email'
-                  ? lang === 'ar'
-                    ? 'لدي حساب واتساب'
-                    : 'I have a WhatsApp account'
-                  : lang === 'ar'
-                    ? 'لدي حساب بريد إلكتروني'
-                    : 'I have an email account'}
-              </button>
+            {selectedChannel === 'email' && (
+              <>
+                <TextField
+                  label={t('password')}
+                  type={showPw ? 'text' : 'password'}
+                  autoComplete="current-password"
+                  onEnter={() => {
+                    void handleLogin();
+                  }}
+                  value={password}
+                  onChange={(value) => {
+                    setPassword(value);
+                    setLoginError(undefined);
+                    credentialsRevision.current += 1;
+                  }}
+                  leadingIcon={<Lock size={16} />}
+                  trailingIcon={
+                    <button
+                      type="button"
+                      onClick={() => setShowPw((v) => !v)}
+                      aria-label={lang === 'ar' ? 'إظهار كلمة المرور' : 'Show password'}
+                      aria-pressed={showPw}
+                      className="flex items-center justify-center w-11 h-11 -me-3 rounded-xl focus-visible:outline-2 focus-visible:outline-blue-600"
+                    >
+                      {showPw ? <EyeOff size={16} /> : <Eye size={16} />}
+                    </button>
+                  }
+                />
+
+                <div className="flex justify-end -mt-2">
+                  <button
+                    onClick={onForgotPassword}
+                    className={`${experience.classes.accentText} active:opacity-70 transition-opacity`}
+                    style={{ fontSize: '13px', fontWeight: 600 }}
+                  >
+                    {t('forgotPassword')}
+                  </button>
+                </div>
+              </>
             )}
-
-            <TextField
-              label={t('password')}
-              type={showPw ? 'text' : 'password'}
-              autoComplete="current-password"
-              onEnter={() => {
-                void handleLogin();
-              }}
-              value={password}
-              onChange={(value) => {
-                setPassword(value);
-                setLoginError(undefined);
-                credentialsRevision.current += 1;
-              }}
-              leadingIcon={<Lock size={16} />}
-              trailingIcon={
-                <button
-                  type="button"
-                  onClick={() => setShowPw((v) => !v)}
-                  aria-label={lang === 'ar' ? 'إظهار كلمة المرور' : 'Show password'}
-                  aria-pressed={showPw}
-                  className="flex items-center justify-center w-11 h-11 -me-3 rounded-xl focus-visible:outline-2 focus-visible:outline-blue-600"
-                >
-                  {showPw ? <EyeOff size={16} /> : <Eye size={16} />}
-                </button>
-              }
-            />
-
-            <div className="flex justify-end -mt-2">
-              <button
-                onClick={onForgotPassword}
-                className={`${experience.classes.accentText} active:opacity-70 transition-opacity`}
-                style={{ fontSize: '13px', fontWeight: 600 }}
-              >
-                {t('forgotPassword')}
-              </button>
-            </div>
 
             <Button
               variant="primary"
@@ -397,7 +483,11 @@ export function LoginScreen({
               fullWidth
               onClick={handleLogin}
             >
-              {t('login')}
+              {selectedChannel === 'whatsapp'
+                ? lang === 'ar'
+                  ? 'إرسال رمز التحقق'
+                  : 'Send verification code'
+                : t('login')}
             </Button>
 
             {/* OAuth providers (Google/Apple) and the local "demo login" hint

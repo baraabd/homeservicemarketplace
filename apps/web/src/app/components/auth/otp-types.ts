@@ -14,10 +14,18 @@ export interface EmailOtpPanelProps {
   email: string;
   channel?: OtpChannel;
   codeLength: number;
+  /** Absolute deadline computed when the server response arrives, before lazy loading. */
+  expiresAt?: number;
+  /** Changes only when a fresh code was accepted, to clear a previously entered code. */
+  codeRevision?: number;
   onVerify: (code: string) => Promise<void>;
   onResend: () => Promise<void>;
+  /** A new phone-only sign-in request after expiry; never resend an expired challenge. */
+  onRequestNewCode?: () => Promise<void>;
   isVerifying?: boolean;
   isResending?: boolean;
+  /** Local request budget for passwordless login; the server also enforces its limits. */
+  resendLimitReached?: boolean;
   verifyError?: string;
   resendNotice?: string;
   recovery?: OtpRecoveryAction;

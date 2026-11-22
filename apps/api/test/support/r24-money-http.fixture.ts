@@ -180,6 +180,14 @@ export async function r24MoneyHttpFixture(
   try {
     database = await createIsolatedDatabase('r24_money');
     const prisma = database.prisma;
+    // These financial journeys use email credentials and their test mailbox.
+    // Select that method in this newly owned database; keep the real policy
+    // service, password/OTP proof and guards, with no production-default change.
+    await prisma.platformSetting.upsert({
+      where: { key: 'auth.otpChannel' },
+      create: { key: 'auth.otpChannel', value: 'email' },
+      update: { value: 'email' },
+    });
     storageRoot = await mkdtemp(join(tmpdir(), 'hsm-r24-http-'));
     await chmod(storageRoot, 0o700);
     await mkdir(join(storageRoot, 'public'), { mode: 0o700 });

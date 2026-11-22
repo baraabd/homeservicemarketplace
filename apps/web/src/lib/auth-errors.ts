@@ -79,18 +79,26 @@ export function loginErrorMessage(
           ...emailCopy,
           invalid:
             lang === 'ar'
-              ? 'رقم واتساب أو كلمة المرور غير صحيحة.'
-              : 'Incorrect WhatsApp number or password.',
+              ? 'تعذّر بدء الدخول عبر واتساب. تحقق من الرقم وحاول مجددًا.'
+              : 'Could not start WhatsApp sign-in. Check your number and try again.',
           validation:
             lang === 'ar'
-              ? 'تحقق من رقم واتساب وكلمة المرور ثم حاول مجددًا.'
-              : 'Check your WhatsApp number and password and try again.',
+              ? 'تحقق من رقم واتساب ثم حاول مجددًا.'
+              : 'Check your WhatsApp number and try again.',
+          locked:
+            lang === 'ar'
+              ? 'تم قفل الحساب مؤقتًا لكثرة المحاولات. حاول لاحقًا.'
+              : 'Account temporarily locked due to too many attempts. Try again later.',
           unverified:
             lang === 'ar'
               ? 'تحقق من رقم واتساب لإكمال الدخول.'
               : 'Verify your WhatsApp number to continue.',
         };
   switch (code) {
+    case 'AUTH_CHANNEL_CHANGED':
+      return lang === 'ar'
+        ? 'تغيرت طريقة الدخول المعتمدة. تابع باستخدام الطريقة المحددة الآن.'
+        : 'The selected sign-in method has changed. Continue with the method now shown.';
     case 'AUTH_INVALID_CREDENTIALS':
       return copy.invalid;
     case 'AUTH_ACCOUNT_LOCKED':
