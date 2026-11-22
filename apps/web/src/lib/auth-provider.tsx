@@ -234,19 +234,6 @@ function AuthProviderInner({ children }: { children: ReactNode }) {
     experience: 'provider',
   });
 
-  const login = useCallback(async (data: authApi.LoginInput): Promise<OtpChallengeResponse> => {
-    // NB: cookies are NOT set yet — the backend responds with an OTP
-    // challenge and the caller is expected to navigate to the OTP step.
-    return authApi.login(data);
-  }, []);
-
-  const register = useCallback(
-    async (data: authApi.RegisterInput): Promise<OtpChallengeResponse> => {
-      return authApi.register(data);
-    },
-    [],
-  );
-
   const verifyOtp = useCallback(
     async (challengeId: string, code: string) => {
       // A previous logout must finish (or time out) before a new cookie-
@@ -265,10 +252,6 @@ function AuthProviderInner({ children }: { children: ReactNode }) {
     },
     [qc],
   );
-
-  const resendOtp = useCallback(async (challengeId: string) => {
-    return authApi.resendOtp(challengeId);
-  }, []);
 
   const doLogout = useCallback(async () => {
     if (logoutFlight.current) return logoutFlight.current;
@@ -305,10 +288,12 @@ function AuthProviderInner({ children }: { children: ReactNode }) {
         isLoading,
         isAuthenticated: !!user,
         isDegraded: isError && !!user,
-        login,
-        register,
+        // Module exports are already stable. These requests return a challenge,
+        // not session cookies; only verifyOtp coordinates session state below.
+        login: authApi.login,
+        register: authApi.register,
         verifyOtp,
-        resendOtp,
+        resendOtp: authApi.resendOtp,
         logout: doLogout,
         logoutState,
       }}
