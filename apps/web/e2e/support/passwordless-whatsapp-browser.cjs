@@ -54,7 +54,11 @@ async function run(data) {
     process.send({ kind: 'progress', name });
   };
   const snapshot = (page, name) =>
-    page.screenshot({ path: path.join(data.output, `${name}.png`), fullPage: true });
+    page.screenshot({
+      path: path.join(data.output, `${name}.png`),
+      fullPage: true,
+      animations: 'disabled',
+    });
   const responseTo = (page, endpoint, method = 'POST') =>
     page.waitForResponse(
       (response) =>
@@ -233,9 +237,14 @@ async function run(data) {
       expiry.page.getByRole('status').filter({ hasText: 'انتهت صلاحية الرمز' }),
     ).toBeVisible();
     await expect(expiry.page.getByTestId('otp-input')).toHaveValue('');
+    const requestNewCode = expiry.page.getByRole('button', {
+      name: 'طلب رمز جديد',
+      exact: true,
+    });
+    await expect(requestNewCode).toBeEnabled();
     await snapshot(expiry.page, 'seeker-ar-expired');
     const renewed = responseTo(expiry.page, '/v1/auth/login');
-    await expiry.page.getByRole('button', { name: 'طلب رمز جديد', exact: true }).click();
+    await requestNewCode.click();
     const renewal = await renewed;
     expect(renewal.status()).toBe(200);
     expect(renewal.request().postDataJSON()).toEqual({ phoneNumber: data.actors.seeker.phone });

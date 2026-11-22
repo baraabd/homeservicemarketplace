@@ -98,9 +98,9 @@ export function EmailOtpPanel({
             <>
               {' '}
               {lang === 'ar' ? 'إلى' : 'to'}{' '}
-              <span className="text-slate-700" style={{ fontWeight: 600 }}>
+              <bdi dir="ltr" className="text-slate-700" style={{ fontWeight: 600 }}>
                 {email}
-              </span>
+              </bdi>
               .
             </>
           ) : (
@@ -225,11 +225,13 @@ export function EmailOtpPanel({
         </Button>
       )}
 
-      {!expired && (
+      {(!expired || channel === 'email') && (
         <button
           type="button"
           onClick={() => void onResend()}
-          disabled={isResending || isVerifying || recovery !== null || resendLimitReached}
+          disabled={
+            expired || isResending || isVerifying || recovery !== null || resendLimitReached
+          }
           className={`${experience.classes.accentText} min-h-11 active:underline disabled:opacity-50`}
           style={{ fontSize: '13px', fontWeight: 600 }}
         >
