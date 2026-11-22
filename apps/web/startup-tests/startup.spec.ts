@@ -675,10 +675,43 @@ test('real pnpm dev derives the API origin and recovers fresh sign-in policy for
           const whatsapp = scenario.otpChannel === 'whatsapp';
           await expect(page.locator(`input[type="${whatsapp ? 'tel' : 'email'}"]`)).toBeVisible();
           await expect(page.locator(`input[type="${whatsapp ? 'email' : 'tel'}"]`)).toHaveCount(0);
-          const login = page.getByRole('button', {
-            name: lang === 'ar' ? 'دخول' : 'Log In',
+          const password = page.getByLabel(lang === 'ar' ? 'كلمة المرور' : 'Password', {
             exact: true,
           });
+          const forgotPassword = page.getByRole('button', {
+            name: lang === 'ar' ? 'نسيت كلمة المرور؟' : 'Forgot Password?',
+            exact: true,
+          });
+          if (whatsapp) {
+            await expect(password).toHaveCount(0);
+            await expect(forgotPassword).toHaveCount(0);
+          } else {
+            await expect(password).toBeVisible();
+            await expect(forgotPassword).toBeVisible();
+          }
+          await expect(
+            page.getByRole('button', {
+              name: whatsapp
+                ? lang === 'ar'
+                  ? /البريد الإلكتروني/u
+                  : /email/i
+                : lang === 'ar'
+                  ? /واتساب/u
+                  : /whatsapp/i,
+            }),
+          ).toHaveCount(0);
+          const loginLabel = whatsapp
+            ? lang === 'ar'
+              ? 'إرسال رمز التحقق'
+              : 'Send verification code'
+            : lang === 'ar'
+              ? 'دخول'
+              : 'Log In';
+          const login = page.getByRole('button', {
+            name: loginLabel,
+            exact: true,
+          });
+          await expect(login).toHaveAttribute('data-tone', scenario.app);
           if (whatsapp && !scenario.whatsappAvailable) await expect(login).toBeDisabled();
           else await expect(login).toBeEnabled();
           expect(policyRequests.slice(requestsBeforeEntry)).toEqual([
@@ -688,6 +721,7 @@ test('real pnpm dev derives the API origin and recovers fresh sign-in policy for
           evidence.push({
             app: scenario.app,
             lang,
+            loginLabel,
             restoredPolicy: policy,
             cachedPriorPolicy: index > 0,
             policyRequests: policyRequests.slice(requestsBeforeEntry),
