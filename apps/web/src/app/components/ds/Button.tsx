@@ -15,6 +15,8 @@ export interface ButtonProps {
   state?: ButtonState;
   size?: ButtonSize;
   tone?: ButtonTone;
+  /** Opt-in for auth controls; leaves existing product button palettes unchanged. */
+  contrast?: 'default' | 'strong';
   fullWidth?: boolean;
   leadingIcon?: ReactNode;
   children: ReactNode;
@@ -109,12 +111,20 @@ const TONE_VARIANTS: Record<ButtonTone, Record<ButtonVariant, Record<ButtonState
   },
 };
 
+const STRONG_SEEKER_VARIANTS: Record<ButtonVariant, string> = {
+  primary:
+    'bg-amber-700 text-white shadow-md shadow-amber-200 hover:bg-amber-800 active:scale-95 active:shadow-sm',
+  secondary: 'border-2 border-amber-700 text-amber-700 bg-white hover:bg-amber-50 active:scale-95',
+  text: 'text-amber-700 hover:bg-amber-50 active:scale-95',
+};
+
 // ─── Button ───────────────────────────────────────────────────────────────────
 export function Button({
   variant = 'primary',
   state = 'default',
   size = 'md',
   tone = 'seeker',
+  contrast = 'default',
   fullWidth = false,
   leadingIcon,
   children,
@@ -122,6 +132,10 @@ export function Button({
 }: ButtonProps) {
   const disabled = state === 'disabled';
   const loading = state === 'loading';
+  const variantClasses =
+    contrast === 'strong' && !disabled
+      ? `${tone === 'seeker' ? STRONG_SEEKER_VARIANTS[variant] : TONE_VARIANTS[tone][variant].default}${loading ? ' cursor-not-allowed' : ''}`
+      : TONE_VARIANTS[tone][variant][state];
 
   // 4-px grid: sm=32px, md=48px, lg=56px height
   const sizes: Record<ButtonSize, string> = {
@@ -138,7 +152,7 @@ export function Button({
       className={[
         'inline-flex items-center justify-center font-semibold transition-all duration-150 select-none',
         sizes[size],
-        TONE_VARIANTS[tone][variant][state],
+        variantClasses,
         fullWidth ? 'w-full' : '',
         disabled ? 'cursor-not-allowed' : '',
       ].join(' ')}
@@ -146,82 +160,6 @@ export function Button({
       {loading && <Spinner white={variant === 'primary'} tone={tone} />}
       {!loading && leadingIcon && <span className="flex-shrink-0">{leadingIcon}</span>}
       <span>{loading ? (variant === 'text' ? 'Loading…' : 'Please wait…') : children}</span>
-    </button>
-  );
-}
-
-// ─── Icon Button ──────────────────────────────────────────────────────────────
-export type IconButtonVariant = 'primary' | 'secondary' | 'ghost';
-
-export interface IconButtonProps {
-  icon: ReactNode;
-  variant?: IconButtonVariant;
-  state?: ButtonState;
-  size?: ButtonSize;
-  label?: string;
-  onClick?: () => void;
-}
-
-export function IconButton({
-  icon,
-  variant = 'primary',
-  state = 'default',
-  size = 'md',
-  label,
-  onClick,
-}: IconButtonProps) {
-  const disabled = state === 'disabled';
-  const loading = state === 'loading';
-
-  const sizes: Record<ButtonSize, string> = {
-    sm: 'w-8  h-8  rounded-xl',
-    md: 'w-11 h-11 rounded-2xl',
-    lg: 'w-14 h-14 rounded-2xl',
-  };
-
-  const variants: Record<IconButtonVariant, Record<ButtonState, string>> = {
-    primary: {
-      default:
-        'bg-amber-500 text-white shadow-sm shadow-amber-200 hover:bg-amber-600 active:scale-90',
-      disabled: 'bg-slate-200 text-slate-400 cursor-not-allowed',
-      loading: 'bg-amber-400 text-white cursor-not-allowed',
-    },
-    secondary: {
-      default:
-        'border-2 border-amber-500 text-amber-600 bg-white hover:bg-amber-50 active:scale-90',
-      disabled: 'border-2 border-slate-200 text-slate-400 bg-white cursor-not-allowed',
-      loading: 'border-2 border-amber-300 text-amber-400 bg-white cursor-not-allowed',
-    },
-    ghost: {
-      default: 'bg-slate-100 text-slate-600 hover:bg-slate-200 active:scale-90',
-      disabled: 'bg-slate-50 text-slate-300 cursor-not-allowed',
-      loading: 'bg-slate-100 text-slate-400 cursor-not-allowed',
-    },
-  };
-
-  return (
-    <button
-      disabled={disabled || loading}
-      onClick={onClick}
-      aria-label={label}
-      title={label}
-      className={[
-        'flex items-center justify-center transition-all duration-150 flex-shrink-0',
-        sizes[size],
-        variants[variant][state],
-      ].join(' ')}
-    >
-      {loading ? (
-        <span
-          className="w-4 h-4 rounded-full border-2 animate-spin"
-          style={{
-            borderColor: variant === 'primary' ? 'rgba(255,255,255,0.3)' : 'rgba(245,158,11,0.3)',
-            borderTopColor: variant === 'primary' ? '#fff' : '#F59E0B',
-          }}
-        />
-      ) : (
-        icon
-      )}
     </button>
   );
 }

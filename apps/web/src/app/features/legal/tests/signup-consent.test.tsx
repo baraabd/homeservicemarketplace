@@ -61,6 +61,7 @@ async function goToStep2() {
     fireEvent.change(name, { target: { value: 'Noura Alharbi' } });
   });
   const next = screen.getAllByRole('button').find((b) => /next/i.test(b.textContent ?? ''))!;
+  await waitFor(() => expect(next).toBeEnabled());
   await act(async () => next.click());
   await waitFor(() => expect(document.querySelector('input[type="email"]')).toBeTruthy());
   const email = document.querySelector('input[type="email"]') as HTMLInputElement;

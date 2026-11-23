@@ -1,11 +1,25 @@
-import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from 'react';
 import { QueryClient, QueryClientProvider, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { AxiosError } from 'axios';
 import type { MeResponse, OtpChallengeResponse } from '@homeservicemarketplace/contracts';
 import * as authApi from './auth-api';
 import { clearIntendedApp } from './intended-app';
 import { clearAuthSession } from './auth-session-reset';
-import { AUTH_BOUNDARY_KEY, hasUnconfirmedLogout, isLocallySignedOut, recordLocalLogout, recordSessionEnded } from './auth-session-boundary';
+import {
+  AUTH_BOUNDARY_KEY,
+  hasUnconfirmedLogout,
+  isLocallySignedOut,
+  recordLocalLogout,
+  recordSessionEnded,
+} from './auth-session-boundary';
 import { useNotificationArrivalWatcher } from './realtime/notification-arrival-watcher';
 import { useRealtimeSocket } from './realtime/use-realtime-socket';
 
@@ -65,7 +79,7 @@ interface AuthContextValue {
   login: (data: authApi.LoginInput) => Promise<OtpChallengeResponse>;
   register: (data: authApi.RegisterInput) => Promise<OtpChallengeResponse>;
   verifyOtp: (challengeId: string, code: string) => Promise<void>;
-  resendOtp: (challengeId: string) => Promise<void>;
+  resendOtp: (challengeId: string) => Promise<authApi.OtpResendResponse>;
   logout: () => Promise<void>;
   logoutState: 'idle' | 'pending' | 'confirmed' | 'unconfirmed';
 }
@@ -86,7 +100,9 @@ function AuthProviderInner({ children }: { children: ReactNode }) {
   const qc = useQueryClient();
   const logoutFlight = useRef<Promise<void> | null>(null);
   const authIntent = useRef(0);
-  const [logoutState, setLogoutState] = useState<AuthContextValue['logoutState']>(() => hasUnconfirmedLogout() ? 'unconfirmed' : 'idle');
+  const [logoutState, setLogoutState] = useState<AuthContextValue['logoutState']>(() =>
+    hasUnconfirmedLogout() ? 'unconfirmed' : 'idle',
+  );
 
   const {
     data: user,
@@ -148,7 +164,8 @@ function AuthProviderInner({ children }: { children: ReactNode }) {
         await clearAuthSession(qc);
         // A peer's event never supplies an identity. Only a fresh server /me
         // may restore it; an older queued event cannot override newer logout.
-        if (!isLocallySignedOut()) await qc.refetchQueries({ queryKey: ['auth', 'me'], exact: true });
+        if (!isLocallySignedOut())
+          await qc.refetchQueries({ queryKey: ['auth', 'me'], exact: true });
       })().catch(() => undefined);
     };
     window.addEventListener('storage', onStorage);
@@ -217,19 +234,6 @@ function AuthProviderInner({ children }: { children: ReactNode }) {
     experience: 'provider',
   });
 
-  const login = useCallback(async (data: authApi.LoginInput): Promise<OtpChallengeResponse> => {
-    // NB: cookies are NOT set yet — the backend responds with an OTP
-    // challenge and the caller is expected to navigate to the OTP step.
-    return authApi.login(data);
-  }, []);
-
-  const register = useCallback(
-    async (data: authApi.RegisterInput): Promise<OtpChallengeResponse> => {
-      return authApi.register(data);
-    },
-    [],
-  );
-
   const verifyOtp = useCallback(
     async (challengeId: string, code: string) => {
       // A previous logout must finish (or time out) before a new cookie-
@@ -248,10 +252,6 @@ function AuthProviderInner({ children }: { children: ReactNode }) {
     },
     [qc],
   );
-
-  const resendOtp = useCallback(async (challengeId: string) => {
-    await authApi.resendOtp(challengeId);
-  }, []);
 
   const doLogout = useCallback(async () => {
     if (logoutFlight.current) return logoutFlight.current;
@@ -274,8 +274,11 @@ function AuthProviderInner({ children }: { children: ReactNode }) {
       }
     })();
     logoutFlight.current = operation;
-    try { await operation; }
-    finally { if (logoutFlight.current === operation) logoutFlight.current = null; }
+    try {
+      await operation;
+    } finally {
+      if (logoutFlight.current === operation) logoutFlight.current = null;
+    }
   }, [qc]);
 
   return (
@@ -285,10 +288,12 @@ function AuthProviderInner({ children }: { children: ReactNode }) {
         isLoading,
         isAuthenticated: !!user,
         isDegraded: isError && !!user,
-        login,
-        register,
+        // Module exports are already stable. These requests return a challenge,
+        // not session cookies; only verifyOtp coordinates session state below.
+        login: authApi.login,
+        register: authApi.register,
         verifyOtp,
-        resendOtp,
+        resendOtp: authApi.resendOtp,
         logout: doLogout,
         logoutState,
       }}

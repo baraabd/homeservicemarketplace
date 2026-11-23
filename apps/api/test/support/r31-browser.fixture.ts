@@ -207,6 +207,14 @@ export async function r31BrowserFixture(options: {
     if (!/^hsm_it_r31_browser_[a-f0-9]{32}$/u.test(identity?.database ?? '')) {
       throw new Error('R31 refused a database outside its newly created isolation boundary.');
     }
+    // This journey signs in with fixture email credentials and delivered mail.
+    // Its isolated database selects email explicitly while the real channel
+    // service and password/OTP session flow remain authoritative.
+    await prisma.platformSetting.upsert({
+      where: { key: 'auth.otpChannel' },
+      create: { key: 'auth.otpChannel', value: 'email' },
+      update: { value: 'email' },
+    });
     await mkdir(storageRoot, { mode: 0o700 });
     for (const child of ['public', 'restricted', 'staging'])
       await mkdir(join(storageRoot, child), { mode: 0o700 });

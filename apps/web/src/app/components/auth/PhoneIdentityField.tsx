@@ -102,7 +102,7 @@ const COPY = {
 } as const;
 
 const baseFieldClass =
-  'min-h-12 w-full min-w-0 rounded-2xl border-2 bg-white px-3 py-3 text-base text-slate-900 focus:outline-none focus:ring-2 disabled:bg-slate-50 disabled:text-slate-500';
+  'min-h-12 w-full min-w-0 rounded-2xl border-2 bg-white px-3 py-3 text-base text-slate-900 placeholder:text-slate-600 focus:outline-none focus:ring-2 disabled:bg-slate-50 disabled:text-slate-500';
 
 /** Device hints suggest the initial country; coordinates remain strictly opt-in. */
 export function PhoneIdentityField({

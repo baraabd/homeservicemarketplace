@@ -69,13 +69,10 @@ async function run(data) {
     await page.goto(`${data.web}/login`);
     // A cold dev server optimizes dependencies on the first request; only this
     // first render gets the longer bound.
-    // The fixture already owns a verified email identity. Select its real
-    // sign-in path without changing the platform's initial WhatsApp policy.
-    await expect(page.getByTestId('auth-channel-whatsapp')).toBeVisible({ timeout: 180000 });
-    await page
-      .getByRole('button', { name: /^(I have an email account|لدي حساب بريد إلكتروني)$/u })
-      .click();
-    await expect(page.getByTestId('auth-channel-email')).toBeVisible();
+    // This real-API fixture explicitly selects email; the public screen exposes
+    // only the operator-selected method, with no client-side channel override.
+    await expect(page.getByTestId('auth-channel-email')).toBeVisible({ timeout: 180000 });
+    await expect(page.getByTestId('auth-channel-whatsapp')).toHaveCount(0);
     await page.locator('input[type=email]').waitFor({ timeout: 180000 });
     await page.locator('input[type=email]').fill(data.admin.email);
     await page.locator('input[type=password]').fill(data.admin.password);

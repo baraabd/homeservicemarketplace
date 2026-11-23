@@ -376,7 +376,7 @@ describe('DurableMailService.enqueue throttle', () => {
     expect(t.deliveryId).toBe('d1');
   });
 
-  it('never throttles OTP mail, which only the account owner can trigger repeatedly', async () => {
+  it('does not add the anonymous budget to password-gated email login OTP', async () => {
     const h = withCounts(99);
     const t = await h.svc.enqueue(
       {
@@ -390,6 +390,39 @@ describe('DurableMailService.enqueue throttle', () => {
     expect(t.deliveryId).toBe('d1');
     expect(h.repo.countRecent).not.toHaveBeenCalled();
   });
+
+  it.each([
+    { recent: 5, permitted: true },
+    { recent: 6, permitted: false },
+  ])(
+    'bounds passwordless WhatsApp login delivery when $recent were already queued',
+    async ({ recent, permitted }) => {
+      const h = withCounts(recent);
+      const ticket = await h.svc.enqueue(
+        {
+          template: 'auth.login_otp',
+          channel: 'whatsapp',
+          to: '+966501234567',
+          vars: { code: '123456', minutes: 5 },
+          expiresAt: later(),
+        },
+        tx,
+      );
+      expect(h.repo.countRecent).toHaveBeenCalledWith(
+        expect.any(String),
+        'auth.login_otp',
+        expect.any(Date),
+        tx,
+      );
+      if (permitted) {
+        expect(ticket.deliveryId).toBe('d1');
+        expect(h.repo.insertIfAbsent).toHaveBeenCalledTimes(1);
+      } else {
+        expect(ticket).toEqual({ deliveryId: null, intent: null });
+        expect(h.repo.insertIfAbsent).not.toHaveBeenCalled();
+      }
+    },
+  );
 
   it('rejects invalid template variables before anything is stored', async () => {
     const h = withCounts(0);

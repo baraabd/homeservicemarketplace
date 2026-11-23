@@ -79,15 +79,33 @@ test('module failure shows recovery and Retry loads the application', async ({ p
 test('the public selector renders when the API is unavailable', async ({ page }) => {
   await page.route('**/v1/auth/**', (route) => route.abort());
   const errors: string[] = [];
+  const credentialRequests: string[] = [];
   page.on('pageerror', (error) => errors.push(error.message));
+  page.on('request', (request) => {
+    if (
+      request.method() === 'POST' &&
+      ['/v1/auth/login', '/v1/auth/register'].includes(new URL(request.url()).pathname)
+    )
+      credentialRequests.push(request.url());
+  });
   await page.goto('/');
   await expect(page.getByTestId('app-card-seeker')).toBeVisible();
   await expect(page.getByTestId('app-card-provider')).toBeVisible();
   await page.getByTestId('app-card-seeker').click();
+  await expect(page.getByTestId('auth-hero-seeker')).toBeVisible();
+  await expect(page.getByTestId('auth-channel-whatsapp')).toBeVisible();
+  await expect(page.getByRole('alert')).toHaveText(
+    'The sign-in service is temporarily unavailable. Please try again shortly.',
+  );
+  const phone = page.locator('input[type="tel"]');
+  await phone.fill('2025550123');
+  await phone.press('Enter');
+  await expect(phone).toHaveValue('2025550123');
+  await expect(page.locator('input[type="email"], input[type="password"]')).toHaveCount(0);
   await expect(
-    page.getByRole('heading', { name: 'Sign-in options are unavailable', exact: true }),
-  ).toBeVisible();
-  await expect(page.locator('input')).toHaveCount(0);
+    page.getByRole('button', { name: 'Send verification code', exact: true }),
+  ).toBeDisabled();
   await expect(page.getByRole('button', { name: 'Try again', exact: true })).toBeEnabled();
+  expect(credentialRequests).toEqual([]);
   expect(errors).toEqual([]);
 });

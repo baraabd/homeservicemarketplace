@@ -111,7 +111,7 @@ export const AUTH_EXPERIENCES: Readonly<Record<AuthExperienceId, AuthExperience>
       accentBorder: 'border-amber-500',
       softBg: 'bg-amber-50',
       softBorder: 'border-amber-100',
-      accentText: 'text-amber-600',
+      accentText: 'text-amber-700',
       activeRing: 'ring-amber-200',
       focusRing: 'focus:ring-amber-600',
       focusOutline: 'focus-visible:outline-amber-600',

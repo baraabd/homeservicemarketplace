@@ -31,6 +31,7 @@ import type { LegalAcceptanceInput } from '@homeservicemarketplace/contracts';
 import { AuditService } from '../../audit/audit.service';
 import { LegalAcceptanceService } from '../../legal/legal-acceptance.service';
 import { isInGoodStanding } from '../helpers/account-standing';
+import { isWhatsAppLoginChallenge, WHATSAPP_LOGIN_CHALLENGE_PREFIX } from '../helpers/otp-codec';
 import { LoginAttemptService } from './login-attempt.service';
 import {
   OTP_CODE_LENGTH,
@@ -52,7 +53,7 @@ export interface RegistrationInput extends ContactIdentityInput {
 }
 
 export interface LoginInput extends ContactIdentityInput {
-  password: string;
+  password?: string;
 }
 
 export interface ClientContext {
@@ -333,17 +334,25 @@ export class AuthenticationService {
   }
 
   // --- Login (OTP challenge only) ---------------------------------------
-  // Successful credential check produces a LOGIN_OTP challenge and returns
+  // Email password proof or a passwordless WhatsApp request produces a challenge and returns
   // an opaque challengeId to the client. No cookies are set here, no
   // session row is created. The actual session is issued only when the
   // user successfully verifies the OTP via /v1/auth/verify-otp.
   //
-  // Every credential-failure path still returns AUTH_INVALID_CREDENTIALS,
-  // and lockout / suspended / unverified semantics are unchanged.
+  // Only the administrator-selected method can start a new sign-in. Existing
+  // challenges keep their bound channel through their original validity window.
   async login(input: LoginInput, ctx: ClientContext): Promise<OtpChallengeIssuance> {
     const contact = contactIdentity(input);
+    if (contact.channel !== (await this.channels.getChannel()))
+      throw new BadRequestException({ code: 'AUTH_CHANNEL_CHANGED' });
+    if (contact.channel === 'whatsapp') return this.loginByVerifiedPhone(contact, ctx);
+    const password = input.password;
+    if (typeof password !== 'string' || password.length < 1 || password.length > 128)
+      throw new BadRequestException({ code: 'VALIDATION_ERROR' });
 
     const result = await this.tx.run(async (trx) => {
+      if (contact.channel !== (await this.channels.getChannel(trx)))
+        throw new BadRequestException({ code: 'AUTH_CHANNEL_CHANGED' });
       let found = await this.findByContact(contact, trx);
       if (found) {
         const accountId = found.id;
@@ -354,7 +363,7 @@ export class AuthenticationService {
       }
 
       // Constant-time: run verify even if user is null.
-      const passwordOk = await this.passwords.verify(found?.passwordHash ?? null, input.password);
+      const passwordOk = await this.passwords.verify(found?.passwordHash ?? null, password);
 
       if (!found || !passwordOk) {
         if (found) {
@@ -398,18 +407,13 @@ export class AuthenticationService {
       if (!recoveringRegistration && !isInGoodStanding(found))
         throw new UnauthorizedException({ code: 'AUTH_INVALID_CREDENTIALS' });
 
-      const policy = await this.channels.getPublicConfig(trx);
-      const deliveryContact = recoveringRegistration
-        ? contact
-        : preferredLoginContact(found, contact, policy);
-
       // Credentials are valid: reset the failure counter NOW so a legitimate
       // user isn't locked out by having typed the password correctly but
       // fumbling the OTP. The session is not yet issued.
       await this.attempts.recordSuccess(found.id, trx);
 
       const purpose = recoveringRegistration ? 'REGISTRATION_OTP' : 'LOGIN_OTP';
-      const challenge = await this.otp.issue(found.id, purpose, trx, deliveryContact);
+      const challenge = await this.otp.issue(found.id, purpose, trx, contact);
       await this.audit.record(
         {
           type: 'LOGIN_FAILED', // challenge issued, not an authenticated login
@@ -423,7 +427,7 @@ export class AuthenticationService {
       );
       const mail = await this.delivery.enqueue(
         {
-          ...deliveryContact,
+          ...contact,
           userId: found.id,
           rawCode: challenge.rawCode,
           purpose,
@@ -432,7 +436,7 @@ export class AuthenticationService {
         trx,
       );
       assertOtpTicket(mail);
-      return { otpChallenge: challenge, mail, contact: deliveryContact };
+      return { otpChallenge: challenge, mail, contact };
     });
 
     if (!result) throw new UnauthorizedException({ code: 'AUTH_INVALID_CREDENTIALS' });
@@ -454,13 +458,85 @@ export class AuthenticationService {
     };
   }
 
+  /** Requesting a code is not proof of identity. Unknown and ineligible phone
+   * numbers receive the same opaque envelope without creating accounts, OTPs
+   * or sessions. Delivery latency never becomes an account-existence signal. */
+  private async loginByVerifiedPhone(
+    contact: OtpDeliveryBinding,
+    ctx: ClientContext,
+  ): Promise<OtpChallengeIssuance> {
+    const startedAt = Date.now();
+    const neutral = fakeOtpEnvelope(contact, WHATSAPP_LOGIN_CHALLENGE_PREFIX);
+    try {
+      const prepared = await this.otp.prepare('LOGIN_OTP', contact);
+      const result = await this.tx.run(async (trx) => {
+        if (contact.channel !== (await this.channels.getChannel(trx)))
+          throw new BadRequestException({ code: 'AUTH_CHANNEL_CHANGED' });
+        let user = await this.findByContact(contact, trx);
+        if (!user) return null;
+        const accountId = user.id;
+        // The unique phone owner serializes challenge issuance and its recipient
+        // delivery budget, including competing requests from different replicas.
+        await lockAuthAccount(trx, accountId);
+        user = await this.findByContact(contact, trx);
+        if (
+          !user ||
+          user.id !== accountId ||
+          !hasVerifiedContact(user, contact) ||
+          !isInGoodStanding(user) ||
+          this.attempts.isLocked(user)
+        )
+          return null;
+
+        const challenge = await this.otp.issue(user.id, 'LOGIN_OTP', trx, contact, prepared);
+        const ticket = await this.delivery.enqueue(
+          {
+            ...contact,
+            userId: user.id,
+            rawCode: challenge.rawCode,
+            purpose: 'LOGIN_OTP',
+            expiresAt: challenge.expiresAt,
+          },
+          trx,
+        );
+        // A suppressed request must roll back issuance/invalidation, leaving
+        // the previously delivered code and its attempt counter intact.
+        assertOtpTicket(ticket);
+        await this.audit.record(
+          {
+            type: 'LOGIN_FAILED', // a challenge request is not a successful sign-in
+            userId: user.id,
+            ipAddress: ctx.device.ipAddress,
+            userAgent: ctx.device.userAgent,
+            requestId: ctx.requestId,
+            metadata: { reason: 'otp_challenge_issued', channel: 'whatsapp' },
+          },
+          trx,
+        );
+        return { challenge, ticket };
+      });
+      if (!result) return neutral;
+      this.dispatchAfterCommit(result.ticket, ctx, 'login-otp');
+      return {
+        ...neutral,
+        challengeId: result.challenge.challengeId,
+        expiresInSeconds: result.challenge.expiresInSeconds,
+      };
+    } catch (error) {
+      if (error instanceof OtpDeliverySuppressedError) return neutral;
+      throw error;
+    } finally {
+      await this.padAntiEnum(startedAt);
+    }
+  }
+
   // --- Verify OTP + issue session ---------------------------------------
   // Consumes the OTP atomically. On success, issues the real web/mobile
   // session via SessionService — identical to the old login() output so
   // the controller's shapeAuthResponse works unchanged.
   //
   // REGISTRATION_OTP success additionally marks the user ACTIVE + sets
-  // emailVerifiedAt. LOGIN_OTP success has no user-row side effects.
+  // emailVerifiedAt. WhatsApp LOGIN_OTP success clears failed-login counters.
   async verifyOtp(challengeId: string, rawCode: string, ctx: ClientContext): Promise<LoginResult> {
     // Token consumption, permitted account activation, session insertion and
     // success audit are one atomic unit. A failed session/audit leaves the
@@ -515,6 +591,10 @@ export class AuthenticationService {
       if (!user || !hasVerifiedContact(user, contact) || !isInGoodStanding(user)) {
         throw new UnauthorizedException({ code: 'AUTH_INVALID_CREDENTIALS' });
       }
+      // A phone-only request cannot clear account lockout. The first credential
+      // proof in passwordless sign-in is this atomically consumed OTP.
+      if (consumed.purpose === 'LOGIN_OTP' && contact.channel === 'whatsapp')
+        await this.attempts.recordSuccess(user.id, trx);
       const roleRows = await this.users.listRoles(user.id, trx);
       const roles = roleRows.map((r) => r.role.name);
       const issued = await this.sessions.createForLogin(
@@ -593,10 +673,14 @@ export class AuthenticationService {
         assertOtpTicket(mail);
         return { expiresInSeconds: challenge.expiresInSeconds, mail };
       });
-      try {
-        await this.delivery.dispatch(delivery.mail);
-      } catch {
-        this.logger.error({ msg: 'otp-resend.delivery.failed', requestId: ctx.requestId });
+      if (isWhatsAppLoginChallenge(challengeId)) {
+        this.dispatchAfterCommit(delivery.mail, ctx, 'otp-resend');
+      } else {
+        try {
+          await this.delivery.dispatch(delivery.mail);
+        } catch {
+          this.logger.error({ msg: 'otp-resend.delivery.failed', requestId: ctx.requestId });
+        }
       }
       return { expiresInSeconds: delivery.expiresInSeconds };
     } finally {
@@ -1086,7 +1170,13 @@ export class AuthenticationService {
   private dispatchAfterCommit(
     ticket: MailTicket,
     ctx: ClientContext,
-    scope: 'registration' | 'email-verification' | 'password-reset' | 'password-reset-otp',
+    scope:
+      | 'registration'
+      | 'email-verification'
+      | 'password-reset'
+      | 'password-reset-otp'
+      | 'login-otp'
+      | 'otp-resend',
     transport: Pick<MailPort, 'dispatch'> = this.delivery,
   ): void {
     // Anonymous responses must not include provider latency in their timing.
@@ -1150,9 +1240,9 @@ function normalizeEmail(raw: string): string {
 // The id is cryptographically random so an attacker cannot distinguish it
 // from a real one by shape, and the verify-otp endpoint will return
 // AUTH_OTP_INVALID (same as any bad code) when they try to consume it.
-function fakeOtpEnvelope(contact?: OtpDeliveryBinding): OtpChallengeIssuance {
+function fakeOtpEnvelope(contact?: OtpDeliveryBinding, prefix = ''): OtpChallengeIssuance {
   return {
-    challengeId: randomBytes(24).toString('base64url'),
+    challengeId: prefix + randomBytes(24).toString('base64url'),
     expiresInSeconds: OTP_TTL_MINUTES * 60,
     codeLength: OTP_CODE_LENGTH,
     ...(contact ? { channel: contact.channel, maskedDestination: maskContact(contact) } : {}),
@@ -1175,23 +1265,6 @@ function isDuplicateIdentity(error: unknown): boolean {
   return (
     Array.isArray(target) && target.length === 1 && ['email', 'phoneNumber'].includes(target[0])
   );
-}
-
-function preferredLoginContact(
-  user: User,
-  submitted: OtpDeliveryBinding,
-  policy: { otpChannel: 'email' | 'whatsapp'; whatsappAvailable: boolean },
-): OtpDeliveryBinding {
-  const preferred: OtpDeliveryBinding | null =
-    policy.otpChannel === 'whatsapp'
-      ? user.phoneNumber && user.phoneVerifiedAt && policy.whatsappAvailable
-        ? { channel: 'whatsapp', destination: user.phoneNumber }
-        : null
-      : user.email && user.emailVerifiedAt
-        ? { channel: 'email', destination: user.email }
-        : null;
-  // A verified legacy identity remains usable until its owner links the new method.
-  return preferred ?? submitted;
 }
 
 class OtpDeliverySuppressedError extends AppError {

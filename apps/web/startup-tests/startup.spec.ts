@@ -605,12 +605,8 @@ test('real pnpm dev derives the API origin and recovers fresh sign-in policy for
           const requestsBeforeEntry = policyRequests.length;
           await page.getByTestId(`app-card-${scenario.app}`).click();
           await expect(page).toHaveURL(/\/login(?:[?#]|$)/);
-          await expect(
-            page.getByRole('heading', {
-              name: lang === 'ar' ? 'تعذّر تحميل خيارات الدخول' : 'Sign-in options are unavailable',
-              exact: true,
-            }),
-          ).toBeVisible();
+          await expect(page.getByTestId(`auth-hero-${scenario.app}`)).toBeVisible();
+          await expect(page.getByTestId('auth-channel-whatsapp')).toBeVisible();
           await expect(page.getByRole('alert')).toHaveText(
             lang === 'ar'
               ? 'خدمة تسجيل الدخول غير متاحة مؤقتًا. يرجى إعادة المحاولة بعد قليل.'
@@ -618,7 +614,17 @@ test('real pnpm dev derives the API origin and recovers fresh sign-in policy for
           );
           await expect(page.locator('html')).toHaveAttribute('lang', lang);
           await expect(page.locator('html')).toHaveAttribute('dir', lang === 'ar' ? 'rtl' : 'ltr');
-          await expect(page.locator('input')).toHaveCount(0);
+          const phone = page.locator('input[type="tel"]');
+          await expect(phone).toBeVisible();
+          await expect(page.locator('input[type="email"], input[type="password"]')).toHaveCount(0);
+          const sendCode = page.getByRole('button', {
+            name: lang === 'ar' ? 'إرسال رمز التحقق' : 'Send verification code',
+            exact: true,
+          });
+          await expect(sendCode).toBeDisabled();
+          await phone.fill('2025550123');
+          await phone.press('Enter');
+          await expect(phone).toHaveValue('2025550123');
           const retry = page.getByRole('button', {
             name: lang === 'ar' ? 'إعادة المحاولة' : 'Try again',
             exact: true,
@@ -634,7 +640,12 @@ test('real pnpm dev derives the API origin and recovers fresh sign-in policy for
           }
           await page.setViewportSize({ width: 390, height: 844 });
           await page.getByTestId('lang-toggle').focus();
-          await page.keyboard.press('Tab');
+          // The branded form now stays mounted. Reach its inline retry using
+          // the real tab order, which includes the existing Apps control.
+          for (let tabs = 0; tabs < 8; tabs += 1) {
+            await page.keyboard.press('Tab');
+            if (await retry.evaluate((element) => element === document.activeElement)) break;
+          }
           await expect(retry).toBeFocused();
           await expectVisibleFocusIndicator(retry, 'Policy retry');
           expect((await retry.boundingBox())!.height).toBeGreaterThanOrEqual(44);
@@ -662,12 +673,17 @@ test('real pnpm dev derives the API origin and recovers fresh sign-in policy for
           holdPolicy = true;
           await page.keyboard.press('Enter');
           await expect.poll(() => typeof releasePolicy).toBe('function');
-          // Even a warm cache from the preceding app cannot open credentials
-          // while the restored service's fresh response is still in flight.
-          await expect(page.getByRole('status')).toHaveText(
-            lang === 'ar' ? 'جارٍ تجهيز تسجيل الدخول…' : 'Preparing secure sign in…',
-          );
-          await expect(page.locator('input')).toHaveCount(0);
+          // A warm cache never authorizes a request. Keep the default phone
+          // draft mounted and editable while fresh administrator policy loads.
+          await expect(
+            page.getByRole('status').filter({
+              hasText: lang === 'ar' ? 'جارٍ تجهيز تسجيل الدخول…' : 'Preparing secure sign in…',
+            }),
+          ).toBeVisible();
+          await expect(phone).toHaveValue('2025550123');
+          await expect(sendCode).toBeDisabled();
+          await phone.focus();
+          const pendingPhone = await phone.elementHandle();
           holdPolicy = false;
           releasePolicy!();
           await expect(page.getByTestId(`auth-hero-${scenario.app}`)).toBeVisible();
@@ -675,10 +691,52 @@ test('real pnpm dev derives the API origin and recovers fresh sign-in policy for
           const whatsapp = scenario.otpChannel === 'whatsapp';
           await expect(page.locator(`input[type="${whatsapp ? 'tel' : 'email'}"]`)).toBeVisible();
           await expect(page.locator(`input[type="${whatsapp ? 'email' : 'tel'}"]`)).toHaveCount(0);
-          const login = page.getByRole('button', {
-            name: lang === 'ar' ? 'دخول' : 'Log In',
+          if (whatsapp) {
+            await expect(phone).toHaveValue('2025550123');
+            await expect(phone).toBeFocused();
+            expect(
+              await pendingPhone!.evaluate(
+                (element) => element === document.querySelector('input[type="tel"]'),
+              ),
+            ).toBe(true);
+          }
+          const password = page.getByLabel(lang === 'ar' ? 'كلمة المرور' : 'Password', {
             exact: true,
           });
+          const forgotPassword = page.getByRole('button', {
+            name: lang === 'ar' ? 'نسيت كلمة المرور؟' : 'Forgot Password?',
+            exact: true,
+          });
+          if (whatsapp) {
+            await expect(password).toHaveCount(0);
+            await expect(forgotPassword).toHaveCount(0);
+          } else {
+            await expect(password).toBeVisible();
+            await expect(forgotPassword).toBeVisible();
+          }
+          await expect(
+            page.getByRole('button', {
+              name: whatsapp
+                ? lang === 'ar'
+                  ? /البريد الإلكتروني/u
+                  : /email/i
+                : lang === 'ar'
+                  ? /واتساب/u
+                  : /whatsapp/i,
+            }),
+          ).toHaveCount(0);
+          const loginLabel = whatsapp
+            ? lang === 'ar'
+              ? 'إرسال رمز التحقق'
+              : 'Send verification code'
+            : lang === 'ar'
+              ? 'دخول'
+              : 'Log In';
+          const login = page.getByRole('button', {
+            name: loginLabel,
+            exact: true,
+          });
+          await expect(login).toHaveAttribute('data-tone', scenario.app);
           if (whatsapp && !scenario.whatsappAvailable) await expect(login).toBeDisabled();
           else await expect(login).toBeEnabled();
           expect(policyRequests.slice(requestsBeforeEntry)).toEqual([
@@ -688,8 +746,11 @@ test('real pnpm dev derives the API origin and recovers fresh sign-in policy for
           evidence.push({
             app: scenario.app,
             lang,
+            loginLabel,
             restoredPolicy: policy,
             cachedPriorPolicy: index > 0,
+            unconfirmedPresentation: 'whatsapp form; new requests disabled',
+            sameChannelDraftAndFocusPreserved: whatsapp,
             policyRequests: policyRequests.slice(requestsBeforeEntry),
             widths: [320, 390, 430, 768, 1024, 1440],
             keyboardRetry: true,
@@ -783,12 +844,19 @@ for (const mode of ['dev', 'production-preview'] as const) {
       await page.goto(server.baseURL);
       await expect(page.getByTestId('app-card-seeker')).toBeVisible();
       await page.getByTestId('app-card-seeker').click();
-      // The app remains usable without inventing an identity form before
-      // the server's current email/WhatsApp policy can be confirmed.
+      // The default phone form is useful presentation, not authorization to
+      // send. It remains mounted when the transport fails or language changes.
+      await expect(page.getByTestId('auth-hero-seeker')).toBeVisible();
+      await expect(page.getByTestId('auth-channel-whatsapp')).toBeVisible();
+      await expect(page.getByRole('alert')).toHaveText(
+        'The sign-in service is temporarily unavailable. Please try again shortly.',
+      );
+      const phone = page.locator('input[type="tel"]');
+      await phone.fill('2025550123');
       await expect(
-        page.getByRole('heading', { name: 'Sign-in options are unavailable', exact: true }),
-      ).toBeVisible();
-      await expect(page.locator('input')).toHaveCount(0);
+        page.getByRole('button', { name: 'Send verification code', exact: true }),
+      ).toBeDisabled();
+      await expect(page.locator('input[type="email"], input[type="password"]')).toHaveCount(0);
       const policyRequestsBeforeRetry = failedPolicyRequests;
       await page.getByRole('button', { name: 'Try again', exact: true }).click();
       await expect.poll(() => failedPolicyRequests).toBe(policyRequestsBeforeRetry + 1);
@@ -796,11 +864,15 @@ for (const mode of ['dev', 'production-preview'] as const) {
       await page.getByTestId('lang-toggle').click();
       await expect(page.locator('html')).toHaveAttribute('lang', 'ar');
       await expect(page.locator('html')).toHaveAttribute('dir', 'rtl');
-      await expect(
-        page.getByRole('heading', { name: 'تعذّر تحميل خيارات الدخول', exact: true }),
-      ).toBeVisible();
+      await expect(page.getByRole('alert')).toHaveText(
+        'خدمة تسجيل الدخول غير متاحة مؤقتًا. يرجى إعادة المحاولة بعد قليل.',
+      );
       await expect(page.getByRole('button', { name: 'إعادة المحاولة', exact: true })).toBeEnabled();
-      await expect(page.locator('input')).toHaveCount(0);
+      await expect(phone).toHaveValue('2025550123');
+      await expect(
+        page.getByRole('button', { name: 'إرسال رمز التحقق', exact: true }),
+      ).toBeDisabled();
+      await expect(page.getByTestId('auth-hero-seeker')).toBeVisible();
       const interactiveMs = performance.now() - server.spawnedAt;
       await expect(page.locator('#startup-error')).toHaveCount(0);
       await expect(page.locator('vite-error-overlay')).toHaveCount(0);

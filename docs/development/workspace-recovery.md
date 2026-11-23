@@ -169,6 +169,53 @@ PowerShell request alone does not prove browser CORS. The gate's retry button
 fetches fresh server policy; it never substitutes an old cached setting or
 pretends the service is available.
 
+### Read-only connection check after the API starts
+
+From the repository root, use a terminal with the **same environment as the
+Vite web terminal**:
+
+```powershell
+node scripts/dev/auth-connection-doctor.cjs
+```
+
+This is a live connection check, separate from the stopped-workspace
+`dev:doctor` preflight. It uses the web app's installed Vite `loadEnv` and the
+shared API-origin resolver, including `.env.development.local`, dotenv
+expansion and process overrides. It prints only the validated public API and
+web origins, whether the API origin was explicit or inferred, and controlled
+diagnostics. An explicit local API origin on a different port produces a hint;
+the command does not override it or rewrite any files.
+
+For a different browser origin or Vite `--mode`, pass the actual values:
+
+```powershell
+node scripts/dev/auth-connection-doctor.cjs --web-origin http://127.0.0.1:5173 --mode development
+```
+
+The default browser origin is `http://localhost:5173`. The check makes bounded
+GET requests to `/health/ready` and `/v1/auth/config`, plus a cross-origin
+OPTIONS request for the web client's `X-Client-Kind` header. It checks the exact
+origin and credentials headers required by the browser, including a normal
+OPTIONS 204 response. It sends no cookies, follows no redirects, limits each
+request to ten seconds and reads at most 16 KiB of each JSON response. It never
+prints response bodies, provider keys or exception stacks, and makes no login,
+OTP, provider, database-write, migration or dependency-installation requests.
+
+Exit code 0 means the checked readiness, public policy and applicable CORS
+headers passed. A valid email policy remains email. A valid
+`whatsappAvailable: false` response produces a provider warning without being
+misreported as an unreachable configuration endpoint; OTP delivery is not part
+of this check. Nonzero results distinguish network/timeout, HTTP status, HTML,
+malformed JSON, incompatible JSON and CORS failures. A readiness 200 does not
+replace the config check: readiness pings PostgreSQL, while config also reads
+the application settings table.
+
+If the API terminal alone sets `$env:PORT = "4010"`, a different terminal does
+not automatically inherit it. Compare the reported origin with the API's actual
+listener and the browser Network panel. Restart Vite after changing its env
+configuration; this diagnostic cannot inspect an already-running browser's
+cached configuration or prove a completed login.
+
 ## Regression coverage
 
 ```sh

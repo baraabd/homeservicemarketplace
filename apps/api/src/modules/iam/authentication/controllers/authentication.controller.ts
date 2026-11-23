@@ -4,6 +4,7 @@ import {
   Controller,
   Get,
   HttpCode,
+  HttpException,
   HttpStatus,
   Post,
   Req,
@@ -21,6 +22,9 @@ import type {
 } from '@homeservicemarketplace/contracts';
 
 import { contactIdentity } from '../helpers/contact-identity';
+import { isWhatsAppLoginChallenge } from '../helpers/otp-codec';
+import { OTP_TTL_MINUTES } from '../services/otp.service';
+import { AppError } from '../../../../shared/errors/app-error';
 import {
   PhoneIdentityDto,
   PhoneEnrollmentDto,
@@ -64,6 +68,17 @@ import { validatedEnv } from '../../../../config/env.validation';
 
 const MOBILE_REFRESH_HEADER = 'x-refresh-token';
 const CLIENT_KIND_HEADER = 'x-client-kind';
+const NEUTRAL_PHONE_VERIFY_ERRORS = new Set([
+  'AUTH_OTP_INVALID',
+  'AUTH_OTP_EXPIRED',
+  'AUTH_OTP_LOCKED',
+]);
+const NEUTRAL_PHONE_RESEND_ERRORS = new Set([
+  ...NEUTRAL_PHONE_VERIFY_ERRORS,
+  'AUTH_OTP_RESEND_EXCEEDED',
+  'RATE_LIMITED',
+  'DEPENDENCY_UNAVAILABLE',
+]);
 
 @Controller({ path: 'auth', version: '1' })
 export class AuthenticationController {
@@ -177,8 +192,23 @@ export class AuthenticationController {
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
   ): Promise<AuthResponse> {
-    const result = await this.auth.verifyOtp(body.challengeId, body.code, buildContext(req));
-    return this.shapeAuthResponse(req, res, result);
+    const startedAt = Date.now();
+    const anonymousPhoneLogin = isWhatsAppLoginChallenge(body.challengeId);
+    try {
+      const result = await this.auth.verifyOtp(body.challengeId, body.code, buildContext(req));
+      return this.shapeAuthResponse(req, res, result);
+    } catch (error) {
+      // The marker selects only public response shaping. Never strip it or
+      // reinterpret an old challenge: authorization uses the complete ID.
+      if (anonymousPhoneLogin && expectedOtpError(error, NEUTRAL_PHONE_VERIFY_ERRORS))
+        throw new BadRequestException({ code: 'AUTH_OTP_INVALID' });
+      throw error;
+    } finally {
+      if (anonymousPhoneLogin) {
+        const remaining = this.config.get('AUTH_ANTI_ENUM_DELAY_MS') - (Date.now() - startedAt);
+        if (remaining > 0) await new Promise((resolve) => setTimeout(resolve, remaining));
+      }
+    }
   }
 
   // --- Resend OTP (same challengeId, new code) --------------------------
@@ -190,8 +220,17 @@ export class AuthenticationController {
     @Body() body: ResendOtpDto,
     @Req() req: Request,
   ): Promise<{ success: true; expiresInSeconds: number }> {
-    const { expiresInSeconds } = await this.auth.resendOtp(body.challengeId, buildContext(req));
-    return { success: true, expiresInSeconds };
+    try {
+      const { expiresInSeconds } = await this.auth.resendOtp(body.challengeId, buildContext(req));
+      return { success: true, expiresInSeconds };
+    } catch (error) {
+      if (
+        isWhatsAppLoginChallenge(body.challengeId) &&
+        expectedOtpError(error, NEUTRAL_PHONE_RESEND_ERRORS)
+      )
+        return { success: true, expiresInSeconds: OTP_TTL_MINUTES * 60 };
+      throw error;
+    }
   }
 
   // --- Refresh ------------------------------------------------------------
@@ -441,6 +480,19 @@ export class AuthenticationController {
     };
     return body;
   }
+}
+
+function expectedOtpError(error: unknown, allowedCodes: ReadonlySet<string>): boolean {
+  if (error instanceof AppError) return allowedCodes.has(error.code);
+  if (!(error instanceof HttpException)) return false;
+  const response = error.getResponse();
+  return (
+    typeof response === 'object' &&
+    response !== null &&
+    'code' in response &&
+    typeof response.code === 'string' &&
+    allowedCodes.has(response.code)
+  );
 }
 
 function buildContext(req: Request): ClientContext {

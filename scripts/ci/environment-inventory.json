@@ -32,7 +32,7 @@
           "services": ["axllent/mailpit:v1.31.1", "postgres:16-alpine", "redis:7-alpine"],
           "containers": [],
           "composeFiles": [],
-          "gates": ["RUN_DB_INTEGRATION"]
+          "gates": ["RUN_DB_INTEGRATION", "RUN_WHATSAPP_BROWSER"]
         }
       }
     },
@@ -763,6 +763,11 @@
         "apps/api/test/integration/manifest-evidence-retention.integration.spec.ts"
       ],
       "setBy": ["ci.yml#evidence-retention"]
+    },
+    "RUN_WHATSAPP_BROWSER": {
+      "owner": "R04 passwordless WhatsApp login",
+      "suites": ["apps/api/test/integration/passwordless-whatsapp-browser.integration.spec.ts"],
+      "setBy": ["auth-lifecycle.yml#acceptance"]
     }
   }
 }

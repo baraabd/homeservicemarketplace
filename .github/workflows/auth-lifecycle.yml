@@ -92,7 +92,7 @@ jobs:
       - name: Exercise real transaction, expiry, counter and revocation regressions
         env:
           RUN_DB_INTEGRATION: '1'
-        run: pnpm --filter @homeservicemarketplace/api exec jest test/integration/r04-auth-lifecycle.integration.spec.ts test/integration/auth-state-diagnostic.integration.spec.ts --runInBand
+        run: pnpm --filter @homeservicemarketplace/api exec jest test/integration/r04-auth-lifecycle.integration.spec.ts test/integration/auth-state-diagnostic.integration.spec.ts test/integration/green-api-otp.integration.spec.ts test/integration/passwordless-whatsapp-login.integration.spec.ts --runInBand
       - name: Select email for disposable SMTP browser fixtures
         run: NODE_ENV=test APP_ENV=test node scripts/testing/email-auth-fixture.cjs --scope r04
       - name: Build actual API and production browser bundle
@@ -104,6 +104,12 @@ jobs:
           pnpm --filter @homeservicemarketplace/web build
       - name: Install browser
         run: node scripts/ci/install-browser.cjs
+      - name: Verify selected-channel passwordless login with the real API and browser
+        env:
+          RUN_DB_INTEGRATION: '1'
+          RUN_WHATSAPP_BROWSER: '1'
+          WHATSAPP_BROWSER_SCOPE: isolated-test
+        run: pnpm --filter @homeservicemarketplace/api exec jest test/integration/passwordless-whatsapp-browser.integration.spec.ts --runInBand
       - name: Start isolated real API and built SPA
         run: |
           set -euo pipefail
@@ -124,6 +130,8 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: r04-auth-lifecycle-evidence
-          path: r04-auth-evidence/
+          path: |
+            r04-auth-evidence/
+            test-results/whatsapp-login/
           if-no-files-found: warn
           retention-days: 7

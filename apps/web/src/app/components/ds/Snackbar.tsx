@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useLang } from '../../i18n/LanguageContext';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 export type SnackbarVariant = 'offline' | 'success' | 'error' | 'info';
@@ -105,6 +106,7 @@ export function Snackbar({
   onDismiss,
   duration = 4000,
 }: SnackbarProps) {
+  const { lang } = useLang();
   const [rendered, setRendered] = useState(false);
   const [show, setShow] = useState(false);
 
@@ -181,10 +183,13 @@ export function Snackbar({
         {/* Dismiss */}
         {onDismiss && (
           <button
+            type="button"
+            aria-label={lang === 'ar' ? 'إغلاق الإشعار' : 'Dismiss notification'}
             onClick={handleDismiss}
-            className="w-6 h-6 rounded-full bg-white/10 flex items-center justify-center flex-shrink-0 hover:bg-white/20 active:scale-90 transition-all"
+            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-white/10 bg-clip-content p-2.5 hover:bg-white/20 active:scale-90 transition-all focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
           >
             <svg
+              aria-hidden="true"
               width="10"
               height="10"
               viewBox="0 0 24 24"

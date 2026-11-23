@@ -20,7 +20,7 @@ import {
 import type { OtpChannel } from '../../../lib/auth-channel';
 import { PhoneIdentityField } from './PhoneIdentityField';
 import { toE164Phone, isValidPhoneIdentity } from '../../../lib/phone-identity';
-import { AuthChannelNotice } from './AuthChannelNotice';
+import { AuthChannelNotice, type AuthConfigurationState } from './AuthChannelNotice';
 import {
   extractAuthError,
   otpErrorMessage,
@@ -87,6 +87,7 @@ function PasswordStrength({ password }: { password: string }) {
 // Country is suggested from device settings; precise location remains opt-in.
 // ─────────────────────────────────────────────────────────────────────────────
 interface SignUpProps {
+  configuration: AuthConfigurationState;
   channel?: OtpChannel;
   whatsappAvailable?: boolean;
   onBack: () => void;
@@ -102,13 +103,14 @@ interface SignUpProps {
     legalAcceptance: LegalAcceptanceInput;
   }) => Promise<LoginOtpChallenge>;
   onOtpVerify: (challengeId: string, code: string) => Promise<void>;
-  onOtpResend: (challengeId: string) => Promise<void>;
+  onOtpResend: (challengeId: string) => Promise<{ expiresInSeconds: number }>;
   // Sprint 5.1.1: experience-aware theming. See LoginScreen prop
   // comment for rationale.
   experience?: AuthExperience;
 }
 
 export function SignUpScreen({
+  configuration,
   channel = DEFAULT_AUTH_OTP_CHANNEL,
   whatsappAvailable = false,
   onBack,
@@ -166,6 +168,8 @@ export function SignUpScreen({
   const [isLoading, setIsLoading] = useState(false);
   const [signUpError, setSignUpError] = useState<string | undefined>();
   const [challenge, setChallenge] = useState<LoginOtpChallenge | null>(null);
+  const [expiresAt, setExpiresAt] = useState<number | undefined>();
+  const [codeRevision, setCodeRevision] = useState(0);
   const [isVerifying, setIsVerifying] = useState(false);
   const [isResending, setIsResending] = useState(false);
   const [otpError, setOtpError] = useState<Record<'en' | 'ar', string> | undefined>();
@@ -174,10 +178,13 @@ export function SignUpScreen({
   const requestFlight = useRef(false);
 
   const phoneNumber = toE164Phone(countryCode, localNumber);
+  const configurationReady = configuration.status === 'ready';
   const canStep1 =
+    configurationReady &&
     name.trim().length > 2 &&
     (channel === 'email' || (whatsappAvailable && isValidPhoneIdentity(countryCode, localNumber)));
   const canStep2 =
+    configurationReady &&
     (channel === 'whatsapp'
       ? whatsappAvailable && isValidPhoneIdentity(countryCode, localNumber)
       : email.includes('@')) &&
@@ -186,8 +193,9 @@ export function SignUpScreen({
     legalReady;
 
   const goNext = async () => {
-    if (requestFlight.current) return;
+    if (!configurationReady || requestFlight.current) return;
     if (step === 1) {
+      if (!canStep1) return;
       setStep(2);
       return;
     }
@@ -203,8 +211,12 @@ export function SignUpScreen({
           password,
           legalAcceptance: acceptance,
         });
+        if (!Number.isFinite(issued.expiresInSeconds) || issued.expiresInSeconds <= 0)
+          throw new Error('The verification request could not be confirmed.');
         clearSignupDraft();
-        setChallenge(issued);
+        setChallenge({ ...issued, channel: issued.channel ?? channel });
+        setExpiresAt(Date.now() + issued.expiresInSeconds * 1000);
+        setCodeRevision((current) => current + 1);
         setOtpRecovery(null);
         setOtpError(undefined);
         setResendNotice(undefined);
@@ -246,7 +258,13 @@ export function SignUpScreen({
   };
 
   const handleOtpVerify = async (code: string) => {
-    if (!challenge || requestFlight.current || otpRecovery === 'restart') return;
+    if (
+      !challenge ||
+      requestFlight.current ||
+      otpRecovery === 'restart' ||
+      (expiresAt !== undefined && Date.now() >= expiresAt)
+    )
+      return;
     requestFlight.current = true;
     setIsVerifying(true);
     setOtpError(undefined);
@@ -260,6 +278,7 @@ export function SignUpScreen({
       });
       const recovery = otpRecoveryAction(err, 'verify');
       if (recovery) setOtpRecovery(recovery);
+      if (extractAuthError(err).code === 'AUTH_OTP_EXPIRED') setExpiresAt(Date.now());
     } finally {
       requestFlight.current = false;
       setIsVerifying(false);
@@ -267,13 +286,21 @@ export function SignUpScreen({
   };
 
   const handleOtpResend = async () => {
-    if (!challenge || requestFlight.current || otpRecovery !== null) return;
+    if (
+      !challenge ||
+      requestFlight.current ||
+      otpRecovery !== null ||
+      (expiresAt !== undefined && Date.now() >= expiresAt)
+    )
+      return;
     requestFlight.current = true;
     setIsResending(true);
     setResendNotice(undefined);
     setOtpError(undefined);
     try {
-      await onOtpResend(challenge.challengeId);
+      const renewed = await onOtpResend(challenge.challengeId);
+      setExpiresAt(Date.now() + renewed.expiresInSeconds * 1000);
+      setCodeRevision((current) => current + 1);
       setResendNotice(
         lang === 'ar'
           ? 'تم استلام الطلب. استخدم أحدث رمز يصلك.'
@@ -286,6 +313,7 @@ export function SignUpScreen({
       });
       const recovery = otpRecoveryAction(err, 'resend');
       if (recovery) setOtpRecovery(recovery);
+      if (extractAuthError(err).code === 'AUTH_OTP_EXPIRED') setExpiresAt(Date.now());
     } finally {
       requestFlight.current = false;
       setIsResending(false);
@@ -406,6 +434,17 @@ export function SignUpScreen({
             ))}
           </div>
 
+          {step < 3 && (
+            <div className="mb-4">
+              <AuthChannelNotice
+                channel={channel}
+                available={whatsappAvailable}
+                configuration={configuration}
+                tone={experience.id}
+              />
+            </div>
+          )}
+
           {/* ── Step 1: Personal Info ── */}
           {step === 1 && (
             <div className="flex flex-col gap-4">
@@ -417,7 +456,6 @@ export function SignUpScreen({
                 hint={t('nameOnId')}
               />
 
-              <AuthChannelNotice channel={channel} available={whatsappAvailable} />
               {channel === 'whatsapp' && (
                 <PhoneIdentityField
                   experience={experience.id}
@@ -576,10 +614,13 @@ export function SignUpScreen({
           {step === 3 && challenge && (
             <DeferredOtpPanel
               email={
-                challenge.maskedDestination ?? (channel === 'whatsapp' ? phoneNumber : email.trim())
+                challenge.maskedDestination ??
+                ((challenge.channel ?? channel) === 'whatsapp' ? phoneNumber : email.trim())
               }
               channel={challenge.channel ?? channel}
               codeLength={challenge.codeLength}
+              expiresAt={expiresAt}
+              codeRevision={codeRevision}
               onVerify={handleOtpVerify}
               onResend={handleOtpResend}
               isVerifying={isVerifying}

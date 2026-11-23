@@ -9,7 +9,9 @@ import {
   assertOtpChallengeId,
   assertOtpCode,
   hashOtpCode,
+  isWhatsAppLoginChallenge,
   OTP_HASH_PREFIX,
+  WHATSAPP_LOGIN_CHALLENGE_PREFIX,
 } from '../helpers/otp-codec';
 
 // Limits. The numbers are conservative: short-lived, few attempts, fewer
@@ -62,9 +64,16 @@ export class OtpService {
   ) {}
 
   /** Anonymous account lookup paths prepare once even for neutral responses. */
-  async prepare(): Promise<PreparedOtpChallenge> {
+  async prepare(
+    purpose?: OtpPurpose,
+    delivery?: OtpDeliveryBinding,
+  ): Promise<PreparedOtpChallenge> {
     const rawCode = generateNumericCode(OTP_CODE_LENGTH);
-    const challengeId = randomBytes(24).toString('base64url');
+    const prefix =
+      purpose === 'LOGIN_OTP' && delivery?.channel === 'whatsapp'
+        ? WHATSAPP_LOGIN_CHALLENGE_PREFIX
+        : '';
+    const challengeId = prefix + randomBytes(24).toString('base64url');
     const tokenHash = await this.hashChallenge(rawCode, challengeId);
     return { rawCode, challengeId, tokenHash };
   }
@@ -83,7 +92,7 @@ export class OtpService {
     if (tx) await lockAuthAccount(tx, userId);
     await this.repo.invalidateOutstanding(userId, purpose, tx);
 
-    const { rawCode, challengeId, tokenHash } = prepared ?? (await this.prepare());
+    const { rawCode, challengeId, tokenHash } = prepared ?? (await this.prepare(purpose, delivery));
     const expiresAt = new Date(Date.now() + OTP_TTL_MINUTES * 60 * 1000);
 
     await this.repo.create(
@@ -162,6 +171,11 @@ export class OtpService {
   ): Promise<ConsumedOtp> {
     assertOtpChallengeId(challengeId);
     assertOtpCode(rawCode);
+    // Anonymous WhatsApp login must pay the same one bounded KDF for unknown,
+    // expired, used, locked and live challenges before inspecting stored state.
+    const preparedHash = isWhatsAppLoginChallenge(challengeId)
+      ? await this.hashChallenge(rawCode, challengeId)
+      : undefined;
     let row = await this.repo.findByChallengeId(challengeId, tx);
     if (row && tx) {
       await lockAuthAccount(tx, row.userId);
@@ -170,9 +184,10 @@ export class OtpService {
     if (!row) {
       // Neutral envelopes must not be distinguishable by skipping verification
       // work. Syntax was bounded above, so this always has the fixed KDF cost.
-      await this.hashChallenge(rawCode, challengeId);
+      if (preparedHash === undefined) await this.hashChallenge(rawCode, challengeId);
       throw new BadRequestException({ code: 'AUTH_OTP_INVALID' });
     }
+    assertChallengeScope(challengeId, row);
     assertLiveOtp(row);
     if (!allowedPurposes.includes(row.purpose as OtpPurpose))
       throw new BadRequestException({ code: 'AUTH_OTP_INVALID' });
@@ -183,7 +198,7 @@ export class OtpService {
     // remain intact. Never compute a deprecated fast digest for verification.
     if (!row.tokenHash.startsWith(OTP_HASH_PREFIX))
       throw new BadRequestException({ code: 'AUTH_OTP_EXPIRED' });
-    const supplied = await this.hashChallenge(rawCode, challengeId);
+    const supplied = preparedHash ?? (await this.hashChallenge(rawCode, challengeId));
     const consumed = await this.repo.consumeByChallenge(
       challengeId,
       supplied,
@@ -234,6 +249,11 @@ export class OtpService {
     destination?: string;
   }> {
     assertOtpChallengeId(challengeId);
+    const preparedCode = isWhatsAppLoginChallenge(challengeId)
+      ? generateNumericCode(OTP_CODE_LENGTH)
+      : undefined;
+    const preparedHash =
+      preparedCode === undefined ? undefined : await this.hashChallenge(preparedCode, challengeId);
     let row = await this.repo.findByChallengeId(challengeId, tx);
     if (row && tx) {
       await lockAuthAccount(tx, row.userId);
@@ -242,9 +262,11 @@ export class OtpService {
     if (!row) {
       // Neutral registration/recovery envelopes contain well-formed random
       // IDs too. A missing challenge performs the same one KDF as a live resend.
-      await this.hashChallenge(generateNumericCode(OTP_CODE_LENGTH), challengeId);
+      if (preparedHash === undefined)
+        await this.hashChallenge(generateNumericCode(OTP_CODE_LENGTH), challengeId);
       throw new BadRequestException({ code: 'AUTH_OTP_INVALID' });
     }
+    assertChallengeScope(challengeId, row);
     assertLiveOtp(row);
     if (row!.resendCount >= OTP_MAX_RESENDS) {
       throw new ForbiddenException({ code: 'AUTH_OTP_RESEND_EXCEEDED' });
@@ -252,10 +274,19 @@ export class OtpService {
 
     let rawCode: string;
     let tokenHash: string;
-    do {
-      rawCode = generateNumericCode(OTP_CODE_LENGTH);
-      tokenHash = await this.hashChallenge(rawCode, challengeId);
-    } while (tokenHash === row.tokenHash);
+    if (preparedCode !== undefined && preparedHash !== undefined) {
+      // A one-in-a-million repeated code leaves the current challenge intact.
+      // Do not add account-dependent KDF work or send the same code as a rotation.
+      if (preparedHash === row.tokenHash)
+        throw new BadRequestException({ code: 'AUTH_OTP_INVALID' });
+      rawCode = preparedCode;
+      tokenHash = preparedHash;
+    } else {
+      do {
+        rawCode = generateNumericCode(OTP_CODE_LENGTH);
+        tokenHash = await this.hashChallenge(rawCode, challengeId);
+      } while (tokenHash === row.tokenHash);
+    }
     const expiresAt = new Date(Date.now() + OTP_TTL_MINUTES * 60 * 1000);
     const rotated = await this.repo.rotateLiveChallenge(
       challengeId,
@@ -337,4 +368,12 @@ function deliveryBinding(row: VerificationToken): Partial<OtpDeliveryBinding> {
     return { channel: row.deliveryChannel, destination: row.deliveryTarget };
   }
   return {};
+}
+
+function assertChallengeScope(challengeId: string, row: VerificationToken): void {
+  if (
+    isWhatsAppLoginChallenge(challengeId) &&
+    (row.purpose !== 'LOGIN_OTP' || row.deliveryChannel !== 'whatsapp')
+  )
+    throw new BadRequestException({ code: 'AUTH_OTP_INVALID' });
 }

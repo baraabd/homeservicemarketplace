@@ -1,9 +1,9 @@
 import { useState, type ReactNode } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Loader2, RefreshCcw } from 'lucide-react';
+import { DEFAULT_AUTH_OTP_CHANNEL } from '@homeservicemarketplace/contracts';
 import { getAuthConfiguration, type OtpChannel } from '../../../lib/auth-channel';
-import { useLang, LangToggle } from '../../i18n/LanguageContext';
-import { Button } from '../ds/Button';
+import { LangToggle } from '../../i18n/LanguageContext';
+import { AuthConfigurationFeedback, type AuthConfigurationState } from './AuthChannelNotice';
 import { AUTH_CONFIG_QUERY_KEY } from '../../../lib/auth-policy-query';
 import {
   AUTH_EXPERIENCES,
@@ -11,15 +11,20 @@ import {
   type AuthExperience,
 } from '../../../lib/auth-experience';
 
-/** Do not guess the identity field while the server's policy is unknown. */
+/** Show the default form immediately; only confirmed policy enables new requests. */
 export function AuthConfigurationGate({
   children,
   experience = AUTH_EXPERIENCES[DEFAULT_EXPERIENCE_ID],
+  requireConfirmation = false,
 }: {
-  children: (channel: OtpChannel, whatsappAvailable: boolean) => ReactNode;
+  children: (
+    channel: OtpChannel,
+    whatsappAvailable: boolean,
+    configuration: AuthConfigurationState,
+  ) => ReactNode;
   experience?: AuthExperience;
+  requireConfirmation?: boolean;
 }) {
-  const { lang } = useLang();
   const query = useQuery({
     queryKey: AUTH_CONFIG_QUERY_KEY,
     queryFn: getAuthConfiguration,
@@ -34,42 +39,26 @@ export function AuthConfigurationGate({
   if (!confirmedAfterMount && query.isFetchedAfterMount && query.isSuccess) {
     setConfirmedAfterMount(true);
   }
-  if (!confirmedAfterMount || !query.data) {
+  const confirmed = confirmedAfterMount ? query.data : undefined;
+  const configuration: AuthConfigurationState = confirmed
+    ? { status: 'ready' }
+    : {
+        status: query.isPending || query.isFetching ? 'pending' : 'error',
+        retry: () => void query.refetch(),
+      };
+  // Recovery navigation depends on the selected method, so it must never
+  // redirect an email user based on the unconfirmed presentation default.
+  if (requireConfirmation && !confirmed) {
     return (
       <main className="flex min-h-svh flex-col items-center justify-center gap-5 bg-white p-6 text-center">
         <LangToggle />
-        {query.isPending || query.isFetching ? (
-          <>
-            <Loader2
-              className={`animate-spin ${experience.classes.accentText}`}
-              aria-hidden="true"
-            />
-            <p role="status">
-              {lang === 'ar' ? 'جارٍ تجهيز تسجيل الدخول…' : 'Preparing secure sign in…'}
-            </p>
-          </>
-        ) : (
-          <>
-            <h1 className="text-xl font-bold">
-              {lang === 'ar' ? 'تعذّر تحميل خيارات الدخول' : 'Sign-in options are unavailable'}
-            </h1>
-            <p role="alert" className="max-w-sm text-slate-600">
-              {lang === 'ar'
-                ? 'خدمة تسجيل الدخول غير متاحة مؤقتًا. يرجى إعادة المحاولة بعد قليل.'
-                : 'The sign-in service is temporarily unavailable. Please try again shortly.'}
-            </p>
-            <Button
-              variant="primary"
-              tone={experience.id}
-              onClick={() => void query.refetch()}
-              leadingIcon={<RefreshCcw size={18} />}
-            >
-              {lang === 'ar' ? 'إعادة المحاولة' : 'Try again'}
-            </Button>
-          </>
-        )}
+        <AuthConfigurationFeedback configuration={configuration} tone={experience.id} />
       </main>
     );
   }
-  return children(query.data.otpChannel, query.data.whatsappAvailable);
+  return children(
+    confirmed?.otpChannel ?? DEFAULT_AUTH_OTP_CHANNEL,
+    confirmed?.whatsappAvailable ?? false,
+    configuration,
+  );
 }

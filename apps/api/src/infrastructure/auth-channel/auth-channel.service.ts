@@ -40,8 +40,8 @@ export class AuthChannelService {
 
   async getPublicConfig(tx?: PrismaTx): Promise<AuthChannelConfiguration> {
     // Availability is a separate capability: losing provider configuration must
-    // not hide the operator's email rollback or existing-account email sign-in.
-    // Sending and activating WhatsApp still fail closed in their own boundaries.
+    // not hide the selected method or prevent an operator's explicit rollback.
+    // New sign-ins use only this selected method; sending still fails closed.
     return {
       otpChannel: await this.getSelectedChannel(tx),
       whatsappAvailable: this.whatsapp.isConfigured(),
@@ -58,8 +58,8 @@ export class AuthChannelService {
   }
 
   /** Run under the settings transaction and account lock. A switch cannot
-   * remove the operator's own verified way back into the platform. Existing
-   * accounts additionally retain their verified-method sign-in fallback. */
+   * remove the operator's own verified way back into the platform. New sign-ins
+   * use only the selected method; issued challenges retain their bound contact. */
   async assertSelectable(channel: unknown, adminUserId: string, tx: PrismaTx): Promise<void> {
     if (channel !== 'email' && channel !== 'whatsapp')
       throw new AppError('VALIDATION_ERROR', 'Unsupported authentication channel.', 400);

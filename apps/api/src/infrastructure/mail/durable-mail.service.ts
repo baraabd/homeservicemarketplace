@@ -34,10 +34,10 @@ import {
  *  aimed at one inbox. Over the limit nothing is recorded or sent, and the
  *  caller's public response is unchanged (no enumeration signal).
  *
- *  OTP mail is not listed: a login code needs the account password, a
- *  registration code is sent once per new account, and OTP resends are
- *  already capped per challenge — throttling them here would only lock out
- *  the account owner. */
+ *  Email login codes still require a password. WhatsApp login is passwordless,
+ *  so its initial codes and resends also consume this recipient budget. The
+ *  issuing transaction holds the account lock so count + insert is serialized.
+ *  Registration and authenticated contact enrollment retain their own gates. */
 export const AUTH_THROTTLE = { limit: 6, windowMs: 15 * 60_000 } as const;
 const THROTTLED_TEMPLATES: ReadonlySet<string> = new Set([
   'auth.password_reset',
@@ -97,7 +97,10 @@ export class DurableMailService extends MailPort {
     const hash = recipientHash(intent.channel === 'whatsapp' ? `whatsapp:${intent.to}` : intent.to);
     const db = tx ?? (this.prisma.client as unknown as PrismaTx);
 
-    if (THROTTLED_TEMPLATES.has(intent.template)) {
+    if (
+      THROTTLED_TEMPLATES.has(intent.template) ||
+      (intent.channel === 'whatsapp' && intent.template === 'auth.login_otp')
+    ) {
       const since = new Date(Date.now() - AUTH_THROTTLE.windowMs);
       const recent = await this.repo.countRecent(hash, intent.template, since, db);
       if (recent >= AUTH_THROTTLE.limit) {

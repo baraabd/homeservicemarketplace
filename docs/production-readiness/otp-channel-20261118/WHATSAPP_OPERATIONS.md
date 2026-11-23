@@ -4,7 +4,7 @@ Delivery mode: Product Feature Mode for backend policy and transport. Authentica
 
 ## Provider setup
 
-Email remains the default. Configure these values in the API deployment secret manager:
+WhatsApp is the default when no explicit `auth.otpChannel` setting is saved. An existing saved email choice still wins. The transport defaults to `WHATSAPP_PROVIDER=meta`; see the current [local and hosted setup guide](../../development/whatsapp-otp.md) for GREEN-API and diagnostics. For Meta, configure these values in the API deployment secret manager:
 
 - `WHATSAPP_ACCESS_TOKEN`: a Meta system-user token with `whatsapp_business_messaging` permission.
 - `WHATSAPP_PHONE_NUMBER_ID`: the sending number's Meta ID, not its displayed telephone number.
@@ -23,11 +23,11 @@ A real end-to-end acceptance must send a code to an explicitly designated test r
 2. In Settings select WhatsApp and save. The bulk and keyed admin APIs both check provider configuration and the administrator's verified destination inside the write transaction.
 3. All three authentication experiences read `GET /v1/auth/config` before rendering. The response is `no-store` and contains only `otpChannel` and `whatsappAvailable`.
 4. Existing email accounts retain sign-in through their original verified email. Phone-only accounts retain WhatsApp sign-in after an email rollback. The selected global channel governs new registration and the default experience, not deletion of existing credentials.
-5. A phone-only administrator first links and verifies an email in Settings using the current password and the code delivered to that email. Switch back to email through Settings using an administrator with a verified email. Deleting `auth.otpChannel` also restores email and applies the same guard.
+5. A phone-only administrator first links and verifies an email in Settings using the current password and the code delivered to that email. Switch back to email through Settings using an administrator with a verified email. Deleting `auth.otpChannel` restores the current WhatsApp default and applies the same verified-contact guard; deletion is not an email rollback.
 
 Existing customers and professionals use their currently verified contact to sign in, then open Profile → Settings → Sign-in methods to link a missing WhatsApp number or email. Linking requires their current password and the code delivered to that destination. It does not create a second account, change the global channel, or copy the ordinary profile phone into login identity. A failed account refresh after successful code verification retries the refresh without consuming the code again.
 
-An absent setting defaults to email; an invalid stored policy fails closed. Removing provider credentials while WhatsApp is selected reports `whatsappAvailable: false` without hiding the selected channel. It does not silently reroute OTPs to email: explicit existing-email sign-in and authenticated administrator rollback remain available. Restore provider configuration or select a usable channel.
+An absent setting defaults to WhatsApp; an invalid stored policy fails closed. Removing provider credentials while WhatsApp is selected reports `whatsappAvailable: false` without hiding the selected channel. It does not silently reroute OTPs to email: explicit existing-email sign-in and authenticated administrator rollback remain available. Restore provider configuration or select a usable channel.
 
 ## Delivery integrity
 
@@ -35,10 +35,10 @@ An absent setting defaults to email; an invalid stored policy fails closed. Remo
 - Deploying the v4 Argon2id OTP codec requires resending any pre-v4 numeric code still pending within its normal five-minute lifetime. If verification has already shown the expired-code state, use the UI’s start-again recovery. The live resend API also preserves owner, channel, recipient and attempt/resend limits; no data migration expires challenges. Expired or exhausted challenges require a fresh sign-in/recovery request. Account passwords were already Argon2id and are unchanged; opaque email verification/recovery links are unchanged.
 - The existing `EmailDelivery` table and leased dispatcher carry both channels. The historical table name is retained to avoid duplicating queue/state-machine code.
 - Channel, recipient, and variables are sealed together with AES-256-GCM and message-key associated data. Old envelopes lacking a channel remain email.
-- WhatsApp uses only authentication templates. No SMTP fallback is attempted for a WhatsApp envelope.
+- Meta WhatsApp uses approved authentication templates. GREEN-API uses the selected instance's supported transport, with an optional WABA authentication template; see the current setup guide. No SMTP fallback is attempted for a WhatsApp envelope.
 - Immediate delivery occurs after the producer transaction commits. Failure leaves a durable bounded retry; expiry and terminal states erase the sealed envelope.
 - Meta's response body is discarded on errors. Only low-cardinality error classes enter logs or retry metadata. Authorization headers, OTPs, and recipient numbers are never logged by the adapter.
-- Endpoint origin is fixed to `graph.facebook.com`; redirects are rejected and request duration is bounded.
+- Meta's endpoint origin is fixed to `graph.facebook.com`; GREEN-API accepts only the configured, validated provider host. Redirects are rejected and request duration is bounded.
 - Provider acceptance followed by a process crash may lead to a retry; this is at-least-once delivery, not an exactly-once guarantee.
 
 ## References
