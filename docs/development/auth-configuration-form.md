@@ -54,6 +54,18 @@ prove browser CORS or real WhatsApp delivery.
 - Retain every existing CI, security and R27 performance limit. New source
   requires fresh evidence before merge; earlier green heads are historical.
 
+### Findings from the first hosted run
+
+The real offline/reconnect journey exposed the existing notification dismiss
+button without an accessible name. The follow-up names it in Arabic and
+English, keeps its visible circular icon, and provides a 44px keyboard-focusable
+target. It does not suppress the notification or narrow the accessibility scan.
+
+The signup tests must wait for an enabled Next action rather than treat the
+newly visible name field as proof of confirmed policy. Browser coverage also
+exercises signup's pending/error/retry states and a restored credential-step
+draft, without registering an account or sending an OTP during these checks.
+
 ## Rollback
 
 Revert this scoped form-presentation commit if needed. Preserve the persisted

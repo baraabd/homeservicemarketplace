@@ -244,6 +244,7 @@ const enabled = process.env.RUN_WHATSAPP_BROWSER === '1';
       expect.arrayContaining([
         'form-first-policy-failure-and-real-api-recovery',
         'responsive-selected-methods',
+        'signup-policy-recovery-and-restored-step-two',
         'issued-challenge-survives-policy-refresh',
         'all-role-phone-only-sessions',
         'expiry-and-fresh-code',

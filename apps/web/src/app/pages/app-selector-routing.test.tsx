@@ -358,6 +358,7 @@ describe('Provider intent survives the entire auth flow', () => {
         fireEvent.change(nameInput, { target: { value: 'Ada Lovelace' } });
       });
       const nextBtn = screen.getAllByRole('button').find((b) => /next/i.test(b.textContent ?? ''))!;
+      await waitFor(() => expect(nextBtn).toBeEnabled());
       await act(async () => {
         nextBtn.click();
       });

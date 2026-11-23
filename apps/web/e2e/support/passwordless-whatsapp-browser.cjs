@@ -52,6 +52,9 @@ async function run(data) {
   const pageErrors = [];
   const accessibility = [];
   const configurationRecovery = [];
+  const signupRecovery = [];
+  const restoredSignupRecovery = [];
+  let signupPosts = 0;
   const mark = (name) => {
     phases.push(name);
     process.send({ kind: 'progress', name });
@@ -79,6 +82,10 @@ async function run(data) {
     const page = await context.newPage();
     page.setDefaultTimeout(30_000);
     page.on('pageerror', () => pageErrors.push('browser-page-error'));
+    page.on('request', (request) => {
+      if (request.method() === 'POST' && request.url() === `${data.api}/v1/auth/register`)
+        signupPosts += 1;
+    });
     return { context, page };
   }
   async function probe(page, endpoint, method = 'GET', body) {
@@ -198,6 +205,17 @@ async function run(data) {
     expect(response.headers()['cache-control']).toContain('no-store');
     expect(await response.json()).toEqual({ otpChannel: channel, whatsappAvailable: true });
   }
+  async function retryActualPolicy(page, lang, channel, interruption) {
+    // Only the failure was intercepted. The keyboard retry must read the
+    // actual controller and persisted setting after removing that interception.
+    await interruption.restore();
+    const recovered = responseTo(page, '/v1/auth/config', 'GET');
+    const retry = page.getByRole('button', { name: policyCopy(lang).retry, exact: true });
+    await retry.focus();
+    await expect(retry).toBeFocused();
+    await page.keyboard.press('Enter');
+    await assertActualPolicy(await recovered, channel);
+  }
   async function recoverInitialPolicy(page, role, lang, channel = 'whatsapp') {
     const copy = policyCopy(lang);
     const interruption = await interruptConfiguration(page, true);
@@ -245,15 +263,7 @@ async function run(data) {
         await snapshot(page, `${role}-${lang}-saved-email-policy-unavailable`);
       }
 
-      // Remove interception before a keyboard retry. This successful response
-      // comes from AuthChannelController and the persisted test-owned policy.
-      await interruption.restore();
-      const recovered = responseTo(page, '/v1/auth/config', 'GET');
-      const retry = page.getByRole('button', { name: copy.retry, exact: true });
-      await retry.focus();
-      await expect(retry).toBeFocused();
-      await page.keyboard.press('Enter');
-      await assertActualPolicy(await recovered, channel);
+      await retryActualPolicy(page, lang, channel, interruption);
       await expect(page.getByRole('alert').filter({ hasText: copy.unavailable })).toHaveCount(0);
       if (channel === 'whatsapp') {
         await selectedPhone(page, role, lang);
@@ -278,6 +288,164 @@ async function run(data) {
       });
     } finally {
       await interruption.dispose();
+    }
+  }
+  async function recoverSignupPolicy(page, role, lang) {
+    const copy = policyCopy(lang);
+    const fullName = lang === 'ar' ? 'نورة أحمد' : 'Noura Ahmad';
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto(
+      `${data.web}/login?${new URLSearchParams({ returnTo: data.actors[role].path })}`,
+    );
+    await selectedPhone(page, role, lang);
+    await expect(page.getByRole('button', { name: copy.send, exact: true })).toBeEnabled();
+    await page.evaluate(() => sessionStorage.removeItem('hsm.signup.draft.v1'));
+    const interruption = await interruptConfiguration(page, true);
+    try {
+      // Follow the real branded entry point. Its cached successful login policy
+      // cannot authorize the newly mounted signup form before a fresh response.
+      await page
+        .getByRole('button', { name: lang === 'ar' ? 'إنشاء حساب' : 'Sign Up', exact: true })
+        .click();
+      await expect(page).toHaveURL(`${data.web}/signup`);
+      await expect.poll(interruption.requestCount).toBeGreaterThan(0);
+      await expect(page.getByRole('status').filter({ hasText: copy.pending })).toBeVisible();
+      await expect(page.getByTestId('auth-channel-whatsapp')).toBeVisible();
+      await expect(page.locator('html')).toHaveAttribute('dir', lang === 'ar' ? 'rtl' : 'ltr');
+      const name = page.getByLabel(lang === 'ar' ? 'الاسم الكامل' : 'Full Name', { exact: true });
+      const phone = page.locator('input[type="tel"]');
+      const next = page.getByRole('button', {
+        name: lang === 'ar' ? 'التالي' : 'Next',
+        exact: true,
+      });
+      await expect(name).toBeEditable();
+      await expect(phone).toBeEditable();
+      await expect(page.getByTestId('dial-code-select')).toHaveValue('US');
+      await name.fill(fullName);
+      await phone.fill(data.actors[role].phone);
+      await phone.press('Enter');
+      await expect(next).toBeDisabled();
+      expect(interruption.credentialPosts).toEqual([]);
+      await snapshot(page, `signup-${role}-${lang}-policy-pending`);
+
+      interruption.release();
+      const unavailable = page.getByRole('alert').filter({ hasText: copy.unavailable });
+      await expect(unavailable).toBeVisible();
+      await expect(name).toHaveValue(fullName);
+      await expect(phone).toHaveValue(data.actors[role].phone);
+      await expect(next).toBeDisabled();
+      for (const width of [320, 390, 430, 768, 1024, 1440]) {
+        await page.setViewportSize({ width, height: 844 });
+        await noOverflow(page);
+        if (width === 320 || width === 390) {
+          await unavailable.scrollIntoViewIfNeeded();
+          await snapshot(page, `signup-${role}-${lang}-policy-unavailable-${width}`);
+          await phone.scrollIntoViewIfNeeded();
+          await expect(phone).toBeInViewport();
+          await expect(next).toBeInViewport();
+          await snapshot(page, `signup-${role}-${lang}-policy-unavailable-fields-${width}`);
+        }
+      }
+      await page.setViewportSize({ width: 1440, height: 1000 });
+      await page.evaluate(() => {
+        globalThis.document.documentElement.style.zoom = '2';
+      });
+      await noOverflow(page);
+      await unavailable.scrollIntoViewIfNeeded();
+      await snapshot(page, `signup-${role}-${lang}-policy-unavailable-zoom-200`);
+      await page.evaluate(() => {
+        globalThis.document.documentElement.style.zoom = '';
+      });
+      await page.setViewportSize({ width: 390, height: 844 });
+      await retryActualPolicy(page, lang, 'whatsapp', interruption);
+      await expect(unavailable).toHaveCount(0);
+      await expect(name).toHaveValue(fullName);
+      await expect(phone).toHaveValue(data.actors[role].phone);
+      await expect(next).toBeEnabled();
+      expect(interruption.credentialPosts).toEqual([]);
+      await phone.scrollIntoViewIfNeeded();
+      await snapshot(page, `signup-${role}-${lang}-policy-recovered`);
+      signupRecovery.push({
+        brand: role,
+        language: lang,
+        initialFailure: 'INTERCEPTED_PUBLIC_CONFIG_503',
+        successfulRead: 'ACTUAL_API_AND_POSTGRES_AFTER_UNROUTE',
+        signupPosts: 0,
+      });
+    } finally {
+      await interruption.dispose();
+    }
+
+    if (role !== 'seeker') return;
+    // Use the actual draft writer by advancing normally, then reload. Neither
+    // password nor legal acceptance may survive that restoration.
+    await page
+      .getByRole('button', { name: lang === 'ar' ? 'التالي' : 'Next', exact: true })
+      .click();
+    const password = page.locator('input[type="password"]');
+    const consent = page.getByRole('checkbox');
+    const create = page.getByRole('button', {
+      name: lang === 'ar' ? 'إنشاء الحساب' : 'Create Account',
+      exact: true,
+    });
+    const syntheticPassword = 'Signup-view-fixture-2026';
+    await expect(password).toHaveValue('');
+    await password.fill(syntheticPassword);
+    await expect(consent).toBeEnabled();
+    await consent.check();
+    await expect(create).toBeEnabled();
+    const draft = await page.evaluate(() => sessionStorage.getItem('hsm.signup.draft.v1'));
+    expect(JSON.parse(draft).step).toBe(2);
+    expect(draft).not.toContain(syntheticPassword);
+
+    const restored = await interruptConfiguration(page, true);
+    try {
+      await page.reload();
+      await expect.poll(restored.requestCount).toBeGreaterThan(0);
+      await expect(page.getByRole('status').filter({ hasText: copy.pending })).toBeVisible();
+      await expect(password).toHaveValue('');
+      await expect(consent).not.toBeChecked();
+      await expect(create).toBeDisabled();
+      await password.fill(syntheticPassword);
+      await expect(consent).toBeEnabled();
+      await consent.check();
+      await expect(create).toBeDisabled();
+      await snapshot(page, `signup-seeker-${lang}-restored-step-two-pending`);
+      restored.release();
+      const unavailable = page.getByRole('alert').filter({ hasText: copy.unavailable });
+      await expect(unavailable).toBeVisible();
+      await expect(password).toHaveValue(syntheticPassword);
+      await expect(consent).toBeChecked();
+      await expect(create).toBeDisabled();
+      for (const width of [320, 390]) {
+        await page.setViewportSize({ width, height: 844 });
+        await noOverflow(page);
+        await unavailable.scrollIntoViewIfNeeded();
+        await snapshot(page, `signup-seeker-${lang}-restored-step-two-unavailable-${width}`);
+      }
+      await retryActualPolicy(page, lang, 'whatsapp', restored);
+      await expect(password).toHaveValue(syntheticPassword);
+      await expect(consent).toBeChecked();
+      await expect(create).toBeEnabled();
+      await consent.uncheck();
+      await expect(create).toBeDisabled();
+      await consent.check();
+      await password.fill('short');
+      await expect(create).toBeDisabled();
+      await password.fill(syntheticPassword);
+      await expect(create).toBeEnabled();
+      expect(restored.credentialPosts).toEqual([]);
+      await snapshot(page, `signup-seeker-${lang}-restored-step-two-recovered`);
+      restoredSignupRecovery.push({
+        brand: role,
+        language: lang,
+        restoredStep: 2,
+        passwordAndConsentRestored: false,
+        enteredDraftRetainedAfterRetry: true,
+        signupPosts: 0,
+      });
+    } finally {
+      await restored.dispose();
     }
   }
   async function reconnectForPolicy(context, page) {
@@ -383,6 +551,12 @@ async function run(data) {
     mark('form-first-policy-failure-and-real-api-recovery');
     mark('responsive-selected-methods');
 
+    for (const lang of ['en', 'ar']) {
+      const { page } = await newPage(lang);
+      for (const role of Object.keys(data.actors)) await recoverSignupPolicy(page, role, lang);
+    }
+    mark('signup-policy-recovery-and-restored-step-two');
+
     const signedIn = {};
     for (const role of ['seeker', 'provider', 'admin']) {
       const item = await newPage();
@@ -412,6 +586,22 @@ async function run(data) {
             ['serious', 'critical'].includes(violation.impact),
           ),
         ).toEqual([]);
+        // Keep the reconnect notification in the full-page Axe scan above.
+        // Produce a fresh notification afterward so keyboard dismissal does
+        // not race its automatic timer while the accessibility scan runs.
+        const dismiss = item.page.getByRole('button', {
+          name: 'Dismiss notification',
+          exact: true,
+        });
+        // Let the previous notification expire naturally before creating another.
+        await expect(dismiss).toHaveCount(0);
+        await assertActualPolicy(await reconnectForPolicy(item.context, item.page), 'whatsapp');
+        await expect(dismiss).toBeVisible();
+        await dismiss.focus();
+        await expect(dismiss).toBeFocused();
+        await item.page.keyboard.press('Enter');
+        await expect(dismiss).toHaveCount(0);
+        await expect(item.page.getByTestId('otp-input')).toHaveValue('12');
       }
       const verification = await verify(item.page, delivered.code);
       expect(verification.request().postDataJSON().challengeId).toBe(challenge.challengeId);
@@ -512,6 +702,7 @@ async function run(data) {
     // OTP submission above uses keyboard Enter against the real code field.
     mark('accessibility-and-keyboard');
     expect(pageErrors).toEqual([]);
+    expect(signupPosts).toBe(0);
     await writeFile(
       path.join(data.output, 'acceptance.json'),
       JSON.stringify(
@@ -521,6 +712,9 @@ async function run(data) {
           publicConfigurationFailures: 'INTERCEPTED_PRESENTATION_ONLY',
           successfulConfigurationReads: 'ACTUAL_API_AND_POSTGRES_AFTER_UNROUTE',
           configurationRecovery,
+          signupRecovery,
+          restoredSignupRecovery,
+          signupPosts,
           phases,
           accessibility,
           responsive: {

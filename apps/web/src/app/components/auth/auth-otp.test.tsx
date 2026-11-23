@@ -604,6 +604,7 @@ describe('Register → OTP → authenticated', () => {
       typeInto(name, 'Ada Lovelace');
     });
     const nextBtn = screen.getAllByRole('button').find((b) => /next/i.test(b.textContent ?? ''))!;
+    await waitFor(() => expect(nextBtn).toBeEnabled());
     await act(async () => {
       nextBtn.click();
     });
