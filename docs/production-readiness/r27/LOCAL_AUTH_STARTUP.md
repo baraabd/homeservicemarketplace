@@ -198,7 +198,8 @@ helper in that old source tree. Re-running that head cannot supply those files.
 An ordinary merge integrates the complete current source and preserves the
 immutable benchmark object. Both proposed manifest blobs already match
 `develop`; the integration therefore has an identical application tree to
-that base. The remaining change is this documentation correction. Dependency
+that base. The remaining changes document this integration and correct the
+scoped browser-test wait described below. Dependency
 versions, lockfile, performance controls, budgets and workflow gates are
 unchanged. No application fix needs to be recreated or reverted.
 
@@ -206,6 +207,16 @@ The PR body records the final source identity and executed verification.
 Historical failures remain evidence for the old head; acceptance requires new
 CI, CodeQL and applicable workflow results for the repaired head. This merge
 does not establish a hosted deployment or external WhatsApp delivery result.
+
+The first repaired-head R04 run reached the real WhatsApp browser journey and
+exposed a separate notification wait race. Root displays its offline Snackbar
+for 5000 ms, and Snackbar waits another 320 ms before removing its DOM. The
+test's default 5000 ms assertion could therefore expire before the notification's
+normal lifecycle completed. Only that automatic-removal assertion now allows
+6000 ms; the following fresh-notification, keyboard-focus/Enter-dismissal and
+retained-OTP assertions remain unchanged. No application timing, suite timeout
+or performance budget was changed, and every assertion is retained. Fresh final-head R04
+evidence is required after this test correction.
 
 ## Rollout and rollback
 
