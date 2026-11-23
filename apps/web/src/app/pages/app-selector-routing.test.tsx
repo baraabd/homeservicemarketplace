@@ -703,9 +703,9 @@ describe('Auth primary buttons follow the resolved experience', () => {
     });
     await waitFor(() => expect(screen.getByTestId('auth-hero-provider')).toBeInTheDocument());
 
-    const loginBtn = screen
-      .getAllByRole('button')
-      .find((b) => /^log ?in|^sign ?in/i.test(b.textContent ?? ''))!;
+    // The hero mounts before policy confirmation; wait for the selected email action.
+    const loginBtn = await screen.findByRole('button', { name: 'Log In', exact: true });
+    expect(loginBtn).toBeEnabled();
     expect(loginBtn.getAttribute('data-tone')).toBe('provider');
     expect(loginBtn.className).not.toMatch(/amber/);
     expect(loginBtn.className).toMatch(/blue/);
@@ -721,9 +721,9 @@ describe('Auth primary buttons follow the resolved experience', () => {
     });
     await waitFor(() => expect(screen.getByTestId('auth-hero-seeker')).toBeInTheDocument());
 
-    const loginBtn = screen
-      .getAllByRole('button')
-      .find((b) => /^log ?in|^sign ?in/i.test(b.textContent ?? ''))!;
+    // The hero mounts before policy confirmation; wait for the selected email action.
+    const loginBtn = await screen.findByRole('button', { name: 'Log In', exact: true });
+    expect(loginBtn).toBeEnabled();
     expect(loginBtn.getAttribute('data-tone')).toBe('seeker');
     expect(loginBtn.className).toMatch(/amber/);
     expect(loginBtn.className).not.toMatch(/\bblue\b|\bslate-700\b/);
@@ -737,9 +737,9 @@ describe('Auth primary buttons follow the resolved experience', () => {
     renderRouter('/login');
     await waitFor(() => expect(screen.getByTestId('auth-hero-admin')).toBeInTheDocument());
 
-    const loginBtn = screen
-      .getAllByRole('button')
-      .find((b) => /^log ?in|^sign ?in/i.test(b.textContent ?? ''))!;
+    // The hero mounts before policy confirmation; wait for the selected email action.
+    const loginBtn = await screen.findByRole('button', { name: 'Log In', exact: true });
+    expect(loginBtn).toBeEnabled();
     expect(loginBtn.getAttribute('data-tone')).toBe('admin');
     expect(loginBtn.className).not.toMatch(/amber|\bblue\b/);
     expect(loginBtn.className).toMatch(/slate/);

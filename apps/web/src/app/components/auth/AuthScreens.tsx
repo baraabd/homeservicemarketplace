@@ -9,7 +9,7 @@ import type { OtpChannel } from '../../../lib/auth-channel';
 import type { OtpResendResponse } from '../../../lib/auth-api';
 import { PhoneIdentityField } from './PhoneIdentityField';
 import { toE164Phone, isValidPhoneIdentity } from '../../../lib/phone-identity';
-import { AuthChannelNotice } from './AuthChannelNotice';
+import { AuthChannelNotice, type AuthConfigurationState } from './AuthChannelNotice';
 import { DeferredOtpPanel } from './DeferredOtpPanel';
 import type { LoginOtpChallenge } from './otp-types';
 export type { LoginOtpChallenge } from './otp-types';
@@ -37,6 +37,7 @@ import {
 // ─────────────────────────────────────────────────────────────────────────────
 
 interface LoginProps {
+  configuration: AuthConfigurationState;
   whatsappAvailable?: boolean;
   channel?: OtpChannel;
   onLogin: (
@@ -58,6 +59,7 @@ interface LoginProps {
 }
 
 export function LoginScreen({
+  configuration,
   channel = DEFAULT_AUTH_OTP_CHANNEL,
   whatsappAvailable = false,
   onLogin,
@@ -76,6 +78,7 @@ export function LoginScreen({
   const [countryCode, setCountryCode] = useState('');
   const [localNumber, setLocalNumber] = useState('');
   const selectedChannel = channel;
+  const configurationReady = configuration.status === 'ready';
   const identity =
     selectedChannel === 'whatsapp' ? toE164Phone(countryCode, localNumber) : email.trim();
   const [password, setPassword] = useState('');
@@ -118,7 +121,12 @@ export function LoginScreen({
   };
 
   const handleLogin = async () => {
-    if (requestFlight.current || (selectedChannel === 'whatsapp' && !whatsappAvailable)) return;
+    if (
+      !configurationReady ||
+      requestFlight.current ||
+      (selectedChannel === 'whatsapp' && !whatsappAvailable)
+    )
+      return;
     setLoginError(undefined);
     if (
       !identity ||
@@ -239,6 +247,7 @@ export function LoginScreen({
 
   const handleRequestNewCode = async () => {
     if (
+      !configurationReady ||
       !challenge ||
       selectedChannel !== 'whatsapp' ||
       challenge.channel !== 'whatsapp' ||
@@ -368,6 +377,7 @@ export function LoginScreen({
             onVerify={handleOtpVerify}
             onResend={handleOtpResend}
             onRequestNewCode={
+              configurationReady &&
               challenge.channel === 'whatsapp' &&
               selectedChannel === 'whatsapp' &&
               whatsappAvailable
@@ -394,7 +404,12 @@ export function LoginScreen({
           />
         ) : (
           <div className="flex flex-col gap-4">
-            <AuthChannelNotice channel={selectedChannel} available={whatsappAvailable} />
+            <AuthChannelNotice
+              channel={selectedChannel}
+              available={whatsappAvailable}
+              configuration={configuration}
+              tone={experience.id}
+            />
             {selectedChannel === 'whatsapp' ? (
               <PhoneIdentityField
                 experience={experience.id}
@@ -477,7 +492,7 @@ export function LoginScreen({
               state={
                 isLoading
                   ? 'loading'
-                  : selectedChannel === 'whatsapp' && !whatsappAvailable
+                  : !configurationReady || (selectedChannel === 'whatsapp' && !whatsappAvailable)
                     ? 'disabled'
                     : 'default'
               }

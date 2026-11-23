@@ -20,7 +20,7 @@ import {
 import type { OtpChannel } from '../../../lib/auth-channel';
 import { PhoneIdentityField } from './PhoneIdentityField';
 import { toE164Phone, isValidPhoneIdentity } from '../../../lib/phone-identity';
-import { AuthChannelNotice } from './AuthChannelNotice';
+import { AuthChannelNotice, type AuthConfigurationState } from './AuthChannelNotice';
 import {
   extractAuthError,
   otpErrorMessage,
@@ -87,6 +87,7 @@ function PasswordStrength({ password }: { password: string }) {
 // Country is suggested from device settings; precise location remains opt-in.
 // ─────────────────────────────────────────────────────────────────────────────
 interface SignUpProps {
+  configuration: AuthConfigurationState;
   channel?: OtpChannel;
   whatsappAvailable?: boolean;
   onBack: () => void;
@@ -109,6 +110,7 @@ interface SignUpProps {
 }
 
 export function SignUpScreen({
+  configuration,
   channel = DEFAULT_AUTH_OTP_CHANNEL,
   whatsappAvailable = false,
   onBack,
@@ -176,10 +178,13 @@ export function SignUpScreen({
   const requestFlight = useRef(false);
 
   const phoneNumber = toE164Phone(countryCode, localNumber);
+  const configurationReady = configuration.status === 'ready';
   const canStep1 =
+    configurationReady &&
     name.trim().length > 2 &&
     (channel === 'email' || (whatsappAvailable && isValidPhoneIdentity(countryCode, localNumber)));
   const canStep2 =
+    configurationReady &&
     (channel === 'whatsapp'
       ? whatsappAvailable && isValidPhoneIdentity(countryCode, localNumber)
       : email.includes('@')) &&
@@ -188,8 +193,9 @@ export function SignUpScreen({
     legalReady;
 
   const goNext = async () => {
-    if (requestFlight.current) return;
+    if (!configurationReady || requestFlight.current) return;
     if (step === 1) {
+      if (!canStep1) return;
       setStep(2);
       return;
     }
@@ -428,6 +434,17 @@ export function SignUpScreen({
             ))}
           </div>
 
+          {step < 3 && (
+            <div className="mb-4">
+              <AuthChannelNotice
+                channel={channel}
+                available={whatsappAvailable}
+                configuration={configuration}
+                tone={experience.id}
+              />
+            </div>
+          )}
+
           {/* ── Step 1: Personal Info ── */}
           {step === 1 && (
             <div className="flex flex-col gap-4">
@@ -439,7 +456,6 @@ export function SignUpScreen({
                 hint={t('nameOnId')}
               />
 
-              <AuthChannelNotice channel={channel} available={whatsappAvailable} />
               {channel === 'whatsapp' && (
                 <PhoneIdentityField
                   experience={experience.id}

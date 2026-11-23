@@ -7,8 +7,10 @@ import { disputeHttpApp, type DisputeHttpApp } from '../support/dispute-http-app
 const enabled = process.env.RUN_WHATSAPP_BROWSER === '1';
 
 // Real AppModule, HTTP validation/guards, PostgreSQL, Redis, encrypted delivery
-// queue and browser. Only the external WhatsApp sender is captured. Codes and
-// test-owned expiry controls cross private IPC, never a debug HTTP endpoint.
+// queue and browser. The external WhatsApp sender is captured; the browser
+// intercepts only delayed/failed public configuration reads before recovering
+// through the actual endpoint. Codes and test-owned expiry controls cross
+// private IPC, never a debug HTTP endpoint.
 (enabled ? describe : describe.skip)('Passwordless WhatsApp browser acceptance', () => {
   jest.setTimeout(600_000);
   let h: DisputeHttpApp | undefined;
@@ -69,7 +71,7 @@ const enabled = process.env.RUN_WHATSAPP_BROWSER === '1';
     }
   });
 
-  it('uses only the selected method, verifies phone possession and renews expired codes', async () => {
+  it('keeps forms through policy failures, honors the selected method and verifies phone possession', async () => {
     const database = new URL(process.env.DATABASE_URL ?? 'postgresql://missing/missing');
     if (
       process.env.RUN_DB_INTEGRATION !== '1' ||
@@ -240,10 +242,14 @@ const enabled = process.env.RUN_WHATSAPP_BROWSER === '1';
     });
     expect(progress).toEqual(
       expect.arrayContaining([
+        'form-first-policy-failure-and-real-api-recovery',
         'responsive-selected-methods',
+        'issued-challenge-survives-policy-refresh',
         'all-role-phone-only-sessions',
         'expiry-and-fresh-code',
         'admin-policy-switch',
+        'saved-admin-email-honored-after-config-recovery',
+        'credential-draft-survives-policy-refresh',
         'email-method-isolated',
         'accessibility-and-keyboard',
       ]),

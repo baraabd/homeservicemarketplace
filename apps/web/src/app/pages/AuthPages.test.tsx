@@ -6,6 +6,7 @@ import type { QueryClient } from '@tanstack/react-query';
 import { api } from '../../lib/api';
 import { AuthProvider, createAuthQueryClient } from '../../lib/auth-provider';
 import { LangToggle, LanguageProvider } from '../i18n/LanguageContext';
+import { AUTH_CONFIG_QUERY_KEY } from '../../lib/auth-policy-query';
 import {
   CheckEmailPage,
   ForgotPasswordPage,
@@ -66,6 +67,33 @@ function firstInputOfType(type: string): HTMLInputElement {
 }
 
 describe('ForgotPasswordPage — calls real backend', () => {
+  it('does not redirect an email recovery visit based on default or cached WhatsApp policy', async () => {
+    mock.onGet('/v1/auth/me').reply(401, {});
+    qc.setQueryData(AUTH_CONFIG_QUERY_KEY, { otpChannel: 'whatsapp', whatsappAvailable: true });
+    let resolvePolicy!: (response: [number, unknown]) => void;
+    mock.onGet('/v1/auth/config').reply(
+      () =>
+        new Promise<[number, unknown]>((resolve) => {
+          resolvePolicy = resolve;
+        }),
+    );
+    renderAt('/forgot-password');
+    expect(screen.getByRole('status')).toHaveTextContent('Preparing secure sign in…');
+    expect(screen.queryByTestId('login-stub')).toBeNull();
+    expect(document.querySelector('input')).toBeNull();
+    await waitFor(() => expect(resolvePolicy).toBeDefined());
+    await act(async () => resolvePolicy([503, {}]));
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'The sign-in service is temporarily unavailable',
+    );
+    expect(screen.queryByTestId('login-stub')).toBeNull();
+    mock.onGet('/v1/auth/config').reply(200, { otpChannel: 'email', whatsappAvailable: false });
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+    await waitFor(() => expect(document.querySelector('input[type="email"]')).not.toBeNull());
+    expect(screen.queryByTestId('login-stub')).toBeNull();
+    expect(mock.history.post).toHaveLength(0);
+  });
+
   it('POSTs /v1/auth/forgot-password with the trimmed email and shows the check-inbox state', async () => {
     mock.onGet('/v1/auth/me').reply(401, {});
     mock.onPost('/v1/auth/forgot-password').reply(202, { success: true });

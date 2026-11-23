@@ -55,6 +55,7 @@ function renderLogin(experience: 'seeker' | 'provider' | 'admin', channel: OtpCh
             path: '/login',
             element: (
               <LoginScreen
+                configuration={{ status: 'ready' }}
                 // Exercise the shared WhatsApp default; email is an explicit policy.
                 channel={channel === 'email' ? 'email' : undefined}
                 whatsappAvailable

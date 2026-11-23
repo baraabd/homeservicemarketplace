@@ -71,6 +71,7 @@ describe.each(['en', 'ar'] as const)('WhatsApp login OTP lifecycle (%s)', (lang)
       lang === 'ar' ? 'رقم الهاتف المسجل في واتساب' : 'WhatsApp phone number',
     );
     fireEvent.change(phone, { target: { value: phoneNumber } });
+    await waitFor(() => expect(screen.getByRole('button', { name: requestLabel })).toBeEnabled());
     fireEvent.click(screen.getByRole('button', { name: requestLabel }));
     await screen.findByTestId('otp-input');
     expect(screen.getByTestId('otp-countdown')).toHaveTextContent('00:12');

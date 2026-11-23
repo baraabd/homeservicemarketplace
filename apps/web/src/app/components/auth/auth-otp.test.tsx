@@ -677,6 +677,11 @@ describe.each(['en', 'ar'] as const)('OTP challenge recovery (%s)', (lang) => {
       fireEvent.change(document.querySelectorAll('input')[0]!, {
         target: { value: 'Ada Lovelace' },
       });
+      await waitFor(() =>
+        expect(
+          screen.getByRole('button', { name: lang === 'ar' ? 'التالي' : 'Next' }),
+        ).toBeEnabled(),
+      );
       fireEvent.click(screen.getByRole('button', { name: lang === 'ar' ? 'التالي' : 'Next' }));
       fireEvent.change(document.querySelector('input[type="email"]')!, {
         target: { value: 'ada@example.com' },

@@ -74,8 +74,9 @@ export function LoginPage() {
 
   return (
     <AuthConfigurationGate experience={experience}>
-      {(channel, whatsappAvailable) => (
+      {(channel, whatsappAvailable, configuration) => (
         <LoginScreen
+          configuration={configuration}
           channel={channel}
           whatsappAvailable={whatsappAvailable}
           experience={experience}
@@ -152,9 +153,10 @@ export function SignUpPage() {
 
   return (
     <AuthConfigurationGate experience={experience}>
-      {(channel, whatsappAvailable) => (
+      {(channel, whatsappAvailable, configuration) => (
         <AsyncBoundary>
           <SignUpScreen
+            configuration={configuration}
             channel={channel}
             whatsappAvailable={whatsappAvailable}
             experience={experience}
@@ -224,7 +226,7 @@ export function ForgotPasswordPage() {
   const returnTo = sanitizeAuthReturnTo(state?.returnTo);
   const experience = resolveAuthExperience({ explicit: state?.app, returnTo });
   return (
-    <AuthConfigurationGate experience={experience}>
+    <AuthConfigurationGate experience={experience} requireConfirmation>
       {(channel) =>
         channel === 'whatsapp' ? (
           <Navigate to="/login" replace state={{ app: experience.id, returnTo }} />

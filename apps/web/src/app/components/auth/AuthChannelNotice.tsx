@@ -1,13 +1,53 @@
 import { Mail, MessageCircle } from 'lucide-react';
 import type { OtpChannel } from '../../../lib/auth-channel';
+import type { AuthExperienceId } from '../../../lib/auth-experience';
 import { useLang } from '../../i18n/LanguageContext';
+import { Button } from '../ds/Button';
+
+export type AuthConfigurationState =
+  | { status: 'ready' }
+  | { status: 'pending' | 'error'; retry: () => void };
+
+export function AuthConfigurationFeedback({
+  configuration,
+  tone,
+}: {
+  configuration: AuthConfigurationState;
+  tone: AuthExperienceId;
+}) {
+  const { lang } = useLang();
+  if (configuration.status === 'ready') return null;
+  const pending = configuration.status === 'pending';
+  return (
+    <div className="flex flex-col items-start gap-3 text-sm leading-6">
+      <p role={pending ? 'status' : 'alert'}>
+        {pending
+          ? lang === 'ar'
+            ? 'جارٍ تجهيز تسجيل الدخول…'
+            : 'Preparing secure sign in…'
+          : lang === 'ar'
+            ? 'خدمة تسجيل الدخول غير متاحة مؤقتًا. يرجى إعادة المحاولة بعد قليل.'
+            : 'The sign-in service is temporarily unavailable. Please try again shortly.'}
+      </p>
+      {!pending && (
+        <Button contrast="strong" tone={tone} onClick={configuration.retry}>
+          {lang === 'ar' ? 'إعادة المحاولة' : 'Try again'}
+        </Button>
+      )}
+    </div>
+  );
+}
 
 export function AuthChannelNotice({
   channel,
-  available = true,
+  available,
+  configuration,
+  tone = 'seeker',
 }: {
   channel: OtpChannel;
-  available?: boolean;
+  available: boolean;
+  configuration?: AuthConfigurationState;
+  tone?: AuthExperienceId;
 }) {
   const { lang } = useLang();
   const whatsapp = channel === 'whatsapp';
@@ -28,7 +68,7 @@ export function AuthChannelNotice({
               ? 'التحقق عبر البريد الإلكتروني'
               : 'Verify with email'}
         </p>
-        {whatsapp && !available && (
+        {whatsapp && !available && (!configuration || configuration.status === 'ready') && (
           <p role="status" className="mt-2 font-semibold">
             {lang === 'ar'
               ? 'التحقق عبر واتساب غير متاح مؤقتًا. يرجى المحاولة لاحقًا.'
@@ -44,6 +84,11 @@ export function AuthChannelNotice({
               ? 'سيصلك رمز تحقق إلى بريدك الإلكتروني.'
               : 'A verification code will be sent to your email address.'}
         </p>
+        {configuration && configuration.status !== 'ready' && (
+          <div className="mt-3">
+            <AuthConfigurationFeedback configuration={configuration} tone={tone} />
+          </div>
+        )}
       </div>
     </div>
   );

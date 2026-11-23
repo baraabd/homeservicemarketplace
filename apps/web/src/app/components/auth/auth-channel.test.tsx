@@ -8,6 +8,7 @@ import { AuthProvider, createAuthQueryClient } from '../../../lib/auth-provider'
 import { LanguageProvider } from '../../i18n/LanguageContext';
 import { LoginPage, SignUpPage, ForgotPasswordPage } from '../../pages/AuthPages';
 import { AUTH_CONFIG_QUERY_KEY } from '../../../lib/auth-policy-query';
+import { writeSignupDraft } from '../../features/legal/signup-consent';
 
 let mock: MockAdapter;
 beforeEach(() => {
@@ -55,11 +56,72 @@ const challenge = {
   channel: 'whatsapp',
   maskedDestination: '+966 •••• 4567',
 };
+const unavailable = 'The sign-in service is temporarily unavailable. Please try again shortly.';
+const providerUnavailable =
+  'WhatsApp verification is temporarily unavailable. Please try again later.';
 
 describe('server-selected authentication channel', () => {
-  it('waits for a fresh policy before rendering credentials from a warm cache', async () => {
+  for (const app of ['seeker', 'provider', 'admin'] as const)
+    it.each(['en', 'ar'] as const)(
+      `shows the default WhatsApp form for ${app} in %s while ignoring an unconfirmed email cache`,
+      async (lang) => {
+        localStorage.setItem('hsm.lang', lang);
+        const client = createAuthQueryClient();
+        client.setQueryData(AUTH_CONFIG_QUERY_KEY, {
+          otpChannel: 'email',
+          whatsappAvailable: true,
+        });
+        let resolvePolicy!: (response: [number, unknown]) => void;
+        mock.onGet('/v1/auth/config').reply(
+          () =>
+            new Promise<[number, unknown]>((resolve) => {
+              resolvePolicy = resolve;
+            }),
+        );
+        open('/login', app, client);
+        const phone = screen.getByLabelText(
+          lang === 'ar' ? 'رقم الهاتف المسجل في واتساب' : 'WhatsApp phone number',
+        );
+        const country = screen.getByTestId('dial-code-select');
+        const toggle = screen.getByTestId('lang-toggle');
+        const send = screen.getByRole('button', {
+          name: lang === 'ar' ? 'إرسال رمز التحقق' : 'Send verification code',
+        });
+        expect(screen.getByTestId(`auth-hero-${app}`)).toBeVisible();
+        expect(screen.getByTestId('auth-channel-whatsapp')).toBeVisible();
+        expect(
+          screen.getByText(
+            lang === 'ar' ? 'جارٍ تجهيز تسجيل الدخول…' : 'Preparing secure sign in…',
+          ),
+        ).toHaveAttribute('role', 'status');
+        expect(phone).toBeEnabled();
+        expect(country).toBeEnabled();
+        expect(send).toBeDisabled();
+        expect(document.querySelector('input[type="email"]')).toBeNull();
+        expect(document.querySelector('input[type="password"]')).toBeNull();
+        fireEvent.change(country, { target: { value: 'SE' } });
+        fireEvent.change(phone, { target: { value: '701234567' } });
+        act(() => phone.focus());
+        fireEvent.click(send);
+        expect(mock.history.post).toHaveLength(0);
+
+        await waitFor(() => expect(resolvePolicy).toBeDefined());
+        await act(async () => {
+          resolvePolicy([200, { otpChannel: 'whatsapp', whatsappAvailable: true }]);
+        });
+        await waitFor(() => expect(send).toBeEnabled());
+        expect(screen.getByDisplayValue('701234567')).toBe(phone);
+        expect(phone).toHaveFocus();
+        expect(country).toHaveValue('SE');
+        expect(screen.getByTestId('lang-toggle')).toBe(toggle);
+        expect(mock.history.post).toHaveLength(0);
+      },
+    );
+
+  it('keeps the phone draft and focus through failure and explicit retry before accepting fresh email policy', async () => {
     const client = createAuthQueryClient();
     client.setQueryData(AUTH_CONFIG_QUERY_KEY, { otpChannel: 'email', whatsappAvailable: true });
+    mock.onGet('/v1/auth/config').replyOnce(503, {});
     let resolvePolicy!: (response: [number, unknown]) => void;
     mock.onGet('/v1/auth/config').reply(
       () =>
@@ -67,36 +129,37 @@ describe('server-selected authentication channel', () => {
           resolvePolicy = resolve;
         }),
     );
-    open('/login', 'admin', client);
-    await waitFor(() =>
-      expect(mock.history.get.some((r) => r.url === '/v1/auth/config')).toBe(true),
-    );
-    expect(screen.getByRole('status')).toHaveTextContent('Preparing secure sign in');
-    expect(document.querySelector('input')).toBeNull();
-    expect(screen.queryByRole('button', { name: 'Log In' })).toBeNull();
-    expect(mock.history.post).toHaveLength(0);
-
-    resolvePolicy([200, { otpChannel: 'whatsapp', whatsappAvailable: true }]);
-    await screen.findByTestId('auth-channel-whatsapp');
-    expect(document.querySelector('input[type="email"]')).toBeNull();
-    expect(document.querySelector('input[type="tel"]')).not.toBeNull();
-  });
-
-  it('requires retry when a warm cache cannot be confirmed by the server', async () => {
-    const client = createAuthQueryClient();
-    client.setQueryData(AUTH_CONFIG_QUERY_KEY, { otpChannel: 'email', whatsappAvailable: true });
-    mock.onGet('/v1/auth/config').replyOnce(503, {});
-    mock.onGet('/v1/auth/config').reply(200, { otpChannel: 'whatsapp', whatsappAvailable: true });
     open('/login', 'seeker', client);
-    await screen.findByText('Sign-in options are unavailable');
-    expect(document.querySelector('input')).toBeNull();
-    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
-    await screen.findByTestId('auth-channel-whatsapp');
+    expect(await screen.findByRole('alert')).toHaveTextContent(unavailable);
+    const phone = screen.getByLabelText('WhatsApp phone number');
+    fireEvent.change(phone, { target: { value: '+966501234567' } });
+    expect(screen.getByRole('button', { name: 'Send verification code' })).toBeDisabled();
+    expect(screen.queryByText(providerUnavailable)).toBeNull();
     expect(document.querySelector('input[type="email"]')).toBeNull();
+    const retry = screen.getByRole('button', { name: 'Try again' });
+    expect(retry).toHaveAttribute('data-tone', 'seeker');
+    expect(retry).toHaveClass('h-12', 'bg-amber-700');
+    fireEvent.click(retry);
+    await screen.findByText('Preparing secure sign in…');
+    act(() => phone.focus());
+    expect(screen.getByLabelText('WhatsApp phone number')).toBe(phone);
+    expect(phone).toHaveValue('+966501234567');
+    expect(phone).toHaveFocus();
+    expect(screen.getByRole('button', { name: 'Send verification code' })).toBeDisabled();
+    expect(mock.history.post).toHaveLength(0);
+    await act(async () => {
+      resolvePolicy([200, { otpChannel: 'email', whatsappAvailable: false }]);
+    });
+    await screen.findByTestId('auth-channel-email');
+    expect(document.querySelector('input[type="email"]')).not.toBeNull();
+    expect(document.querySelector('input[type="password"]')).not.toBeNull();
+    expect(document.querySelector('input[type="tel"]')).toBeNull();
+    expect(screen.getByRole('button', { name: 'Log In' })).toBeEnabled();
+    expect(mock.history.post).toHaveLength(0);
   });
 
   it.each(['network failure', 'timeout', 'HTML response'] as const)(
-    'keeps cached credentials hidden after a policy %s and recovers from a fresh response',
+    'keeps sending disabled after a policy %s and recovers from a fresh response',
     async (failure) => {
       const client = createAuthQueryClient();
       client.setQueryData(AUTH_CONFIG_QUERY_KEY, {
@@ -110,11 +173,14 @@ describe('server-selected authentication channel', () => {
       mock.onGet('/v1/auth/config').reply(200, { otpChannel: 'email', whatsappAvailable: false });
 
       open('/login', 'provider', client);
-      await screen.findByRole('heading', { name: 'Sign-in options are unavailable' });
-      expect(screen.getByRole('alert')).toHaveTextContent(
-        'The sign-in service is temporarily unavailable. Please try again shortly.',
-      );
-      expect(document.querySelector('input')).toBeNull();
+      expect(await screen.findByRole('alert')).toHaveTextContent(unavailable);
+      expect(screen.getByLabelText('WhatsApp phone number')).toBeEnabled();
+      expect(screen.queryByText(providerUnavailable)).toBeNull();
+      expect(document.querySelector('input[type="email"]')).toBeNull();
+      expect(document.querySelector('input[type="password"]')).toBeNull();
+      const send = screen.getByRole('button', { name: 'Send verification code' });
+      expect(send).toBeDisabled();
+      fireEvent.click(send);
       expect(mock.history.get.filter((item) => item.url === '/v1/auth/config')).toHaveLength(1);
       expect(mock.history.post).toHaveLength(0);
 
@@ -134,26 +200,34 @@ describe('server-selected authentication channel', () => {
     mock.onGet('/v1/auth/config').reply(200, { otpChannel: 'whatsapp', whatsappAvailable: false });
 
     open('/login', 'admin');
-    await screen.findByRole('heading', { name: 'تعذّر تحميل خيارات الدخول' });
-    expect(screen.getByRole('alert')).toHaveTextContent(
+    expect(await screen.findByRole('alert')).toHaveTextContent(
       'خدمة تسجيل الدخول غير متاحة مؤقتًا. يرجى إعادة المحاولة بعد قليل.',
     );
     expect(document.documentElement).toHaveAttribute('lang', 'ar');
     expect(document.documentElement).toHaveAttribute('dir', 'rtl');
-    expect(document.querySelector('input')).toBeNull();
+    const phone = screen.getByLabelText('رقم الهاتف المسجل في واتساب');
+    fireEvent.change(screen.getByTestId('dial-code-select'), { target: { value: 'SY' } });
+    fireEvent.change(phone, { target: { value: '912345678' } });
+    expect(phone).toBeEnabled();
 
     fireEvent.click(screen.getByTestId('lang-toggle'));
     expect(screen.getByRole('alert')).toHaveTextContent(
       'The sign-in service is temporarily unavailable. Please try again shortly.',
     );
     fireEvent.click(screen.getByTestId('lang-toggle'));
+    expect(screen.getByLabelText('رقم الهاتف المسجل في واتساب')).toBe(phone);
+    expect(phone).toHaveValue('912345678');
+    expect(screen.getByTestId('dial-code-select')).toHaveValue('SY');
     expect(mock.history.get.filter((item) => item.url === '/v1/auth/config')).toHaveLength(1);
 
     fireEvent.click(screen.getByRole('button', { name: 'إعادة المحاولة' }));
-    await screen.findByTestId('auth-channel-whatsapp');
+    await screen.findByText('التحقق عبر واتساب غير متاح مؤقتًا. يرجى المحاولة لاحقًا.');
     expect(screen.getByTestId('auth-hero-admin')).toBeVisible();
     expect(document.documentElement).toHaveAttribute('dir', 'rtl');
     expect(document.querySelector('input[type="tel"]')).not.toBeNull();
+    expect(screen.getByLabelText('رقم الهاتف المسجل في واتساب')).toBe(phone);
+    expect(phone).toHaveValue('912345678');
+    expect(screen.getByTestId('dial-code-select')).toHaveValue('SY');
     expect(document.querySelector('input[type="email"]')).toBeNull();
     expect(screen.getByRole('button', { name: 'إرسال رمز التحقق', exact: true })).toBeDisabled();
     expect(mock.history.get.filter((item) => item.url === '/v1/auth/config')).toHaveLength(2);
@@ -175,6 +249,7 @@ describe('server-selected authentication channel', () => {
     setInput('input[type="email"]', 'draft@example.test');
     setInput('input[type="password"]', 'Unsaved-password-17');
     const field = document.querySelector('input[type="email"]');
+    act(() => (field as HTMLInputElement).focus());
     const refresh = client.refetchQueries({ queryKey: AUTH_CONFIG_QUERY_KEY });
     await waitFor(() =>
       expect(mock.history.get.filter((r) => r.url === '/v1/auth/config')).toHaveLength(2),
@@ -184,24 +259,90 @@ describe('server-selected authentication channel', () => {
     await refresh;
     expect(screen.getByDisplayValue('draft@example.test')).toBe(field);
     expect(screen.getByDisplayValue('Unsaved-password-17')).toBeInTheDocument();
-    expect(screen.queryByText('Sign-in options are unavailable')).toBeNull();
+    expect(field).toHaveFocus();
+    expect(screen.getByRole('button', { name: 'Log In' })).toBeEnabled();
+    expect(screen.queryByText(unavailable)).toBeNull();
   });
 
-  it('keeps identity fields hidden on config failure and retries explicitly', async () => {
-    let attempts = 0;
-    mock
-      .onGet('/v1/auth/config')
-      .reply(() =>
-        ++attempts === 1 ? [503, {}] : [200, { otpChannel: 'whatsapp', whatsappAvailable: true }],
-      );
-    open('/login');
-    expect(document.querySelector('input[type="email"]')).toBeNull();
-    await screen.findByText('Sign-in options are unavailable');
-    expect(document.querySelector('input')).toBeNull();
+  for (const app of ['seeker', 'provider', 'admin'] as const)
+    it.each(['en', 'ar'] as const)(
+      `preserves the ${app} signup draft in %s while policy failure blocks progression`,
+      async (lang) => {
+        localStorage.setItem('hsm.lang', lang);
+        let resolvePolicy!: (response: [number, unknown]) => void;
+        mock.onGet('/v1/auth/config').replyOnce(
+          () =>
+            new Promise<[number, unknown]>((resolve) => {
+              resolvePolicy = resolve;
+            }),
+        );
+        mock
+          .onGet('/v1/auth/config')
+          .reply(200, { otpChannel: 'whatsapp', whatsappAvailable: true });
+        open('/signup', app);
+        const phone = await screen.findByLabelText(
+          lang === 'ar' ? 'رقم الهاتف المسجل في واتساب' : 'WhatsApp phone number',
+        );
+        setInput('input[type="text"]', 'Noura Ahmad');
+        fireEvent.change(phone, { target: { value: '+966501234567' } });
+        const next = screen.getByRole('button', { name: lang === 'ar' ? 'التالي' : 'Next' });
+        expect(next).toBeDisabled();
+        fireEvent.click(next);
+        expect(document.querySelector('input[type="password"]')).toBeNull();
+        expect(mock.history.post).toHaveLength(0);
+        await act(async () => resolvePolicy([503, {}]));
+        await screen.findByRole('alert');
+        expect(screen.getByDisplayValue('Noura Ahmad')).toBeInTheDocument();
+        expect(screen.getByDisplayValue('+966501234567')).toBe(phone);
+        expect(next).toBeDisabled();
+        const retry = screen.getByRole('button', {
+          name: lang === 'ar' ? 'إعادة المحاولة' : 'Try again',
+        });
+        expect(retry).toHaveAttribute('data-tone', app);
+        fireEvent.click(retry);
+        act(() => phone.focus());
+        await waitFor(() => expect(next).toBeEnabled());
+        expect(screen.getByDisplayValue('+966501234567')).toBe(phone);
+        expect(phone).toHaveFocus();
+        expect(mock.history.post).toHaveLength(0);
+        fireEvent.click(next);
+        await waitFor(() =>
+          expect(document.querySelector('input[type="password"]')).not.toBeNull(),
+        );
+        expect(document.querySelector('input[type="email"]')).toBeNull();
+        expect(screen.getByRole('checkbox')).not.toBeChecked();
+        expect(
+          screen.getByRole('button', {
+            name: lang === 'ar' ? 'إنشاء الحساب' : 'Create Account',
+            exact: true,
+          }),
+        ).toBeDisabled();
+      },
+    );
+
+  it('offers inline retry for a restored signup credential step without enabling registration', async () => {
+    writeSignupDraft({
+      step: 2,
+      name: 'Noura Ahmad',
+      email: '',
+      countryCode: 'SY',
+      localNumber: '912345678',
+    });
+    mock.onGet('/v1/auth/config').replyOnce(503, {});
+    mock.onGet('/v1/auth/config').reply(200, { otpChannel: 'email', whatsappAvailable: false });
+    open('/signup');
+    expect(await screen.findByRole('alert')).toHaveTextContent(unavailable);
+    const password = document.querySelector('input[type="password"]');
+    expect(password).not.toBeNull();
+    setInput('input[type="password"]', 'Long-test-password-17');
+    fireEvent.click(await screen.findByRole('checkbox'));
+    expect(screen.getByRole('button', { name: 'Create Account', exact: true })).toBeDisabled();
     fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
-    await screen.findByTestId('auth-channel-whatsapp');
-    expect(document.querySelector('input[type="email"]')).toBeNull();
-    expect(screen.queryByText(/Inferred from browser locale/)).toBeNull();
+    await screen.findByTestId('auth-channel-email');
+    expect(screen.getByDisplayValue('Long-test-password-17')).toBe(password);
+    expect(document.querySelector('input[type="email"]')).not.toBeNull();
+    expect(screen.getByRole('button', { name: 'Create Account', exact: true })).toBeDisabled();
+    expect(mock.history.post).toHaveLength(0);
   });
 
   for (const app of ['seeker', 'provider', 'admin'] as const)
@@ -219,6 +360,13 @@ describe('server-selected authentication channel', () => {
         }),
       ).toBeNull();
       setInput('input[type="tel"]', '+966501234567');
+      await waitFor(() =>
+        expect(
+          screen.getByRole('button', {
+            name: lang === 'ar' ? 'إرسال رمز التحقق' : 'Send verification code',
+          }),
+        ).toBeEnabled(),
+      );
       fireEvent.click(
         screen.getByRole('button', {
           name: lang === 'ar' ? 'إرسال رمز التحقق' : 'Send verification code',
@@ -278,6 +426,7 @@ describe('server-selected authentication channel', () => {
       await screen.findByTestId('auth-channel-whatsapp');
       setInput('input[type="text"]', 'Noura Ahmad');
       setInput('input[type="tel"]', '+963912345678');
+      await waitFor(() => expect(screen.getByRole('button', { name: 'Next' })).toBeEnabled());
       fireEvent.click(screen.getByRole('button', { name: 'Next' }));
       await waitFor(() => expect(document.querySelector('input[type="password"]')).not.toBeNull());
       expect(document.querySelector('input[type="email"]')).toBeNull();
@@ -329,7 +478,9 @@ describe('server-selected authentication channel', () => {
     open('/forgot-password', 'provider');
     await screen.findByTestId('auth-channel-whatsapp');
     expect(screen.getByTestId('auth-hero-provider')).toBeVisible();
-    expect(screen.getByRole('button', { name: 'Send verification code' })).toBeEnabled();
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Send verification code' })).toBeEnabled(),
+    );
     expect(document.querySelector('input[type="password"]')).toBeNull();
     expect(document.querySelector('input[type="email"]')).toBeNull();
     expect(mock.history.post).toHaveLength(0);
@@ -344,6 +495,9 @@ describe('server-selected authentication channel', () => {
     open('/login');
     await screen.findByTestId('auth-channel-whatsapp');
     setInput('input[type="tel"]', '+966501234567');
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Send verification code' })).toBeEnabled(),
+    );
     fireEvent.click(screen.getByRole('button', { name: 'Send verification code' }));
     await screen.findByTestId('auth-channel-email');
     expect(document.querySelector('input[type="tel"]')).toBeNull();
@@ -361,15 +515,27 @@ describe('server-selected authentication channel', () => {
     mock
       .onGet('/v1/auth/config')
       .replyOnce(200, { otpChannel: 'whatsapp', whatsappAvailable: true });
+    mock.onGet('/v1/auth/config').replyOnce(503, {});
     mock.onGet('/v1/auth/config').reply(200, { otpChannel: 'email', whatsappAvailable: true });
     mock.onPost('/v1/auth/login').reply(202, challenge);
     mock.onPost('/v1/auth/verify-otp').reply(400, { error: { code: 'AUTH_OTP_INVALID' } });
     open('/login', 'admin', client);
     await screen.findByTestId('auth-channel-whatsapp');
     setInput('input[type="tel"]', '+966501234567');
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Send verification code' })).toBeEnabled(),
+    );
     fireEvent.click(screen.getByRole('button', { name: 'Send verification code' }));
     const codeInput = await screen.findByTestId('otp-input');
     fireEvent.change(codeInput, { target: { value: '123' } });
+    act(() => codeInput.focus());
+    await act(async () => {
+      await client.refetchQueries({ queryKey: AUTH_CONFIG_QUERY_KEY });
+    });
+    expect(screen.getByTestId('otp-input')).toBe(codeInput);
+    expect(codeInput).toHaveValue('123');
+    expect(codeInput).toHaveFocus();
+    expect(screen.queryByText(unavailable)).toBeNull();
     await act(async () => {
       await client.refetchQueries({ queryKey: AUTH_CONFIG_QUERY_KEY });
     });
