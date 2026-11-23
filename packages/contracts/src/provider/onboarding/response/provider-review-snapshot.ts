@@ -12,6 +12,10 @@ export interface ProviderReviewSnapshot {
     phoneVerifiedAt: string | null;
     email: string | null;
     emailVerified: boolean;
+    /** Optional for immutable snapshots captured before phone authentication. */
+    accountPhoneNumber?: string | null;
+    accountPhoneVerified?: boolean;
+    contactVerified?: boolean;
     headline: string | null;
     bio: string | null;
     additionalInformation: string | null;

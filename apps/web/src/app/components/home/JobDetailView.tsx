@@ -1,4 +1,5 @@
 import { useCallback, useId, useMemo, useRef, useState } from 'react';
+import { LAUNCH_MARKET } from '@homeservicemarketplace/contracts';
 import { useQueryClient } from '@tanstack/react-query';
 import {
   ChevronLeft,
@@ -164,8 +165,11 @@ function formatScheduledDate(iso: string | null | undefined, lang: 'en' | 'ar'):
   if (!iso) return lang === 'ar' ? 'في أقرب وقت' : 'ASAP';
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return lang === 'ar' ? 'في أقرب وقت' : 'ASAP';
-  const dateOpts: Intl.DateTimeFormatOptions = { month: 'short', day: 'numeric' };
-  const timeOpts: Intl.DateTimeFormatOptions = { hour: 'numeric', minute: '2-digit' };
+  // K02 — schedules are shown in the launch market's zone, never the
+  // browser's, so the seeker and provider see the time they agreed on.
+  const timeZone = LAUNCH_MARKET.timeZone;
+  const dateOpts: Intl.DateTimeFormatOptions = { month: 'short', day: 'numeric', timeZone };
+  const timeOpts: Intl.DateTimeFormatOptions = { hour: 'numeric', minute: '2-digit', timeZone };
   const locale = lang === 'ar' ? 'ar-SA' : 'en-US';
   return `${d.toLocaleDateString(locale, dateOpts)}, ${d.toLocaleTimeString(locale, timeOpts)}`;
 }
@@ -493,6 +497,7 @@ interface RenderState {
   priceAmount: number | null;
   pricingType: 'HOURLY' | 'FIXED' | null;
   currency: string | null;
+  amountScale: number | null;
   description: string | null;
   // Timeline payload
   steps: StepInfo[];
@@ -568,6 +573,7 @@ export function JobDetailView({ source, isVisible, onBack, onOpenChat }: JobDeta
         priceAmount: null,
         pricingType: null,
         currency: null,
+        amountScale: null,
         description: r.description,
         steps,
       };
@@ -604,6 +610,7 @@ export function JobDetailView({ source, isVisible, onBack, onOpenChat }: JobDeta
       priceAmount: b.priceAmount,
       pricingType: b.pricingType,
       currency: b.currency,
+      amountScale: b.amountScale,
       description: b.description,
       steps,
     };
@@ -889,6 +896,7 @@ export function JobDetailView({ source, isVisible, onBack, onOpenChat }: JobDeta
                                 formatOffer(
                                   render.priceAmount,
                                   render.currency,
+                                  render.amountScale,
                                   render.pricingType,
                                   langKey,
                                 ).value
@@ -900,6 +908,7 @@ export function JobDetailView({ source, isVisible, onBack, onOpenChat }: JobDeta
                               formatOffer(
                                 render.priceAmount,
                                 render.currency,
+                                render.amountScale,
                                 render.pricingType,
                                 langKey,
                               ).basis
@@ -1151,7 +1160,7 @@ export function JobDetailView({ source, isVisible, onBack, onOpenChat }: JobDeta
                       // The amount, currency and basis the booking stores.
                       val:
                         render.currency && render.pricingType
-                          ? `${formatOffer(render.priceAmount, render.currency, render.pricingType, langKey).value} · ${formatOffer(render.priceAmount, render.currency, render.pricingType, langKey).basis}`
+                          ? `${formatOffer(render.priceAmount, render.currency, render.amountScale, render.pricingType, langKey).value} · ${formatOffer(render.priceAmount, render.currency, render.amountScale, render.pricingType, langKey).basis}`
                           : '—',
                     },
                     {

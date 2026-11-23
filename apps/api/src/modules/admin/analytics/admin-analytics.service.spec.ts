@@ -1,3 +1,5 @@
+import type { ExcludedAmountGroup } from '@homeservicemarketplace/contracts';
+
 import type { PrismaService } from '../../../infrastructure/prisma/prisma.service';
 import type {
   AdminAnalyticsQueries,
@@ -28,12 +30,14 @@ function makeQueries(
     days?: CurrencyDay[];
     undated?: number;
     cancelled?: number;
+    excluded?: ExcludedAmountGroup[];
   } = {},
 ): AdminAnalyticsQueries {
   return {
     lifetimeByCurrency: jest.fn().mockResolvedValue(over.lifetime ?? []),
     completionsByCurrencyDay: jest.fn().mockResolvedValue(over.days ?? []),
     undatedCompletions: jest.fn().mockResolvedValue(over.undated ?? 0),
+    excludedAmounts: jest.fn().mockResolvedValue(over.excluded ?? []),
     cancellationsWithin: jest.fn().mockResolvedValue(over.cancelled ?? 0),
   } as unknown as AdminAnalyticsQueries;
 }
@@ -43,8 +47,17 @@ const service = (q = makeQueries(), p = makePrisma()) => new AdminAnalyticsServi
 describe('AdminAnalyticsService.overview', () => {
   it('reports a single total only for a single currency, and never a fee', async () => {
     const q = makeQueries({
-      lifetime: [{ currency: 'USD', bookedValue: 12_000, completed: 17 }],
-      days: [{ currency: 'USD', day: '2026-04-02', bookedValue: 4_000, completed: 6 }],
+      lifetime: [{ currency: 'USD', amountScale: 2, bookedValue: 12_000, completed: 17 }],
+      days: [
+        {
+          currency: 'USD',
+          amountScale: 2,
+          day: '2026-04-02',
+          bookedValue: 4_000,
+          completed: 6,
+          completedAll: 6,
+        },
+      ],
       undated: 2,
       cancelled: 1,
     });
@@ -74,12 +87,26 @@ describe('AdminAnalyticsService.overview', () => {
   it('never adds two currencies together', async () => {
     const q = makeQueries({
       lifetime: [
-        { currency: 'EUR', bookedValue: 500, completed: 1 },
-        { currency: 'USD', bookedValue: 900, completed: 2 },
+        { currency: 'EUR', amountScale: 2, bookedValue: 500, completed: 1 },
+        { currency: 'USD', amountScale: 2, bookedValue: 900, completed: 2 },
       ],
       days: [
-        { currency: 'EUR', day: '2026-04-02', bookedValue: 500, completed: 1 },
-        { currency: 'USD', day: '2026-04-03', bookedValue: 400, completed: 1 },
+        {
+          currency: 'EUR',
+          amountScale: 2,
+          day: '2026-04-02',
+          bookedValue: 500,
+          completed: 1,
+          completedAll: 1,
+        },
+        {
+          currency: 'USD',
+          amountScale: 2,
+          day: '2026-04-03',
+          bookedValue: 400,
+          completed: 1,
+          completedAll: 1,
+        },
       ],
     });
     const out = await service(q).overview('2026-04-01', '2026-04-30');
@@ -89,6 +116,7 @@ describe('AdminAnalyticsService.overview', () => {
     expect(out.revenueByCurrency).toEqual([
       {
         currency: 'EUR',
+        amountScale: 2,
         bookedValueLifetime: 500,
         completedLifetime: 1,
         bookedValueWithinRange: 500,
@@ -96,12 +124,54 @@ describe('AdminAnalyticsService.overview', () => {
       },
       {
         currency: 'USD',
+        amountScale: 2,
         bookedValueLifetime: 900,
         completedLifetime: 2,
         bookedValueWithinRange: 400,
         completedWithinRange: 1,
       },
     ]);
+  });
+
+  it('K02: counts every completion but sums only verified FIXED value, and lists exclusions', async () => {
+    const excluded: ExcludedAmountGroup[] = [
+      { currency: 'USD', reason: 'LEGACY_UNVERIFIED', completedCount: 3, inFlightCount: 0 },
+    ];
+    const q = makeQueries({
+      lifetime: [{ currency: 'SAR', amountScale: 2, bookedValue: 10_025, completed: 1 }],
+      days: [
+        // A legacy-only currency-day: counted, never a money entry.
+        {
+          currency: 'USD',
+          amountScale: null,
+          day: '2026-04-02',
+          bookedValue: 0,
+          completed: 0,
+          completedAll: 3,
+        },
+        {
+          currency: 'SAR',
+          amountScale: 2,
+          day: '2026-04-02',
+          bookedValue: 10_025,
+          completed: 1,
+          completedAll: 1,
+        },
+      ],
+      excluded,
+    });
+    const out = await service(q).overview('2026-04-01', '2026-04-30');
+    expect(out.counts.bookingsCompleted).toBe(4);
+    expect(out.revenueByCurrency.map((r) => r.currency)).toEqual(['SAR']);
+    expect(out.revenue.grossWithinRange).toBe(10_025);
+    expect(out.currency).toBe('SAR');
+    expect(out.excludedAmounts).toEqual(excluded);
+    const rev = await service(q).revenue('2026-04-01', '2026-04-03');
+    expect(rev.series.map((x) => x.currency)).toEqual(['SAR']);
+    expect(rev.buckets.find((b) => b.date === '2026-04-02')).toMatchObject({
+      grossEarnings: 10_025,
+      completedBookings: 4,
+    });
   });
 
   it('defaults to the last 30 days when from/to missing', async () => {
@@ -133,15 +203,37 @@ describe('AdminAnalyticsService.revenue', () => {
   it('zero-fills one series per currency and leaves fees uncalculated', async () => {
     const q = makeQueries({
       days: [
-        { currency: 'EUR', day: '2026-04-02', bookedValue: 500, completed: 1 },
-        { currency: 'USD', day: '2026-04-02', bookedValue: 400, completed: 1 },
-        { currency: 'USD', day: '2026-04-03', bookedValue: 100, completed: 1 },
+        {
+          currency: 'EUR',
+          amountScale: 2,
+          day: '2026-04-02',
+          bookedValue: 500,
+          completed: 1,
+          completedAll: 1,
+        },
+        {
+          currency: 'USD',
+          amountScale: 2,
+          day: '2026-04-02',
+          bookedValue: 400,
+          completed: 1,
+          completedAll: 1,
+        },
+        {
+          currency: 'USD',
+          amountScale: 2,
+          day: '2026-04-03',
+          bookedValue: 100,
+          completed: 1,
+          completedAll: 1,
+        },
       ],
     });
     const out = await service(q).revenue('2026-04-01', '2026-04-03');
     expect(out.series).toEqual([
       {
         currency: 'EUR',
+        amountScale: 2,
         buckets: [
           { date: '2026-04-01', bookedValue: 0, completedBookings: 0 },
           { date: '2026-04-02', bookedValue: 500, completedBookings: 1 },
@@ -150,6 +242,7 @@ describe('AdminAnalyticsService.revenue', () => {
       },
       {
         currency: 'USD',
+        amountScale: 2,
         buckets: [
           { date: '2026-04-01', bookedValue: 0, completedBookings: 0 },
           { date: '2026-04-02', bookedValue: 400, completedBookings: 1 },
@@ -178,8 +271,8 @@ describe('AdminAnalyticsService.summary', () => {
     const prisma = makePrisma();
     const q = makeQueries({
       lifetime: [
-        { currency: 'EUR', bookedValue: 500, completed: 1 },
-        { currency: 'USD', bookedValue: 900, completed: 2 },
+        { currency: 'EUR', amountScale: 2, bookedValue: 500, completed: 1 },
+        { currency: 'USD', amountScale: 2, bookedValue: 900, completed: 2 },
       ],
       undated: 1,
     });

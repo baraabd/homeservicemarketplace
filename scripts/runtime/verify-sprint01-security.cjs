@@ -47,6 +47,15 @@ const OUT = arg('out', path.join(process.cwd(), 'sprint01-security-report.json')
 // One password for every harness account. Never printed; `redact()` scrubs it
 // from anything that would be written out.
 const PASSWORD = 'Harness!Passw0rd-2026';
+// K02 — signup names the exact Terms/Privacy versions (shared registry).
+const { CURRENT_LEGAL_DOCUMENTS } = require(
+  path.resolve(__dirname, '../../packages/contracts/dist'),
+);
+const LEGAL_ACCEPTANCE = {
+  termsVersion: CURRENT_LEGAL_DOCUMENTS.TERMS_OF_SERVICE.version,
+  privacyVersion: CURRENT_LEGAL_DOCUMENTS.PRIVACY_NOTICE.version,
+  locale: 'en',
+};
 const RUN = `${Date.now().toString(36)}-${process.pid.toString(36)}`;
 
 // ─── redaction ───────────────────────────────────────────────────────────────
@@ -307,6 +316,7 @@ async function signUpAndLogin(baseUrl, prefix, label) {
     password: PASSWORD,
     firstName: 'Test',
     lastName: prefix,
+    legalAcceptance: LEGAL_ACCEPTANCE,
   });
   if (reg.status !== 202) throw new Error(`register failed for ${label}: ${reg.status}`);
 
@@ -394,6 +404,7 @@ module.exports = {
   B,
   OUT,
   PASSWORD,
+  LEGAL_ACCEPTANCE,
   RUN,
   resetRateLimits,
   closeRedis,

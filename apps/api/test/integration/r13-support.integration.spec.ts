@@ -83,7 +83,21 @@ d('R13 - durable help and support (real HTTP, real Postgres)', () => {
       idempotencyKey: key,
     });
 
+  // K06 - support notifications are rows plus their notification.created
+  // outbox events; neither cascades from the ticket, so both are removed here.
+  async function wipeNotifications() {
+    const rows = await prisma.notification.findMany({
+      where: { userId: { in: USERS } },
+      select: { id: true },
+    });
+    await prisma.outboxEvent.deleteMany({
+      where: { aggregateType: 'Notification', aggregateId: { in: rows.map((r: any) => r.id) } },
+    });
+    await prisma.notification.deleteMany({ where: { userId: { in: USERS } } });
+  }
+
   async function wipe() {
+    await wipeNotifications();
     await prisma.supportMessage.deleteMany({
       where: { ticket: { requesterUserId: { in: USERS } } },
     });
@@ -113,6 +127,13 @@ d('R13 - durable help and support (real HTTP, real Postgres)', () => {
       AuditEventRepository,
     } = require('../../src/infrastructure/persistence/iam/audit-event.repository');
     const { SupportService } = require('../../src/modules/support/support.service');
+    const {
+      NotificationsService,
+    } = require('../../src/modules/notifications/notifications.service');
+    const {
+      NotificationRepository,
+    } = require('../../src/infrastructure/persistence/notifications/notification.repository');
+    const { OutboxRepository } = require('../../src/infrastructure/outbox/outbox.repository');
     const {
       AdminSupportController,
       SupportController,
@@ -147,6 +168,9 @@ d('R13 - durable help and support (real HTTP, real Postgres)', () => {
       providers: [
         SupportService,
         SupportRepository,
+        NotificationsService,
+        NotificationRepository,
+        OutboxRepository,
         RoleRepository,
         PermissionResolverService,
         AuditService,
@@ -240,6 +264,7 @@ d('R13 - durable help and support (real HTTP, real Postgres)', () => {
   });
 
   beforeEach(async () => {
+    await wipeNotifications();
     await prisma.supportMessage.deleteMany({
       where: { ticket: { requesterUserId: { in: USERS } } },
     });
@@ -394,7 +419,10 @@ d('R13 - durable help and support (real HTTP, real Postgres)', () => {
 
     const list = await as(ADMIN, 'get', '/v1/admin/support/tickets');
     expect(list.status).toBe(200);
-    expect(list.body.items).toEqual([
+    // The admin queue is platform-wide. Scope the assertion to this suite's own
+    // fixture users so tickets other suites or browser journeys left in a shared
+    // database cannot fail it (K06 found this running both against one DB).
+    expect(list.body.items.filter((item: any) => USERS.includes(item.requester.id))).toEqual([
       expect.objectContaining({
         id: ticketId,
         requester: expect.objectContaining({ id: REQUESTER }),
@@ -562,5 +590,175 @@ d('R13 - durable help and support (real HTTP, real Postgres)', () => {
     );
     expect(tooLong.status).toBe(400);
     expect(await prisma.supportTicket.count({ where: { requesterUserId: REQUESTER } })).toBe(0);
+  });
+
+  // ── K06: requester notification delivery ─────────────────────────────────
+  // R13 left support notifications out of scope, so a requester learned of a
+  // reply or closure only by reopening the screen. The notification is written
+  // in the same transaction as the support action, so a refused or rolled-back
+  // action can never leave one behind.
+
+  const notificationsFor = (userId: string) =>
+    prisma.notification.findMany({ where: { userId }, orderBy: { createdAt: 'asc' } });
+
+  const announcedIds = async (notificationIds: string[]) =>
+    (
+      await prisma.outboxEvent.findMany({
+        where: {
+          aggregateType: 'Notification',
+          eventType: 'notification.created',
+          aggregateId: { in: notificationIds },
+        },
+        select: { aggregateId: true },
+      })
+    ).map((row: any) => row.aggregateId);
+
+  it('K06: stores where the ticket was opened from and rejects an unknown experience', async () => {
+    const provider = await as(REQUESTER, 'post', '/v1/me/support/tickets').send({
+      subject: 'Provider help',
+      message: 'My work access is not active.',
+      idempotencyKey: createKey('exp-provider'),
+      experience: 'provider',
+    });
+    expect(provider.status).toBe(201);
+    const row = await prisma.supportTicket.findUnique({ where: { id: provider.body.ticket.id } });
+    expect(row.experience).toBe('PROVIDER');
+
+    const legacy = await createTicket(REQUESTER, createKey('exp-none'));
+    expect(legacy.status).toBe(201);
+    const legacyRow = await prisma.supportTicket.findUnique({
+      where: { id: legacy.body.ticket.id },
+    });
+    expect(legacyRow.experience).toBeNull();
+
+    const bogus = await as(REQUESTER, 'post', '/v1/me/support/tickets').send({
+      subject: 'Bogus',
+      message: 'bogus',
+      idempotencyKey: createKey('exp-bogus'),
+      experience: 'admin',
+    });
+    expect(bogus.status).toBe(400);
+    expect(await prisma.supportTicket.count({ where: { requesterUserId: REQUESTER } })).toBe(2);
+  });
+
+  it('K06: a support reply notifies the requester once, durably, without its content', async () => {
+    const created = await as(REQUESTER, 'post', '/v1/me/support/tickets').send({
+      subject: 'Provider help',
+      message: 'Please check my application.',
+      idempotencyKey: createKey('notify-reply'),
+      experience: 'provider',
+    });
+    const ticketId = created.body.ticket.id;
+    // The requester's own messages never notify the requester.
+    expect(await notificationsFor(REQUESTER)).toHaveLength(0);
+
+    const key = sendKey('notify-reply');
+    const reply = await as(ADMIN, 'post', `/v1/admin/support/tickets/${ticketId}/messages`).send({
+      body: 'Private reply text with details',
+      idempotencyKey: key,
+    });
+    expect(reply.status).toBe(201);
+
+    const rows = await notificationsFor(REQUESTER);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      type: 'SYSTEM',
+      resourceType: null,
+      deepLink: `/provider/support?ticket=${ticketId}`,
+      metadata: { supportTicketId: ticketId, event: 'SUPPORT_REPLIED' },
+      readAt: null,
+    });
+    expect(JSON.stringify(rows[0])).not.toContain('Private reply text');
+    expect(await announcedIds([rows[0].id])).toEqual([rows[0].id]);
+    // Operators are not notified about their own action.
+    expect(await notificationsFor(ADMIN)).toHaveLength(0);
+
+    // A retried reply replays the stored message and notifies nobody again.
+    const replay = await as(ADMIN, 'post', `/v1/admin/support/tickets/${ticketId}/messages`).send({
+      body: 'Private reply text with details',
+      idempotencyKey: key,
+    });
+    expect(replay.status).toBe(201);
+    expect(replay.body.replayed).toBe(true);
+    expect(await notificationsFor(REQUESTER)).toHaveLength(1);
+
+    const followUp = await sendMessage(REQUESTER, ticketId, sendKey('notify-follow'), 'thanks');
+    expect(followUp.status).toBe(201);
+    expect(await notificationsFor(REQUESTER)).toHaveLength(1);
+  });
+
+  it('K06: a ticket without a recorded experience links into the customer app', async () => {
+    const created = await createTicket(REQUESTER, createKey('notify-legacy'));
+    const ticketId = created.body.ticket.id;
+    const reply = await as(ADMIN, 'post', `/v1/admin/support/tickets/${ticketId}/messages`).send({
+      body: 'reply',
+      idempotencyKey: sendKey('notify-legacy'),
+    });
+    expect(reply.status).toBe(201);
+    const [row] = await notificationsFor(REQUESTER);
+    expect(row.deepLink).toBe(`/home/support?ticket=${ticketId}`);
+  });
+
+  it('K06: close and reopen notify the requester; refused operations notify nobody', async () => {
+    const created = await createTicket(REQUESTER, createKey('notify-status'));
+    const ticketId = created.body.ticket.id;
+
+    // Denied: a read-only role and a user without any support permission.
+    const readerReply = await as(
+      READER,
+      'post',
+      `/v1/admin/support/tickets/${ticketId}/messages`,
+    ).send({ body: 'nope', idempotencyKey: sendKey('notify-reader') });
+    expect(readerReply.status).toBe(403);
+    expect((await as(READER, 'post', `/v1/admin/support/tickets/${ticketId}/close`)).status).toBe(
+      403,
+    );
+    expect((await as(NO_ADMIN, 'post', `/v1/admin/support/tickets/${ticketId}/close`)).status).toBe(
+      403,
+    );
+    expect(await notificationsFor(REQUESTER)).toHaveLength(0);
+
+    const closed = await as(ADMIN, 'post', `/v1/admin/support/tickets/${ticketId}/close`);
+    expect(closed.status).toBe(200);
+    const duplicate = await as(ADMIN, 'post', `/v1/admin/support/tickets/${ticketId}/close`);
+    expect(duplicate.status).toBe(409);
+    // A reply to a closed ticket is refused and must not notify.
+    const lateReply = await as(
+      ADMIN,
+      'post',
+      `/v1/admin/support/tickets/${ticketId}/messages`,
+    ).send({ body: 'late', idempotencyKey: sendKey('notify-late') });
+    expect(lateReply.status).toBe(409);
+
+    const reopened = await as(ADMIN, 'post', `/v1/admin/support/tickets/${ticketId}/reopen`);
+    expect(reopened.status).toBe(200);
+
+    const rows = await notificationsFor(REQUESTER);
+    expect(rows.map((row: any) => row.metadata.event)).toEqual([
+      'SUPPORT_CLOSED',
+      'SUPPORT_REOPENED',
+    ]);
+    expect(await announcedIds(rows.map((row: any) => row.id))).toHaveLength(2);
+
+    // Revocation is immediate for notifications too.
+    await prisma.userRole.delete({ where: { userId_roleId: { userId: ADMIN, roleId: ROLE_ID } } });
+    const revoked = await as(ADMIN, 'post', `/v1/admin/support/tickets/${ticketId}/close`);
+    expect(revoked.status).toBe(403);
+    expect(await notificationsFor(REQUESTER)).toHaveLength(2);
+    expect((await prisma.supportTicket.findUnique({ where: { id: ticketId } })).status).toBe(
+      'OPEN',
+    );
+  });
+
+  it('K06: two operators racing to close notify the requester exactly once', async () => {
+    const created = await createTicket(REQUESTER, createKey('notify-race'));
+    const ticketId = created.body.ticket.id;
+    const [a, b] = await Promise.all([
+      as(ADMIN, 'post', `/v1/admin/support/tickets/${ticketId}/close`),
+      as(ADMIN, 'post', `/v1/admin/support/tickets/${ticketId}/close`),
+    ]);
+    expect([a.status, b.status].sort()).toEqual([200, 409]);
+    const rows = await notificationsFor(REQUESTER);
+    expect(rows.map((row: any) => row.metadata.event)).toEqual(['SUPPORT_CLOSED']);
   });
 });

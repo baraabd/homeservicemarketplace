@@ -40,8 +40,10 @@ const TRUNCATED_PDF = Buffer.from('%PDF-1.4\nno end marker');
 
 type Row = {
   id: string;
+  purpose: string | null;
   storageKey: string;
   scanState: string;
+  scannedAt: Date | null;
   declaredMimeType: string;
   detectedMimeType: string | null;
   originalFilename: string | null;
@@ -53,8 +55,10 @@ type Row = {
 function row(over: Partial<Row> = {}): Row {
   return {
     id: 'asset-1',
+    purpose: null,
     storageKey: 'verification/case-1/asset-1.pdf',
     scanState: 'PENDING',
+    scannedAt: null,
     declaredMimeType: 'application/pdf',
     detectedMimeType: 'application/pdf',
     originalFilename: 'passport.pdf',
@@ -159,6 +163,26 @@ function harness(options: {
 const stateWritten = (updates: Array<{ data: Record<string, unknown> }>) =>
   updates.map((u) => u.data.scanState);
 
+describe('financial evidence isolation from identity scanning', () => {
+  it('filters financial purposes at selection and refuses an injected candidate before reading bytes', async () => {
+    const scanner = new ScriptedScanner(true, { state: 'CLEAN', scannerId: 'scripted' });
+    const h = harness({
+      scanner,
+      rows: [row({ purpose: 'FINANCIAL_RECEIPT', verificationCaseId: null })],
+    });
+    await h.service.scanPending();
+    expect(h.client.mediaAsset.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ purpose: null }),
+      }),
+    );
+    expect(h.storage.openReadStream).not.toHaveBeenCalled();
+    expect(scanner.calls).toEqual([]);
+    expect(h.updates).toEqual([]);
+    expect(h.audits).toEqual([]);
+  });
+});
+
 describe('a file a real scanner clears', () => {
   it('is written CLEAN, with the scanner recorded', async () => {
     const h = harness({});
@@ -175,7 +199,11 @@ describe('a file a real scanner clears', () => {
     // decision made on a different reading of the file.
     const h = harness({});
     await h.service.scanPending();
-    expect(h.updates[0].where).toMatchObject({ id: 'asset-1', scanState: 'PENDING' });
+    expect(h.updates[0].where).toMatchObject({
+      id: 'asset-1',
+      scanState: 'PENDING',
+      purpose: null,
+    });
   });
 
   it('counts a lost race as skipped rather than cleared', async () => {
@@ -285,6 +313,97 @@ describe('a scanner that cannot answer', () => {
     expect(stateWritten(h.updates)).toEqual(['SCAN_FAILED']);
   });
 
+  it('restarts the cooldown after another failed scan without duplicating its outcome', async () => {
+    const previousAttempt = new Date('2026-01-01T12:00:00Z');
+    const retriedAt = new Date('2026-01-01T12:06:00Z');
+    const scanner = new ScriptedScanner(true, {
+      state: 'FAILED',
+      scannerId: 'scripted',
+      reason: 'timeout',
+    });
+    const h = harness({
+      scanner,
+      rows: [row({ scanState: 'SCAN_FAILED', scannedAt: previousAttempt })],
+    });
+
+    const out = await h.service.scanPending({ now: retriedAt });
+
+    expect(out).toMatchObject({ failed: 1, skipped: 0, cleared: 0 });
+    expect(h.updates).toEqual([
+      {
+        where: {
+          id: 'asset-1',
+          purpose: null,
+          scanState: 'SCAN_FAILED',
+          scannedAt: previousAttempt,
+          deletedAt: null,
+          erasureStartedAt: null,
+        },
+        data: { scannedAt: retriedAt },
+      },
+    ]);
+    expect(h.audits).toEqual([]);
+    expect(h.outbox).toEqual([]);
+  });
+
+  it('does not overwrite a failed-attempt timestamp when another worker already advanced it', async () => {
+    const h = harness({
+      scanner: new ScriptedScanner(true, {
+        state: 'FAILED',
+        scannerId: 'scripted',
+        reason: 'timeout',
+      }),
+      rows: [row({ scanState: 'SCAN_FAILED', scannedAt: null })],
+      updateCount: 0,
+    });
+
+    const out = await h.service.scanPending();
+
+    expect(out).toMatchObject({ failed: 0, skipped: 1, cleared: 0 });
+    expect(h.updates[0].where).toMatchObject({ scanState: 'SCAN_FAILED', scannedAt: null });
+    expect(h.audits).toEqual([]);
+    expect(h.outbox).toEqual([]);
+  });
+
+  it('starts the retry cooldown when the scan completes rather than when its batch began', async () => {
+    const startedAt = new Date('2026-01-01T12:06:00Z');
+    const completedAt = new Date('2026-01-01T12:07:00Z');
+    jest.useFakeTimers({ now: startedAt, doNotFake: ['nextTick', 'setImmediate'] });
+    try {
+      const scanner = new ScriptedScanner(true, async () => {
+        jest.setSystemTime(completedAt);
+        return { state: 'FAILED', scannerId: 'scripted', reason: 'timeout' };
+      });
+      const h = harness({
+        scanner,
+        rows: [row({ scanState: 'SCAN_FAILED', scannedAt: new Date('2026-01-01T12:00:00Z') })],
+      });
+      await h.service.scanPending();
+      expect(h.updates[0].data.scannedAt).toEqual(completedAt);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('backs off repeated storage failures without duplicating failure audits', async () => {
+    const retriedAt = new Date('2026-01-01T12:06:00Z');
+    const h = harness({
+      rows: [row({ scanState: 'SCAN_FAILED', scannedAt: new Date('2026-01-01T12:00:00Z') })],
+      bytes: () => {
+        const stream = new Readable({ read() {} });
+        process.nextTick(() => stream.destroy(new Error('gone')));
+        return stream;
+      },
+    });
+
+    const out = await h.service.scanPending({ now: retriedAt });
+
+    expect(out.failed).toBe(1);
+    expect(h.updates[0].data).toEqual({ scannedAt: retriedAt });
+    expect(h.audits).toEqual([]);
+    expect(h.outbox).toEqual([]);
+  });
+
   it('treats a scanner that THROWS as a failure, not a clean file', async () => {
     // The port says adapters resolve rather than throw. This asserts the
     // service does not depend on that promise being kept.
@@ -336,6 +455,21 @@ describe('a verdict already recorded', () => {
 });
 
 describe('the batch', () => {
+  it('prioritizes never-attempted uploads and rotates retries by oldest attempt with stable ties', async () => {
+    const h = harness({ rows: [] });
+    await h.service.scanPending({ limit: 5 });
+    expect(h.client.mediaAsset.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        orderBy: [
+          { scannedAt: { sort: 'asc', nulls: 'first' } },
+          { createdAt: 'asc' },
+          { id: 'asc' },
+        ],
+        take: 5,
+      }),
+    );
+  });
+
   it('is bounded, and asks the database for no more than the bound', async () => {
     const h = harness({ rows: [] });
     await h.service.scanPending({ limit: 5 });

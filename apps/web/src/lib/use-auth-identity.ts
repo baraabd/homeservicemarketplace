@@ -7,7 +7,7 @@ import { useAuth } from './auth-provider';
 // Reads the authenticated user from the existing auth-provider (no duplicate
 // query, no localStorage) and derives:
 //   - displayName: "First Last" (falls back to first alone, then email
-//     local-part — never a hardcoded placeholder)
+//     local-part, then the phone number — never a hardcoded placeholder)
 //   - initials: up to two uppercase letters derived the same way
 //
 // While auth is still loading OR there is no authenticated user, both
@@ -19,6 +19,7 @@ export interface AuthIdentity {
   displayName: string | null;
   initials: string | null;
   email: string | null;
+  phoneNumber: string | null;
   isLoading: boolean;
   isAuthenticated: boolean;
 }
@@ -26,12 +27,20 @@ export interface AuthIdentity {
 export function useAuthIdentity(): AuthIdentity {
   const { user, isLoading, isAuthenticated } = useAuth();
   if (!user) {
-    return { displayName: null, initials: null, email: null, isLoading, isAuthenticated };
+    return {
+      displayName: null,
+      initials: null,
+      email: null,
+      phoneNumber: null,
+      isLoading,
+      isAuthenticated,
+    };
   }
   return {
     displayName: deriveDisplayName(user),
     initials: deriveInitials(user),
     email: user.email,
+    phoneNumber: user.phoneNumber ?? null,
     isLoading,
     isAuthenticated,
   };
@@ -43,6 +52,7 @@ export function deriveDisplayName(user: {
   firstName?: string | null;
   lastName?: string | null;
   email?: string | null;
+  phoneNumber?: string | null;
 }): string {
   const first = (user.firstName ?? '').trim();
   const last = (user.lastName ?? '').trim();
@@ -50,7 +60,7 @@ export function deriveDisplayName(user: {
   if (first) return first;
   if (last) return last;
   const local = (user.email ?? '').split('@')[0]?.trim();
-  return local && local.length > 0 ? local : '';
+  return local && local.length > 0 ? local : (user.phoneNumber ?? '').trim();
 }
 
 export function deriveInitials(user: {

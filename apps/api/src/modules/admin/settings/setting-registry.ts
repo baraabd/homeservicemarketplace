@@ -121,6 +121,8 @@ function validateScalar(field: AdminSettingFieldSchema, value: unknown): unknown
           `\`${field.key}\` exceeds ${STRING_MAX} chars.`,
           400,
         );
+      if (field.options && !field.options.includes(trimmed))
+        throw new AppError('VALIDATION_ERROR', `\`${field.key}\` has an unsupported value.`, 400);
       return trimmed;
     }
     case 'boolean': {

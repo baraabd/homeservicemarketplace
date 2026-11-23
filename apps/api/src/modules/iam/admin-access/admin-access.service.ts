@@ -1,3 +1,4 @@
+import { hasVerifiedAuthenticationContact } from '../../../shared/identity/verified-contact';
 import { Injectable, Logger } from '@nestjs/common';
 import type {
   AdminAccessRequestStatus as ContractStatus,
@@ -120,10 +121,10 @@ export class AdminAccessService {
       // An unverified identity must not be able to queue for admin access —
       // otherwise anyone who can reach the signup form can occupy the review
       // queue with addresses they do not control.
-      if (user.emailVerifiedAt === null) {
+      if (!hasVerifiedAuthenticationContact(user)) {
         throw new AppError(
           'VALIDATION_ERROR',
-          'Verify your email address before requesting admin access.',
+          'Verify your email address or WhatsApp number before requesting admin access.',
           400,
         );
       }
@@ -263,7 +264,7 @@ export class AdminAccessService {
         existing.user &&
         existing.user.isActive &&
         existing.user.status === 'ACTIVE' &&
-        existing.user.emailVerifiedAt !== null;
+        hasVerifiedAuthenticationContact(existing.user);
       if (decision === 'APPROVED' && !applicantOk) {
         throw new AppError(
           'VALIDATION_ERROR',
@@ -373,6 +374,8 @@ function toReviewItem(row: AdminAccessRequestWithApplicant): AdminAccessRequestR
     applicant: {
       id: row.user.id,
       email: row.user.email,
+      phoneNumber: row.user.phoneNumber,
+      phoneVerifiedAt: row.user.phoneVerifiedAt?.toISOString() ?? null,
       firstName: row.user.firstName,
       lastName: row.user.lastName,
       accountStatus: row.user.status as AdminUserStatus,

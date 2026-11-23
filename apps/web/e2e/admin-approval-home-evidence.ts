@@ -14,17 +14,20 @@ export async function verifyApprovalHome(page: Page) {
   // Observe the exact response consumed by the screen, not a racing aggregate read.
   const pending = page.waitForResponse((response) => {
     const url = new URL(response.url());
-    return url.pathname === '/v1/admin/providers'
-      && url.searchParams.get('limit') === '3'
-      && response.request().method() === 'GET';
+    return (
+      url.pathname === '/v1/admin/providers' &&
+      url.searchParams.get('limit') === '3' &&
+      response.request().method() === 'GET'
+    );
   });
   await refresh.click();
   const response = await pending;
   expect(response.status()).toBe(200);
-  const body = await response.json() as ListAdminProvidersResponse;
+  const body = (await response.json()) as ListAdminProvidersResponse;
   expect(body.counts).toBeDefined();
-  await expect(page.getByTestId('approval-count-pendingReview'))
-    .toHaveText(body.counts!.pendingReview.toLocaleString('en'));
+  await expect(page.getByTestId('approval-count-pendingReview')).toHaveText(
+    body.counts!.pendingReview.toLocaleString('en'),
+  );
   await expect(center.locator('.ac-request')).toHaveCount(body.items.length);
   await expect(refresh).toBeEnabled();
   await expect(center.getByTestId('review-approve')).toHaveCount(0);
@@ -43,10 +46,15 @@ export async function verifyApprovalHome(page: Page) {
   await info.attach(name, { path, contentType: 'image/png' });
   await info.attach(`${name}-source.json`, {
     contentType: 'application/json',
-    body: Buffer.from(JSON.stringify({
-      route: '/admin', responseStatus: response.status(), counts: body.counts,
-      transport: 'real HTTP; no route interception', commit: process.env.GITHUB_SHA ?? null,
-      viewport: page.viewportSize(),
-    })),
+    body: Buffer.from(
+      JSON.stringify({
+        route: '/admin',
+        responseStatus: response.status(),
+        counts: body.counts,
+        transport: 'real HTTP; no route interception',
+        commit: process.env.GITHUB_SHA ?? null,
+        viewport: page.viewportSize(),
+      }),
+    ),
   });
 }

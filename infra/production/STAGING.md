@@ -60,8 +60,18 @@ Do not rotate credentials concurrently with deployment.
 
 Build the API runner and migrator targets from `apps/api/Dockerfile`, and the web image
 from `apps/web/Dockerfile`, using the **same accepted full source SHA** as SOURCE_SHA.
-For the web build supply VITE_API_URL as the exact HTTPS API origin WITHOUT `/v1` (request paths already include that prefix), and an
-explicit approved VITE_PROVIDER_ONBOARDING_V2 value. Publish only to the approved
+For the web build supply VITE_API_URL as the exact HTTPS API origin WITHOUT `/v1` (request paths already include that prefix), and
+explicit approved `true`/`false` values for VITE_PROVIDER_ONBOARDING_V2 and
+VITE_STRIPE_SANDBOX_ENABLED; neither has an image default (K03). The optional public
+inputs (VITE_DISPUTE_INTAKE_V1, VITE_REALTIME_SOCKET_IO, VITE_REALTIME_TRANSPORTS,
+VITE_CSP_MEDIA_ORIGINS, VITE_CSP_UPLOAD_ORIGINS) default to their previous compiled
+behavior and are listed in `scripts/production/security-app/web-build-identity.cjs`.
+Compute the reviewed fingerprint of exactly those inputs with
+`node scripts/production/security-app/web-build-identity.cjs --fingerprint` and pass it
+as WEB_CONFIG_FINGERPRINT. The build fails unless the compiled configuration has that
+fingerprint and the emitted `index.html` CSP equals the policy it requires. There is no
+live-payment web flag; VITE_STRIPE_SANDBOX_ENABLED admits only Stripe's documented
+sandbox script/frame/API origins. Publish only to the approved
 registry after reviewing CI/security evidence and applicable authorization. Capture
 all three registry digests and verify their provenance. Digest pinning prevents tag
 drift; self-declared OCI labels alone are not signed provenance.
@@ -70,18 +80,26 @@ Create a release JSON document with exactly these fields. The following is a fie
 contract, not an executable deployment file; replace descriptions with actual approved
 values of the indicated type:
 
-| Field | Required value |
-| --- | --- |
-| schemaVersion | number 1 |
-| sourceSha | full 40-character lowercase Git SHA |
-| dockerContext | explicit local daemon context name |
-| projectName | unique hsm-staging-* name, never the developer Compose project |
-| externalNetwork | existing approved Docker network name |
-| images | object with distinct api, migrator, web image references, each ending in @sha256 plus a 64-character digest |
-| secretFiles | object with api and migration absolute protected external file paths |
-| ports | object with api and web distinct integer host ports from 1024 to 65535; always bound to loopback |
-| webOrigin, apiOrigin | canonical HTTPS origins without path, credentials, query or fragment |
-| onboardingV2 | explicit boolean corresponding to the compiled web bundle |
+| Field                | Required value                                                                                              |
+| -------------------- | ----------------------------------------------------------------------------------------------------------- |
+| schemaVersion        | number 2 (version 1 manifests cannot bind the web configuration and are rejected)                           |
+| sourceSha            | full 40-character lowercase Git SHA                                                                         |
+| dockerContext        | explicit local daemon context name                                                                          |
+| projectName          | unique hsm-staging-\* name, never the developer Compose project                                             |
+| externalNetwork      | existing approved Docker network name                                                                       |
+| images               | object with distinct api, migrator, web image references, each ending in @sha256 plus a 64-character digest |
+| secretFiles          | object with api and migration absolute protected external file paths                                        |
+| ports                | object with api and web distinct integer host ports from 1024 to 65535; always bound to loopback            |
+| webOrigin, apiOrigin | canonical HTTPS origins without path, credentials, query or fragment                                        |
+| onboardingV2         | explicit boolean corresponding to the compiled web bundle                                                   |
+| stripeSandbox        | explicit boolean corresponding to the compiled Stripe sandbox CSP state                                     |
+| webConfigFingerprint | reviewed 64-character lowercase SHA-256 from `web-build-identity.cjs --fingerprint`                         |
+
+The launcher requires the web image labels `io.hsm.web.onboarding-v2`,
+`io.hsm.web.stripe-sandbox` and `io.hsm.web.config-fingerprint` to equal these fields.
+After rollout it re-derives `/build-info.json` from its normalized public configuration
+and compares the CSP in the document actually served at `/` with the policy that
+configuration requires, so a bundle compiled without the declared flag is rejected.
 
 ## Operator actions
 

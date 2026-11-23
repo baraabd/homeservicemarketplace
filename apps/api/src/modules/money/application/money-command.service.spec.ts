@@ -73,8 +73,13 @@ function harness() {
       ),
     },
     moneyCommand: {
-      findUnique: jest.fn(({ where }: { where: { idempotencyKey: string } }) =>
-        Promise.resolve(commands.get(where.idempotencyKey) ?? null),
+      findFirst: jest.fn().mockResolvedValue(null),
+      findUnique: jest.fn(({ where }: { where: { idempotencyKey?: string; id?: string } }) =>
+        Promise.resolve(
+          (where.idempotencyKey
+            ? commands.get(where.idempotencyKey)
+            : [...commands.values()].find((row) => row.id === where.id)) ?? null,
+        ),
       ),
       create: jest.fn(({ data }: { data: Record<string, unknown> }) => {
         commands.set(data.idempotencyKey as string, data);
@@ -121,6 +126,17 @@ function harness() {
     },
     moneyPaymentConfirmation: { findUnique: jest.fn(), findUniqueOrThrow: jest.fn() },
     moneyRefund: { findUnique: jest.fn(), findUniqueOrThrow: jest.fn() },
+    ledgerTransaction: {
+      findUnique: jest.fn().mockResolvedValue({
+        id: 'posting-a',
+        kind: 'STANDARD',
+        status: 'POSTED',
+        currency: 'XTS',
+        reversedBy: null,
+      }),
+    },
+    subscriptionPeriod: { findUnique: jest.fn().mockResolvedValue({ id: 'period-a' }) },
+    moneyReconciliationException: { findFirst: jest.fn().mockResolvedValue(null) },
     mediaAsset: { findUnique: jest.fn() },
   };
   const tx = { run: jest.fn((fn: (t: unknown) => unknown) => fn(db)) };
@@ -159,6 +175,11 @@ function harness() {
     submit: jest.fn(),
     query: jest.fn(),
   };
+  const refundParticipant = {
+    isConfigured: jest.fn().mockReturnValue(true),
+    applyConfirmedRefund: jest.fn().mockResolvedValue(undefined),
+  };
+  const outbox = { enqueue: jest.fn().mockResolvedValue({ id: 'outbox-a' }) };
   const service = new MoneyCommandService(
     { client: db } as never,
     tx as never,
@@ -173,6 +194,8 @@ function harness() {
     participant as never,
     refundPolicy as never,
     refunds as never,
+    refundParticipant as never,
+    outbox as never,
   );
   return {
     service,
@@ -193,11 +216,13 @@ function harness() {
     participant,
     refundPolicy,
     refunds,
+    refundParticipant,
+    outbox,
   };
 }
 
 describe('R24 money command boundary (contract components)', () => {
-  it.each(['r24_event_', 'r24_process_', 'r24_refund_result_'])(
+  it.each(['r24_event_', 'r24_process_', 'r24_refund_result_', 'r31_'])(
     'reserves the exact internal command namespace %s before transaction access',
     async (prefix) => {
       const h = harness();
@@ -540,10 +565,14 @@ describe('R24 money command boundary (contract components)', () => {
     expect(h.collection.validateAndNormalizeExternalEvent).not.toHaveBeenCalled();
   });
 
-  it('propagates a failed command audit instead of claiming acceptance', async () => {
+  it('rejects a failed command audit with a redacted error instead of claiming acceptance', async () => {
     const h = harness();
     h.audit.record.mockRejectedValue(new Error('contract audit failure'));
-    await expect(h.service.quote('user-a', KEY, REQUEST)).rejects.toThrow('contract audit failure');
+    await expect(h.service.quote('user-a', KEY, REQUEST)).rejects.toMatchObject({
+      code: 'INTERNAL_ERROR',
+      message: 'The money command could not be completed.',
+      details: { reason: 'MONEY_COMMAND_FAILED' },
+    });
     // This double checks error propagation only. Atomic rollback is a real DB test.
   });
 });
@@ -775,6 +804,8 @@ describe('R24 evidence recovery (contract components)', () => {
     h.db.moneyPaymentConfirmation.findUniqueOrThrow.mockResolvedValue({
       id: 'confirmation-a',
       paymentIntentId: intent.id,
+      ledgerTransactionId: 'posting-a',
+      currency: 'XTS',
     });
     h.db.moneyRefund.findUnique.mockResolvedValue(refund);
     h.db.moneyRefund.findUniqueOrThrow.mockResolvedValue(refund);
@@ -837,7 +868,9 @@ describe('R24 evidence recovery (contract components)', () => {
     expect(h.refunds.isConfigured).toHaveBeenCalledTimes(readinessCalls);
     expect(h.refunds.submit).toHaveBeenCalledTimes(1);
     expect(h.refunds.query).not.toHaveBeenCalled();
-    expect(h.permissions.resolveFreshForUser).toHaveBeenCalledTimes(2);
+    // Each request and each post-commit delivery independently rechecks the
+    // actor. Recovery must not rely on permission captured before a crash.
+    expect(h.permissions.resolveFreshForUser).toHaveBeenCalledTimes(4);
   });
 });
 

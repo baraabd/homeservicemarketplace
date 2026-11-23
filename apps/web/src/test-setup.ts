@@ -6,8 +6,13 @@
 import { afterEach, expect, vi } from 'vitest';
 import * as matchers from '@testing-library/jest-dom/matchers';
 import { configure } from '@testing-library/react';
+import { installAnimationCancelCompatibility } from './test-harness/animation-cancel-compat';
 
 expect.extend(matchers);
+
+// Keep Happy DOM's new WAAPI implementation compatible with browser cancellation.
+// Real-browser suites use the browser implementation without this adapter.
+installAnimationCancelCompatibility(Animation);
 
 // Give the async utilities a budget that survives a loaded CI runner.
 //

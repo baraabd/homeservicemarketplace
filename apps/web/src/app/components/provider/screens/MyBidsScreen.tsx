@@ -156,7 +156,7 @@ export function MyBidsScreen() {
         status: b.status.toLowerCase() as BidView,
         bookingId: linkedBooking?.id ?? null,
         bookingStatus: linkedBooking?.status ?? null,
-        offer: formatOffer(b.amount, b.currency, b.pricingType, language),
+        offer: formatOffer(b.amount, b.currency, b.amountScale, b.pricingType, language),
         executionTime: formatResponseTime(b.responseTimeMinutes, language),
         note: b.note ?? '',
         submittedAt: formatRelativeTime(b.submittedAt, language),

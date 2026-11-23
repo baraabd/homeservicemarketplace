@@ -39,6 +39,27 @@ test('environment overrides cannot redirect fixtures or weaken policy', () => {
   assert.equal(apiEnv({ profile: 'production' }).GLOBAL_THROTTLE_LIMIT, undefined);
 });
 
+test('measurement profiles exclude asynchronous mail queries despite ambient or override settings', () => {
+  const inherited = process.env.MAIL_DISPATCHER_ENABLED;
+  process.env.MAIL_DISPATCHER_ENABLED = 'true';
+  try {
+    for (const profile of ['fixture', 'production']) {
+      const env = apiEnv({ profile });
+      assert.equal(env.MAIL_DISPATCHER_ENABLED, 'false');
+      assert.equal(env.SMTP_HOST, '127.0.0.1');
+      assert.equal(env.SMTP_PORT, String(LANE.smtpPort));
+      assert.equal(env.AUTH_REQUIRE_EMAIL_VERIFICATION, 'true');
+      assert.throws(
+        () => apiEnv({ profile, overrides: { MAIL_DISPATCHER_ENABLED: 'true' } }),
+        /not allowed/,
+      );
+    }
+  } finally {
+    if (inherited === undefined) delete process.env.MAIL_DISPATCHER_ENABLED;
+    else process.env.MAIL_DISPATCHER_ENABLED = inherited;
+  }
+});
+
 test('port probe refuses a silent non-HTTP listener without connecting or killing it', async () => {
   const listener = createServer(() =>
     assert.fail('probe must not send traffic to another process'),

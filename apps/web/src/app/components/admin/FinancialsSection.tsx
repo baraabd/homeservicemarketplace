@@ -3,6 +3,7 @@ import {
   useAdminFinancialsProviderEarnings,
   useAdminFinancialsSummary,
 } from '../../hooks/admin/useAdminFinancials';
+import { formatAmount } from '../../../lib/money/format-amount';
 
 // Sprint 6.4 — extracted, real, API-driven Financials section.
 // Replaces the prior $14,820/$11,100/$3,720 hardcoded values + the
@@ -28,14 +29,21 @@ export function FinancialsSection({ lang }: { lang: string }) {
   const providerEarningsQuery = useAdminFinancialsProviderEarnings({ limit: 10 });
 
   const summary = summaryQuery.data;
-  const currency = summary?.currency ?? 'USD';
 
-  const fmt = (amount: number) =>
-    new Intl.NumberFormat(isAr ? 'ar' : 'en', {
-      style: 'currency',
-      currency,
-      maximumFractionDigits: 0,
-    }).format(amount / 100);
+  // K02 — every amount in its own currency and unit; never "/ 100", never
+  // one total across currencies.
+  const fmt = (amount: number, currency: string, amountScale: number | null) =>
+    formatAmount(amount, currency, amountScale, isAr ? 'ar' : 'en');
+  const legacyCount = summary
+    ? summary.excluded
+        .filter((e) => e.reason === 'LEGACY_UNVERIFIED')
+        .reduce((n, e) => n + e.completedCount + e.inFlightCount, 0)
+    : 0;
+  const hourlyCount = summary
+    ? summary.excluded
+        .filter((e) => e.reason === 'HOURLY_RATE')
+        .reduce((n, e) => n + e.completedCount + e.inFlightCount, 0)
+    : 0;
 
   const L = {
     title: isAr ? 'التقارير المالية' : 'Financial Reports',
@@ -48,6 +56,15 @@ export function FinancialsSection({ lang }: { lang: string }) {
       ? 'قيم الحجوزات وليست مدفوعات. لا توجد عمولة منصة معتمدة، ولا تحتفظ المنصة بأي أموال ولا تدفعها.'
       : 'Booking values, not payments. No platform fee is approved; the platform holds and pays out nothing.',
     completedBookings: isAr ? 'الحجوزات المنجزة' : 'Completed bookings',
+    noValue: isAr ? 'لا توجد حجوزات بسعر ثابت بعد.' : 'No fixed-price bookings yet.',
+    excludedLegacy: (n: number) =>
+      isAr
+        ? `${n} حجز بمبلغ قديم غير مؤكد الوحدة مستبعد من القيم وينتظر المطابقة.`
+        : `${n} booking(s) with an unverified legacy amount are excluded and await reconciliation.`,
+    excludedHourly: (n: number) =>
+      isAr
+        ? `${n} حجز بسعر بالساعة مستبعد: سعر الساعة ليس مبلغاً إجمالياً.`
+        : `${n} hourly-rate booking(s) are excluded: an hourly rate is not a total.`,
     bookingsTitle: isAr ? 'الحجوزات الأخيرة' : 'Recent bookings',
     bookingsEmpty: isAr ? 'لا توجد حجوزات منجزة بعد.' : 'No completed bookings yet.',
     providersTitle: isAr ? 'أعلى المزودين دخلاً' : 'Top earners',
@@ -81,18 +98,45 @@ export function FinancialsSection({ lang }: { lang: string }) {
         </p>
       ) : null}
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <SummaryTile
-          label={L.revenue}
-          value={summary ? fmt(summary.totalRevenue) : '…'}
-          tone="green"
-        />
-        <SummaryTile
-          label={L.pending}
-          value={summary ? fmt(summary.pendingBalance) : '…'}
-          tone="blue"
-        />
-      </div>
+      {!summary ? (
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+          <SummaryTile label={L.revenue} value="…" tone="green" />
+          <SummaryTile label={L.pending} value="…" tone="blue" />
+        </div>
+      ) : summary.byCurrency.length === 0 ? (
+        <p className="text-slate-500" style={{ fontSize: '13px' }} role="status">
+          {L.noValue}
+        </p>
+      ) : (
+        summary.byCurrency.map((value) => (
+          <div
+            key={`${value.currency}:${value.amountScale}`}
+            className="grid grid-cols-2 lg:grid-cols-4 gap-3"
+            data-testid={`admin-financials-currency-${value.currency}`}
+          >
+            <SummaryTile
+              label={L.revenue}
+              value={fmt(value.completedValue, value.currency, value.amountScale)}
+              tone="green"
+            />
+            <SummaryTile
+              label={L.pending}
+              value={fmt(value.inFlightValue, value.currency, value.amountScale)}
+              tone="blue"
+            />
+          </div>
+        ))
+      )}
+      {legacyCount > 0 ? (
+        <p className="text-amber-700 dark:text-amber-300" style={{ fontSize: '12px' }} role="note">
+          {L.excludedLegacy(legacyCount)}
+        </p>
+      ) : null}
+      {hourlyCount > 0 ? (
+        <p className="text-slate-600 dark:text-slate-300" style={{ fontSize: '12px' }} role="note">
+          {L.excludedHourly(hourlyCount)}
+        </p>
+      ) : null}
       <div className="grid grid-cols-2 gap-3 text-slate-500" style={{ fontSize: '11px' }}>
         <div>
           {L.completedBookings}: <strong>{summary ? summary.completedBookingsCount : '—'}</strong>
@@ -164,7 +208,8 @@ function SummaryTile({
 interface FinancialsBookingRowLite {
   id: string;
   amount: number;
-  netAmount: number;
+  currency: string;
+  amountScale: number | null;
   occurredAt: string;
   service: {
     categoryLabelEn: string | null;
@@ -185,7 +230,7 @@ function BookingsTable({
   isPending: boolean;
   isError: boolean;
   rows: FinancialsBookingRowLite[];
-  fmt: (n: number) => string;
+  fmt: (amount: number, currency: string, amountScale: number | null) => string;
   isAr: boolean;
   labels: {
     bookingsTitle: string;
@@ -250,7 +295,7 @@ function BookingsTable({
                     {r.provider.displayName}
                   </td>
                   <td className="px-3 py-2" style={{ fontSize: '12px', fontWeight: 700 }}>
-                    {fmt(r.amount)}
+                    {fmt(r.amount, r.currency, r.amountScale)}
                   </td>
                   <td className="px-3 py-2 text-slate-400" style={{ fontSize: '11px' }}>
                     {new Date(r.occurredAt).toLocaleDateString(isAr ? 'ar' : 'en')}
@@ -270,7 +315,8 @@ interface ProviderEarningsRowLite {
   displayName: string;
   completedBookings: number;
   grossEarnings: number;
-  netEarnings: number;
+  currency: string;
+  amountScale: number;
 }
 
 function ProviderEarningsTable({
@@ -283,7 +329,7 @@ function ProviderEarningsTable({
   isPending: boolean;
   isError: boolean;
   rows: ProviderEarningsRowLite[];
-  fmt: (n: number) => string;
+  fmt: (amount: number, currency: string, amountScale: number | null) => string;
   labels: {
     providersTitle: string;
     providersEmpty: string;
@@ -329,7 +375,10 @@ function ProviderEarningsTable({
           </thead>
           <tbody>
             {rows.map((r) => (
-              <tr key={r.providerId} className="border-b border-slate-50 dark:border-slate-700">
+              <tr
+                key={`${r.providerId}:${r.currency}`}
+                className="border-b border-slate-50 dark:border-slate-700"
+              >
                 <td className="px-3 py-2" style={{ fontSize: '12px', fontWeight: 600 }}>
                   {r.displayName}
                 </td>
@@ -337,7 +386,7 @@ function ProviderEarningsTable({
                   {r.completedBookings}
                 </td>
                 <td className="px-3 py-2" style={{ fontSize: '12px', fontWeight: 700 }}>
-                  {fmt(r.grossEarnings)}
+                  {fmt(r.grossEarnings, r.currency, r.amountScale)}
                 </td>
               </tr>
             ))}

@@ -1,3 +1,4 @@
+import type { AuthenticationContacts } from '../../../shared/identity/verified-contact';
 import type { ProviderProfileStatus } from '@homeservicemarketplace/database';
 
 import type {
@@ -79,6 +80,7 @@ function build(
   over: {
     profile?: ProviderProfileWithCategories | null;
     emailVerified?: boolean;
+    accountContact?: AuthenticationContacts;
     submitCount?: number;
     withdrawCount?: number;
   } = {},
@@ -98,7 +100,9 @@ function build(
   const users = {
     findById: jest.fn().mockResolvedValue({
       id: 'u-1',
+      email: 'ada@example.test',
       emailVerifiedAt: (over.emailVerified ?? true) ? new Date('2026-08-01T00:00:00Z') : null,
+      ...over.accountContact,
     }),
   } as unknown as UserRepository;
 
@@ -219,7 +223,7 @@ describe('ProviderOnboardingService', () => {
       await expect(service.submitForReview('u-1')).rejects.toMatchObject({
         status: 422,
         details: {
-          missing: expect.arrayContaining([{ field: 'emailVerified', code: 'UNVERIFIED' }]),
+          missing: expect.arrayContaining([{ field: 'contactVerified', code: 'UNVERIFIED' }]),
         },
       });
     });
@@ -455,6 +459,56 @@ describe('V1 — pending specialty moderation does not deadlock the legacy path'
     await expect(h.service.submitForReview('u-1')).rejects.toMatchObject({
       status: 422,
       details: { missing: expect.arrayContaining([{ field: 'bio', code: 'REQUIRED' }]) },
+    });
+  });
+});
+
+describe('phone-only provider account identity', () => {
+  it('allows a verified authentication phone through status and submission gates', async () => {
+    const { service } = build({
+      accountContact: {
+        email: null,
+        emailVerifiedAt: null,
+        phoneNumber: '+966501234567',
+        phoneVerifiedAt: new Date(),
+      },
+    });
+    expect((await service.getStatus('u-1')).missing).not.toContainEqual({
+      field: 'contactVerified',
+      code: 'UNVERIFIED',
+    });
+    await expect(service.submitForReview('u-1')).resolves.toBeDefined();
+  });
+
+  it('blocks account contact with no proof even if a provider profile phone is verified', async () => {
+    const { service } = build({
+      accountContact: {
+        email: null,
+        emailVerifiedAt: null,
+        phoneNumber: '+966501234567',
+        phoneVerifiedAt: null,
+      },
+      profile: makeProfile({ phoneVerifiedAt: new Date() }),
+    });
+    expect((await service.getStatus('u-1')).missing).toContainEqual({
+      field: 'contactVerified',
+      code: 'UNVERIFIED',
+    });
+    await expect(service.submitForReview('u-1')).rejects.toMatchObject({ status: 422 });
+  });
+
+  it('does not accept an orphan verification timestamp with no account identifier', async () => {
+    const { service } = build({
+      accountContact: {
+        email: null,
+        emailVerifiedAt: new Date(),
+        phoneNumber: null,
+        phoneVerifiedAt: new Date(),
+      },
+    });
+    expect((await service.getStatus('u-1')).missing).toContainEqual({
+      field: 'contactVerified',
+      code: 'UNVERIFIED',
     });
   });
 });

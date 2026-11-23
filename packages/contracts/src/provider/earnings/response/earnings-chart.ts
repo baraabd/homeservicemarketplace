@@ -6,12 +6,12 @@
 // JS-side date math required.
 export type EarningsChartRange = '7d' | '30d' | '90d';
 
+// K02 — one currency per chart. Buckets sum verified FIXED-price
+// COMPLETED bookings in `currency` only (minor units at `amountScale`).
 export interface EarningsChartBucket {
   // 'YYYY-MM-DD' (UTC). Stable, sortable, locale-independent.
   date: string;
   grossEarnings: number;
-  platformFees: number;
-  netEarnings: number;
   completedBookings: number;
 }
 
@@ -22,5 +22,6 @@ export interface EarningsChart {
   windowStart: string;
   windowEnd: string;
   currency: string;
+  amountScale: number;
   buckets: EarningsChartBucket[];
 }

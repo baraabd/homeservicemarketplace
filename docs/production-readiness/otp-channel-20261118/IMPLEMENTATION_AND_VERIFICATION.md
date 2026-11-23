@@ -1,0 +1,87 @@
+# Configurable authentication channel — 18 November 2026
+
+## Scope and UX decisions
+
+The requested change applies to customer, professional and administrator authentication. An administrator selects the default OTP channel in Settings. Email stays the default until an administrator saves WhatsApp after provider configuration and verification of their own number. The existing role-specific shells remain: customer orange, professional blue/purple, administrator slate. The shared channel notice, identity field, recovery and OTP destination change according to server policy.
+
+The previous country card inferred United States from browser locale even when the dial code was different. Country selection now starts empty. Selecting a country shows its flag and calling code; location lookup runs only after the user chooses the disclosed location action. Manual selection and country search remain available when permission is denied or lookup fails. No locale or timezone is treated as location.
+
+A pasted international number controls its displayed calling code. The country display cannot contradict that number, and location cannot replace it. Shared or unsupported prefixes remain unresolved until a compatible explicit selection is available; the UI does not guess the United States for `+1`. The raw input stays intact, Arabic/Persian digits normalize for submission, and an international number does not receive a duplicate calling-code prefix.
+
+The UI waits for public authentication configuration before showing credential forms. Loading and retry states avoid rendering the wrong channel while policy is unknown. Existing accounts retain a compatible login route during a channel transition; new registration follows the selected policy. A challenge retains its original channel and masked destination even if the administrator subsequently changes policy.
+
+Existing customers and professionals can open Settings from their profile to link a missing WhatsApp or email sign-in identity. This reuses the same password-confirmed OTP enrollment component as administrator Settings. Verified destinations are refreshed from `/auth/me`; changing the ordinary profile contact phone does not create or replace an authentication identity. A phone-only account can also add a verified email for a later channel rollback.
+
+## Implementation boundaries
+
+- `infrastructure/auth-channel` owns policy, public configuration, transport selection and the Meta adapter. WhatsApp credentials exist only in deployment secrets.
+- Shared contracts describe nullable email, verified account phone, channel configuration and challenge destination. Phone-only accounts have no fabricated email.
+- Authentication and verification services enforce ownership, purpose, account locks, token expiry, attempt limits and contact binding. Linking either contact requires an authenticated session, current password and proof sent to the new destination.
+- The encrypted durable delivery queue is reused for both transports. WhatsApp authentication does not fall back to SMTP. Anonymous recovery requests enqueue after commit without awaiting provider latency; throttled requests do not invalidate usable OTPs or reset their attempt budget.
+- Provider onboarding, review and administrator-access eligibility accept a verified authentication email or phone. A provider-profile phone proof remains a separate fact. Historical review snapshots remain compatible, while actual profile changes and live eligibility checks still block unsafe approvals.
+- Profile edit state uses immutable account identity so phone-only users and later email attachment cannot leak or discard another account's drafts.
+
+Three additive Prisma migrations expand account identity, delivery binding and purpose/audit enums. They were applied from scratch on a real PostgreSQL 16 test database. Existing email accounts and opaque email links remain supported. Pre-v4 numeric OTPs require a resend: still-live challenges retain their identity, original delivery channel and destination, and attempt/resend limits. No migration expires token rows. Rolling back application code after creating phone-only users requires a compatible build; do not restore the old non-null email constraint over those users.
+
+### OTP digest hardening
+
+The official CodeQL SARIF for commit `64d338d5062ceba852dabf975bb71d086379858c` reported three `js/insufficient-password-hash` findings in the OTP codec. The reported flows originated in recovery/enrollment test results and their challenge IDs or generated numeric codes. Account passwords were already hashed with Argon2id; this was not an account-password storage defect.
+
+The OTP codec now uses versioned Argon2id (`otp-v4`, 19,456 KiB memory, two passes, one lane), with the cryptographically random challenge ID as its individual salt and the server authentication secret as an additional pepper. Its deterministic digest preserves database compare-and-swap and single-use behavior. No fast-digest fallback or scanner suppression remains.
+
+The deployment impact is limited to outstanding numeric OTPs, whose normal lifetime is five minutes. A pre-v4 code returns the existing expired-code response; the current UI then offers its existing start-again recovery to request a fresh challenge. The resend API can also upgrade a still-live challenge without changing its owner or destination or clearing attempt/resend limits. An expired or exhausted challenge still requires a fresh sign-in or recovery request. Account passwords, verified contacts and opaque email links are unaffected.
+
+Anonymous registration and WhatsApp recovery prepare one OTP digest before account lookup on both real and neutral paths, including duplicates and suppressed delivery. Persistence reuses that prepared work. Unknown well-formed verification/resend IDs also perform one digest operation. Malformed input and known expired, exhausted or wrong-purpose challenges are rejected before expensive work. Existing endpoint throttles, per-account transaction locks and native asynchronous Argon2 execution continue to apply; adding memory-hard work is not a substitute for those limits.
+
+## Verification evidence
+
+Runtime: Node 24.21.0 and pnpm 10.32.1, matching the repository pins.
+
+| Check                                                         | Observed result                                                                                                         |
+| ------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| Prisma generation and fresh PostgreSQL migration deployment   | Passed                                                                                                                  |
+| Four authentication/database integration suites               | 57 passed; 3 existing SMTP/Mailpit-only cases skipped because that service was not available                            |
+| Authentication and OTP service unit suites                    | 146 passed, including neutral-path KDF work and pre-v4 resend compatibility                                             |
+| Complete hermetic API suite                                   | 326 suites, 5,909 tests passed; 107 service-gated suites / 1,977 tests skipped                                          |
+| Provider onboarding/verification regressions                  | 377 passed                                                                                                              |
+| Provider review policy/service regressions                    | 40 passed                                                                                                               |
+| Delivery/channel/settings suites                              | 104 passed                                                                                                              |
+| Complete web suite                                            | 252 files, 3,261 tests passed after adding existing-account contact linking                                             |
+| OTP/phone numeral and related scoped regressions              | 152 passed, including Arabic typing, Persian paste-value changes, ASCII submission, leading zeroes and length limits    |
+| International phone/country consistency regressions           | 49 passed, including shared prefixes, full-number preservation and stale location cancellation                          |
+| Existing-account linking and shared administrator regressions | 75 passed, including both ordinary roles, verified-proof refresh, degraded retry and background-readiness failures      |
+| Role-neutral backend enrollment regressions                   | 156 passed across three focused service/DTO/HTTP suites; no backend changes were needed for ordinary-role access        |
+| Production bundle checks                                      | 10 passed against unchanged thresholds; auth 19.2 / 20 KiB and admin 106.2 / 110 KiB Brotli                             |
+| API and web TypeScript and production compilation             | Passed; web compilation used synthetic API origins, not a deployment                                                    |
+| Scoped changed-code lint and whitespace checks                | Passed                                                                                                                  |
+| Browser presentation matrix                                   | 72 layout observations: 2 channels × 3 applications × 2 languages × 6 requested viewport widths; no horizontal overflow |
+
+These counts refer to overlapping scoped runs and must not be summed into a total. Final-head remote CI results are recorded separately in the pull request. The complete API and web runs include the contact-shape and fresh-policy cache regressions; the latest web run also covers shared Arabic/Persian digit normalization, international-number display consistency, and existing-account linking. Build measurements used synthetic API origins (`https://api.example.test` for the earlier numeral measurement and a loopback URL for the final phone measurement). The source-bound [numeral summary](./BUNDLE_NUMERAL_SUMMARY.json) is retained as historical evidence; the [phone-consistency summary](./BUNDLE_PHONE_CONSISTENCY_SUMMARY.json) records that modified-worktree measurement; the [account-linking summary](./BUNDLE_ACCOUNT_LINKING_SUMMARY.json) records the final build separately from remote CI. Existing duplicate fixture-key warnings and the production chunk-size advisory remained nonblocking.
+
+### Browser observations
+
+The actual Vite application was served through a temporary presentation fixture. `/auth/config` and anonymous legal/me responses were mocked; no account was created, no credential was submitted and no message was sent. The fixture and its public helper page were removed after inspection.
+
+Requested iframe viewport widths were 320, 390, 430, 768, 1024 and 1440 CSS pixels. Chromium's vertical scrollbar reduces recorded content width by 15 pixels; every document scroll width equalled its available content width. Arabic rendered RTL and English LTR. See [layout-results.json](./visual/layout-results.json). All 12 captured login variants were visually inspected, along with Arabic sign-up and manual country selection. A keyboard Tab transition produced visible focus on the Apps action. This limited keyboard observation is not full keyboard or accessibility acceptance.
+
+The local Playwright runner could not launch its browser because the execution environment disallowed its required Unix socket. The supported browser preview provided the presentation evidence instead. The automated presentation spec is committed for execution in an environment that supports Playwright. Native 200% browser zoom was attempted but not verified; it is not claimed as passed.
+
+Screenshots show only presentation fixtures. They do not prove backend persistence, authentication or live delivery.
+
+- [Customer, WhatsApp, Arabic](./visual/customer-whatsapp-ar.jpg)
+- [Professional, WhatsApp, English](./visual/provider-whatsapp-en.jpg)
+- [Administrator, email, Arabic](./visual/admin-email-ar.jpg)
+- [Arabic registration and selected country](./visual/signup-whatsapp-ar.jpg)
+
+## Remaining acceptance
+
+1. Configure Meta sender credentials and an approved authentication template securely on independent staging; see [operations](./WHATSAPP_OPERATIONS.md).
+2. Run the hosted recipient journey: delivery, expiry, resend, wrong-code rejection, one-time consumption, recovery and policy switching with existing and new accounts.
+3. Exercise authenticated administrator settings through the real hosted API, reload and sign-out/sign-in. Component/API tests cover these boundaries locally, but do not replace this journey.
+4. Run final-head remote CI and the committed Playwright matrix, plus full keyboard, 200% zoom and accessibility review.
+
+No production deployment, live WhatsApp delivery or universal defect-free guarantee is asserted by this evidence.
+
+## Initial bundle delivery
+
+The final production graph passes all ten existing bundle checks without changing thresholds. Auth is 19.2 KiB Brotli (20 KiB ceiling), administrator 106.2 KiB (110 KiB ceiling). Sign-up, recovery and account/administrator settings load at their actual route/interaction boundaries. The final provider-onboarding chunk is 76,751 bytes against its unchanged 76,800-byte ceiling. Deferred costs and cold-route totals are disclosed in the [original route evidence](./BUNDLE_ROUTE_BOUNDARIES.md), [phone-consistency measurement](./BUNDLE_PHONE_CONSISTENCY_SUMMARY.json) and [final account-linking measurement](./BUNDLE_ACCOUNT_LINKING_SUMMARY.json); these are build measurements, not hosted latency claims.

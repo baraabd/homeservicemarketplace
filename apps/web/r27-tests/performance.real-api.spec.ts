@@ -307,8 +307,22 @@ test('same browser logout/account switch cannot reuse the prior admin authorizat
     await page.goto(WEB + '/admin/users');
     await expect(page.getByTestId('badge-account-status').first()).toBeVisible();
     if ((info.project.use.viewport?.width ?? 1440) < 1024) await keyboard(page, 'Open navigation');
-    await keyboard(page, 'Sign out');
-    await expect(page).toHaveURL(/\/login/);
+    const [loggedOut] = await Promise.all([
+      page.waitForResponse(
+        (response) =>
+          response.url() === REAL_API + '/v1/auth/logout' && response.request().method() === 'POST',
+      ),
+      keyboard(page, 'Sign out'),
+    ]);
+    expect(loggedOut.status()).toBe(204);
+    await loggedOut.finished();
+    // GuestOnly can expose /login before AdminDashboard's awaited logout
+    // completes. Starting a login there races the later navigation and loses
+    // the OTP screen. Await the actual sign-out destination, keeping this SPA
+    // and its caches intact for the cross-account authorization assertion.
+    await expect(page).toHaveURL(
+      (url) => url.pathname === '/login' && url.searchParams.get('app') === 'admin',
+    );
     const [confirmed] = await Promise.all([
       page.waitForResponse(
         (r) => r.url() === REAL_API + '/v1/auth/verify-otp' && r.request().method() === 'POST',

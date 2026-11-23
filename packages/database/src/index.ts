@@ -68,3 +68,12 @@ export {
   MAX_BACKFILL_LIMIT,
 } from './work-access-readiness';
 export type { WorkAccessReadiness, BackfillResult } from './work-access-readiness';
+
+// K02 — reviewed operator path for the Saudi launch market registry.
+export {
+  initSaudiLaunchMarket,
+  assertMarketInitAllowed,
+  SAUDI_LAUNCH_MARKET_REGISTRY,
+  SUPPORTED_MARKETS_KEY,
+} from './market-init';
+export type { MarketInitOutcome, MarketInitSummary } from './market-init';

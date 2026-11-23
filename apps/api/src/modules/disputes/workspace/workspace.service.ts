@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { minorToDecimal } from '@homeservicemarketplace/contracts';
 import { Prisma, type PrismaTx, type DisputeWorkspace } from '@homeservicemarketplace/database';
 import type {
   DisputeAdminQueue,
@@ -311,7 +312,9 @@ export class DisputeWorkspaceService {
               id: dispute.booking.id,
               source: 'BOOKING',
               label: 'BOOKED_AMOUNT_NOT_PAYMENT',
-              value: `${dispute.booking.priceAmount} ${dispute.booking.currency}`,
+              // K02 — exact decimal in the booking's own unit; a pre-K02
+              // amount is labelled unverified rather than guessed.
+              value: bookedAmountFact(dispute.booking),
               recordedAt: dispute.booking.createdAt.toISOString(),
             },
             {
@@ -575,4 +578,14 @@ export class DisputeWorkspaceService {
       };
     });
   }
+}
+
+function bookedAmountFact(booking: {
+  priceAmount: number;
+  currency: string;
+  amountScale: number | null;
+}): string {
+  return booking.amountScale === null
+    ? `${booking.priceAmount} ${booking.currency} (LEGACY_UNVERIFIED unit)`
+    : `${minorToDecimal(booking.priceAmount, booking.amountScale)} ${booking.currency}`;
 }

@@ -116,39 +116,45 @@ const MOCK_PROFILE = {
   updatedAt: '2026-04-30T00:00:00.000Z',
 };
 
+// K02 — hsm.amount-unit.v1 shapes: per-currency booked value in halalas,
+// exclusions counted, no fee.
+const SAR_VALUE = {
+  currency: 'SAR',
+  amountScale: 2,
+  completedValue: 12_000_00, // SAR 12,000.00
+  completedCount: 17,
+  currentMonthValue: 4_500_00,
+  inFlightValue: 800_00, // SAR 800.00
+  inFlightCount: 2,
+};
 const SUMMARY = {
-  grossEarnings: 12_000_00, // 12,000.00 in cents-equivalent
-  platformFees: 1_200_00,
-  netEarnings: 10_800_00,
-  availableBalance: 10_800_00,
-  pendingBalance: 800_00,
+  byCurrency: [SAR_VALUE],
+  excluded: [] as Array<{
+    currency: string;
+    reason: string;
+    completedCount: number;
+    inFlightCount: number;
+  }>,
   completedBookingsCount: 17,
-  currency: 'USD',
-  platformFeeRateBps: 1000,
+  feeStatus: 'NOT_APPROVED' as const,
+  platformFeeRateBps: null,
   ratingAvg: 4.9,
   reviewCount: 312,
 };
+
+/** Exact text of a <bdi> money figure, NBSP-normalised. */
+const money = (text: string) => (_: string, el: Element | null) =>
+  el?.tagName === 'BDI' && el.textContent?.replace(/\u00a0/g, ' ') === text;
 
 const CHART = {
   range: '30d' as const,
   windowStart: '2026-04-03T00:00:00.000Z',
   windowEnd: '2026-05-03T00:00:00.000Z',
-  currency: 'USD',
+  currency: 'SAR',
+  amountScale: 2,
   buckets: [
-    {
-      date: '2026-04-29',
-      grossEarnings: 4500_00,
-      platformFees: 450_00,
-      netEarnings: 4050_00,
-      completedBookings: 1,
-    },
-    {
-      date: '2026-05-01',
-      grossEarnings: 7500_00,
-      platformFees: 750_00,
-      netEarnings: 6750_00,
-      completedBookings: 1,
-    },
+    { date: '2026-04-29', grossEarnings: 4500_00, completedBookings: 1 },
+    { date: '2026-05-01', grossEarnings: 7500_00, completedBookings: 1 },
   ],
 };
 
@@ -157,9 +163,9 @@ const TX_FIXTURE = {
   bookingId: 'bk-1',
   kind: 'BOOKING_COMPLETED' as const,
   amount: 4500_00,
-  platformFee: 450_00,
-  netAmount: 4050_00,
-  currency: 'USD',
+  pricingType: 'FIXED' as const,
+  currency: 'SAR',
+  amountScale: 2,
   occurredAt: '2026-05-02T10:00:00.000Z',
   service: {
     categorySlug: 'plumbing',
@@ -198,15 +204,14 @@ describe('WalletScreen — Sprint 5.6 (refined)', () => {
 
     // R18 — the headline is the value of completed bookings (gross), not a
     // balance: no fee is approved and nothing is held or paid out.
-    await waitFor(() => expect(screen.getByText('$12,000')).toBeInTheDocument());
-    expect(screen.getByText('$800')).toBeInTheDocument();
+    // K02 — 1,200,000 halalas is exactly SAR 12,000.00 (never "$12,000").
+    await waitFor(() => expect(screen.getByText(money('SAR 12,000.00'))).toBeInTheDocument());
+    expect(screen.getByText(money('SAR 800.00'))).toBeInTheDocument();
     expect(screen.getByText('17')).toBeInTheDocument();
     expect(
-      screen.getByText(/Booking values, not a balance. No platform fee is approved/),
+      screen.getByText(/Fixed-price booking values, not a balance. No platform fee is approved/),
     ).toBeInTheDocument();
-    // The env-default fee projection is not presented as money.
-    expect(screen.queryByText('$10,800')).toBeNull();
-    expect(screen.queryByText('−$1,200')).toBeNull();
+    expect(screen.queryByText(/\$/)).toBeNull();
     expect(screen.queryByText(/platform fee$/i)).toBeNull();
     expect(screen.queryByText(/Available Balance/i)).toBeNull();
   });
@@ -216,11 +221,7 @@ describe('WalletScreen — Sprint 5.6 (refined)', () => {
     mock.onGet('/v1/me/provider/profile').reply(200, { profile: MOCK_PROFILE });
     mock.onGet('/v1/provider/earnings/summary').reply(200, {
       ...SUMMARY,
-      grossEarnings: 0,
-      platformFees: 0,
-      netEarnings: 0,
-      availableBalance: 0,
-      pendingBalance: 0,
+      byCurrency: [],
       completedBookingsCount: 0,
     });
     mock.onGet('/v1/provider/earnings/transactions').reply(200, { items: [], nextCursor: null });
@@ -248,9 +249,9 @@ describe('WalletScreen — Sprint 5.6 (refined)', () => {
     await openWalletTab();
 
     await waitFor(() => expect(screen.getByText('Plumbing')).toBeInTheDocument());
-    expect(screen.getByText('$4,500')).toBeInTheDocument();
-    expect(screen.queryByText('+$4,050')).toBeNull();
-    expect(screen.queryByText('$4,500 − $450')).toBeNull();
+    expect(screen.getByText(money('SAR 4,500.00'))).toBeInTheDocument();
+    expect(screen.queryByText(/4,050/)).toBeNull();
+    expect(screen.queryByText(/\$/)).toBeNull();
   });
 
   it('keeps the withdraw CTA disabled (no fake success)', async () => {
@@ -263,7 +264,7 @@ describe('WalletScreen — Sprint 5.6 (refined)', () => {
     renderProvider();
     await openWalletTab();
 
-    await waitFor(() => expect(screen.getByText('$12,000')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText(money('SAR 12,000.00'))).toBeInTheDocument());
 
     const withdraw = screen.getByRole('button', { name: /Withdrawals are not available/i });
     expect(withdraw).toBeDisabled();
@@ -324,6 +325,61 @@ describe('WalletScreen — Sprint 5.6 (refined)', () => {
     expect(dom).not.toMatch(/PrismaClient/i);
   });
 
+  it('K02: shows each currency separately and counts — never sums — legacy and hourly bookings', async () => {
+    mock.onGet('/v1/auth/me').reply(200, MOCK_ME);
+    mock.onGet('/v1/me/provider/profile').reply(200, { profile: MOCK_PROFILE });
+    mock.onGet('/v1/provider/earnings/summary').reply(200, {
+      ...SUMMARY,
+      byCurrency: [{ ...SAR_VALUE, currency: 'AED', completedValue: 99_99 }, SAR_VALUE],
+      excluded: [
+        { currency: 'USD', reason: 'LEGACY_UNVERIFIED', completedCount: 3, inFlightCount: 1 },
+        { currency: 'SAR', reason: 'HOURLY_RATE', completedCount: 2, inFlightCount: 0 },
+      ],
+    });
+    mock.onGet('/v1/provider/earnings/transactions').reply(200, {
+      items: [
+        TX_FIXTURE,
+        {
+          ...TX_FIXTURE,
+          id: 'bk-2',
+          bookingId: 'bk-2',
+          amount: 1000,
+          currency: 'USD',
+          amountScale: null,
+        },
+        {
+          ...TX_FIXTURE,
+          id: 'bk-3',
+          bookingId: 'bk-3',
+          amount: 150_00,
+          pricingType: 'HOURLY' as const,
+        },
+      ],
+      nextCursor: null,
+    });
+    mock.onGet('/v1/provider/earnings/chart').reply(200, CHART);
+
+    renderProvider();
+    await openWalletTab();
+
+    // The launch currency leads; the other currency is its own figure.
+    await waitFor(() => expect(screen.getByText(money('SAR 12,000.00'))).toBeInTheDocument());
+    const others = screen.getByTestId('wallet-other-currencies');
+    expect(within(others).getByText(money('AED 99.99'))).toBeInTheDocument();
+    // No combined figure exists anywhere.
+    expect(screen.queryByText(/12,099\.99|12,100/)).toBeNull();
+    expect(
+      screen.getByText(/4 booking\(s\) with an unverified legacy amount are not included/),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/2 hourly-rate booking\(s\) are not included/)).toBeInTheDocument();
+    // Each transaction in its own unit; a legacy amount is never divided.
+    expect(
+      await screen.findByText(money('1,000 USD · unverified legacy amount')),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/USD 10\.00|\$10/)).toBeNull();
+    expect(screen.getByText(money('SAR 150.00')).parentElement).toHaveTextContent('SAR 150.00/hr');
+  });
+
   it('renders within is bound — the test only inspects the wallet panel', async () => {
     // Sanity: confirm the wallet panel is the ancestor of the summary
     // tiles so other tabs are excluded from queries. Guards against
@@ -337,7 +393,7 @@ describe('WalletScreen — Sprint 5.6 (refined)', () => {
     renderProvider();
     await openWalletTab();
 
-    const headline = await screen.findByText('$12,000');
+    const headline = await screen.findByText(money('SAR 12,000.00'));
     expect(headline).toBeInTheDocument();
     const card = headline.closest('div');
     expect(card).not.toBeNull();

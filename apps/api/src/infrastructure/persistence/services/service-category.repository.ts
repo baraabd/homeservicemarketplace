@@ -1,13 +1,17 @@
 import { Injectable } from '@nestjs/common';
-import type { PrismaTx, ServiceCategory } from '@homeservicemarketplace/database';
+import type { Prisma, PrismaTx, ServiceCategory } from '@homeservicemarketplace/database';
 
 import { PrismaService } from '../../prisma/prisma.service';
 
-// Read-only repository for the service-category catalog. The table is
-// curated via seed/migration; the API surface only reads. Soft-deleted
-// rows are filtered out at every read site so a category that's been
-// retired never appears to the client even if a stale frontend cache
-// still references its slug.
+// The public catalog includes groups and standalone legacy specialties. A
+// grouped specialty is available for new selections only while its group is live.
+const visibleParent: Prisma.ServiceCategoryWhereInput = {
+  OR: [
+    { parentId: null },
+    { parent: { isActive: true, isLeaf: false, deletedAt: null, parentId: null } },
+  ],
+};
+
 @Injectable()
 export class ServiceCategoryRepository {
   constructor(private readonly prisma: PrismaService) {}
@@ -20,20 +24,20 @@ export class ServiceCategoryRepository {
   // slug for stable ties. Sort happens in the database.
   listActive(tx?: PrismaTx): Promise<ServiceCategory[]> {
     return this.db(tx).serviceCategory.findMany({
-      where: { isActive: true, deletedAt: null },
+      where: { ...visibleParent, isActive: true, deletedAt: null },
       orderBy: [{ sortOrder: 'asc' }, { slug: 'asc' }],
     });
   }
 
   findBySlug(slug: string, tx?: PrismaTx): Promise<ServiceCategory | null> {
     return this.db(tx).serviceCategory.findFirst({
-      where: { slug, deletedAt: null },
+      where: { ...visibleParent, slug, deletedAt: null },
     });
   }
 
   findById(id: string, tx?: PrismaTx): Promise<ServiceCategory | null> {
     return this.db(tx).serviceCategory.findFirst({
-      where: { id, deletedAt: null },
+      where: { ...visibleParent, id, deletedAt: null },
     });
   }
 
@@ -62,6 +66,7 @@ export class ServiceCategoryRepository {
     if (parentIds.length === 0) return Promise.resolve([]);
     return this.db(tx).serviceCategory.findMany({
       where: {
+        ...visibleParent,
         parentId: { in: parentIds },
         isLeaf: true,
         isActive: true,
@@ -79,7 +84,7 @@ export class ServiceCategoryRepository {
   findManyActiveByIds(ids: string[], tx?: PrismaTx): Promise<ServiceCategory[]> {
     if (ids.length === 0) return Promise.resolve([]);
     return this.db(tx).serviceCategory.findMany({
-      where: { id: { in: ids }, isActive: true, deletedAt: null },
+      where: { ...visibleParent, id: { in: ids }, isActive: true, deletedAt: null },
     });
   }
 }

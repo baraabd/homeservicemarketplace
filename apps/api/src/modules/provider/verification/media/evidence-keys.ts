@@ -20,7 +20,10 @@ export const RESTRICTED_NAMESPACE = 'verification';
 /** Namespaces the PUBLIC media route must refuse outright. Kept as a list
  *  rather than a single string so a future restricted namespace is one edit
  *  and cannot be forgotten at the call site. */
-export const RESTRICTED_NAMESPACES: readonly string[] = Object.freeze([RESTRICTED_NAMESPACE]);
+export const RESTRICTED_NAMESPACES: readonly string[] = Object.freeze([
+  RESTRICTED_NAMESPACE,
+  'financial-receipts',
+]);
 
 /**
  * True when a key belongs to a restricted namespace.

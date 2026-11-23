@@ -498,6 +498,79 @@ d('Verification case workflow (real Postgres, real routes)', () => {
 
   // ── readiness ───────────────────────────────────────────────────────────
 
+  it.each(['DRAFT', 'ACTION_REQUIRED'])(
+    'submits %s identity evidence with a current pending specialty without approving work',
+    async (state) => {
+      await prisma.providerProfileServiceCategory.deleteMany({ where: { providerProfileId: PP } });
+      const onboardingState = state === 'ACTION_REQUIRED' ? 'RETURNED' : 'DRAFT';
+      await prisma.providerProfile.update({ where: { id: PP }, data: { onboardingState } });
+      const application = await prisma.providerCategoryApplication.create({
+        data: { providerProfileId: PP, serviceCategoryId: CATEGORY, status: 'PENDING' },
+      });
+      await seedCase(state);
+
+      const res = await submit({ expectedState: state });
+
+      expect(res.status).toBe(200);
+      expect(res.body).toMatchObject({ state: 'SUBMITTED', changed: true });
+      expect(await stateOf()).toBe('SUBMITTED');
+      expect(
+        await prisma.providerCategoryApplication.findUnique({ where: { id: application.id } }),
+      ).toMatchObject({ status: 'PENDING', supersededAt: null });
+      expect(await prisma.providerProfile.findUnique({ where: { id: PP } })).toMatchObject({
+        status: 'DRAFT',
+        onboardingState,
+      });
+      expect(
+        await prisma.providerProfileServiceCategory.count({ where: { providerProfileId: PP } }),
+      ).toBe(0);
+      expect(await prisma.providerWorkAccessGrant.count({ where: { providerProfileId: PP } })).toBe(
+        0,
+      );
+      expect(await prisma.verificationDecision.count({ where: { caseId: CASE_ID } })).toBe(0);
+      // The route harness supplies MANAGE_VERIFICATION only. Independently
+      // read the real capability policy to prove submission did not grant work.
+      const {
+        ProviderCapabilityService,
+      } = require('../../src/modules/provider/capability/provider-capability.service');
+      const capabilities = await new ProviderCapabilityService(
+        { client: prisma },
+        { get: () => true },
+      ).for(OWNER);
+      expect(capabilities.allowed).not.toContain('VIEW_MARKETPLACE');
+      expect(capabilities.allowed).not.toContain('SUBMIT_BID');
+    },
+  );
+
+  it.each([
+    ['missing', null, null],
+    ['rejected', 'REJECTED', null],
+    ['superseded pending', 'PENDING', new Date('2026-01-01T00:00:00Z')],
+    ['approved application without membership', 'APPROVED', null],
+  ])(
+    'does not count a %s specialty application as current pending evidence of provider input',
+    async (_label, status, supersededAt) => {
+      await prisma.providerProfileServiceCategory.deleteMany({ where: { providerProfileId: PP } });
+      if (status) {
+        await prisma.providerCategoryApplication.create({
+          data: { providerProfileId: PP, serviceCategoryId: CATEGORY, status, supersededAt },
+        });
+      }
+      await seedCase('DRAFT');
+
+      const res = await submit();
+
+      expect(res.status).toBe(422);
+      expect(res.body.error.details.blockers).toContainEqual({
+        code: 'ONBOARDING_INCOMPLETE',
+        field: 'serviceCategories',
+      });
+      expect(await stateOf()).toBe('DRAFT');
+      expect(await prisma.auditEvent.count({ where: { userId: OWNER } })).toBe(0);
+      expect(await prisma.outboxEvent.count({ where: { aggregateId: CASE_ID } })).toBe(0);
+    },
+  );
+
   it('refuses submission while the evidence has not cleared scanning', async () => {
     await seedCase('DRAFT', false);
 

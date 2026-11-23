@@ -15,6 +15,7 @@ const IV_BYTES = 12;
 const TAG_BYTES = 16;
 
 export interface SealedEnvelope {
+  channel?: 'email' | 'whatsapp';
   to: string;
   vars: unknown;
 }
@@ -73,6 +74,12 @@ export class MailEnvelopeCipher {
       ]).toString('utf8');
       const parsed = JSON.parse(plain) as SealedEnvelope;
       if (typeof parsed?.to !== 'string') return null;
+      if (
+        parsed.channel !== undefined &&
+        parsed.channel !== 'email' &&
+        parsed.channel !== 'whatsapp'
+      )
+        return null;
       return parsed;
     } catch {
       return null;

@@ -1,0 +1,279 @@
+{
+  "schemaVersion": 1,
+  "sprintId": "R38",
+  "scope": "DOCUMENTATION_PREFLIGHT_ONLY",
+  "implementationStatus": "NOT_STARTED",
+  "acceptanceStates": ["INTEGRATION_PENDING", "POLICY_BLOCKED", "EXTERNAL_BLOCKED"],
+  "observedAt": "2026-10-25T01:25:20.387600+00:00",
+  "observedSourceSha": "c9de08d07b12871db8801fb9662b14de83a2c391",
+  "observedSourceTreeSha": "67136183b8a81de9773c2c6a3831441c320729c0",
+  "approvedG3FrozenSourceSha": null,
+  "approvedG3FrozenTreeSha": null,
+  "finalDocumentationIdentity": "Recorded in PR metadata after publication; no self-referential commit hash",
+  "branch": "release/r38-release-certification",
+  "sessionId": "r38-d9b4f68ed4fc",
+  "ownedDocumentationPaths": [
+    "docs/production-readiness/r38/ACCEPTANCE.md",
+    "docs/production-readiness/r38/IMPLEMENTATION.md",
+    "docs/production-readiness/r38/OWNERSHIP.md",
+    "docs/production-readiness/r38/RISKS.md",
+    "docs/production-readiness/r38/ROLLBACK.md",
+    "docs/production-readiness/r38/evidence/preflight.json",
+    "docs/production-readiness/r38/shared-change-requests/CR-001-integration.md"
+  ],
+  "implementationMerge": {
+    "prNumber": 198,
+    "merged": true,
+    "mergedAt": "2026-10-25T00:26:28Z",
+    "headSha": "07dec92cb62f591234542ae1dff909c2c9f3763a",
+    "mergeCommitSha": "c9de08d07b12871db8801fb9662b14de83a2c391",
+    "isG3AcceptancePublication": false
+  },
+  "canonicalRecords": [
+    {
+      "path": "docs/production-readiness/post-r18/gates/g3/SOURCE_MANIFEST.json",
+      "gitBlobSha": "1233bf36b4180355fdc6caa3312e0568f76db0bf"
+    },
+    {
+      "path": "docs/production-readiness/post-r18/waves/wave-04.plan.json",
+      "gitBlobSha": "04a4952b9fa546b32c51ce9bd0d3777d4e623e07"
+    },
+    {
+      "path": "docs/production-readiness/post-r18/SPRINT_REGISTRY.json",
+      "gitBlobSha": "1fc9a8d8641a26583112ab7fc3cc4301d804f5d6"
+    }
+  ],
+  "gate": {
+    "decision": "BLOCKED",
+    "candidateSourceSha": null,
+    "candidateTreeSha": null,
+    "frozenBaseSha": null,
+    "frozenTreeSha": null,
+    "publication": {
+      "branch": "coord/g3-wave4-start-gate",
+      "state": "NOT_PREPARED",
+      "acceptanceRecordCommitSha": null,
+      "verifiedMerge": false
+    },
+    "mandatoryEvidence": [
+      {
+        "id": "combined-wave3-checks",
+        "status": "NOT_RUN",
+        "sourceSha": null,
+        "treeSha": null,
+        "reference": "docs/production-readiness/post-r18/gates/g3/REQUIREMENTS.md"
+      },
+      {
+        "id": "r29-real-stripe-sandbox",
+        "status": "NOT_RUN",
+        "sourceSha": null,
+        "treeSha": null,
+        "reference": "docs/production-readiness/post-r18/gates/g3/REQUIREMENTS.md"
+      },
+      {
+        "id": "r30-real-manual-review",
+        "status": "NOT_RUN",
+        "sourceSha": null,
+        "treeSha": null,
+        "reference": "docs/production-readiness/post-r18/gates/g3/REQUIREMENTS.md"
+      },
+      {
+        "id": "r31-atomic-subscription-entitlements",
+        "status": "NOT_RUN",
+        "sourceSha": null,
+        "treeSha": null,
+        "reference": "docs/production-readiness/post-r18/gates/g3/REQUIREMENTS.md"
+      },
+      {
+        "id": "r32-refund-ambiguity-recovery",
+        "status": "NOT_RUN",
+        "sourceSha": null,
+        "treeSha": null,
+        "reference": "docs/production-readiness/post-r18/gates/g3/REQUIREMENTS.md"
+      },
+      {
+        "id": "r33-financial-operations",
+        "status": "NOT_RUN",
+        "sourceSha": null,
+        "treeSha": null,
+        "reference": "docs/production-readiness/post-r18/gates/g3/REQUIREMENTS.md"
+      },
+      {
+        "id": "integrated-confirmation-activation-refund-outbox",
+        "status": "NOT_RUN",
+        "sourceSha": null,
+        "treeSha": null,
+        "reference": "docs/production-readiness/post-r18/gates/g3/REQUIREMENTS.md"
+      }
+    ],
+    "blockers": [
+      {
+        "id": "G3-INTEGRATION-CANDIDATE-REVIEW",
+        "owner": "G3 coordinator",
+        "reason": "Stripe runtime/purchase integration, durable approved refund policy composition and reconciliation foundation are implemented in the draft integration candidate. Final candidate CI, real database, browser and independent sandbox evidence must pass before acceptance."
+      },
+      {
+        "id": "G3-APPROVED-POLICY-INPUT-MISSING",
+        "owner": "Product/policy owner and authorized sandbox operator",
+        "reason": "A real immutable sandbox refund policy and explicit whole-subscription consequence must be supplied. The implementation supports explicitly approved SUSPEND_SUBSCRIPTION or CANCEL_SUBSCRIPTION; neither is selected by migration or module boot. Synthetic test policy records are not approval."
+      },
+      {
+        "id": "G3-COMBINED-REAL-SANDBOX-EVIDENCE-MISSING",
+        "owner": "G3 coordinator and authorized sandbox operator",
+        "reason": "Authorized Stripe test credentials, authentic provider webhook forwarding and explicit sandbox financial policy/operator inputs are absent from this execution. The external runner and concrete integration regressions do not replace an executed, artifact-backed combined sandbox acceptance run. No frozen G3 SHA or Wave 4 start authorization is issued. Hosted acceptance belongs to its separate in-scope release gate."
+      }
+    ]
+  },
+  "wave": {
+    "status": "BLOCKED",
+    "baseSha": null,
+    "startableLanes": [],
+    "r38Status": "BLOCKED",
+    "r38OwnershipApproval": "CONDITIONAL_AFTER_VERIFIED_G3_PUBLICATION_AND_SESSION_ASSIGNMENT",
+    "r38SessionAssigned": false,
+    "r38FutureFiles": [
+      "scripts/production/release-certification/collect-evidence.cjs",
+      "scripts/production/release-certification/collect-evidence.test.cjs",
+      "scripts/production/release-certification/validate-candidate.cjs",
+      "scripts/production/release-certification/validate-candidate.test.cjs",
+      "scripts/production/release-certification/verify-final-join.cjs",
+      "scripts/production/release-certification/verify-final-join.test.cjs",
+      "scripts/production/release-certification/prepare-rollout.cjs",
+      "scripts/production/release-certification/prepare-rollout.test.cjs",
+      "docs/production-readiness/r38/IMPLEMENTATION.md",
+      "docs/production-readiness/r38/ACCEPTANCE.md",
+      "docs/production-readiness/r38/RISKS.md",
+      "docs/production-readiness/r38/ROLLBACK.md",
+      "docs/production-readiness/r38/OWNERSHIP.md",
+      "docs/production-readiness/r38/shared-change-requests/CR-001-integration.md"
+    ],
+    "r38ConditionalInfrastructure": [
+      "infra/production/release-certification/README.md",
+      "infra/production/release-certification/candidate.schema.json",
+      "infra/production/release-certification/rollout.template.json"
+    ],
+    "r38FinalEvidenceJoin": ["R34", "R35", "R36", "R37"]
+  },
+  "sourceInventory": {
+    "contractsPackageVersion": "0.1.0",
+    "moneyBoundaryVersion": "hsm.money.v1",
+    "schemaBlobSha": "3bc98c7dc959432017d8a7068d2b4936563b936d",
+    "migrationDirectories": 74,
+    "latestMigration": "20261024120000_g3_financial_integration",
+    "databaseExecution": "NOT_RUN"
+  },
+  "configurationFingerprint": {
+    "algorithm": "sha256",
+    "canonicalization": "UTF-8 JSON sorted keys with no insignificant whitespace",
+    "value": "4b034cf48dc4023ccb890d09712301f517d0d05d5f46960361f3672a28c6bb89",
+    "inputs": {
+      "scope": "DOCUMENTATION_PREFLIGHT_ONLY",
+      "sourceSha": "c9de08d07b12871db8801fb9662b14de83a2c391",
+      "sourceTreeSha": "67136183b8a81de9773c2c6a3831441c320729c0",
+      "node": "24.21.0",
+      "prettier": "3.8.1",
+      "gitleaks": "8.24.3",
+      "gateBlob": "1233bf36b4180355fdc6caa3312e0568f76db0bf",
+      "wavePlanBlob": "04a4952b9fa546b32c51ce9bd0d3777d4e623e07",
+      "registryBlob": "1fc9a8d8641a26583112ab7fc3cc4301d804f5d6",
+      "hostedRuntime": false,
+      "sandboxExecution": false
+    },
+    "secretValuesIncluded": false,
+    "effectiveHostedConfiguration": null
+  },
+  "checks": [
+    {
+      "name": "runtime",
+      "command": "node scripts/runtime/toolchain.cjs",
+      "exitCode": 0,
+      "output": "PASS exact Node 24.21.0 and runtime declarations",
+      "status": "PASS"
+    },
+    {
+      "name": "g3-consistency",
+      "command": "node .github/scripts/g3-record.mjs --check",
+      "exitCode": 0,
+      "output": "PASS G3 record consistency; this does not authenticate evidence or grant approval.\nRecorded G3: BLOCKED; Wave 4: BLOCKED; R38 final G4 join: BLOCKED",
+      "status": "PASS"
+    },
+    {
+      "name": "r38-readiness",
+      "command": "node .github/scripts/g3-record.mjs --ready R38",
+      "exitCode": 1,
+      "output": "FAIL R38 is not authorized to start",
+      "status": "EXPECTED_BLOCK"
+    },
+    {
+      "name": "governance",
+      "command": "node .github/scripts/production-governance.mjs",
+      "exitCode": 0,
+      "output": "PASS repository governance files\nGitHub protection is NOT verified by this local check.",
+      "status": "PASS"
+    },
+    {
+      "name": "baseline",
+      "command": "node .github/scripts/release-baseline.mjs",
+      "exitCode": 0,
+      "output": "PASS source-backed baseline registry; sprint completion is not implied",
+      "status": "PASS"
+    },
+    {
+      "command": "node --test .github/scripts/*.test.mjs",
+      "exitCode": 0,
+      "testFiles": 13,
+      "status": "PASS",
+      "counts": {
+        "passed": 500,
+        "failed": 0,
+        "skipped": 0,
+        "cancelled": 0,
+        "todo": 0
+      },
+      "scope": "Existing governance regressions; not R38 implementation acceptance",
+      "runtime": "24.21.0"
+    }
+  ],
+  "retainedExecutionFailures": [
+    {
+      "command": "node --test .github/scripts/*.test.mjs",
+      "exitCode": 1,
+      "runtime": "24.21.0",
+      "context": "Initial restricted execution environment",
+      "fileWrappers": 13,
+      "failedFileWrappers": 4,
+      "detail": "Focused diagnostics showed empty child-process output. Same unchanged full suite passed 500 cases in the approved execution environment. No test or assertion was modified."
+    }
+  ],
+  "taskEnvironmentInputs": {
+    "stripeSandboxConfigurationSupplied": false,
+    "stripeTestPublishableKeySupplied": false,
+    "refundAuthorizationFlagSupplied": false,
+    "databaseUrlSupplied": false,
+    "redisUrlSupplied": false,
+    "note": "Presence only, no values collected. This does not inventory external owner systems."
+  },
+  "notRun": [
+    "R38 implementation suites",
+    "Frozen workspace install/application lint/typecheck/build/unit (documentation only)",
+    "PostgreSQL/Redis/storage integration",
+    "External Stripe/manual sandbox acceptance",
+    "Real-route browser and visual matrix",
+    "Authorized staging rehearsal",
+    "Final joined Wave 4 acceptance"
+  ],
+  "publicationChecks": "Scoped formatting, references, diff/allowlist, secret scans and final-head CI/CodeQL observations are recorded in PR metadata after execution.",
+  "restrictions": {
+    "phaseAReady": false,
+    "sourceVerifiedImplementation": false,
+    "sandboxAccepted": false,
+    "hostedAccepted": false,
+    "releaseAccepted": false,
+    "deployed": false,
+    "liveMoneyActivated": false,
+    "mergedByThisTask": false,
+    "runtimeFilesChanged": false,
+    "sharedFilesChanged": false,
+    "implementationLeaseClaimed": false
+  }
+}

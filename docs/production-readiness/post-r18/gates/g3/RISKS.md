@@ -1,0 +1,10 @@
+# G3 residual risks and blockers
+
+- POLICY_BLOCKED — Product/policy owner must approve the complete R32 rules and whole-subscription consequence. This implementation does not support an inferred partial-refund-retains-access or prorated model; current accepted entitlement reads deny paid access after a successful refund. No live rails, supported market/currency, price, fee, tax, payout or identity approval changes.
+- EXTERNAL_BLOCKED — Authorized sandbox operator must provide short-lived Stripe test credentials and account/binding configuration through the approved secret mechanism, plus approved manual collection authority. No secrets should be pasted into Git or public artifacts.
+- INTEGRATION_PENDING — Coordinator must verify final PR CI/CodeQL and real disposable PostgreSQL/Redis/storage/browser results, then independently exercise both rail families with the integrated policy participant and outbox. Ten new real-infrastructure cases are present; default gated skips prove nothing.
+- R34 boundary — Durable foundation and v2 contracts are supplied, but independent reconciliation, maker/checker execution, run-status provider and Admin resolve/reopen are intentionally R34 implementation after accepted G3. No automatic balancing transaction exists. The UI must continue showing unavailable until those routes are integrated.
+- Browser evidence — Payment Element availability, CSP/network behavior, refresh/new-login recovery, AR/EN/RTL at 320/390/768/1440, keyboard/zoom and required engines need real-route sandbox evidence. Component tests do not certify those journeys. Client secrets are ephemeral; screenshots/traces must never capture them.
+- Existing web lint warnings and large bundle warnings remain visible. No timeout, security or performance budget was raised. A green local build cannot guarantee future merge compatibility.
+
+R34 start requires all seven mandatory G3 categories, owner/coordinator acceptance, a separately verified merged gate publication, full frozen source/tree SHA and recorded exact path delegation. The current source manifest remains BLOCKED.

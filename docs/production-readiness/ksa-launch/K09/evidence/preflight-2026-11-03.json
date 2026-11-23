@@ -1,0 +1,136 @@
+{
+  "schemaVersion": 1,
+  "sprint": "K09",
+  "officialLanes": ["R36", "R37"],
+  "status": "BLOCKED",
+  "laneImplementation": {
+    "R36": "NOT_STARTED",
+    "R37": "NOT_STARTED"
+  },
+  "hostedExecution": "NOT_RUN",
+  "recordedAt": "2026-11-03",
+  "deliveryMode": "A",
+  "source": {
+    "originDevelopSha": "92770ea65ee1154f94f4251d5febfa39822f9b9a",
+    "originDevelopTree": "854a9146c05bf21ef62af060358f581ec4c19306",
+    "matchesAuditReference": true,
+    "authorizedFrozenG3Base": null,
+    "approvedSuccessorBase": null,
+    "previousLanePreflightSource": "c9de08d07b12871db8801fb9662b14de83a2c391",
+    "nonDocChangesSincePreflight": ["03117e7a", "92770ea6"],
+    "migrationHead": "20261024120000_g3_financial_integration",
+    "prisma": "6.12.0",
+    "stripeSdk": "23.0.1",
+    "node": "v24.21.0",
+    "installPerformed": false
+  },
+  "fingerprintsSha256": {
+    "docs/production-readiness/post-r18/waves/wave-04.plan.json": "4ec343c977988fff06c6f32fcf3a022cb13e10c1766565fb4712c46eba04f9b7",
+    "docs/production-readiness/post-r18/gates/g3/SOURCE_MANIFEST.json": "97e03bff749d09f7d9a186db058cfc57835469a1041ff4100e086c1221ab110d",
+    "docs/production-readiness/post-r18/SPRINT_REGISTRY.json": "4613ab8421cf7f2e02d76215f57ef1d260aa194bebe311f8c332624ffaa6f69e",
+    ".github/scripts/g3-record.mjs": "f1010b0321d79603ec1c4fac30ff0cce9d15806401e09e20a98f17b39ae8311c",
+    "infra/production/platform/topology.json": "ac1a647a1275b809a4395468260ae7eb6fdbac43a27f46bed25329c417011d90"
+  },
+  "commands": [
+    {
+      "command": "node .github/scripts/g3-record.mjs --check",
+      "exit": 0,
+      "output": "PASS G3 record consistency; this does not authenticate evidence or grant approval. Recorded G3: BLOCKED; Wave 4: BLOCKED; R38 final G4 join: BLOCKED"
+    },
+    {
+      "command": "node .github/scripts/g3-record.mjs --ready R36",
+      "exit": 1,
+      "output": "FAIL R36 is not authorized to start"
+    },
+    {
+      "command": "node .github/scripts/g3-record.mjs --ready R37",
+      "exit": 1,
+      "output": "FAIL R37 is not authorized to start"
+    },
+    {
+      "command": "node --test .github/scripts/g3-record.test.mjs",
+      "exit": 0,
+      "counts": {
+        "tests": 35,
+        "pass": 35,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      }
+    },
+    {
+      "command": "node scripts/production/platform/validate-plan.cjs --check --require-target",
+      "exit": 2,
+      "status": "CONFIGURATION_ONLY",
+      "blockerCategories": [
+        "HOSTED_TARGET_AUTHORITY_REQUIRED",
+        "HOSTED_SERVICE_INPUTS_REQUIRED",
+        "HOSTED_RELEASE_INPUTS_REQUIRED",
+        "HOSTED_NETWORK_EVIDENCE_REQUIRED",
+        "HOSTED_SECRET_DELIVERY_REQUIRED",
+        "REGISTRY_PROVENANCE_REQUIRED",
+        "ISOLATED_TARGETS_REQUIRED",
+        "RECOVERY_ACCEPTANCE_REQUIRED",
+        "EDGE_INTEGRATION_EVIDENCE_REQUIRED"
+      ]
+    },
+    {
+      "command": "gh api repos/baraabd/homeservicemarketplace/code-scanning/alerts?state=open&ref=refs/heads/develop",
+      "exit": 0,
+      "open": 3,
+      "bySeverity": {
+        "medium": 3
+      },
+      "note": "Informational; not the final-candidate recheck"
+    },
+    {
+      "command": "gh api repos/baraabd/homeservicemarketplace/dependabot/alerts?state=open",
+      "exit": 0,
+      "open": 1,
+      "bySeverity": {
+        "high": 1
+      },
+      "alerts": ["GHSA-834v-8h66-3h79 happy-dom apps/web/package.json fixed=21.0.4"]
+    },
+    {
+      "command": "gh api repos/baraabd/homeservicemarketplace/secret-scanning/alerts?state=open",
+      "exit": 0,
+      "open": 0
+    }
+  ],
+  "gateRecords": {
+    "g3Decision": "BLOCKED",
+    "g3AcceptedSprints": [],
+    "g3MandatoryEvidenceNotRun": 7,
+    "wave4Status": "BLOCKED",
+    "wave4BaseSha": null,
+    "wave4StartableLanes": [],
+    "r36Lease": "CONDITIONAL_EXACT_INFRASTRUCTURE_FILES; startPrerequisite unmet; not effective",
+    "r37Lease": "CONDITIONAL_EXACT_INFRASTRUCTURE_FILES; startPrerequisite unmet; not effective",
+    "remoteLaneBranchesAheadOfDevelop": {
+      "test/r36-backup-restore-recovery": 0,
+      "test/r37-hosted-load-security": 0
+    }
+  },
+  "notRun": [
+    "pnpm install --frozen-lockfile, lint, typecheck, unit, integration, browser and production builds: no application change was made",
+    "Any backup, restore, rollback, RPO/RTO measurement",
+    "Any hosted security, load, fault or alert-receipt test",
+    "Deployed-image vulnerability scan: no deployed image exists",
+    "Visual/responsive/browser verification: no UI touched"
+  ],
+  "externalSystemsContacted": ["GitHub REST API (read-only alert listing)"],
+  "externalEffects": "none",
+  "baseCheckRuns": {
+    "sha": "92770ea65ee1154f94f4251d5febfa39822f9b9a",
+    "success": 29,
+    "failure": 4,
+    "failing": [
+      "CI gate",
+      "R18 functional completion acceptance",
+      "Dependency, secret, and container scans",
+      "Dev browser startup (windows-latest)"
+    ]
+  }
+}

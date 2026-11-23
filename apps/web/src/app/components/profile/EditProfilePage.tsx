@@ -47,6 +47,16 @@ interface EditProfilePageProps {
   appContext: EditProfileAppContext;
 }
 
+type ProfileAccount = { userId?: string; email: string | null };
+
+// Email is a compatibility key only for older profile responses. New responses
+// carry the immutable account ID, including accounts with no email address.
+function sameAccount(left: ProfileAccount | null, right: ProfileAccount): boolean {
+  if (!left) return false;
+  if (left.userId && right.userId) return left.userId === right.userId;
+  return left.email !== null && left.email === right.email;
+}
+
 // Splits a single Full Name string into firstName / lastName for the
 // PATCH payload. The backend stores them separately on the User row;
 // the UI shows a single field for ergonomics. The split is "first
@@ -68,7 +78,9 @@ export function EditProfilePage({ onBack, appContext }: EditProfilePageProps) {
   // profile answer can tell "this person's own profile, still loading" from
   // "someone else's profile" (R05 recovery; see the seeding effect).
   const { user: sessionUser } = useAuth();
-  const sessionEmail = sessionUser?.email ?? null;
+  const sessionAccount: ProfileAccount | null = sessionUser
+    ? { userId: sessionUser.id, email: sessionUser.email }
+    : null;
 
   // Provider-only fields are gated on APP CONTEXT, not on role. A
   // dual-role user opening /home → Edit Profile is in the Seeker
@@ -122,10 +134,10 @@ export function EditProfilePage({ onBack, appContext }: EditProfilePageProps) {
   // The `updatedAt` of the newest save this form has had acknowledged.
   const acknowledgedAt = useRef(0);
   // Whose profile the form was last seeded for.
-  const seededFor = useRef<string | null>(null);
+  const seededFor = useRef<ProfileAccount | null>(null);
   // The signed-in account that made the edits in `edited`; null when an edit
   // was made before the session was known.
-  const editedBy = useRef<string | null>(null);
+  const editedBy = useRef<ProfileAccount | null>(null);
   // Bumped after a successful save so the form follows the server again.
   const [seedGeneration, setSeedGeneration] = useState(0);
   // Provider service-area coordinates. Either both numbers or both
@@ -154,7 +166,10 @@ export function EditProfilePage({ onBack, appContext }: EditProfilePageProps) {
   // a more specific avatar; otherwise the seeker profile is authoritative.
   const avatarUrl = providerProfile?.avatarUrl ?? profile?.avatarUrl ?? null;
 
-  const categories = useMemo(() => categoriesQuery.data ?? [], [categoriesQuery.data]);
+  const categories = useMemo(
+    () => (categoriesQuery.data ?? []).filter((category) => category.isLeaf),
+    [categoriesQuery.data],
+  );
 
   // Seed the form once the API responds. We DON'T overwrite on every
   // re-render of profileQuery.data — the user is mid-edit and we'd
@@ -202,20 +217,19 @@ export function EditProfilePage({ onBack, appContext }: EditProfilePageProps) {
     // them, the account signed in now and the profile's own account are the
     // same. An edit made before the session was known, or by someone else,
     // is still cleared.
-    if (seededFor.current !== profile.email) {
+    if (!sameAccount(seededFor.current, profile)) {
       const firstAnswer = seededFor.current === null;
       const ownEditsStillLoading =
         firstAnswer &&
-        editedBy.current !== null &&
-        editedBy.current === profile.email &&
-        sessionEmail === profile.email;
-      seededFor.current = profile.email;
+        sameAccount(editedBy.current, profile) &&
+        sameAccount(sessionAccount, profile);
       if (!ownEditsStillLoading) {
         edited.current = { name: false, phone: false, city: false, bio: false };
         editedBy.current = null;
         acknowledgedAt.current = 0;
       }
     }
+    seededFor.current = { userId: profile.userId, email: profile.email };
     const stamp = Date.parse(profile.updatedAt);
     if (Number.isFinite(stamp) && stamp < acknowledgedAt.current) return;
 
@@ -236,7 +250,13 @@ export function EditProfilePage({ onBack, appContext }: EditProfilePageProps) {
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [profile?.updatedAt, providerProfile?.updatedAt, seedGeneration]);
+  }, [
+    profile?.userId,
+    profile?.email,
+    profile?.updatedAt,
+    providerProfile?.updatedAt,
+    seedGeneration,
+  ]);
 
   // Seed the skills selection from the provider profile when it lands.
   //
@@ -279,7 +299,7 @@ export function EditProfilePage({ onBack, appContext }: EditProfilePageProps) {
   // re-captures coords for the new city.
   const handleCityChange = (next: string): void => {
     edited.current.city = true;
-    editedBy.current = sessionEmail;
+    editedBy.current = sessionAccount;
     setCity(next);
     if (serviceAreaLat !== null || serviceAreaLng !== null) {
       setServiceAreaLat(null);
@@ -319,7 +339,7 @@ export function EditProfilePage({ onBack, appContext }: EditProfilePageProps) {
       // the backend pin is populated even when reverse-geocoding
       // couldn't resolve a city name.
       edited.current.city = true;
-      editedBy.current = sessionEmail;
+      editedBy.current = sessionAccount;
       setServiceAreaLat(outcome.lat);
       setServiceAreaLng(outcome.lng);
       if (outcome.status === 'ok' && outcome.city) {
@@ -554,7 +574,7 @@ export function EditProfilePage({ onBack, appContext }: EditProfilePageProps) {
             value={name}
             onChange={(next) => {
               edited.current.name = true;
-              editedBy.current = sessionEmail;
+              editedBy.current = sessionAccount;
               setName(next);
             }}
             leadingIcon={<User size={16} />}
@@ -565,7 +585,7 @@ export function EditProfilePage({ onBack, appContext }: EditProfilePageProps) {
             value={phone}
             onChange={(next) => {
               edited.current.phone = true;
-              editedBy.current = sessionEmail;
+              editedBy.current = sessionAccount;
               setPhone(next);
             }}
             leadingIcon={<Phone size={16} />}
@@ -705,7 +725,7 @@ export function EditProfilePage({ onBack, appContext }: EditProfilePageProps) {
               value={bio}
               onChange={(e) => {
                 edited.current.bio = true;
-                editedBy.current = sessionEmail;
+                editedBy.current = sessionAccount;
                 setBio(e.target.value);
               }}
               placeholder={L.bioHint}

@@ -1,3 +1,4 @@
+import type { AuthChannelService } from '../../../infrastructure/auth-channel/auth-channel.service';
 import type {
   PlatformSettingRepository,
   PlatformSettingRow,
@@ -10,10 +11,21 @@ import type { TransactionRunner } from '../../../infrastructure/prisma/transacti
 import type { AdminAuditService } from '../admin-audit.service';
 import { AdminSettingsService } from './admin-settings.service';
 
+// K06: every write re-reads live admin membership inside its transaction.
+// Tests that are not about authority see a current administrator.
+let liveAdminMembership: { roleId: string } | null = { roleId: 'admin-role' };
+const membershipLookup = jest.fn(() => Promise.resolve(liveAdminMembership));
+
 const tx: TransactionRunner = {
   // R17-D: writers of one key are serialised with a transaction advisory lock.
-  run: <T>(fn: (t: never) => Promise<T>) => fn({ $executeRaw: jest.fn() } as never),
+  run: <T>(fn: (t: never) => Promise<T>) =>
+    fn({ $executeRaw: jest.fn(), userRole: { findFirst: membershipLookup } } as never),
 } as unknown as TransactionRunner;
+
+beforeEach(() => {
+  liveAdminMembership = { roleId: 'admin-role' };
+  membershipLookup.mockClear();
+});
 
 function makeRow(over: Partial<PlatformSettingRow> = {}): PlatformSettingRow {
   return {
@@ -85,13 +97,22 @@ function makeMocks(initialRows: PlatformSettingRow[] = []): Mocks {
 }
 
 function makeService(m: Mocks): AdminSettingsService {
-  return new AdminSettingsService(m.settings, m.history, m.audit, tx);
+  return new AdminSettingsService(m.settings, m.history, m.audit, tx, {
+    assertSelectable: jest.fn().mockResolvedValue(undefined),
+  } as unknown as AuthChannelService);
 }
 
 describe('AdminSettingsService.getBulk', () => {
   it('returns defaults for every whitelisted key when the table is empty', async () => {
     const m = makeMocks([]);
     const out = await makeService(m).getBulk();
+    expect(out.values['auth.otpChannel']).toBe('whatsapp');
+    expect(out.defaults['auth.otpChannel']).toBe('whatsapp');
+    expect(out.schema.find((field) => field.key === 'auth.otpChannel')).toMatchObject({
+      default: 'whatsapp',
+      options: ['email', 'whatsapp'],
+      inEffect: true,
+    });
     expect(out.values.platform_fee_bps).toBe(1000);
     expect(out.values.default_currency).toBe('USD');
     expect(out.values.support_email).toMatch(/@/);
@@ -100,8 +121,13 @@ describe('AdminSettingsService.getBulk', () => {
   });
 
   it('overlays persisted rows on top of defaults', async () => {
-    const m = makeMocks([makeRow({ key: 'platform_fee_bps', value: 500 })]);
+    const m = makeMocks([
+      makeRow({ key: 'platform_fee_bps', value: 500 }),
+      makeRow({ key: 'auth.otpChannel', value: 'email' }),
+    ]);
     const out = await makeService(m).getBulk();
+    expect(out.values['auth.otpChannel']).toBe('email');
+    expect(out.defaults['auth.otpChannel']).toBe('whatsapp');
     expect(out.values.platform_fee_bps).toBe(500);
     expect(out.values.default_currency).toBe('USD'); // still default
     expect(out.lastUpdatedAt).toBe('2026-05-02T00:00:00.000Z');
@@ -116,6 +142,44 @@ describe('AdminSettingsService.getBulk', () => {
     expect(out.values.secret_internal_key).toBeUndefined();
     expect(out.values.platform_fee_bps).toBe(500);
   });
+});
+
+describe('AdminSettingsService — live admin standing (K06)', () => {
+  it.each([
+    [
+      'bulk',
+      (s: AdminSettingsService) =>
+        s.updateBulk('admin-1', { provider_onboarding_max_service_areas: 5 }),
+    ],
+    [
+      'keyed',
+      (s: AdminSettingsService) => s.upsert('admin-1', 'provider_onboarding_max_service_areas', 5),
+    ],
+    [
+      'delete',
+      (s: AdminSettingsService) => s.remove('admin-1', 'provider_onboarding_max_service_areas'),
+    ],
+  ])(
+    'refuses a %s write without a live admin membership and writes nothing',
+    async (_name, write) => {
+      liveAdminMembership = null;
+      const m = makeMocks([makeRow({ key: 'provider_onboarding_max_service_areas', value: 20 })]);
+      await expect(write(makeService(m))).rejects.toMatchObject({ status: 403 });
+      expect(membershipLookup).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            userId: 'admin-1',
+            role: { name: 'admin', deletedAt: null },
+            user: { deletedAt: null, status: 'ACTIVE', isActive: true },
+          }),
+        }),
+      );
+      expect(m.settings.upsert).not.toHaveBeenCalled();
+      expect(m.settings.delete).not.toHaveBeenCalled();
+      expect(m.history.append).not.toHaveBeenCalled();
+      expect(m.audit.record).not.toHaveBeenCalled();
+    },
+  );
 });
 
 describe('AdminSettingsService.updateBulk', () => {
@@ -347,4 +411,136 @@ describe('AdminSettingsService — setting history', () => {
     expect(out.key).toBe('retired_key');
     expect(out.items).toEqual([]);
   });
+});
+
+describe('OTP channel settings authority', () => {
+  it.each(['bulk', 'keyed'] as const)(
+    'persists and audits switches in both directions through the %s path',
+    async (path) => {
+      const m = makeMocks([makeRow({ key: 'auth.otpChannel', value: 'whatsapp' })]);
+      const guard = jest.fn().mockResolvedValue(undefined);
+      const service = new AdminSettingsService(m.settings, m.history, m.audit, tx, {
+        assertSelectable: guard,
+      } as unknown as AuthChannelService);
+
+      for (const [index, channel] of (['email', 'whatsapp'] as const).entries()) {
+        if (path === 'bulk') {
+          const result = await service.updateBulk('admin-1', { 'auth.otpChannel': channel });
+          expect(result.changedKeys).toEqual(['auth.otpChannel']);
+        } else {
+          await service.upsert('admin-1', 'auth.otpChannel', channel);
+        }
+
+        expect((await service.getBulk()).values['auth.otpChannel']).toBe(channel);
+        const settingTx = (m.settings.upsert as jest.Mock).mock.calls[index][1];
+        expect(guard).toHaveBeenNthCalledWith(index + 1, channel, 'admin-1', settingTx);
+        expect(m.history.append).toHaveBeenNthCalledWith(
+          index + 1,
+          expect.objectContaining({
+            key: 'auth.otpChannel',
+            previousValue: index === 0 ? 'whatsapp' : 'email',
+            newValue: channel,
+            changedBy: 'admin-1',
+          }),
+          settingTx,
+        );
+        expect(m.audit.record).toHaveBeenNthCalledWith(
+          index + 1,
+          expect.objectContaining({
+            adminUserId: 'admin-1',
+            type: 'ADMIN_SETTING_UPDATED',
+            metadata: expect.objectContaining({
+              key: 'auth.otpChannel',
+              previousValue: index === 0 ? 'whatsapp' : 'email',
+              newValue: channel,
+              source: path,
+              changed: true,
+            }),
+          }),
+          settingTx,
+        );
+      }
+    },
+  );
+
+  it('guards and audits deleting an email preference before resetting to WhatsApp', async () => {
+    const m = makeMocks([makeRow({ key: 'auth.otpChannel', value: 'email' })]);
+    const guard = jest.fn().mockResolvedValue(undefined);
+    const service = new AdminSettingsService(m.settings, m.history, m.audit, tx, {
+      assertSelectable: guard,
+    } as unknown as AuthChannelService);
+
+    await service.remove('admin-1', 'auth.otpChannel');
+
+    expect((await service.getBulk()).values['auth.otpChannel']).toBe('whatsapp');
+    const settingTx = (m.settings.delete as jest.Mock).mock.calls[0][1];
+    expect(guard).toHaveBeenCalledWith('whatsapp', 'admin-1', settingTx);
+    expect(m.history.append).toHaveBeenCalledWith(
+      {
+        key: 'auth.otpChannel',
+        previousValue: 'email',
+        newValue: null,
+        changedBy: 'admin-1',
+        reason: 'deleted',
+      },
+      settingTx,
+    );
+    expect(m.audit.record).toHaveBeenCalledWith(
+      expect.objectContaining({
+        adminUserId: 'admin-1',
+        type: 'ADMIN_SETTING_UPDATED',
+        metadata: {
+          key: 'auth.otpChannel',
+          action: 'deleted',
+          previousValue: 'email',
+          newValue: null,
+          source: 'keyed',
+        },
+      }),
+      settingTx,
+    );
+  });
+
+  it.each(['bulk', 'keyed'] as const)(
+    'rejects an unsupported channel on the %s path',
+    async (path) => {
+      const m = makeMocks();
+      const service = makeService(m);
+      await expect(
+        path === 'bulk'
+          ? service.updateBulk('admin-1', { 'auth.otpChannel': 'sms' })
+          : service.upsert('admin-1', 'auth.otpChannel', 'sms'),
+      ).rejects.toMatchObject({ status: 400 });
+      expect(m.settings.upsert).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each([
+    ['bulk', 'whatsapp'],
+    ['bulk', 'email'],
+    ['keyed', 'whatsapp'],
+    ['keyed', 'email'],
+    ['delete', 'whatsapp'],
+  ] as const)(
+    'never bypasses provider/admin readiness through the %s path to %s',
+    async (path, channel) => {
+      const m = makeMocks([makeRow({ key: 'auth.otpChannel', value: 'email' })]);
+      const guard = jest.fn().mockRejectedValue(new Error('contact must be verified'));
+      const service = new AdminSettingsService(m.settings, m.history, m.audit, tx, {
+        assertSelectable: guard,
+      } as unknown as AuthChannelService);
+      await expect(
+        path === 'bulk'
+          ? service.updateBulk('admin-1', { 'auth.otpChannel': channel })
+          : path === 'keyed'
+            ? service.upsert('admin-1', 'auth.otpChannel', channel)
+            : service.remove('admin-1', 'auth.otpChannel'),
+      ).rejects.toThrow('contact must be verified');
+      expect(guard).toHaveBeenCalledWith(channel, 'admin-1', expect.anything());
+      expect(m.settings.upsert).not.toHaveBeenCalled();
+      expect(m.settings.delete).not.toHaveBeenCalled();
+      expect(m.history.append).not.toHaveBeenCalled();
+      expect(m.audit.record).not.toHaveBeenCalled();
+    },
+  );
 });

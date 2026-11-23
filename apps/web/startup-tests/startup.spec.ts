@@ -1,4 +1,5 @@
 import { expect, test, type TestInfo } from '@playwright/test';
+import { isLegacyContractModuleError } from './legacy-contract-error';
 import { spawn, spawnSync, type ChildProcess } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { createServer } from 'node:http';
@@ -21,6 +22,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   expectNoHorizontalPageOverflow,
+  expectVisibleFocusIndicator,
   seedLanguage,
   signedInAdmin,
   stubApi,
@@ -111,14 +113,37 @@ async function stop(child: ChildProcess): Promise<void> {
   children.delete(child);
 }
 
-async function serve(args: string[], port: number, info: TestInfo, name: string) {
+// Vite answers index.html before a forced dependency optimization commits, and
+// HOLDS every pre-bundled module request until it does. Measured on Windows
+// (2026-11-03): index.html answered after 17 s while
+// /node_modules/.vite/deps/react.js was held for 160.6 s, then served with 200
+// the moment Vite logged "dependencies optimized". A route asserted inside that
+// window sits on its Suspense fallback ("Loading the page") with no page error.
+// A dev server is therefore ready only when a pre-bundled module is served.
+// This is the server cold-start budget; route assertions keep their own 30 s.
+const DEV_DEPENDENCY_PROBE = '/node_modules/.vite/deps/react.js';
+const DEV_DEPENDENCY_OPTIMIZER_BUDGET_MS = 240_000;
+const DEV_TEST_TIMEOUT_MS = 180_000 + DEV_DEPENDENCY_OPTIMIZER_BUDGET_MS;
+
+async function serve(
+  args: string[],
+  port: number,
+  info: TestInfo,
+  name: string,
+  options: { env?: NodeJS.ProcessEnv; awaitDependencyOptimizer?: boolean } = {},
+) {
   let output = '';
   let failure: Error | undefined;
   const spawnedAt = performance.now();
   const child = spawn(process.execPath, args, {
     cwd: web,
     detached: process.platform !== 'win32',
-    env: { ...process.env, VITE_API_URL: 'https://api.example.test', BROWSER: 'none' },
+    env: {
+      ...process.env,
+      VITE_API_URL: 'https://api.example.test',
+      BROWSER: 'none',
+      ...options.env,
+    },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
   children.add(child);
@@ -153,6 +178,40 @@ async function serve(args: string[], port: number, info: TestInfo, name: string)
         { timeout: 90_000, message: `Waiting for ${name}` },
       )
       .toBe(true);
+    const readiness: Record<string, number | string> = {
+      htmlReadyMs: Math.round(performance.now() - spawnedAt),
+    };
+    if (options.awaitDependencyOptimizer) {
+      await expect
+        .poll(
+          async () => {
+            if (failure) throw failure;
+            if (child.exitCode !== null) throw new Error(`Server exited: ${output}`);
+            try {
+              // The request is held while optimization runs; abort and retry
+              // so a server exit is still noticed promptly.
+              const response = await fetch(`${baseURL}${DEV_DEPENDENCY_PROBE}`, {
+                signal: AbortSignal.timeout(15_000),
+              });
+              return response.status;
+            } catch {
+              return 0;
+            }
+          },
+          {
+            timeout: DEV_DEPENDENCY_OPTIMIZER_BUDGET_MS,
+            message: `Waiting for ${name} to serve pre-bundled dependencies`,
+          },
+        )
+        .toBe(200);
+      readiness.dependencyProbe = DEV_DEPENDENCY_PROBE;
+      readiness.dependenciesReadyMs = Math.round(performance.now() - spawnedAt);
+    }
+    await info.attach(`${name}-readiness`, {
+      body: JSON.stringify({ platform: process.platform, ...readiness }, null, 2),
+      contentType: 'application/json',
+    });
+    console.log('SERVER_READINESS', name, JSON.stringify(readiness));
     return { baseURL, close, spawnedAt };
   } catch (error) {
     await close();
@@ -189,6 +248,12 @@ test.beforeAll(async () => {
   await copyFile(
     path.join(repoRoot, cspDirectory, 'web-csp.cjs'),
     path.join(scratch, cspDirectory, 'web-csp.cjs'),
+  );
+  const devDirectory = path.join('scripts', 'dev');
+  await mkdir(path.join(scratch, devDirectory), { recursive: true });
+  await copyFile(
+    path.join(repoRoot, devDirectory, 'api-endpoint.cjs'),
+    path.join(scratch, devDirectory, 'api-endpoint.cjs'),
   );
   for (const file of ['package.json', 'pnpm-workspace.yaml', 'tsconfig.base.json']) {
     await copyFile(path.join(repoRoot, file), path.join(scratch, file));
@@ -227,13 +292,23 @@ test('commands pin the source config and typechecking emits no shadow config', a
   expect(loadCommonJs('@homeservicemarketplace/contracts').LEGACY_PUBLICATION_ACK_TEXT).toBe(
     'PROVIDER_CONFIRMED_RIGHT_TO_PUBLISH',
   );
+  expect(loadCommonJs('@homeservicemarketplace/contracts').DISPUTE_WORKSPACE_STATES).toEqual([
+    'GATHERING',
+    'PROPOSED',
+    'DECIDED',
+    'APPEALED',
+    'CLOSED',
+  ]);
 });
 
 test('isolates the selector and recovers the affected admin route when an old config is auto-discovered', async ({
   page,
 }, info) => {
   await writeFile(path.join(web, 'vite.config.js'), legacyConfig);
-  const server = await serve([viteCli, ...cliFlags(5197)], 5197, info, 'legacy-dev');
+  test.setTimeout(DEV_TEST_TIMEOUT_MS);
+  const server = await serve([viteCli, ...cliFlags(5197)], 5197, info, 'legacy-dev', {
+    awaitDependencyOptimizer: true,
+  });
   const errors: string[] = [];
   const contractRequests: string[] = [];
   page.on('pageerror', (error) => errors.push(error.message));
@@ -251,18 +326,12 @@ test('isolates the selector and recovers the affected admin route when an old co
     await seedLanguage(page, 'en');
     await stubApi(page, { me: signedInAdmin() });
     await page.goto(server.baseURL);
-    // Admin's ReviewDossier imports the affected value. Splitting routes must
-    // keep this old configuration defect out of an unrelated public entry.
+    // ReviewDossier and AdminDisputeInbox import runtime values from this CJS
+    // barrel. Either can fail linking first; public entry must remain isolated.
     await expect(page.getByTestId('app-card-seeker')).toBeVisible();
     expect(contractRequests).toEqual([]);
     await page.getByTestId('app-card-admin').click();
-    await expect
-      .poll(() =>
-        errors.some((message) =>
-          /does not provide an export named 'LEGACY_PUBLICATION_ACK_TEXT'/.test(message),
-        ),
-      )
-      .toBe(true);
+    await expect.poll(() => errors.some(isLegacyContractModuleError)).toBe(true);
     expect(contractRequests.length).toBeGreaterThan(0);
     await expect(page.getByRole('alert')).toContainText('The page could not load');
     await expect(page.getByRole('button', { name: 'Reload page', exact: true })).toBeVisible();
@@ -270,12 +339,20 @@ test('isolates the selector and recovers the affected admin route when an old co
     const screenshot = info.outputPath('before-legacy-recovery.png');
     await page.screenshot({ path: screenshot, fullPage: true });
     await info.attach('before-legacy-recovery', { path: screenshot, contentType: 'image/png' });
+  } catch (error) {
+    const screenshot = info.outputPath('legacy-failure.png');
+    await page.screenshot({ path: screenshot, fullPage: true });
+    await info.attach('legacy-failure', { path: screenshot, contentType: 'image/png' });
+    throw error;
+  } finally {
+    // Preserve the actual module error even when the negative-control assertion
+    // fails. A timeout without this evidence cannot distinguish a broken
+    // failure fixture from a regression in the real application's recovery.
     await info.attach('legacy-errors', {
       body: JSON.stringify({ errors, contractRequests }, null, 2),
       contentType: 'application/json',
     });
-    console.log('REPRODUCED', JSON.stringify(errors));
-  } finally {
+    console.log('LEGACY_MODULE_DIAGNOSTICS', JSON.stringify({ errors, contractRequests }));
     await server.close();
   }
 });
@@ -287,7 +364,13 @@ test('real pnpm dev renders public and Admin routes with the stale config still 
   await writeFile(path.join(web, 'vite.config.js'), legacyConfig);
   const pnpm = process.env.npm_execpath;
   expect(pnpm, 'Run through pnpm test:startup so the pinned package manager is used').toBeTruthy();
-  const server = await serve([pnpm!, 'run', 'dev', ...cliFlags(5198)], 5198, info, 'fixed-dev');
+  // vite:deps records runtime dependency discovery and optimizer commits, so a
+  // stalled route can be correlated with the optimizer instead of guessed at.
+  test.setTimeout(DEV_TEST_TIMEOUT_MS);
+  const server = await serve([pnpm!, 'run', 'dev', ...cliFlags(5198)], 5198, info, 'fixed-dev', {
+    env: { DEBUG: 'vite:deps' },
+    awaitDependencyOptimizer: true,
+  });
   const evidence: Array<Record<string, unknown>> = [];
   try {
     for (const lang of ['en', 'ar'] as const) {
@@ -301,6 +384,28 @@ test('real pnpm dev renders public and Admin routes with the stale config still 
           const errors: string[] = [];
           const distRequests: string[] = [];
           let sourceContractRequests = 0;
+          // A dynamic import that neither resolves nor rejects leaves a module
+          // request open. Record those so a stalled "Loading the page" names
+          // its cause instead of ending as a bare locator timeout.
+          const unfinished = new Map<object, string>();
+          const failedRequests: string[] = [];
+          const consoleProblems: string[] = [];
+          page.on('request', (request) => unfinished.set(request, request.url()));
+          page.on('requestfinished', (request) => unfinished.delete(request));
+          page.on('requestfailed', (request) => {
+            unfinished.delete(request);
+            failedRequests.push(`${request.url()} ${request.failure()?.errorText ?? ''}`);
+          });
+          page.on('response', (response) => {
+            if (response.status() >= 400) {
+              failedRequests.push(`${response.status()} ${response.url()}`);
+            }
+          });
+          page.on('console', (message) => {
+            if (['error', 'warning'].includes(message.type())) {
+              consoleProblems.push(`${message.type()}: ${message.text()}`);
+            }
+          });
           page.on('pageerror', (error) => errors.push(error.message));
           page.on('request', (request) => {
             const url = decodeURIComponent(request.url());
@@ -359,6 +464,19 @@ test('real pnpm dev renders public and Admin routes with the stale config still 
             });
           } catch (error) {
             await capture(`failure-${label}`);
+            const diagnostics = {
+              label,
+              url: page.url(),
+              unfinishedRequests: [...unfinished.values()],
+              failedRequests,
+              consoleProblems,
+              errors,
+            };
+            await info.attach(`failure-${label}-network`, {
+              body: JSON.stringify(diagnostics, null, 2),
+              contentType: 'application/json',
+            });
+            console.log('STARTUP_FAILURE_DIAGNOSTICS', JSON.stringify(diagnostics));
             throw new Error(`${label}: ${String(error)}; page errors: ${JSON.stringify(errors)}`, {
               cause: error,
             });
@@ -380,6 +498,298 @@ test('real pnpm dev renders public and Admin routes with the stale config still 
     console.log('FIXED_STARTUP', JSON.stringify(evidence));
   } finally {
     await server.close();
+  }
+});
+
+test('real pnpm dev derives the API origin and recovers fresh sign-in policy for every app', async ({
+  browser,
+}, info) => {
+  test.setTimeout(DEV_TEST_TIMEOUT_MS);
+  const pnpm = process.env.npm_execpath;
+  expect(pnpm, 'Use pnpm test:startup').toBeTruthy();
+  const webPort = 5201;
+  const webOrigin = `http://127.0.0.1:${webPort}`;
+  type Policy = { otpChannel: 'email' | 'whatsapp'; whatsappAvailable: boolean };
+  let policy: Policy | undefined;
+  let holdPolicy = false;
+  let releasePolicy: (() => void) | undefined;
+  const apiRequests: Array<{ method: string; pathname: string; origin?: string }> = [];
+  // Real browser HTTP and CORS against an owned listener; policy responses are
+  // deterministic fixtures, not evidence of a real backend or OTP delivery.
+  const api = createServer((request, response) => {
+    const pathname = new URL(request.url ?? '/', 'http://localhost').pathname;
+    const method = request.method ?? 'GET';
+    apiRequests.push({ method, pathname, origin: request.headers.origin });
+    response.setHeader('Access-Control-Allow-Origin', webOrigin);
+    response.setHeader('Access-Control-Allow-Credentials', 'true');
+    response.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+    response.setHeader('Access-Control-Allow-Headers', 'X-Client-Kind');
+    response.setHeader('Cache-Control', 'no-store');
+    if (method === 'OPTIONS') {
+      response.writeHead(204).end();
+      return;
+    }
+    const send = (status: number, body: unknown) => {
+      response.writeHead(status, { 'Content-Type': 'application/json' });
+      response.end(JSON.stringify(body));
+    };
+    if (method === 'GET' && pathname === '/v1/auth/config') {
+      const currentPolicy = policy;
+      if (!currentPolicy) {
+        send(503, { error: { code: 'DEPENDENCY_UNAVAILABLE' } });
+      } else if (holdPolicy) {
+        const release = () => send(200, currentPolicy);
+        releasePolicy = release;
+        response.once('close', () => {
+          if (releasePolicy === release) releasePolicy = undefined;
+        });
+      } else send(200, currentPolicy);
+      return;
+    }
+    send(pathname === '/v1/auth/me' ? 401 : 404, { error: { code: 'UNAUTHORIZED' } });
+  });
+  await new Promise<void>((resolve, reject) => {
+    api.once('error', reject);
+    api.listen(0, 'localhost', () => {
+      api.off('error', reject);
+      resolve();
+    });
+  });
+  const address = api.address();
+  if (!address || typeof address === 'string') throw new Error('Expected an owned API listener');
+  const apiOrigin = `http://localhost:${address.port}`;
+  const scenarios = [
+    { app: 'seeker', otpChannel: 'email', whatsappAvailable: false },
+    { app: 'provider', otpChannel: 'whatsapp', whatsappAvailable: false },
+    { app: 'admin', otpChannel: 'whatsapp', whatsappAvailable: true },
+  ] as const;
+  const evidence: Array<Record<string, unknown>> = [];
+  let server: Awaited<ReturnType<typeof serve>> | undefined;
+  try {
+    server = await serve(
+      [pnpm!, 'run', 'dev', ...cliFlags(webPort)],
+      webPort,
+      info,
+      'derived-api-dev',
+      {
+        // undefined removes the inherited CI value from the spawned process.
+        // The isolated checkout contains no copied private .env files.
+        env: { VITE_API_URL: undefined, PORT: String(address.port) },
+        awaitDependencyOptimizer: true,
+      },
+    );
+    for (const lang of ['en', 'ar'] as const) {
+      const context = await browser.newContext({
+        viewport: { width: 390, height: 844 },
+        locale: 'en-US',
+      });
+      const page = await context.newPage();
+      const errors: string[] = [];
+      const policyRequests: string[] = [];
+      page.on('pageerror', (error) => errors.push(error.message));
+      page.on('request', (request) => {
+        if (new URL(request.url()).pathname === '/v1/auth/config')
+          policyRequests.push(request.url());
+      });
+      const capture = async (name: string) => {
+        await page.evaluate(() => document.fonts.ready);
+        const screenshot = info.outputPath(`${name}.png`);
+        await page.screenshot({ path: screenshot, fullPage: true, animations: 'disabled' });
+        await info.attach(name, { path: screenshot, contentType: 'image/png' });
+      };
+      try {
+        await seedLanguage(page, lang);
+        await page.goto(`${server.baseURL}/select`);
+        for (const [index, scenario] of scenarios.entries()) {
+          policy = undefined;
+          const requestsBeforeEntry = policyRequests.length;
+          await page.getByTestId(`app-card-${scenario.app}`).click();
+          await expect(page).toHaveURL(/\/login(?:[?#]|$)/);
+          await expect(page.getByTestId(`auth-hero-${scenario.app}`)).toBeVisible();
+          await expect(page.getByTestId('auth-channel-whatsapp')).toBeVisible();
+          await expect(page.getByRole('alert')).toHaveText(
+            lang === 'ar'
+              ? 'خدمة تسجيل الدخول غير متاحة مؤقتًا. يرجى إعادة المحاولة بعد قليل.'
+              : 'The sign-in service is temporarily unavailable. Please try again shortly.',
+          );
+          await expect(page.locator('html')).toHaveAttribute('lang', lang);
+          await expect(page.locator('html')).toHaveAttribute('dir', lang === 'ar' ? 'rtl' : 'ltr');
+          const phone = page.locator('input[type="tel"]');
+          await expect(phone).toBeVisible();
+          await expect(page.locator('input[type="email"], input[type="password"]')).toHaveCount(0);
+          const sendCode = page.getByRole('button', {
+            name: lang === 'ar' ? 'إرسال رمز التحقق' : 'Send verification code',
+            exact: true,
+          });
+          await expect(sendCode).toBeDisabled();
+          await phone.fill('2025550123');
+          await phone.press('Enter');
+          await expect(phone).toHaveValue('2025550123');
+          const retry = page.getByRole('button', {
+            name: lang === 'ar' ? 'إعادة المحاولة' : 'Try again',
+            exact: true,
+          });
+          await expect(retry).toHaveAttribute('data-tone', scenario.app);
+          const label = `policy-unavailable-${scenario.app}-${lang}`;
+          for (const width of [320, 390, 430, 768, 1024, 1440]) {
+            await page.setViewportSize({ width, height: 844 });
+            await expectNoHorizontalPageOverflow(page);
+            await expect(retry).toBeVisible();
+            if (width === 1440 || (width === 320 && index === 0))
+              await capture(`${label}-${width}`);
+          }
+          await page.setViewportSize({ width: 390, height: 844 });
+          await page.getByTestId('lang-toggle').focus();
+          // The branded form now stays mounted. Reach its inline retry using
+          // the real tab order, which includes the existing Apps control.
+          for (let tabs = 0; tabs < 8; tabs += 1) {
+            await page.keyboard.press('Tab');
+            if (await retry.evaluate((element) => element === document.activeElement)) break;
+          }
+          await expect(retry).toBeFocused();
+          await expectVisibleFocusIndicator(retry, 'Policy retry');
+          expect((await retry.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+          await capture(`${label}-keyboard-390`);
+          // Explicit CSS 200% reflow evidence, not a claim of browser chrome zoom.
+          await page.setViewportSize({ width: 768, height: 844 });
+          await page.locator('html').evaluate((element) => {
+            element.style.zoom = '2';
+          });
+          await expectNoHorizontalPageOverflow(page);
+          await expect(retry).toBeFocused();
+          await capture(`${label}-css-zoom-200`);
+          await page.locator('html').evaluate((element) => {
+            element.style.zoom = '';
+          });
+          await page.setViewportSize({ width: 390, height: 844 });
+          expect(policyRequests.slice(requestsBeforeEntry)).toEqual([
+            `${apiOrigin}/v1/auth/config`,
+          ]);
+
+          policy = {
+            otpChannel: scenario.otpChannel,
+            whatsappAvailable: scenario.whatsappAvailable,
+          };
+          holdPolicy = true;
+          await page.keyboard.press('Enter');
+          await expect.poll(() => typeof releasePolicy).toBe('function');
+          // A warm cache never authorizes a request. Keep the default phone
+          // draft mounted and editable while fresh administrator policy loads.
+          await expect(
+            page.getByRole('status').filter({
+              hasText: lang === 'ar' ? 'جارٍ تجهيز تسجيل الدخول…' : 'Preparing secure sign in…',
+            }),
+          ).toBeVisible();
+          await expect(phone).toHaveValue('2025550123');
+          await expect(sendCode).toBeDisabled();
+          await phone.focus();
+          const pendingPhone = await phone.elementHandle();
+          holdPolicy = false;
+          releasePolicy!();
+          await expect(page.getByTestId(`auth-hero-${scenario.app}`)).toBeVisible();
+          await expect(page.getByTestId(`auth-channel-${scenario.otpChannel}`)).toBeVisible();
+          const whatsapp = scenario.otpChannel === 'whatsapp';
+          await expect(page.locator(`input[type="${whatsapp ? 'tel' : 'email'}"]`)).toBeVisible();
+          await expect(page.locator(`input[type="${whatsapp ? 'email' : 'tel'}"]`)).toHaveCount(0);
+          if (whatsapp) {
+            await expect(phone).toHaveValue('2025550123');
+            await expect(phone).toBeFocused();
+            expect(
+              await pendingPhone!.evaluate(
+                (element) => element === document.querySelector('input[type="tel"]'),
+              ),
+            ).toBe(true);
+          }
+          const password = page.getByLabel(lang === 'ar' ? 'كلمة المرور' : 'Password', {
+            exact: true,
+          });
+          const forgotPassword = page.getByRole('button', {
+            name: lang === 'ar' ? 'نسيت كلمة المرور؟' : 'Forgot Password?',
+            exact: true,
+          });
+          if (whatsapp) {
+            await expect(password).toHaveCount(0);
+            await expect(forgotPassword).toHaveCount(0);
+          } else {
+            await expect(password).toBeVisible();
+            await expect(forgotPassword).toBeVisible();
+          }
+          await expect(
+            page.getByRole('button', {
+              name: whatsapp
+                ? lang === 'ar'
+                  ? /البريد الإلكتروني/u
+                  : /email/i
+                : lang === 'ar'
+                  ? /واتساب/u
+                  : /whatsapp/i,
+            }),
+          ).toHaveCount(0);
+          const loginLabel = whatsapp
+            ? lang === 'ar'
+              ? 'إرسال رمز التحقق'
+              : 'Send verification code'
+            : lang === 'ar'
+              ? 'دخول'
+              : 'Log In';
+          const login = page.getByRole('button', {
+            name: loginLabel,
+            exact: true,
+          });
+          await expect(login).toHaveAttribute('data-tone', scenario.app);
+          if (whatsapp && !scenario.whatsappAvailable) await expect(login).toBeDisabled();
+          else await expect(login).toBeEnabled();
+          expect(policyRequests.slice(requestsBeforeEntry)).toEqual([
+            `${apiOrigin}/v1/auth/config`,
+            `${apiOrigin}/v1/auth/config`,
+          ]);
+          evidence.push({
+            app: scenario.app,
+            lang,
+            loginLabel,
+            restoredPolicy: policy,
+            cachedPriorPolicy: index > 0,
+            unconfirmedPresentation: 'whatsapp form; new requests disabled',
+            sameChannelDraftAndFocusPreserved: whatsapp,
+            policyRequests: policyRequests.slice(requestsBeforeEntry),
+            widths: [320, 390, 430, 768, 1024, 1440],
+            keyboardRetry: true,
+            cssZoomPercent: 200,
+          });
+          await page.getByRole('button', { name: 'Apps', exact: true }).click();
+          await expect(page.getByTestId('app-card-seeker')).toBeVisible();
+        }
+        expect(errors).toEqual([]);
+      } finally {
+        await context.close();
+      }
+    }
+    const receivedPolicyRequests = apiRequests.filter(
+      (request) => request.method === 'GET' && request.pathname === '/v1/auth/config',
+    );
+    expect(receivedPolicyRequests).toHaveLength(scenarios.length * 2 * 2);
+    expect(receivedPolicyRequests.every((request) => request.origin === webOrigin)).toBe(true);
+    expect(apiRequests.filter((request) => request.method === 'POST')).toEqual([]);
+    await info.attach('derived-api-policy-evidence', {
+      body: JSON.stringify(
+        {
+          api: 'owned HTTP/CORS fixture; not real backend, account or delivery acceptance',
+          configuredApiPort: address.port,
+          explicitViteApiUrl: false,
+          apiOrigin,
+          evidence,
+        },
+        null,
+        2,
+      ),
+      contentType: 'application/json',
+    });
+  } finally {
+    await server?.close();
+    await new Promise<void>((resolve, reject) => {
+      api.close((error) => (error ? reject(error) : resolve()));
+      api.closeAllConnections();
+    });
   }
 });
 
@@ -418,21 +828,51 @@ for (const mode of ['dev', 'production-preview'] as const) {
           ];
     const errors: string[] = [];
     let failedApiRequests = 0;
+    let failedPolicyRequests = 0;
     page.on('pageerror', (error) => errors.push(error.message));
     await seedLanguage(page, 'en');
     await page.route('https://api.example.test/**', async (route) => {
       failedApiRequests += 1;
+      if (new URL(route.request().url()).pathname === '/v1/auth/config') failedPolicyRequests += 1;
       await route.abort('connectionrefused');
     });
-    const server = await serve(args, port, info, `r02-${mode}`);
+    if (mode === 'dev') test.setTimeout(DEV_TEST_TIMEOUT_MS);
+    const server = await serve(args, port, info, `r02-${mode}`, {
+      awaitDependencyOptimizer: mode === 'dev',
+    });
     try {
       await page.goto(server.baseURL);
       await expect(page.getByTestId('app-card-seeker')).toBeVisible();
       await page.getByTestId('app-card-seeker').click();
-      const email = page.locator('input[type="email"]');
-      await expect(email).toBeVisible();
-      await email.fill('startup-check@example.test');
-      await expect(email).toHaveValue('startup-check@example.test');
+      // The default phone form is useful presentation, not authorization to
+      // send. It remains mounted when the transport fails or language changes.
+      await expect(page.getByTestId('auth-hero-seeker')).toBeVisible();
+      await expect(page.getByTestId('auth-channel-whatsapp')).toBeVisible();
+      await expect(page.getByRole('alert')).toHaveText(
+        'The sign-in service is temporarily unavailable. Please try again shortly.',
+      );
+      const phone = page.locator('input[type="tel"]');
+      await phone.fill('2025550123');
+      await expect(
+        page.getByRole('button', { name: 'Send verification code', exact: true }),
+      ).toBeDisabled();
+      await expect(page.locator('input[type="email"], input[type="password"]')).toHaveCount(0);
+      const policyRequestsBeforeRetry = failedPolicyRequests;
+      await page.getByRole('button', { name: 'Try again', exact: true }).click();
+      await expect.poll(() => failedPolicyRequests).toBe(policyRequestsBeforeRetry + 1);
+      await expect(page.getByRole('button', { name: 'Try again', exact: true })).toBeEnabled();
+      await page.getByTestId('lang-toggle').click();
+      await expect(page.locator('html')).toHaveAttribute('lang', 'ar');
+      await expect(page.locator('html')).toHaveAttribute('dir', 'rtl');
+      await expect(page.getByRole('alert')).toHaveText(
+        'خدمة تسجيل الدخول غير متاحة مؤقتًا. يرجى إعادة المحاولة بعد قليل.',
+      );
+      await expect(page.getByRole('button', { name: 'إعادة المحاولة', exact: true })).toBeEnabled();
+      await expect(phone).toHaveValue('2025550123');
+      await expect(
+        page.getByRole('button', { name: 'إرسال رمز التحقق', exact: true }),
+      ).toBeDisabled();
+      await expect(page.getByTestId('auth-hero-seeker')).toBeVisible();
       const interactiveMs = performance.now() - server.spawnedAt;
       await expect(page.locator('#startup-error')).toHaveCount(0);
       await expect(page.locator('vite-error-overlay')).toHaveCount(0);
@@ -446,9 +886,10 @@ for (const mode of ['dev', 'production-preview'] as const) {
             platform: process.platform,
             interactiveMs,
             start: 'owned server process spawn',
-            end: 'navigation and editable input acknowledged',
+            end: 'navigation, policy retry and language change acknowledged',
             api: 'controlled browser transport failure; no backend success claimed',
             failedApiRequests,
+            failedPolicyRequests,
             errors,
           },
           null,

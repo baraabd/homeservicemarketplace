@@ -129,7 +129,14 @@ d('Phase 5 C1 — onboarding defaults are race-safe (real Postgres)', () => {
 
     await wipe();
     await prisma.serviceCategory.create({
-      data: { id: ROOT, slug: ROOT, labelEn: 'Painting', labelAr: 'دهان', icon: 'brush' },
+      data: {
+        id: ROOT,
+        slug: ROOT,
+        labelEn: 'Painting',
+        labelAr: 'دهان',
+        icon: 'brush',
+        isLeaf: false,
+      },
     });
     await prisma.serviceCategory.create({
       data: {

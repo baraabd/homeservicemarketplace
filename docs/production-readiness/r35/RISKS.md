@@ -1,0 +1,20 @@
+# R35 — Risks and retained holds
+
+| Blocker                                | Current evidence                                           | Owner / closing condition                                                                     |
+| -------------------------------------- | ---------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
+| G3 and exact session assignment absent | Readiness exits 1; frozen source is null                   | Coordinator: seven categories, verified owner publication and exact lane assignment           |
+| Stripe runtime unintegrated            | Manual-only bindings; no SDK dependency or ingress mount   | Coordinator/R29: existing CR-001/002/003 and purchase-surface wiring                          |
+| Refund policy/consequences unavailable | Fail-closed providers remain                               | Product/policy owner and money coordinator: approved rules and actual transaction participant |
+| External authority/evidence missing    | No independent sandbox/statement operation executed        | Authorized operator: time-bounded credentials and approved manual/Stripe authority            |
+| Certification matrix not executed      | No new role/browser/service journey or hosted bundle proof | R35 after G3 executes real journeys on approved browser engines                               |
+
+Preserve R16/R18 holds. Subscription revenue is not withdrawable earnings.
+No price, currency scale, fee/tax, payout, verification or work-access policy is
+inferred. Validator/installation/CI success does not prove external money or
+hosted acceptance. Scenario counts, screenshot inspection and deployment parity are NOT RUN.
+
+> K01 correction (2026-11-03, develop `92770ea6`): the "Stripe runtime
+> unintegrated" row is historical. The SDK dependency, ingress and runtime
+> modules are now in source, failing closed without sandbox configuration; see
+> the correction in [IMPLEMENTATION.md](IMPLEMENTATION.md). Independent sandbox
+> evidence and refund-policy approval remain open.

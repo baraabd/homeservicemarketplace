@@ -19,6 +19,7 @@ import { ReviewMutationNotice } from './ReviewMutationNotice';
 import { IdentityEvidenceViewer } from '../evidence/IdentityEvidenceViewer';
 import { IDENTITY_PREVIEW_COPY } from '../evidence/identity-preview-copy';
 import { verificationReasonLabel } from '../evidence/verification-reason-labels';
+import { identityReviewStep, IDENTITY_REVIEW_GUIDANCE } from '../identity-review-guidance';
 import {
   EVIDENCE_REVIEW_COPY,
   EVIDENCE_SCAN_LABELS,
@@ -63,6 +64,8 @@ export function ReviewIdentity({
         : 'Request fresh verification'
       : UI[lang][ACTION_LABEL[action]];
   const kase = review.verification;
+  const nextStep = identityReviewStep(review);
+  const guidance = IDENTITY_REVIEW_GUIDANCE[lang];
   const evidence = useEvidenceDownload();
   const previewOpenerRef = useRef<HTMLButtonElement | null>(null);
   const [previewId, setPreviewId] = useState<string | null>(null);
@@ -229,6 +232,20 @@ export function ReviewIdentity({
         </ReviewBadge>
       </div>
       <p className="ar-muted">{t.evidenceHint}</p>
+      <div data-testid="review-identity-next-step" data-step={nextStep}>
+        <ReviewBanner tone={nextStep === 'verified' ? 'success' : 'neutral'}>
+          <strong>{guidance.title}</strong>
+          <p>{guidance[nextStep]}</p>
+          {nextStep === 'verified' && (
+            <p>{review.canWork ? guidance.verifiedWorkAllowed : guidance.verifiedWorkPending}</p>
+          )}
+          {(nextStep === 'review' || (nextStep === 'verified' && !review.canWork)) && (
+            <a className="ar-button" href="#review-decision-panel">
+              {guidance.decision}
+            </a>
+          )}
+        </ReviewBanner>
+      </div>
       {!kase ? (
         <ReviewBanner>{t.noEvidence}</ReviewBanner>
       ) : (

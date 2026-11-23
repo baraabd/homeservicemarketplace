@@ -96,6 +96,8 @@ function RootInner() {
   const navigation = useNavigation();
   const isHome = location.pathname.startsWith('/home');
   const isSelect = location.pathname === '/select';
+  // K02 — public policy pages read on a full-width, readable column.
+  const isLegal = location.pathname.startsWith('/legal/');
   const isProvider = location.pathname.startsWith('/provider');
   const isLoading = navigation.state === 'loading';
 
@@ -190,6 +192,16 @@ function RootInner() {
     );
   }
 
+  // ── Public legal pages: full-screen, no phone shell (K02) ─────────────────
+  if (isLegal) {
+    return (
+      <div className={darkMode ? 'dark' : undefined} style={{ fontFamily }} dir={dir}>
+        <AuthSessionNotice />
+        <Outlet context={ctx} />
+      </div>
+    );
+  }
+
   // ── App selector: full-screen, no phone shell ─────────────────────────────
   if (isSelect) {
     return (
@@ -230,7 +242,8 @@ function RootInner() {
           and slide the whole app up with no way back (R11). */}
       <AnimatePresence mode="wait" initial={false}>
         <motion.div
-          key={lang}
+          // Keep the routed form and OTP state mounted when its language changes.
+          key="phone-shell"
           dir={dir}
           className={`relative w-full flex flex-col overflow-clip shadow-2xl transition-colors duration-300 ${darkMode ? 'dark bg-slate-900' : 'bg-white'}`}
           style={{

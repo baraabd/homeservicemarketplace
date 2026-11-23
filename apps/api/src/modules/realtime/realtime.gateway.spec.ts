@@ -334,6 +334,26 @@ describe('RealtimeGateway', () => {
       expect(sock.joined).toContain('user:u-1');
     });
 
+    it('authenticates only its configured cookie namespace', async () => {
+      const m = makeMocks();
+      const originalGet = m.config.get.getMockImplementation()!;
+      m.config.get.mockImplementation((key) =>
+        key === 'AUTH_COOKIE_PREFIX' ? 'hsm_staging' : originalGet(key),
+      );
+      const gw = makeGateway(m);
+      const sock = makeSocket(undefined);
+      sock.handshake.headers.cookie = 'hsm_at=production-jwt; hsm_staging_at=staging-jwt';
+      await gw.handleConnection(sock as never);
+      expect(m.tokens.verifyAccessToken).toHaveBeenCalledWith('staging-jwt');
+      expect(sock.disconnected).toBe(false);
+      m.tokens.verifyAccessToken.mockClear();
+      const other = makeSocket(undefined);
+      other.handshake.headers.cookie = 'hsm_at=production-jwt';
+      await gw.handleConnection(other as never);
+      expect(other.disconnected).toBe(true);
+      expect(m.tokens.verifyAccessToken).not.toHaveBeenCalled();
+    });
+
     it('treats an empty / whitespace auth.token as absent and falls through to the cookie', async () => {
       const m = makeMocks();
       const gw = makeGateway(m);

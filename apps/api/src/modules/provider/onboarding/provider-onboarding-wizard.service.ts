@@ -1,8 +1,10 @@
+import { hasVerifiedAuthenticationContact } from '../../../shared/identity/verified-contact';
 import { Injectable, Logger } from '@nestjs/common';
 import {
   ADMIN_SETTINGS_SCHEMA,
   PROVIDER_ONBOARDING_STEPS,
   isPlausibleE164,
+  normalisePhoneNumber,
   suggestProfessionalTitle,
   type ProviderSpecialtyState,
   type ProviderSpecialtyView,
@@ -118,6 +120,14 @@ export const CONSENT_VERSION_KEY = 'provider_consent_policy_version';
 const MAX_SERVICE_AREAS_KEY = 'provider_onboarding_max_service_areas';
 const MAX_SPECIALTIES_KEY = 'provider_onboarding_max_specialties';
 
+/** Server-owned related writes that must commit with the versioned step.
+ * Never populated from a request body; callers may only persist database
+ * changes through the supplied transaction, not external storage effects. */
+export type OnboardingStepPersistenceEffect = (
+  trx: PrismaTx,
+  previous: Readonly<{ profileImageUrl: string | null }>,
+) => Promise<void>;
+
 /** Which fields each step is ALLOWED to write.
  *
  *  The step comes from the route, and a PATCH that carries a field belonging
@@ -213,6 +223,7 @@ export class ProviderOnboardingWizardService {
     userId: string,
     step: ProviderOnboardingStep,
     body: PatchOnboardingStepRequest,
+    persistRelated?: OnboardingStepPersistenceEffect,
   ): Promise<ProviderOnboardingDraftView> {
     // Cheap, deterministic rejections BEFORE opening a transaction: a wrong
     // field on the wrong step is a client bug, and a transaction is a lock.
@@ -305,6 +316,9 @@ export class ProviderOnboardingWizardService {
         // Another writer landed between the check above and this update.
         throw await this.conflict(userId, draft.version + 1, body.version);
       }
+      // Related media changes run only after the edit lock and optimistic
+      // version write succeed, and roll back with the profile on any failure.
+      await persistRelated?.(trx, { profileImageUrl: ctx.profile.profileImageUrl ?? null });
     });
 
     return this.view(userId);
@@ -617,16 +631,20 @@ export class ProviderOnboardingWizardService {
           if (next !== null && !isPlausibleE164(next)) {
             throw new AppError(
               'VALIDATION_ERROR',
-              'Enter a phone number in international format, e.g. +963912345678.',
+              'Enter a phone number in international format, e.g. +966512345678.',
               400,
               { reason: 'PHONE_FORMAT' },
             );
           }
-          profileData.phoneNumber = next;
+          // K02 — store the NORMALISED E.164 form (`+966 51 234 5678`,
+          // `00966512345678` and Arabic-Indic digits all store as
+          // `+966512345678`), so one number has one representation.
+          const normalised = next === null ? null : normalisePhoneNumber(next);
+          profileData.phoneNumber = normalised;
           // Changing the number INVALIDATES the verification. Keeping the old
           // proof against a new number is how an unverifiable number ends up
           // marked verified — the single most valuable thing to get wrong here.
-          if (next !== ctx.profile.phoneNumber) profileData.phoneVerifiedAt = null;
+          if (normalised !== ctx.profile.phoneNumber) profileData.phoneVerifiedAt = null;
         }
         break;
       }
@@ -1607,6 +1625,7 @@ export class ProviderOnboardingWizardService {
       serviceAreaRadiusKm: p.serviceAreaRadiusKm,
       serviceCategoryCount: p.serviceCategories.length,
       emailVerified: ctx.emailVerified,
+      contactVerified: ctx.contactVerified,
 
       providerType: p.providerType ?? null,
       legalBusinessName: p.legalBusinessName ?? null,
@@ -1709,7 +1728,8 @@ export class ProviderOnboardingWizardService {
       market: profile.serviceAreaCountryCode
         ? await this.markets.findEnabled(profile.serviceAreaCountryCode, tx).catch(() => null)
         : null,
-      emailVerified: user?.emailVerifiedAt != null,
+      emailVerified: Boolean(user?.email && user.emailVerifiedAt),
+      contactVerified: hasVerifiedAuthenticationContact(user),
       // The shared profile include already narrows this to LIVE pending rows
       // (PENDING and not superseded), so there is nothing further to filter —
       // and re-filtering here on a projection that no longer carries `status`
@@ -1995,6 +2015,7 @@ interface OnboardingContext {
    *  zone a stored schedule may be reported in. */
   market: Awaited<ReturnType<MarketRegistryService['findEnabled']>>;
   emailVerified: boolean;
+  contactVerified: boolean;
   pendingApplicationCategoryIds: string[];
   /** Newest first. Only the wizard reads these — see buildContext. */
   rejectedApplications: {

@@ -4,11 +4,12 @@ import { SupportRepository } from '../../infrastructure/persistence/support/supp
 import { AuditModule } from '../iam/audit/audit.module';
 import { AuthenticationModule } from '../iam/authentication/authentication.module';
 import { AuthorizationModule } from '../iam/authorization/authorization.module';
+import { NotificationsModule } from '../notifications/notifications.module';
 import { AdminSupportController, SupportController } from './support.controller';
 import { SupportService } from './support.service';
 
 @Module({
-  imports: [AuthenticationModule, AuthorizationModule, AuditModule],
+  imports: [AuthenticationModule, AuthorizationModule, AuditModule, NotificationsModule],
   controllers: [SupportController, AdminSupportController],
   providers: [SupportRepository, SupportService],
 })

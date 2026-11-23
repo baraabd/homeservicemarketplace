@@ -5,6 +5,18 @@ import { AppConfigService } from '../../../../config/app-config.service';
 export const ACCESS_COOKIE = 'hsm_at';
 export const REFRESH_COOKIE = 'hsm_rt';
 export const CSRF_COOKIE = 'hsm_csrf';
+
+// Use a distinct prefix for an isolated staging environment when production's
+// parent-domain cookies are also visible there. Never read another namespace
+// as a fallback: it belongs to a different session authority.
+export function authCookieNames(config?: AppConfigService) {
+  const prefix = config?.get('AUTH_COOKIE_PREFIX') ?? 'hsm';
+  if (prefix !== prefix.trim() || !/^[a-z][a-z0-9_]{0,31}$/.test(prefix)) {
+    throw new Error('AUTH_COOKIE_PREFIX must be a lowercase cookie identifier');
+  }
+  return { access: `${prefix}_at`, refresh: `${prefix}_rt`, csrf: `${prefix}_csrf` };
+}
+
 // Must match the actual routed URL after URI versioning. The controller is
 // declared `@Controller({ path: 'auth', version: '1' })` and main.ts enables
 // URI versioning with default '1', so the live endpoint is /v1/auth/refresh.
@@ -66,7 +78,8 @@ export function clearAuthCookies(res: Response, config: AppConfigService): void 
     sameSite: config.get('COOKIE_SAMESITE'),
     ...(config.get('COOKIE_DOMAIN') ? { domain: config.get('COOKIE_DOMAIN') } : {}),
   };
-  res.clearCookie(ACCESS_COOKIE, base);
-  res.clearCookie(REFRESH_COOKIE, { ...base, path: REFRESH_PATH, sameSite: 'strict' });
-  res.clearCookie(CSRF_COOKIE, { ...base, httpOnly: false, sameSite: 'strict' });
+  const names = authCookieNames(config);
+  res.clearCookie(names.access, base);
+  res.clearCookie(names.refresh, { ...base, path: REFRESH_PATH, sameSite: 'strict' });
+  res.clearCookie(names.csrf, { ...base, httpOnly: false, sameSite: 'strict' });
 }

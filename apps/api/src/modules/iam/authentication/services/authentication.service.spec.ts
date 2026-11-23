@@ -10,6 +10,8 @@
 import { UnauthorizedException } from '@nestjs/common';
 import type { Role, User, UserRole } from '@homeservicemarketplace/database';
 
+import { AuthChannelService } from '../../../../infrastructure/auth-channel/auth-channel.service';
+import { OtpDeliveryService } from '../../../../infrastructure/auth-channel/otp-delivery.service';
 import type { AppConfigService } from '../../../../config/app-config.service';
 import { MailPort } from '../../../../infrastructure/mail/mail.port';
 import type { RoleRepository } from '../../../../infrastructure/persistence/iam/role.repository';
@@ -17,6 +19,8 @@ import type { UserRepository } from '../../../../infrastructure/persistence/iam/
 import type { TransactionRunner } from '../../../../infrastructure/prisma/transaction.runner';
 import type { SecurityEventsBus } from '../../../../shared/security-events/security-events.bus';
 import type { AuditService } from '../../audit/audit.service';
+import { CURRENT_LEGAL_DOCUMENTS } from '@homeservicemarketplace/contracts';
+import { LegalAcceptanceService } from '../../legal/legal-acceptance.service';
 import { AuthenticationService } from './authentication.service';
 import type { LoginAttemptService } from './login-attempt.service';
 import type { PasswordService } from './password.service';
@@ -27,6 +31,8 @@ function makeUser(overrides: Partial<User> = {}): User {
   return {
     id: 'u-1',
     email: 'ada@example.com',
+    phoneNumber: null,
+    phoneVerifiedAt: null,
     passwordHash: '$argon2id$fake',
     firstName: 'Ada',
     lastName: 'Lovelace',
@@ -49,11 +55,20 @@ function makeUser(overrides: Partial<User> = {}): User {
 interface FakeTx {
   $queryRaw: jest.Mock;
   user: { update: jest.Mock; updateMany: jest.Mock };
+  userLegalAcceptance: { createMany: jest.Mock };
 }
 
-function makeHarness() {
+// K02 — the exact current policy versions a signup names.
+const legalAcceptance = {
+  termsVersion: CURRENT_LEGAL_DOCUMENTS.TERMS_OF_SERVICE.version,
+  privacyVersion: CURRENT_LEGAL_DOCUMENTS.PRIVACY_NOTICE.version,
+  locale: 'en' as const,
+};
+
+function makeHarness(requireVerification = true) {
   const users = {
     findByEmail: jest.fn(),
+    findByPhoneNumber: jest.fn(),
     findById: jest.fn(),
     create: jest.fn(),
     assignRole: jest.fn(),
@@ -84,7 +99,13 @@ function makeHarness() {
 
   // OTP service double. The per-test expectations override these
   // mockResolvedValue defaults where needed (e.g. REGISTRATION_OTP path).
+  const preparedOtp = {
+    challengeId: 'chal-fake',
+    rawCode: '123456',
+    tokenHash: 'synthetic-argon2-otp-hash',
+  };
   const otp = {
+    prepare: jest.fn().mockResolvedValue(preparedOtp),
     issue: jest.fn().mockResolvedValue({
       challengeId: 'chal-fake',
       rawCode: '123456',
@@ -92,6 +113,9 @@ function makeHarness() {
       expiresInSeconds: 300,
     }),
     verifyForLogin: jest.fn(),
+    verifyForPasswordReset: jest.fn(),
+    verifyForPhoneEnrollment: jest.fn(),
+    verifyForEmailEnrollment: jest.fn(),
     resend: jest.fn(),
   } as unknown as jest.Mocked<import('./otp.service').OtpService>;
 
@@ -115,6 +139,7 @@ function makeHarness() {
       update: jest.fn().mockResolvedValue(undefined),
       updateMany: jest.fn().mockResolvedValue({ count: 1 }),
     },
+    userLegalAcceptance: { createMany: jest.fn().mockResolvedValue({ count: 2 }) },
   };
   const tx = {
     run: jest.fn(async <T>(fn: (t: unknown) => Promise<T>) => fn(fakeTx)),
@@ -130,7 +155,7 @@ function makeHarness() {
   const config: AppConfigService = {
     get: (k: string) => {
       if (k === 'AUTH_ANTI_ENUM_DELAY_MS') return 0;
-      if (k === 'AUTH_REQUIRE_EMAIL_VERIFICATION') return true;
+      if (k === 'AUTH_REQUIRE_EMAIL_VERIFICATION') return requireVerification;
       return undefined;
     },
   } as unknown as AppConfigService;
@@ -155,6 +180,19 @@ function makeHarness() {
     emitProviderStatusChanged: jest.fn(),
   } as unknown as SecurityEventsBus;
 
+  const channels = {
+    getChannel: jest.fn().mockResolvedValue('email'),
+    getPublicConfig: jest.fn(),
+    assertWhatsAppReady: jest.fn(),
+  } as unknown as jest.Mocked<AuthChannelService>;
+  channels.getPublicConfig.mockImplementation(async () => ({
+    otpChannel: await channels.getChannel(),
+    whatsappAvailable: true,
+  }));
+  const delivery = new OtpDeliveryService(mail, channels);
+  jest.spyOn(delivery, 'enqueue');
+  jest.spyOn(delivery, 'dispatch');
+
   const svc = new AuthenticationService(
     users,
     roles,
@@ -168,6 +206,9 @@ function makeHarness() {
     config,
     securityEvents,
     mail,
+    new LegalAcceptanceService(config),
+    channels,
+    delivery,
   );
 
   return {
@@ -177,6 +218,7 @@ function makeHarness() {
     passwords,
     verification,
     otp,
+    preparedOtp,
     sessions,
     attempts,
     tx,
@@ -184,6 +226,8 @@ function makeHarness() {
     config,
     securityEvents,
     mail,
+    channels,
+    delivery,
     fakeTx,
   };
 }
@@ -206,6 +250,7 @@ describe('AuthenticationService', () => {
           password: 'a-reasonable-passphrase',
           firstName: '  Ada  ',
           lastName: 'Lovelace',
+          legalAcceptance,
         },
         ctx,
       );
@@ -219,7 +264,13 @@ describe('AuthenticationService', () => {
       // Registration pivoted from a link token (EMAIL_VERIFICATION) to a
       // short-form OTP challenge (REGISTRATION_OTP) — see otp.service.ts.
       // No session is issued here; the session is issued only on verify-otp.
-      expect(h.otp.issue).toHaveBeenCalledWith('new-u', 'REGISTRATION_OTP', expect.anything());
+      expect(h.otp.issue).toHaveBeenCalledWith(
+        'new-u',
+        'REGISTRATION_OTP',
+        expect.anything(),
+        { channel: 'email', destination: 'ada@example.com' },
+        h.preparedOtp,
+      );
       expect(h.verification.issue).not.toHaveBeenCalled();
       expect(h.mail.send).toHaveBeenCalled();
       expect(h.audit.record).toHaveBeenCalledWith(
@@ -227,6 +278,124 @@ describe('AuthenticationService', () => {
         expect.anything(),
       );
     });
+
+    it('K02: records the exact accepted Terms and Privacy versions in the account transaction', async () => {
+      const h = makeHarness();
+      h.users.findByEmail.mockResolvedValueOnce(null);
+      h.users.create.mockResolvedValueOnce(makeUser({ id: 'new-u' }));
+      await h.svc.register(
+        {
+          email: 'n@example.com',
+          password: 'x'.repeat(12),
+          firstName: 'A',
+          lastName: 'B',
+          legalAcceptance,
+        },
+        ctx,
+      );
+      const rows = h.fakeTx.userLegalAcceptance.createMany.mock.calls[0]![0].data;
+      expect(rows).toEqual([
+        expect.objectContaining({
+          userId: 'new-u',
+          documentKind: 'TERMS_OF_SERVICE',
+          version: legalAcceptance.termsVersion,
+          source: 'SIGNUP',
+        }),
+        expect.objectContaining({
+          userId: 'new-u',
+          documentKind: 'PRIVACY_NOTICE',
+          version: legalAcceptance.privacyVersion,
+          source: 'SIGNUP',
+        }),
+      ]);
+      expect(rows[0].acceptedAt).toBeInstanceOf(Date);
+    });
+
+    it('refuses signup uniformly when the default role is missing', async () => {
+      const h = makeHarness();
+      h.roles.findByName.mockResolvedValueOnce(null);
+      await expect(
+        h.svc.register(
+          {
+            email: 'n@example.com',
+            password: 'x'.repeat(12),
+            firstName: 'A',
+            lastName: 'B',
+            legalAcceptance,
+          },
+          ctx,
+        ),
+      ).rejects.toMatchObject({ code: 'DEPENDENCY_UNAVAILABLE', status: 503 });
+      expect(h.users.findByEmail).not.toHaveBeenCalled();
+      expect(h.users.create).not.toHaveBeenCalled();
+      expect(h.fakeTx.userLegalAcceptance.createMany).not.toHaveBeenCalled();
+      expect(h.mail.send).not.toHaveBeenCalled();
+    });
+
+    it('K02: a stale policy version is refused (409) BEFORE any account lookup', async () => {
+      const h = makeHarness();
+      await expect(
+        h.svc.register(
+          {
+            email: 'n@example.com',
+            password: 'x'.repeat(12),
+            firstName: 'A',
+            lastName: 'B',
+            legalAcceptance: { ...legalAcceptance, termsVersion: 'ksa-terms-old' },
+          },
+          ctx,
+        ),
+      ).rejects.toMatchObject({
+        status: 409,
+        details: expect.objectContaining({ reason: 'LEGAL_VERSION_STALE' }),
+      });
+      expect(h.users.findByEmail).not.toHaveBeenCalled();
+      expect(h.users.create).not.toHaveBeenCalled();
+    });
+
+    it.each([undefined, true, false])(
+      'production refuses draft policies with rehearsal flag %s',
+      async (flag) => {
+        const h = makeHarness();
+        const prodConfig = {
+          get: (key: string) => {
+            if (key === 'NODE_ENV') return 'production';
+            if (key === 'LEGAL_DRAFT_ACCEPTANCE_ALLOWED') return flag;
+            return key === 'AUTH_ANTI_ENUM_DELAY_MS' ? 0 : undefined;
+          },
+        } as unknown as AppConfigService;
+        const prodSvc = new AuthenticationService(
+          h.users,
+          h.roles,
+          h.passwords,
+          h.verification,
+          h.otp,
+          h.sessions,
+          h.attempts,
+          h.tx,
+          h.audit,
+          prodConfig,
+          h.securityEvents,
+          h.mail,
+          new LegalAcceptanceService(prodConfig),
+          h.channels,
+          h.delivery,
+        );
+        await expect(
+          prodSvc.register(
+            {
+              email: 'n@example.com',
+              password: 'x'.repeat(12),
+              firstName: 'A',
+              lastName: 'B',
+              legalAcceptance,
+            },
+            ctx,
+          ),
+        ).rejects.toMatchObject({ status: 409, details: { reason: 'LEGAL_ACCEPTANCE_CLOSED' } });
+        expect(h.users.findByEmail).not.toHaveBeenCalled();
+      },
+    );
 
     it('anti-enumeration timing floor: register pads the response so duplicate vs new takes >= AUTH_ANTI_ENUM_DELAY_MS', async () => {
       // Build a service with the floor enabled (the suite-level config sets 0).
@@ -247,11 +416,20 @@ describe('AuthenticationService', () => {
         flooredConfig,
         local.securityEvents,
         local.mail,
+        new LegalAcceptanceService(flooredConfig),
+        local.channels,
+        local.delivery,
       );
       local.users.findByEmail.mockResolvedValueOnce(makeUser()); // duplicate path (fast)
       const t0 = Date.now();
       await flooredSvc.register(
-        { email: 'ada@example.com', password: 'x'.repeat(12), firstName: 'A', lastName: 'B' },
+        {
+          email: 'ada@example.com',
+          password: 'x'.repeat(12),
+          firstName: 'A',
+          lastName: 'B',
+          legalAcceptance,
+        },
         ctx,
       );
       const elapsed = Date.now() - t0;
@@ -263,7 +441,13 @@ describe('AuthenticationService', () => {
       h.users.findByEmail.mockResolvedValueOnce(makeUser({ id: 'existing-u' }));
 
       await h.svc.register(
-        { email: 'ada@example.com', password: 'x'.repeat(12), firstName: 'A', lastName: 'B' },
+        {
+          email: 'ada@example.com',
+          password: 'x'.repeat(12),
+          firstName: 'A',
+          lastName: 'B',
+          legalAcceptance,
+        },
         ctx,
       );
 
@@ -391,7 +575,10 @@ describe('AuthenticationService', () => {
       const result = await h.svc.login({ email: 'ada@example.com', password: 'pw' }, ctx);
 
       expect(h.attempts.recordSuccess).toHaveBeenCalled();
-      expect(h.otp.issue).toHaveBeenCalledWith('u-1', 'LOGIN_OTP', expect.anything());
+      expect(h.otp.issue).toHaveBeenCalledWith('u-1', 'LOGIN_OTP', expect.anything(), {
+        channel: 'email',
+        destination: 'ada@example.com',
+      });
       expect(result.challengeId).toBe('chal-1');
       expect(result.codeLength).toBeGreaterThanOrEqual(4);
       // Session creation is NOT called here — that happens in verifyOtp.
@@ -490,7 +677,7 @@ describe('AuthenticationService', () => {
 
     it('issues a PASSWORD_RESET token and sends mail for an existing user', async () => {
       const h = makeHarness();
-      h.users.findByEmail.mockResolvedValueOnce(makeUser());
+      h.users.findByEmail.mockResolvedValue(makeUser());
       await h.svc.forgotPassword('ada@example.com', ctx);
       expect(h.verification.issue).toHaveBeenCalledWith('u-1', 'PASSWORD_RESET', expect.anything());
       expect(h.mail.send).toHaveBeenCalled();
@@ -508,7 +695,7 @@ describe('AuthenticationService', () => {
     // so the emailed link pointed at a token that did not exist (=> 400).
     it('does NOT send the reset email if the reset transaction fails (no phantom email)', async () => {
       const h = makeHarness();
-      h.users.findByEmail.mockResolvedValueOnce(makeUser());
+      h.users.findByEmail.mockResolvedValue(makeUser());
       // Simulate the in-transaction audit/commit failure.
       (h.audit.record as jest.Mock).mockRejectedValueOnce(new Error('P2028 tx expired'));
 
@@ -520,7 +707,7 @@ describe('AuthenticationService', () => {
 
     it('sends the reset email only AFTER the token transaction has committed', async () => {
       const h = makeHarness();
-      h.users.findByEmail.mockResolvedValueOnce(makeUser());
+      h.users.findByEmail.mockResolvedValue(makeUser());
       const order: string[] = [];
       // Record when the transaction actually commits (fn resolved).
       (h.tx.run as jest.Mock).mockImplementationOnce(
@@ -541,7 +728,7 @@ describe('AuthenticationService', () => {
 
     it('anti-enumeration: an internal failure still resolves (same public 202 as unknown email)', async () => {
       const h = makeHarness();
-      h.users.findByEmail.mockResolvedValueOnce(makeUser());
+      h.users.findByEmail.mockResolvedValue(makeUser());
       (h.audit.record as jest.Mock).mockRejectedValueOnce(new Error('db down'));
       // Must NOT throw — a 500 for a known email vs 202 for an unknown one is
       // an account-existence oracle.
@@ -550,7 +737,7 @@ describe('AuthenticationService', () => {
 
     it('anti-enumeration: a delivery failure after commit still resolves (no oracle)', async () => {
       const h = makeHarness();
-      h.users.findByEmail.mockResolvedValueOnce(makeUser());
+      h.users.findByEmail.mockResolvedValue(makeUser());
       (h.mail.send as jest.Mock).mockRejectedValueOnce(new Error('smtp down'));
       await expect(h.svc.forgotPassword('ada@example.com', ctx)).resolves.toBeUndefined();
     });
@@ -852,6 +1039,7 @@ describe('R04 concurrent identity and error boundaries', () => {
       password: 'test-password-long',
       firstName: 'A',
       lastName: 'B',
+      legalAcceptance,
     };
     const h = makeHarness();
     h.users.findByEmail.mockResolvedValue(null);
@@ -901,4 +1089,1031 @@ it('R04 commits an OTP rejection verdict before returning its public error', asy
   });
   expect(committed).toBe(true);
   expect(h.sessions.createForLogin).not.toHaveBeenCalled();
+});
+
+describe('WhatsApp authentication', () => {
+  const phoneNumber = '+966501234567';
+  const registration = {
+    phoneNumber,
+    password: 'a-reasonable-passphrase',
+    firstName: 'Ada',
+    lastName: 'Lovelace',
+    legalAcceptance,
+  };
+  const phoneUser = (overrides: Partial<User> = {}) =>
+    makeUser({
+      email: null,
+      emailVerifiedAt: null,
+      phoneNumber,
+      phoneVerifiedAt: new Date(),
+      ...overrides,
+    });
+
+  it('registers a phone-only identity and queues the code for that exact phone number', async () => {
+    const h = makeHarness();
+    h.channels.getChannel.mockResolvedValue('whatsapp');
+    h.users.findByPhoneNumber.mockResolvedValue(null);
+    h.users.create.mockResolvedValue(
+      phoneUser({ status: 'PENDING_VERIFICATION', phoneVerifiedAt: null }),
+    );
+    jest.spyOn(h.delivery, 'dispatch').mockResolvedValue(undefined);
+
+    const result = await h.svc.register(registration, ctx);
+
+    expect(h.users.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        email: null,
+        phoneNumber,
+      }),
+      h.fakeTx,
+    );
+    expect(h.users.findByEmail).not.toHaveBeenCalled();
+    expect(h.otp.issue).toHaveBeenCalledWith(
+      'u-1',
+      'REGISTRATION_OTP',
+      h.fakeTx,
+      { channel: 'whatsapp', destination: phoneNumber },
+      h.preparedOtp,
+    );
+    expect(h.delivery.enqueue).toHaveBeenCalledWith(
+      expect.objectContaining({
+        channel: 'whatsapp',
+        destination: phoneNumber,
+        purpose: 'REGISTRATION_OTP',
+      }),
+      h.fakeTx,
+    );
+    expect(result).toMatchObject({ channel: 'whatsapp', codeLength: 6 });
+    expect(result.maskedDestination).not.toBe(phoneNumber);
+    expect(h.sessions.createForLogin).not.toHaveBeenCalled();
+  });
+
+  it('returns the same challenge shape for a duplicate phone without sending another code', async () => {
+    const h = makeHarness();
+    h.channels.getChannel.mockResolvedValue('whatsapp');
+    h.users.findByPhoneNumber.mockResolvedValue(phoneUser());
+
+    await expect(h.svc.register(registration, ctx)).resolves.toMatchObject({
+      channel: 'whatsapp',
+      codeLength: 6,
+      expiresInSeconds: 300,
+    });
+    expect(h.users.create).not.toHaveBeenCalled();
+    expect(h.delivery.enqueue).not.toHaveBeenCalled();
+    expect(h.delivery.dispatch).not.toHaveBeenCalled();
+  });
+
+  it('treats a racing phone uniqueness collision as a neutral duplicate', async () => {
+    const h = makeHarness();
+    h.channels.getChannel.mockResolvedValue('whatsapp');
+    h.users.findByPhoneNumber.mockResolvedValue(null);
+    h.users.create.mockRejectedValue({ code: 'P2002', meta: { target: ['phoneNumber'] } });
+    await expect(h.svc.register(registration, ctx)).resolves.toMatchObject({
+      channel: 'whatsapp',
+      codeLength: 6,
+    });
+    expect(h.delivery.dispatch).not.toHaveBeenCalled();
+  });
+
+  it('rejects a stale registration form before lookup when the administrator changed channel', async () => {
+    const h = makeHarness();
+    await expect(h.svc.register(registration, ctx)).rejects.toMatchObject({
+      response: { code: 'AUTH_CHANNEL_CHANGED' },
+    });
+    expect(h.users.findByPhoneNumber).not.toHaveBeenCalled();
+    expect(h.users.create).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { password: 'a-reasonable-passphrase' },
+    { email: 'ada@example.com', phoneNumber, password: 'a-reasonable-passphrase' },
+    { phoneNumber: '0501234567', password: 'a-reasonable-passphrase' },
+  ])('refuses an ambiguous or malformed login identity: %p', async (input) => {
+    const h = makeHarness();
+    await expect(h.svc.login(input, ctx)).rejects.toThrow();
+    expect(h.users.findByEmail).not.toHaveBeenCalled();
+    expect(h.users.findByPhoneNumber).not.toHaveBeenCalled();
+  });
+
+  it('returns a neutral envelope for an unverified phone even when email is verified', async () => {
+    const h = makeHarness();
+    h.channels.getChannel.mockResolvedValue('whatsapp');
+    h.users.findByPhoneNumber.mockResolvedValue(makeUser({ phoneNumber, phoneVerifiedAt: null }));
+    await expect(h.svc.login({ phoneNumber }, ctx)).resolves.toMatchObject({
+      challengeId: expect.stringMatching(/^wa_login_[A-Za-z0-9_-]{32}$/u),
+      channel: 'whatsapp',
+      codeLength: 6,
+      expiresInSeconds: 300,
+    });
+    expect(h.otp.issue).not.toHaveBeenCalled();
+    expect(h.passwords.verify).not.toHaveBeenCalled();
+    expect(h.delivery.enqueue).not.toHaveBeenCalled();
+  });
+
+  it('logs in a verified phone-only account without consulting email or issuing a session early', async () => {
+    const h = makeHarness();
+    h.channels.getChannel.mockResolvedValue('whatsapp');
+    h.users.findByPhoneNumber.mockResolvedValue(phoneUser());
+    jest.spyOn(h.delivery, 'dispatch').mockResolvedValue(undefined);
+
+    await expect(h.svc.login({ phoneNumber }, ctx)).resolves.toMatchObject({ channel: 'whatsapp' });
+    expect(h.otp.issue).toHaveBeenCalledWith(
+      'u-1',
+      'LOGIN_OTP',
+      h.fakeTx,
+      { channel: 'whatsapp', destination: phoneNumber },
+      h.preparedOtp,
+    );
+    expect(h.otp.prepare).toHaveBeenCalledWith('LOGIN_OTP', {
+      channel: 'whatsapp',
+      destination: phoneNumber,
+    });
+    expect(h.passwords.verify).not.toHaveBeenCalled();
+    expect(h.attempts.recordSuccess).not.toHaveBeenCalled();
+    expect(h.users.findByEmail).not.toHaveBeenCalled();
+    expect(h.sessions.createForLogin).not.toHaveBeenCalled();
+  });
+
+  it('rejects email login before lookup after the administrator selects WhatsApp', async () => {
+    const h = makeHarness();
+    h.channels.getChannel.mockResolvedValue('whatsapp');
+    h.users.findByEmail.mockResolvedValue(makeUser());
+    h.passwords.verify.mockResolvedValue(true);
+
+    await expect(
+      h.svc.login({ email: 'ada@example.com', password: registration.password }, ctx),
+    ).rejects.toMatchObject({ response: { code: 'AUTH_CHANNEL_CHANGED' } });
+    expect(h.users.findByEmail).not.toHaveBeenCalled();
+    expect(h.passwords.verify).not.toHaveBeenCalled();
+    expect(h.delivery.enqueue).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { selected: 'whatsapp' as const, submitted: 'email' },
+    { selected: 'email' as const, submitted: 'phone' },
+  ])(
+    'refuses an alternate method even when both account contacts are verified: %p',
+    async ({ selected, submitted }) => {
+      const h = makeHarness();
+      h.channels.getChannel.mockResolvedValue(selected);
+      const user = makeUser({ phoneNumber, phoneVerifiedAt: new Date() });
+      h.users.findByEmail.mockResolvedValue(user);
+      h.users.findByPhoneNumber.mockResolvedValue(user);
+      h.passwords.verify.mockResolvedValue(true);
+      jest.spyOn(h.delivery, 'dispatch').mockResolvedValue(undefined);
+      const input =
+        submitted === 'email'
+          ? { email: 'ada@example.com', password: registration.password }
+          : { phoneNumber };
+      await expect(h.svc.login(input, ctx)).rejects.toMatchObject({
+        response: { code: 'AUTH_CHANNEL_CHANGED' },
+      });
+      expect(h.users.findByEmail).not.toHaveBeenCalled();
+      expect(h.users.findByPhoneNumber).not.toHaveBeenCalled();
+      expect(h.passwords.verify).not.toHaveBeenCalled();
+      expect(h.delivery.enqueue).not.toHaveBeenCalled();
+    },
+  );
+
+  it('verifies the phone without falsely marking an email verified', async () => {
+    const h = makeHarness();
+    h.otp.verifyForLogin.mockResolvedValue({
+      consumed: {
+        userId: 'u-1',
+        purpose: 'REGISTRATION_OTP',
+        channel: 'whatsapp',
+        destination: phoneNumber,
+      },
+    });
+    h.users.findById
+      .mockResolvedValueOnce(phoneUser({ status: 'PENDING_VERIFICATION', phoneVerifiedAt: null }))
+      .mockResolvedValueOnce(phoneUser());
+    h.sessions.createForLogin.mockResolvedValue({ session: { id: 'session-phone' } } as never);
+
+    await h.svc.verifyOtp('bound-challenge', '123456', ctx);
+
+    const data = h.fakeTx.user.updateMany.mock.calls[0]![0].data;
+    expect(data.phoneVerifiedAt).toBeInstanceOf(Date);
+    expect(data).not.toHaveProperty('emailVerifiedAt');
+    expect(h.audit.record).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'PHONE_VERIFIED',
+        metadata: expect.objectContaining({ channel: 'whatsapp' }),
+      }),
+      h.fakeTx,
+    );
+    expect(h.sessions.createForLogin).toHaveBeenCalledTimes(1);
+  });
+
+  it('refuses a code when its bound contact no longer belongs to the account', async () => {
+    const h = makeHarness();
+    h.otp.verifyForLogin.mockResolvedValue({
+      consumed: {
+        userId: 'u-1',
+        purpose: 'REGISTRATION_OTP',
+        channel: 'whatsapp',
+        destination: phoneNumber,
+      },
+    });
+    h.users.findById.mockResolvedValue(phoneUser({ phoneNumber: '+966509876543' }));
+    await expect(h.svc.verifyOtp('bound-challenge', '123456', ctx)).rejects.toMatchObject({
+      response: { code: 'AUTH_OTP_INVALID' },
+    });
+    expect(h.fakeTx.user.updateMany).not.toHaveBeenCalled();
+    expect(h.sessions.createForLogin).not.toHaveBeenCalled();
+  });
+
+  it('resends to the challenge channel after an administrator switches the platform default', async () => {
+    const h = makeHarness();
+    h.channels.getChannel.mockResolvedValue('email');
+    h.users.findById.mockResolvedValue(phoneUser());
+    h.otp.resend.mockResolvedValue({
+      userId: 'u-1',
+      purpose: 'LOGIN_OTP',
+      rawCode: '123456',
+      expiresInSeconds: 300,
+      channel: 'whatsapp',
+      destination: phoneNumber,
+    });
+    jest.spyOn(h.delivery, 'dispatch').mockResolvedValue(undefined);
+
+    await h.svc.resendOtp('bound-challenge', ctx);
+
+    expect(h.delivery.enqueue).toHaveBeenCalledWith(
+      expect.objectContaining({
+        channel: 'whatsapp',
+        destination: phoneNumber,
+      }),
+      h.fakeTx,
+    );
+    expect(h.channels.getChannel).not.toHaveBeenCalled();
+    expect(h.audit.record).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'OTP_RESENT',
+        metadata: expect.objectContaining({ channel: 'whatsapp' }),
+      }),
+      h.fakeTx,
+    );
+  });
+});
+
+describe('WhatsApp recovery and contact enrollment', () => {
+  const phoneNumber = '+966501234567';
+  const phoneUser = () =>
+    makeUser({ email: null, emailVerifiedAt: null, phoneNumber, phoneVerifiedAt: new Date() });
+
+  it('does not issue recovery for unknown or unverified phone numbers', async () => {
+    const h = makeHarness();
+    h.users.findByPhoneNumber.mockResolvedValue(null);
+    const unknown = await h.svc.forgotPasswordOtp(phoneNumber, ctx);
+    h.users.findByPhoneNumber.mockResolvedValue(makeUser({ phoneNumber, phoneVerifiedAt: null }));
+    const unverified = await h.svc.forgotPasswordOtp(phoneNumber, ctx);
+    expect(unknown).toMatchObject({ channel: 'whatsapp', codeLength: 6, expiresInSeconds: 300 });
+    expect(unverified).toMatchObject({ channel: 'whatsapp', codeLength: 6, expiresInSeconds: 300 });
+    expect(h.otp.issue).not.toHaveBeenCalled();
+    expect(h.delivery.enqueue).not.toHaveBeenCalled();
+  });
+
+  it('does not recover a different account if phone ownership changed while waiting for its lock', async () => {
+    const h = makeHarness();
+    h.users.findByPhoneNumber
+      .mockResolvedValueOnce(phoneUser())
+      .mockResolvedValueOnce({ ...phoneUser(), id: 'u-new-owner' });
+    await expect(h.svc.forgotPasswordOtp(phoneNumber, ctx)).resolves.toMatchObject({
+      channel: 'whatsapp',
+    });
+    expect(h.otp.issue).not.toHaveBeenCalled();
+    expect(h.delivery.enqueue).not.toHaveBeenCalled();
+  });
+
+  it('sends recovery only after its code and audit have committed', async () => {
+    const h = makeHarness();
+    h.users.findByPhoneNumber.mockResolvedValue(phoneUser());
+    let committed = false;
+    jest.spyOn(h.tx, 'run').mockImplementation(async (fn) => {
+      const result = await fn(h.fakeTx as never);
+      committed = true;
+      return result;
+    });
+    let committedAtDelivery = false;
+    jest.spyOn(h.delivery, 'dispatch').mockImplementation(async () => {
+      committedAtDelivery = committed;
+    });
+    await expect(h.svc.forgotPasswordOtp(phoneNumber, ctx)).resolves.toMatchObject({
+      channel: 'whatsapp',
+    });
+    expect(h.otp.issue).toHaveBeenCalledWith(
+      'u-1',
+      'PASSWORD_RESET_OTP',
+      h.fakeTx,
+      { channel: 'whatsapp', destination: phoneNumber },
+      h.preparedOtp,
+    );
+    expect(committedAtDelivery).toBe(true);
+    expect(h.sessions.createForLogin).not.toHaveBeenCalled();
+  });
+
+  it('keeps provider failure private on recovery and returns a usable challenge', async () => {
+    const h = makeHarness();
+    h.users.findByPhoneNumber.mockResolvedValue(phoneUser());
+    jest.spyOn(h.delivery, 'dispatch').mockRejectedValue(new Error('Synthetic provider outage'));
+    await expect(h.svc.forgotPasswordOtp(phoneNumber, ctx)).resolves.toMatchObject({
+      challengeId: 'chal-fake',
+      channel: 'whatsapp',
+    });
+  });
+
+  it('resets a phone-only account, clears lockout and revokes sessions and other challenges atomically', async () => {
+    const h = makeHarness();
+    h.otp.verifyForPasswordReset.mockResolvedValue({
+      consumed: {
+        userId: 'u-1',
+        purpose: 'PASSWORD_RESET_OTP',
+        channel: 'whatsapp',
+        destination: phoneNumber,
+      },
+    });
+    h.users.findById.mockResolvedValue(phoneUser());
+
+    await h.svc.resetPasswordOtp('recovery-challenge', '123456', 'replacement-password', ctx);
+
+    expect(h.fakeTx.user.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'u-1' },
+        data: expect.objectContaining({
+          passwordHash: '$argon2id$hashed',
+          failedLoginCount: 0,
+          lockedUntil: null,
+        }),
+      }),
+    );
+    expect(h.sessions.revokeAllForUser).toHaveBeenCalledWith('u-1', h.fakeTx);
+    expect(h.verification.revokeOutstandingForUser).toHaveBeenCalledWith('u-1', h.fakeTx);
+    expect(h.securityEvents.emitAllSessionsRevoked).toHaveBeenCalledWith({
+      userId: 'u-1',
+      reason: 'password-reset',
+    });
+    expect(h.sessions.createForLogin).not.toHaveBeenCalled();
+  });
+
+  it('commits a wrong recovery code attempt before surfacing its error', async () => {
+    const h = makeHarness();
+    const { BadRequestException } = await import('@nestjs/common');
+    h.otp.verifyForPasswordReset.mockResolvedValue({
+      rejection: new BadRequestException({ code: 'AUTH_OTP_INVALID' }),
+    });
+    let committed = false;
+    jest.spyOn(h.tx, 'run').mockImplementation(async (fn) => {
+      const result = await fn(h.fakeTx as never);
+      committed = true;
+      return result;
+    });
+    await expect(
+      h.svc.resetPasswordOtp('challenge', '123456', 'replacement-password', ctx),
+    ).rejects.toMatchObject({ response: { code: 'AUTH_OTP_INVALID' } });
+    expect(committed).toBe(true);
+    expect(h.fakeTx.user.update).not.toHaveBeenCalled();
+    expect(h.sessions.revokeAllForUser).not.toHaveBeenCalled();
+  });
+
+  it('does not publish revocation when the recovery transaction fails', async () => {
+    const h = makeHarness();
+    h.otp.verifyForPasswordReset.mockResolvedValue({
+      consumed: {
+        userId: 'u-1',
+        purpose: 'PASSWORD_RESET_OTP',
+        channel: 'whatsapp',
+        destination: phoneNumber,
+      },
+    });
+    h.users.findById.mockResolvedValue(phoneUser());
+    h.sessions.revokeAllForUser.mockRejectedValue(new Error('Synthetic transaction failure'));
+    await expect(
+      h.svc.resetPasswordOtp('challenge', '123456', 'replacement-password', ctx),
+    ).rejects.toThrow('Synthetic transaction failure');
+    expect(h.securityEvents.emitAllSessionsRevoked).not.toHaveBeenCalled();
+    expect(h.sessions.createForLogin).not.toHaveBeenCalled();
+  });
+
+  it('requires the current password before requesting a new phone proof', async () => {
+    const h = makeHarness();
+    h.users.findById.mockResolvedValue(makeUser());
+    h.passwords.verify.mockResolvedValue(false);
+    await expect(
+      h.svc.requestPhoneEnrollment('u-1', phoneNumber, 'wrong-password', ctx),
+    ).rejects.toMatchObject({ response: { code: 'AUTH_INVALID_CREDENTIALS' } });
+    expect(h.attempts.recordFailure).toHaveBeenCalledWith('u-1', h.fakeTx);
+    expect(h.delivery.enqueue).not.toHaveBeenCalled();
+    expect(h.fakeTx.user.update).not.toHaveBeenCalled();
+  });
+
+  it('does not save the phone number until the enrollment challenge has been verified', async () => {
+    const h = makeHarness();
+    h.users.findById.mockResolvedValue(makeUser());
+    h.users.findByPhoneNumber.mockResolvedValue(null);
+    h.passwords.verify.mockResolvedValue(true);
+    jest.spyOn(h.delivery, 'dispatch').mockResolvedValue(undefined);
+    await h.svc.requestPhoneEnrollment('u-1', phoneNumber, 'current-password', ctx);
+    expect(h.otp.issue).toHaveBeenCalledWith('u-1', 'PHONE_VERIFICATION_OTP', h.fakeTx, {
+      channel: 'whatsapp',
+      destination: phoneNumber,
+    });
+    expect(h.fakeTx.user.update).not.toHaveBeenCalled();
+  });
+
+  it('refuses to attach another account’s valid phone challenge', async () => {
+    const h = makeHarness();
+    h.otp.verifyForPhoneEnrollment.mockResolvedValue({
+      consumed: {
+        userId: 'u-other',
+        purpose: 'PHONE_VERIFICATION_OTP',
+        channel: 'whatsapp',
+        destination: phoneNumber,
+      },
+    });
+    await expect(
+      h.svc.verifyPhoneEnrollment('u-1', 'challenge', '123456', ctx),
+    ).rejects.toMatchObject({ response: { code: 'AUTH_OTP_INVALID' } });
+    expect(h.fakeTx.user.update).not.toHaveBeenCalled();
+  });
+
+  it('stores a verified phone and invalidates old authentication challenges in the same transaction', async () => {
+    const h = makeHarness();
+    h.otp.verifyForPhoneEnrollment.mockResolvedValue({
+      consumed: {
+        userId: 'u-1',
+        purpose: 'PHONE_VERIFICATION_OTP',
+        channel: 'whatsapp',
+        destination: phoneNumber,
+      },
+    });
+    h.users.findById.mockResolvedValue(makeUser());
+    await h.svc.verifyPhoneEnrollment('u-1', 'challenge', '123456', ctx);
+    expect(h.fakeTx.user.update).toHaveBeenCalledWith({
+      where: { id: 'u-1' },
+      data: {
+        phoneNumber,
+        phoneVerifiedAt: expect.any(Date),
+      },
+    });
+    expect(h.verification.revokeOutstandingForUser).toHaveBeenCalledWith('u-1', h.fakeTx);
+    expect(h.sessions.createForLogin).not.toHaveBeenCalled();
+  });
+});
+
+describe('unfinished registration recovery', () => {
+  it('does not turn an unfinished phone registration into a passwordless login', async () => {
+    const h = makeHarness();
+    h.channels.getChannel.mockResolvedValue('whatsapp');
+    const phoneNumber = '+966501234567';
+    h.users.findByPhoneNumber.mockResolvedValue(
+      makeUser({
+        email: null,
+        emailVerifiedAt: null,
+        phoneNumber,
+        phoneVerifiedAt: null,
+        status: 'PENDING_VERIFICATION',
+      }),
+    );
+    h.passwords.verify.mockResolvedValue(true);
+    jest.spyOn(h.delivery, 'dispatch').mockResolvedValue(undefined);
+
+    await expect(
+      h.svc.login({ phoneNumber, password: 'current-password' }, ctx),
+    ).resolves.toMatchObject({ channel: 'whatsapp' });
+    expect(h.otp.issue).not.toHaveBeenCalled();
+    expect(h.passwords.verify).not.toHaveBeenCalled();
+    expect(h.delivery.enqueue).not.toHaveBeenCalled();
+    expect(h.fakeTx.user.update).not.toHaveBeenCalled();
+    expect(h.fakeTx.user.updateMany).not.toHaveBeenCalled();
+    expect(h.sessions.createForLogin).not.toHaveBeenCalled();
+  });
+
+  it('does not send a new registration challenge for a deactivated pending account', async () => {
+    const h = makeHarness();
+    h.channels.getChannel.mockResolvedValue('whatsapp');
+    h.users.findByPhoneNumber.mockResolvedValue(
+      makeUser({
+        email: null,
+        emailVerifiedAt: null,
+        phoneNumber: '+966501234567',
+        phoneVerifiedAt: null,
+        status: 'PENDING_VERIFICATION',
+        isActive: false,
+      }),
+    );
+    h.passwords.verify.mockResolvedValue(true);
+    await expect(
+      h.svc.login({ phoneNumber: '+966501234567', password: 'current-password' }, ctx),
+    ).resolves.toMatchObject({ channel: 'whatsapp', codeLength: 6, expiresInSeconds: 300 });
+    expect(h.otp.issue).not.toHaveBeenCalled();
+    expect(h.delivery.enqueue).not.toHaveBeenCalled();
+  });
+});
+
+describe('passwordless WhatsApp login boundaries', () => {
+  const phoneNumber = '+966501234567';
+  const challengeId = `wa_login_${'a'.repeat(32)}`;
+  const phoneUser = (overrides: Partial<User> = {}) =>
+    makeUser({ phoneNumber, phoneVerifiedAt: new Date(), ...overrides });
+
+  function phoneHarness() {
+    const h = makeHarness();
+    h.channels.getChannel.mockResolvedValue('whatsapp');
+    h.users.findByPhoneNumber.mockResolvedValue(phoneUser());
+    h.preparedOtp.challengeId = challengeId;
+    h.otp.issue.mockResolvedValue({
+      ...h.preparedOtp,
+      expiresAt: new Date(Date.now() + 300_000),
+      expiresInSeconds: 300,
+    });
+    jest.spyOn(h.delivery, 'dispatch').mockResolvedValue(undefined);
+    return h;
+  }
+
+  it.each([
+    ['unknown', null],
+    ['unverified', { phoneVerifiedAt: null }],
+    ['deleted', { deletedAt: new Date() }],
+    ['inactive', { isActive: false }],
+    ['suspended', { status: 'SUSPENDED' }],
+    ['locked status', { status: 'LOCKED' }],
+    ['pending signup', { status: 'PENDING_VERIFICATION' }],
+  ] as const)('returns the same opaque phone challenge for %s accounts', async (_state, patch) => {
+    const h = phoneHarness();
+    h.users.findByPhoneNumber.mockResolvedValue(patch === null ? null : phoneUser(patch));
+
+    const result = await h.svc.login({ phoneNumber }, ctx);
+
+    expect(result).toEqual({
+      challengeId: expect.stringMatching(/^wa_login_[A-Za-z0-9_-]{32}$/u),
+      channel: 'whatsapp',
+      maskedDestination: '+96••••567',
+      codeLength: 6,
+      expiresInSeconds: 300,
+    });
+    expect(h.otp.prepare).toHaveBeenCalledTimes(1);
+    expect(h.otp.prepare.mock.invocationCallOrder[0]).toBeLessThan(
+      h.users.findByPhoneNumber.mock.invocationCallOrder[0]!,
+    );
+    expect(h.passwords.verify).not.toHaveBeenCalled();
+    expect(h.otp.issue).not.toHaveBeenCalled();
+    expect(h.delivery.enqueue).not.toHaveBeenCalled();
+    expect(h.attempts.recordSuccess).not.toHaveBeenCalled();
+    expect(h.attempts.recordFailure).not.toHaveBeenCalled();
+    expect(h.sessions.createForLogin).not.toHaveBeenCalled();
+    expect(h.users.create).not.toHaveBeenCalled();
+  });
+
+  it('keeps a temporary account lock and does not let a phone submission clear it', async () => {
+    const h = phoneHarness();
+    h.attempts.isLocked.mockReturnValue(true);
+    await expect(h.svc.login({ phoneNumber }, ctx)).resolves.toMatchObject({
+      channel: 'whatsapp',
+      codeLength: 6,
+    });
+    expect(h.otp.issue).not.toHaveBeenCalled();
+    expect(h.attempts.recordSuccess).not.toHaveBeenCalled();
+  });
+
+  it('does not issue against a new owner if phone ownership changes while acquiring its lock', async () => {
+    const h = phoneHarness();
+    h.users.findByPhoneNumber
+      .mockResolvedValueOnce(phoneUser())
+      .mockResolvedValueOnce(phoneUser({ id: 'u-other' }));
+    await expect(h.svc.login({ phoneNumber }, ctx)).resolves.toMatchObject({
+      channel: 'whatsapp',
+      codeLength: 6,
+    });
+    expect(h.otp.issue).not.toHaveBeenCalled();
+    expect(h.fakeTx.$queryRaw).toHaveBeenCalledTimes(1);
+  });
+
+  it('rechecks the selected channel inside the transaction before looking up the phone', async () => {
+    const h = phoneHarness();
+    h.channels.getChannel.mockResolvedValueOnce('whatsapp').mockResolvedValueOnce('email');
+    await expect(h.svc.login({ phoneNumber }, ctx)).rejects.toMatchObject({
+      response: { code: 'AUTH_CHANNEL_CHANGED' },
+    });
+    expect(h.users.findByPhoneNumber).not.toHaveBeenCalled();
+    expect(h.otp.issue).not.toHaveBeenCalled();
+  });
+
+  it('rolls a suppressed issuance out of the transaction and returns a neutral envelope', async () => {
+    const h = phoneHarness();
+    let committed = false;
+    jest.spyOn(h.tx, 'run').mockImplementation(async (fn) => {
+      const result = await fn(h.fakeTx as never);
+      committed = true;
+      return result;
+    });
+    jest.spyOn(h.delivery, 'enqueue').mockResolvedValue({ deliveryId: null, intent: null });
+
+    const response = await h.svc.login({ phoneNumber }, ctx);
+
+    expect(response.challengeId).toMatch(/^wa_login_[A-Za-z0-9_-]{32}$/u);
+    expect(response.challengeId).not.toBe(challengeId);
+    expect(committed).toBe(false);
+    expect(h.otp.issue).toHaveBeenCalledTimes(1);
+    expect(h.delivery.dispatch).not.toHaveBeenCalled();
+    expect(h.attempts.recordSuccess).not.toHaveBeenCalled();
+  });
+
+  it('returns after commit without waiting for provider delivery or checking a legacy password', async () => {
+    const h = phoneHarness();
+    jest.spyOn(h.delivery, 'dispatch').mockReturnValue(new Promise(() => undefined));
+    await expect(h.svc.login({ phoneNumber, password: 'not-a-proof' }, ctx)).resolves.toMatchObject(
+      { challengeId, channel: 'whatsapp' },
+    );
+    expect(h.passwords.verify).not.toHaveBeenCalled();
+    expect(h.sessions.createForLogin).not.toHaveBeenCalled();
+  });
+
+  it('resets failed login counters only after consuming the phone OTP, even after a channel switch', async () => {
+    const h = phoneHarness();
+    await h.svc.login({ phoneNumber }, ctx);
+    expect(h.attempts.recordSuccess).not.toHaveBeenCalled();
+    h.channels.getChannel.mockResolvedValue('email');
+    h.channels.getChannel.mockClear();
+    h.otp.verifyForLogin.mockResolvedValue({
+      consumed: {
+        userId: 'u-1',
+        purpose: 'LOGIN_OTP',
+        channel: 'whatsapp',
+        destination: phoneNumber,
+      },
+    });
+    h.users.findById.mockResolvedValue(phoneUser());
+    h.sessions.createForLogin.mockResolvedValue({ session: { id: 'phone-session' } } as never);
+
+    await h.svc.verifyOtp(challengeId, '123456', ctx);
+
+    expect(h.attempts.recordSuccess).toHaveBeenCalledWith('u-1', h.fakeTx);
+    expect(h.otp.verifyForLogin.mock.invocationCallOrder[0]).toBeLessThan(
+      h.attempts.recordSuccess.mock.invocationCallOrder[0]!,
+    );
+    expect(h.sessions.createForLogin).toHaveBeenCalledTimes(1);
+    expect(h.channels.getChannel).not.toHaveBeenCalled();
+  });
+
+  it('keeps email login password-required when email is selected', async () => {
+    const h = makeHarness();
+    await expect(h.svc.login({ email: 'ada@example.com' }, ctx)).rejects.toMatchObject({
+      response: { code: 'VALIDATION_ERROR' },
+    });
+    expect(h.users.findByEmail).not.toHaveBeenCalled();
+    expect(h.otp.issue).not.toHaveBeenCalled();
+  });
+});
+
+describe('anonymous OTP preparation work', () => {
+  const phoneNumber = '+966501234567';
+  const registration = {
+    email: 'ada@example.com',
+    password: 'a-reasonable-passphrase',
+    firstName: 'Ada',
+    lastName: 'Lovelace',
+    legalAcceptance,
+  };
+  const verifiedPhoneUser = () =>
+    makeUser({ email: null, emailVerifiedAt: null, phoneNumber, phoneVerifiedAt: new Date() });
+
+  it.each(['new', 'duplicate', 'uniqueness race', 'suppressed'] as const)(
+    'does exactly one OTP preparation before registration lookup for the %s path',
+    async (outcome) => {
+      const h = makeHarness();
+      h.users.findByEmail.mockResolvedValue(outcome === 'duplicate' ? makeUser() : null);
+      h.users.create.mockResolvedValue(
+        makeUser({ status: 'PENDING_VERIFICATION', emailVerifiedAt: null }),
+      );
+      if (outcome === 'uniqueness race') {
+        h.users.create.mockRejectedValue({ code: 'P2002', meta: { target: ['email'] } });
+      }
+      if (outcome === 'suppressed') {
+        jest.spyOn(h.delivery, 'enqueue').mockResolvedValue({ deliveryId: null, intent: null });
+      }
+
+      const response = await h.svc.register(registration, ctx);
+
+      expect(h.otp.prepare).toHaveBeenCalledTimes(1);
+      expect(h.otp.prepare.mock.invocationCallOrder[0]).toBeLessThan(
+        jest.mocked(h.tx.run).mock.invocationCallOrder[0]!,
+      );
+      expect(h.otp.prepare.mock.invocationCallOrder[0]).toBeLessThan(
+        h.users.findByEmail.mock.invocationCallOrder[0]!,
+      );
+      if (outcome === 'new' || outcome === 'suppressed') {
+        expect(h.otp.issue).toHaveBeenCalledTimes(1);
+        expect(h.otp.issue.mock.calls[0]![4]).toBe(h.preparedOtp);
+      } else {
+        expect(h.otp.issue).not.toHaveBeenCalled();
+        expect(h.delivery.enqueue).not.toHaveBeenCalled();
+      }
+      if (outcome !== 'new') expect(h.delivery.dispatch).not.toHaveBeenCalled();
+      expect(response).toMatchObject({ channel: 'email', codeLength: 6 });
+      expect(response).not.toHaveProperty('tokenHash');
+      expect(response).not.toHaveProperty('rawCode');
+      expect(h.sessions.createForLogin).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each(['known', 'unknown', 'unverified', 'inactive', 'suppressed'] as const)(
+    'does exactly one OTP preparation before recovery lookup for the %s path',
+    async (outcome) => {
+      const h = makeHarness();
+      h.users.findByPhoneNumber.mockResolvedValue(
+        outcome === 'unknown'
+          ? null
+          : {
+              ...verifiedPhoneUser(),
+              ...(outcome === 'unverified' ? { phoneVerifiedAt: null } : {}),
+              ...(outcome === 'inactive' ? { isActive: false } : {}),
+            },
+      );
+      jest.spyOn(h.delivery, 'dispatch').mockResolvedValue(undefined);
+      if (outcome === 'suppressed') {
+        jest.spyOn(h.delivery, 'enqueue').mockResolvedValue({ deliveryId: null, intent: null });
+      }
+
+      const response = await h.svc.forgotPasswordOtp(phoneNumber, ctx);
+
+      expect(h.otp.prepare).toHaveBeenCalledTimes(1);
+      expect(h.otp.prepare.mock.invocationCallOrder[0]).toBeLessThan(
+        jest.mocked(h.tx.run).mock.invocationCallOrder[0]!,
+      );
+      expect(h.otp.prepare.mock.invocationCallOrder[0]).toBeLessThan(
+        h.users.findByPhoneNumber.mock.invocationCallOrder[0]!,
+      );
+      if (outcome === 'known' || outcome === 'suppressed') {
+        expect(h.otp.issue).toHaveBeenCalledTimes(1);
+        expect(h.otp.issue.mock.calls[0]![4]).toBe(h.preparedOtp);
+      } else {
+        expect(h.otp.issue).not.toHaveBeenCalled();
+        expect(h.delivery.enqueue).not.toHaveBeenCalled();
+      }
+      if (outcome !== 'known') expect(h.delivery.dispatch).not.toHaveBeenCalled();
+      expect(response).toMatchObject({ channel: 'whatsapp', codeLength: 6 });
+      expect(response).not.toHaveProperty('tokenHash');
+      expect(response).not.toHaveProperty('rawCode');
+      expect(h.sessions.createForLogin).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each([
+    ['registration', 'new'],
+    ['registration', 'duplicate'],
+    ['recovery', 'known'],
+    ['recovery', 'unknown'],
+  ] as const)(
+    'awaits OTP preparation on %s %s before opening a transaction',
+    async (flow, outcome) => {
+      const h = makeHarness();
+      h.users.findByEmail.mockResolvedValue(outcome === 'duplicate' ? makeUser() : null);
+      h.users.create.mockResolvedValue(makeUser());
+      h.users.findByPhoneNumber.mockResolvedValue(outcome === 'known' ? verifiedPhoneUser() : null);
+      jest.spyOn(h.delivery, 'dispatch').mockResolvedValue(undefined);
+      let release!: () => void;
+      const pending = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      let began!: () => void;
+      const preparationStarted = new Promise<void>((resolve) => {
+        began = resolve;
+      });
+      h.otp.prepare.mockImplementation(async () => {
+        began();
+        await pending;
+        return h.preparedOtp;
+      });
+      let completed = false;
+      const response = (
+        flow === 'registration'
+          ? h.svc.register(registration, ctx)
+          : h.svc.forgotPasswordOtp(phoneNumber, ctx)
+      ).then((result) => {
+        completed = true;
+        return result;
+      });
+      try {
+        await preparationStarted;
+        expect(completed).toBe(false);
+        expect(h.tx.run).not.toHaveBeenCalled();
+        expect(h.users.findByEmail).not.toHaveBeenCalled();
+        expect(h.users.findByPhoneNumber).not.toHaveBeenCalled();
+        expect(h.otp.issue).not.toHaveBeenCalled();
+        expect(h.delivery.enqueue).not.toHaveBeenCalled();
+      } finally {
+        release();
+        await response;
+      }
+      expect(completed).toBe(true);
+      expect(h.otp.prepare).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  it.each(['new', 'duplicate'] as const)(
+    'skips OTP work uniformly when development registration verification is disabled: %s',
+    async (outcome) => {
+      const h = makeHarness(false);
+      h.users.findByEmail.mockResolvedValue(outcome === 'duplicate' ? makeUser() : null);
+      h.users.create.mockResolvedValue(makeUser());
+      await h.svc.register(registration, ctx);
+      expect(h.otp.prepare).not.toHaveBeenCalled();
+      expect(h.otp.issue).not.toHaveBeenCalled();
+      expect(h.delivery.enqueue).not.toHaveBeenCalled();
+    },
+  );
+});
+
+describe('anonymous authentication delivery timing', () => {
+  async function withPendingDelivery(
+    run: (h: ReturnType<typeof makeHarness>) => Promise<unknown>,
+  ): Promise<void> {
+    const h = makeHarness();
+    let release!: () => void;
+    let completed = false;
+    const pending = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    jest.spyOn(h.delivery, 'dispatch').mockImplementation(async () => {
+      await pending;
+      completed = true;
+    });
+    let timeout: ReturnType<typeof setTimeout> | undefined;
+    try {
+      await Promise.race([
+        run(h),
+        new Promise<never>((_resolve, reject) => {
+          timeout = setTimeout(
+            () => reject(new Error('Anonymous response waited for delivery')),
+            1000,
+          );
+        }),
+      ]);
+      expect(h.delivery.dispatch).toHaveBeenCalledTimes(1);
+      expect(completed).toBe(false);
+    } finally {
+      if (timeout) clearTimeout(timeout);
+      release();
+      await pending;
+    }
+  }
+
+  it('returns registration while its committed delivery remains pending', async () => {
+    await withPendingDelivery(async (h) => {
+      h.users.findByEmail.mockResolvedValue(null);
+      h.users.create.mockResolvedValue(
+        makeUser({ status: 'PENDING_VERIFICATION', emailVerifiedAt: null }),
+      );
+      await expect(
+        h.svc.register(
+          {
+            email: 'ada@example.com',
+            password: 'a-reasonable-passphrase',
+            firstName: 'Ada',
+            lastName: 'Lovelace',
+            legalAcceptance,
+          },
+          ctx,
+        ),
+      ).resolves.toHaveProperty('challengeId');
+    });
+  });
+
+  it('returns phone recovery while its committed delivery remains pending', async () => {
+    await withPendingDelivery(async (h) => {
+      const phoneNumber = '+966501234567';
+      h.users.findByPhoneNumber.mockResolvedValue(
+        makeUser({
+          email: null,
+          emailVerifiedAt: null,
+          phoneNumber,
+          phoneVerifiedAt: new Date(),
+        }),
+      );
+      await expect(h.svc.forgotPasswordOtp(phoneNumber, ctx)).resolves.toHaveProperty(
+        'challengeId',
+      );
+    });
+  });
+});
+
+describe('email contact enrollment for phone-only accounts', () => {
+  const email = 'linked@example.com';
+  const user = () =>
+    makeUser({
+      email: null,
+      emailVerifiedAt: null,
+      phoneNumber: '+966501234567',
+      phoneVerifiedAt: new Date(),
+    });
+
+  it('requires the current password and leaves the pending email outside the account', async () => {
+    const h = makeHarness();
+    h.users.findById.mockResolvedValue(user());
+    h.users.findByEmail.mockResolvedValue(null);
+    h.passwords.verify.mockResolvedValue(false);
+    await expect(h.svc.requestEmailEnrollment('u-1', email, 'wrong', ctx)).rejects.toThrow();
+    expect(h.otp.issue).not.toHaveBeenCalled();
+    h.passwords.verify.mockResolvedValue(true);
+    await h.svc.requestEmailEnrollment('u-1', ' Linked@Example.com ', 'current', ctx);
+    expect(h.otp.issue).toHaveBeenCalledWith('u-1', 'EMAIL_CONTACT_OTP', h.fakeTx, {
+      channel: 'email',
+      destination: email,
+    });
+    expect(h.fakeTx.user.update).not.toHaveBeenCalled();
+  });
+
+  it('does not send a linking code for another account’s email', async () => {
+    const h = makeHarness();
+    h.users.findById.mockResolvedValue(user());
+    h.users.findByEmail.mockResolvedValue(makeUser({ id: 'other', email }));
+    h.passwords.verify.mockResolvedValue(true);
+    const result = await h.svc.requestEmailEnrollment('u-1', email, 'current', ctx);
+    expect(result.channel).toBe('email');
+    expect(h.otp.issue).not.toHaveBeenCalled();
+    expect(h.delivery.enqueue).not.toHaveBeenCalled();
+  });
+
+  it('attaches only its owner’s verified email and invalidates previous contact challenges', async () => {
+    const h = makeHarness();
+    h.users.findById.mockResolvedValue(user());
+    h.otp.verifyForEmailEnrollment.mockResolvedValue({
+      consumed: {
+        userId: 'u-1',
+        purpose: 'EMAIL_CONTACT_OTP',
+        channel: 'email',
+        destination: email,
+      },
+    });
+    await h.svc.verifyEmailEnrollment('u-1', 'challenge', '123456', ctx);
+    expect(h.fakeTx.user.update).toHaveBeenCalledWith({
+      where: { id: 'u-1' },
+      data: { email, emailVerifiedAt: expect.any(Date) },
+    });
+    expect(h.verification.revokeOutstandingForUser).toHaveBeenCalledWith('u-1', h.fakeTx);
+    expect(h.sessions.createForLogin).not.toHaveBeenCalled();
+  });
+
+  it('refuses another account’s email code and rolls back a raced unique email claim', async () => {
+    const h = makeHarness();
+    h.users.findById.mockResolvedValue(user());
+    h.otp.verifyForEmailEnrollment.mockResolvedValue({
+      consumed: {
+        userId: 'other',
+        purpose: 'EMAIL_CONTACT_OTP',
+        channel: 'email',
+        destination: email,
+      },
+    });
+    await expect(
+      h.svc.verifyEmailEnrollment('u-1', 'challenge', '123456', ctx),
+    ).rejects.toMatchObject({ response: { code: 'AUTH_OTP_INVALID' } });
+    expect(h.fakeTx.user.update).not.toHaveBeenCalled();
+    h.otp.verifyForEmailEnrollment.mockResolvedValue({
+      consumed: {
+        userId: 'u-1',
+        purpose: 'EMAIL_CONTACT_OTP',
+        channel: 'email',
+        destination: email,
+      },
+    });
+    h.fakeTx.user.update.mockRejectedValue({ code: 'P2002', meta: { target: ['email'] } });
+    await expect(
+      h.svc.verifyEmailEnrollment('u-1', 'challenge', '123456', ctx),
+    ).rejects.toMatchObject({ response: { code: 'AUTH_OTP_INVALID' } });
+  });
+});
+
+describe('email contact reassignment fences anonymous token issuance', () => {
+  const ctx: import('./authentication.service').ClientContext = {
+    device: { ipAddress: '127.0.0.1', userAgent: 'contact-race-test', clientKind: 'WEB' },
+    requestId: 'contact-race-test',
+  };
+
+  it.each(['forgotPassword', 'resendVerification'] as const)(
+    '%s never sends a new token to an address removed while waiting for the account lock',
+    async (method) => {
+      const h = makeHarness();
+      h.users.findByEmail
+        .mockResolvedValueOnce(makeUser({ emailVerifiedAt: null }))
+        .mockResolvedValueOnce(null);
+      await expect(h.svc[method]('ada@example.com', ctx)).resolves.toBeUndefined();
+      expect(h.verification.issue).not.toHaveBeenCalled();
+      expect(h.mail.send).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each(['forgotPassword', 'resendVerification'] as const)(
+    '%s does not redirect a locked request to a different owner of the same address',
+    async (method) => {
+      const h = makeHarness();
+      h.users.findByEmail
+        .mockResolvedValueOnce(makeUser({ emailVerifiedAt: null }))
+        .mockResolvedValueOnce(makeUser({ id: 'other-account', emailVerifiedAt: null }));
+      await expect(h.svc[method]('ada@example.com', ctx)).resolves.toBeUndefined();
+      expect(h.verification.issue).not.toHaveBeenCalled();
+      expect(h.mail.send).not.toHaveBeenCalled();
+    },
+  );
 });

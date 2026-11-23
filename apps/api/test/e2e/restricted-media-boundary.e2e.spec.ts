@@ -12,6 +12,7 @@ import express from 'express';
 jest.setTimeout(30_000);
 
 import { MediaController } from '../../src/modules/media/media.controller';
+import { PublicMediaReadService } from '../../src/modules/media/public-media-read.service';
 import { RequestMediaService } from '../../src/modules/media/request-media.service';
 import { PublicMediaLedgerService } from '../../src/modules/media/public-media-ledger.service';
 import { LocalDiskStorageAdapter } from '../../src/infrastructure/storage/local-disk-storage.adapter';
@@ -70,6 +71,14 @@ async function bootApp(): Promise<INestApplication> {
   const moduleRef = await Test.createTestingModule({
     controllers: [MediaController],
     providers: [
+      {
+        provide: PublicMediaReadService,
+        useValue: {
+          openPublic: jest
+            .fn()
+            .mockRejectedValue(new Error('S3 read is not configured in this local fixture.')),
+        },
+      },
       {
         provide: PortfolioMediaService,
         useValue: { openPublic: portfolioOpenPublic },
@@ -149,9 +158,14 @@ describe('GET /v1/media/files/* — restricted keys', () => {
     'verification/case-1/asset-1.pdf',
     'verification/case-1/asset-2.png',
     'verification/anything.jpg',
+    'financial-receipts/intent-1/receipt.png',
+    'FINANCIAL-RECEIPTS/intent-1/receipt.pdf',
+    'financial-receipts%2Fintent-1%2Freceipt.png',
   ])('refuses to serve %s', async (key) => {
     // The adapter above would have served it. The 404 must come from the route.
-    await request(app.getHttpServer()).get(`/v1/media/files/${key}`).expect(404);
+    const response = await request(app.getHttpServer()).get(`/v1/media/files/${key}`).expect(404);
+    expect(response.headers['cache-control']).toBe('private, no-store');
+    expect(permissiveLocal.absolutePathForKey).not.toHaveBeenCalled();
   });
 
   it('answers 404, not 403, so a prober cannot confirm a case exists', async () => {

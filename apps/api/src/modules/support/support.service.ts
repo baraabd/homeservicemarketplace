@@ -5,6 +5,7 @@ import type {
   SendSupportMessageResponse,
   SupportMessageView,
   SupportTicketDetailView,
+  SupportTicketExperience,
   SupportTicketSummaryView,
 } from '@homeservicemarketplace/contracts';
 import { AuditEventType, SupportTicketStatus } from '@homeservicemarketplace/database';
@@ -20,6 +21,7 @@ import { TransactionRunner } from '../../infrastructure/prisma/transaction.runne
 import { AppError } from '../../shared/errors/app-error';
 import { AuditService } from '../iam/audit/audit.service';
 import { PermissionResolverService } from '../iam/authorization/services/permission-resolver.service';
+import { NotificationsService } from '../notifications/notifications.service';
 
 const SUPPORT_READ = 'support:read';
 const SUPPORT_RESPOND = 'support:respond';
@@ -34,11 +36,19 @@ export class SupportService {
     private readonly tx: TransactionRunner,
     private readonly audit: AuditService,
     private readonly permissions: PermissionResolverService,
+    // K06 — requester notifications are written inside the support action's own
+    // transaction, so a refused or rolled-back action never leaves one behind.
+    private readonly notifications: NotificationsService,
   ) {}
 
   async createTicket(
     requesterUserId: string,
-    input: { subject: string; message: string; idempotencyKey: string },
+    input: {
+      subject: string;
+      message: string;
+      idempotencyKey: string;
+      experience?: SupportTicketExperience;
+    },
   ): Promise<{ ticket: SupportTicketDetailView; replayed: boolean }> {
     const subject = normalizeText(input.subject, SUBJECT_MAX, 'A support subject is required.');
     const body = normalizeText(input.message, MESSAGE_MAX, 'A support message is required.');
@@ -50,7 +60,12 @@ export class SupportService {
         if (existing) return this.replayTicket(existing, subject, body);
 
         const ticket = await this.repo.createTicket(
-          { requesterUserId, subject, creationKey: key },
+          {
+            requesterUserId,
+            subject,
+            creationKey: key,
+            experience: toStoredExperience(input.experience),
+          },
           tx,
         );
         const message = await this.repo.createMessage(
@@ -207,6 +222,9 @@ export class SupportService {
           },
           tx,
         );
+        if (role === 'SUPPORT') {
+          await this.notifyRequester(ticket, 'SUPPORT_REPLIED', authorUserId, tx, created.id);
+        }
         return { message: toMessage(created), replayed: false };
       });
     } catch (error) {
@@ -249,8 +267,44 @@ export class SupportService {
         },
         tx,
       );
+      await this.notifyRequester(
+        ticket,
+        to === SupportTicketStatus.CLOSED ? 'SUPPORT_CLOSED' : 'SUPPORT_REOPENED',
+        actorUserId,
+        tx,
+      );
     });
     return this.detailAdmin(actorUserId, ticketId);
+  }
+
+  /**
+   * K06 — tell the requester that support acted on their ticket. Carries ids and
+   * an event code only: the reply text stays inside the ticket, which the API
+   * serves solely to its owner. The link targets the app the ticket was opened
+   * from; tickets without one (pre-K06 or older clients) open the customer app.
+   */
+  private async notifyRequester(
+    ticket: SupportTicket,
+    event: SupportNotificationEvent,
+    actorUserId: string,
+    tx: PrismaTx,
+    supportMessageId?: string,
+  ): Promise<void> {
+    const copy = SUPPORT_NOTIFICATION_COPY[event];
+    const base = ticket.experience === 'PROVIDER' ? '/provider/support' : '/home/support';
+    await this.notifications.createForUser(
+      {
+        userId: ticket.requesterUserId,
+        type: 'SYSTEM',
+        title: copy.title,
+        body: copy.body,
+        deepLink: `${base}?ticket=${encodeURIComponent(ticket.id)}`,
+        metadata: { supportTicketId: ticket.id, event },
+        actorUserId,
+        ...(supportMessageId ? { dedupeKey: `support.replied:${supportMessageId}` } : {}),
+      },
+      tx,
+    );
   }
 
   private async requireSupport(actorUserId: string, permission: string, tx?: PrismaTx) {
@@ -280,6 +334,32 @@ export class SupportService {
     }
     return { ticket: toDetail(existing), replayed: true };
   }
+}
+
+type SupportNotificationEvent = 'SUPPORT_REPLIED' | 'SUPPORT_CLOSED' | 'SUPPORT_REOPENED';
+
+const SUPPORT_NOTIFICATION_COPY: Record<SupportNotificationEvent, { title: string; body: string }> =
+  {
+    SUPPORT_REPLIED: {
+      title: 'Support replied to your request',
+      body: 'Open your support ticket to read the reply.',
+    },
+    SUPPORT_CLOSED: {
+      title: 'Your support request was closed',
+      body: 'Open your support ticket to review it. Start a new request if you still need help.',
+    },
+    SUPPORT_REOPENED: {
+      title: 'Your support request was reopened',
+      body: 'Support reopened your ticket. Open it to continue the conversation.',
+    },
+  };
+
+function toStoredExperience(
+  experience: SupportTicketExperience | undefined,
+): SupportTicket['experience'] {
+  if (experience === 'provider') return 'PROVIDER';
+  if (experience === 'seeker') return 'SEEKER';
+  return null;
 }
 
 function normalizeText(raw: unknown, max: number, emptyMessage: string): string {

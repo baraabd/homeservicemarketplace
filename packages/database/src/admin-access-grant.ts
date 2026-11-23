@@ -257,7 +257,7 @@ export async function grantProviderWithTx(
 
 interface ResolvedUser {
   userId: string;
-  user: { firstName: string; lastName: string; email: string } | null;
+  user: { firstName: string; lastName: string; email: string | null } | null;
 }
 
 async function resolveUser(

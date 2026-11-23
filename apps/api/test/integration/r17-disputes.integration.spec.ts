@@ -133,6 +133,8 @@ d('R17-C legacy admin dispute authority (real Postgres)', () => {
         requestId: `${id}-request`,
         providerId: profileId,
         amount: 100,
+        currency: 'SAR',
+        amountScale: 2,
         pricingType: 'FIXED',
         status: 'ACCEPTED',
       },
@@ -145,6 +147,8 @@ d('R17-C legacy admin dispute authority (real Postgres)', () => {
         seekerUserId: users.seeker,
         providerId: profileId,
         priceAmount: 100,
+        currency: 'SAR',
+        amountScale: 2,
         status: 'SCHEDULED',
       },
     });

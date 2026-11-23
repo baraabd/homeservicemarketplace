@@ -16,6 +16,7 @@ export {}; // module marker.
 // Gated by RUN_DB_INTEGRATION=1. Uses its own migrated database and real
 // seed transaction, so setup never waits for another suite's seed lock.
 
+import { emailAuthenticationServices } from '../support/auth-channel';
 import { INestApplication, Module, ValidationPipe, VersioningType } from '@nestjs/common';
 import { APP_FILTER } from '@nestjs/core';
 import { Test } from '@nestjs/testing';
@@ -24,6 +25,7 @@ import request from 'supertest';
 
 import { createIsolatedDatabase, type IsolatedDatabase } from '../support/isolated-database';
 import { makeTestSecret } from '../support/test-secrets';
+import { legalAcceptanceServiceFor } from '../support/legal-acceptance';
 
 const shouldRun = process.env.RUN_DB_INTEGRATION === '1';
 const d = shouldRun ? describe : describe.skip;
@@ -172,6 +174,8 @@ d('Password reset — real HTTP round trip', () => {
       config,
       securityEvents,
       mail,
+      legalAcceptanceServiceFor(config),
+      ...emailAuthenticationServices(config, mail),
     );
 
     @Module({

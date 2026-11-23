@@ -119,6 +119,7 @@ interface Mocks {
     create: jest.Mock;
     updateOwned: jest.Mock;
     setStatusOwned: jest.Mock;
+    lockOwnedForLifecycle: jest.Mock;
   };
   events: { create: jest.Mock; listForRequest: jest.Mock };
   addresses: { findOwned: jest.Mock };
@@ -140,6 +141,7 @@ function makeMocks(over: Partial<Mocks> = {}): Mocks {
       create: jest.fn().mockResolvedValue(makeRequest()),
       updateOwned: jest.fn().mockResolvedValue({ count: 0 }),
       setStatusOwned: jest.fn().mockResolvedValue({ count: 0 }),
+      lockOwnedForLifecycle: jest.fn().mockResolvedValue(true),
       ...(over.requests ?? {}),
     },
     events: {
@@ -509,10 +511,55 @@ describe('RequestsService', () => {
 
     it('rejects update across users (NOT_FOUND, not 200)', async () => {
       const m = makeMocks();
+      // The owner-scoped lock finds no row for a foreign id.
+      m.requests.lockOwnedForLifecycle.mockResolvedValue(false);
       m.requests.findOwned.mockResolvedValue(null);
       await expect(
         makeService(m).update('user-attacker', 'req-victim', { description: 'pwn' }),
       ).rejects.toMatchObject({ code: 'NOT_FOUND' });
+      expect(m.requests.lockOwnedForLifecycle).toHaveBeenCalledWith(
+        'req-victim',
+        'user-attacker',
+        TX_SENTINEL,
+      );
+      expect(m.requests.findOwned).not.toHaveBeenCalled();
+      expect(m.requests.updateOwned).not.toHaveBeenCalled();
+    });
+
+    // K04 — the audit race: the state checked must be the state written to.
+    it('takes the lifecycle lock before reading the request it will edit', async () => {
+      const m = makeMocks();
+      m.requests.findOwned.mockResolvedValue(makeRequest());
+      m.requests.updateOwned.mockResolvedValue({ count: 1 });
+      await makeService(m).update('user-1', 'req-1', { description: 'updated' });
+      expect(m.requests.lockOwnedForLifecycle).toHaveBeenCalledWith('req-1', 'user-1', TX_SENTINEL);
+      expect(m.requests.lockOwnedForLifecycle.mock.invocationCallOrder[0]).toBeLessThan(
+        m.requests.findOwned.mock.invocationCallOrder[0],
+      );
+    });
+
+    it('writes only while the request is still OPEN_FOR_BIDS', async () => {
+      const m = makeMocks();
+      m.requests.findOwned.mockResolvedValue(makeRequest());
+      m.requests.updateOwned.mockResolvedValue({ count: 1 });
+      await makeService(m).update('user-1', 'req-1', { description: 'updated' });
+      expect(m.requests.updateOwned).toHaveBeenCalledWith(
+        'req-1',
+        'user-1',
+        expect.objectContaining({ description: 'updated' }),
+        'OPEN_FOR_BIDS',
+        TX_SENTINEL,
+      );
+    });
+
+    it('reports a write that matched no open row as a conflict, with no audit event', async () => {
+      const m = makeMocks();
+      m.requests.findOwned.mockResolvedValue(makeRequest());
+      m.requests.updateOwned.mockResolvedValue({ count: 0 });
+      await expect(
+        makeService(m).update('user-1', 'req-1', { description: 'updated' }),
+      ).rejects.toMatchObject({ code: 'CONFLICT', status: 409 });
+      expect(m.events.create).not.toHaveBeenCalled();
     });
   });
 
@@ -552,11 +599,28 @@ describe('RequestsService', () => {
 
     it('cancel: cross-user attempt → NOT_FOUND (no existence leak)', async () => {
       const m = makeMocks();
+      m.requests.lockOwnedForLifecycle.mockResolvedValue(false);
       m.requests.findOwned.mockResolvedValue(null);
       await expect(makeService(m).cancel('user-attacker', 'req-victim')).rejects.toMatchObject({
         code: 'NOT_FOUND',
       });
+      expect(m.requests.setStatusOwned).not.toHaveBeenCalled();
     });
+
+    it.each(['cancel', 'reopen'] as const)(
+      '%s takes the lifecycle lock before reading the request',
+      async (command) => {
+        const m = makeMocks();
+        m.requests.findOwned.mockResolvedValue(
+          makeRequest(command === 'reopen' ? { status: 'CANCELLED' as ServiceRequestStatus } : {}),
+        );
+        m.requests.setStatusOwned.mockResolvedValue({ count: 1 });
+        await makeService(m)[command]('user-1', 'req-1');
+        expect(m.requests.lockOwnedForLifecycle.mock.invocationCallOrder[0]).toBeLessThan(
+          m.requests.findOwned.mock.invocationCallOrder[0],
+        );
+      },
+    );
 
     it('reopen: CANCELLED → OPEN_FOR_BIDS + REQUEST_REOPENED event', async () => {
       const m = makeMocks();

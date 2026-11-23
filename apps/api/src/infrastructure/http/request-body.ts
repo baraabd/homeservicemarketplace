@@ -5,6 +5,10 @@ import { HttpException } from '@nestjs/common';
 // Raw signed uploads/feedback must retain their exact bytes before JSON parsing.
 export function buildRequestBodyParser(): express.Router {
   const router = express.Router();
+  router.post(
+    '/v1/money/webhooks/stripe',
+    express.raw({ type: 'application/json', limit: 65_536, inflate: false }),
+  );
   router.use('/v1/mail/feedback', express.raw({ type: '*/*', limit: '256kb' }));
   router.use('/v1/media/uploads', express.raw({ type: '*/*', limit: '10mb' }));
   router.use(express.json({ limit: '1mb' }));

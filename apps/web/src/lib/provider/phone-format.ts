@@ -23,6 +23,8 @@
 // it needs an SMS challenge that does not exist yet, and onboarding does not
 // demand it.
 
+import { normalizeDecimalDigits } from '../normalize-decimal-digits';
+
 /** E.164 shape: a leading `+`, a non-zero country digit, then 7 to 14 more. */
 export const PHONE_E164_PATTERN = /^\+[1-9]\d{7,14}$/;
 
@@ -30,7 +32,10 @@ export const PHONE_E164_PATTERN = /^\+[1-9]\d{7,14}$/;
  *  deliberately NOT stripped: `+1 800 FLOWERS` is not diallable, and deleting
  *  them would store a number that looks valid and rings nobody. */
 export function normalisePhoneNumber(value: string): string {
-  return value.replace(/[\s\-().]/g, '');
+  // K02 — mirror of the contracts rule: Arabic-Indic digits → ASCII, bidi
+  // marks dropped, `00` → `+`. National numbers are not converted.
+  const ascii = normalizeDecimalDigits(value).replace(/[\s\-().\u200e\u200f\u202a-\u202e]/g, '');
+  return ascii.startsWith('00') ? `+${ascii.slice(2)}` : ascii;
 }
 
 /** True when `value` is shaped like an international phone number. */

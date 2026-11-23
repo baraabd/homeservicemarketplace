@@ -5,8 +5,10 @@ import {
   DeleteObjectCommand,
   GetObjectCommand,
   HeadBucketCommand,
+  HeadObjectCommand,
   GetPublicAccessBlockCommand,
   GetBucketPolicyStatusCommand,
+  GetBucketPolicyCommand,
   PutObjectCommand,
   S3Client,
 } from '@aws-sdk/client-s3';
@@ -14,9 +16,16 @@ import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import type { Readable } from 'node:stream';
 
 import { AppConfigService } from '../../config/app-config.service';
-import { PresignUploadInput, PresignedUpload, StoragePort } from './storage.port';
+import {
+  PresignUploadInput,
+  PresignedUpload,
+  SignedUploadInput,
+  StoragePort,
+} from './storage.port';
+import { createApiUploadGrant, verifyApiUploadGrant } from './api-upload-grant';
 import { isStagedPortfolioKey } from './portfolio-storage-policy';
 import { S3BucketRootGuard } from './s3-storage-root';
+import { STORAGE_ROOT_MARKER_KEY } from './storage-root';
 import {
   StorageFaultError,
   classifyStorageFault,
@@ -58,6 +67,9 @@ export class S3StorageAdapter extends StoragePort {
   ) {
     super();
     const endpoint = this.config.get('S3_ENDPOINT');
+    if (this.config.get('S3_PORTFOLIO_PRIVACY_MODE') === 'minio' && !endpoint?.trim()) {
+      throw new Error('MinIO portfolio privacy verification requires S3_ENDPOINT');
+    }
     this.client = new S3Client({
       region: this.config.get('S3_REGION'),
       // When the operator sets S3_ENDPOINT (MinIO / R2 / DO Spaces),
@@ -86,8 +98,20 @@ export class S3StorageAdapter extends StoragePort {
     const buckets = ['S3_BUCKET', 'S3_PORTFOLIO_BUCKET', 'S3_RESTRICTED_BUCKET'] as const;
     for (const key of buckets) {
       const bucket = this.config.get(key);
-      if (bucket)
-        await this.client.send(new HeadBucketCommand({ Bucket: bucket }), { abortSignal: signal });
+      if (bucket) {
+        // Private API transport already requires root markers. Checking their
+        // metadata uses GetObject authority, without broad ListBucket grants.
+        if (this.config.get('S3_UPLOAD_TRANSPORT') === 'api') {
+          await this.client.send(
+            new HeadObjectCommand({ Bucket: bucket, Key: STORAGE_ROOT_MARKER_KEY }),
+            { abortSignal: signal },
+          );
+        } else {
+          await this.client.send(new HeadBucketCommand({ Bucket: bucket }), {
+            abortSignal: signal,
+          });
+        }
+      }
     }
   }
 
@@ -102,8 +126,20 @@ export class S3StorageAdapter extends StoragePort {
 
     // R20 — never hand out a PUT into a bucket provisioned for another
     // namespace (for example the restricted bucket via a copied env value).
-    await this.root.check(bucket, namespaceForKey(input.key));
+    const root = await this.root.check(bucket, namespaceForKey(input.key));
+    if (this.config.get('S3_UPLOAD_TRANSPORT') === 'api' && root.state !== 'verified')
+      throw new StorageFaultError('misconfigured');
     if (isStagedPortfolioKey(input.key)) await this.assertPrivatePortfolioBucket(bucket);
+    if (this.config.get('S3_UPLOAD_TRANSPORT') === 'api') {
+      return {
+        ...createApiUploadGrant(
+          input,
+          this.uploadSigningSecret(),
+          this.config.get('PUBLIC_API_URL') ?? '',
+        ),
+        fileUrl: this.publicUrlForKey(input.key),
+      };
+    }
     const cmd = new PutObjectCommand({
       Bucket: bucket,
       Key: input.key,
@@ -134,6 +170,51 @@ export class S3StorageAdapter extends StoragePort {
       bytes: input.sizeBytes,
     });
     return { uploadUrl, fileUrl, expiresAt };
+  }
+
+  /** Keep a private S3 origin behind the existing signed API upload route.
+   * The same create-only storage condition as direct PUT prevents grant replay
+   * from replacing bytes after finalization or moderation. */
+  async acceptUpload(input: SignedUploadInput): Promise<void> {
+    if (this.config.get('S3_UPLOAD_TRANSPORT') !== 'api')
+      throw new StorageFaultError('misconfigured');
+    verifyApiUploadGrant(input, this.uploadSigningSecret());
+    const bucket = this.bucketForKey(input.key);
+    try {
+      const root = await this.root.check(bucket, namespaceForKey(input.key));
+      if (root.state !== 'verified') throw new StorageFaultError('misconfigured');
+      if (isStagedPortfolioKey(input.key)) await this.assertPrivatePortfolioBucket(bucket);
+      await this.client.send(
+        new PutObjectCommand({
+          Bucket: bucket,
+          Key: input.key,
+          Body: input.body,
+          ContentType: input.contentType,
+          ContentLength: input.sizeBytes,
+          IfNoneMatch: '*',
+        }),
+        { abortSignal: AbortSignal.timeout(30_000) },
+      );
+    } catch (error) {
+      const failure = error as { name?: string; $metadata?: { httpStatusCode?: number } };
+      if (
+        (failure.name === 'PreconditionFailed' && failure.$metadata?.httpStatusCode === 412) ||
+        (failure.name === 'ConditionalRequestConflict' && failure.$metadata?.httpStatusCode === 409)
+      )
+        throw Object.assign(new Error('Object already exists'), { code: 'EEXIST' });
+      const event = storageFaultEvent({
+        operation: 'write',
+        namespace: namespaceForKey(input.key),
+        key: input.key,
+        err: error,
+      });
+      this.log.error(event);
+      throw new StorageFaultError(event.outcome === 'missing' ? 'unavailable' : event.outcome);
+    }
+  }
+
+  private uploadSigningSecret(): string {
+    return this.config.get('MEDIA_SIGNING_SECRET') || this.config.get('JWT_ACCESS_SECRET');
   }
 
   async readObjectStream(key: string): Promise<Readable | null> {
@@ -189,6 +270,23 @@ export class S3StorageAdapter extends StoragePort {
 
   /** Refuse new staging uploads when bucket privacy cannot be established. */
   private async assertPrivatePortfolioBucket(bucket: string): Promise<void> {
+    if (this.config.get('S3_PORTFOLIO_PRIVACY_MODE') === 'minio') {
+      // Explicit MinIO provider contract, never a fallback from failed AWS checks.
+      // MinIO has no public ACLs: anonymous access comes from its bucket policy.
+      // Require that policy to be absent (mc anonymous set none). Reject EVERY
+      // existing policy rather than guessing at principals, conditions or denies.
+      // Recheck for every presign; a prior private answer is not a lasting grant.
+      try {
+        await this.client.send(new GetBucketPolicyCommand({ Bucket: bucket }));
+      } catch (error) {
+        const fault = error as { name?: string; $metadata?: { httpStatusCode?: number } } | null;
+        if (fault?.name === 'NoSuchBucketPolicy' && fault.$metadata?.httpStatusCode === 404) {
+          return;
+        }
+        throw error;
+      }
+      throw new Error('MinIO portfolio bucket must have no anonymous bucket policy');
+    }
     const block = await this.client.send(new GetPublicAccessBlockCommand({ Bucket: bucket }));
     const config = block.PublicAccessBlockConfiguration;
     if (

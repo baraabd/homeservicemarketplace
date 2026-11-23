@@ -23,7 +23,9 @@ datasource db {
 
 model User {
   id                         String                         @id @default(cuid())
-  email                      String                         @unique
+  email                      String?                        @unique
+  phoneNumber                String?                        @unique
+  phoneVerifiedAt            DateTime?
   passwordHash               String?
   firstName                  String
   lastName                   String
@@ -70,12 +72,22 @@ model User {
   supportTicketsClosed       SupportTicket[]                @relation("SupportTicketCloser")
   supportMessages            SupportMessage[]
   ledgerAccounts             LedgerAccount[]                @relation("LedgerAccountOwner")
+  /// K02 — exact public-policy versions this user accepted, append-only.
+  legalAcceptances           UserLegalAcceptance[]
 
   // R19 — subscription money foundation (back-relations only; no column change).
-  moneyConfirmationsReviewed MoneyPaymentConfirmation[] @relation("MoneyConfirmationReviewer")
-  moneyCommands              MoneyCommand[]             @relation("MoneyCommandActor")
-  moneyRefundRequests        MoneyRefundRequest[]       @relation("MoneyRefundRequester")
-  moneyEventsReviewed        MoneyExternalEvent[]       @relation("MoneyExternalEventReviewer")
+  moneyConfirmationsReviewed MoneyPaymentConfirmation[]     @relation("MoneyConfirmationReviewer")
+  moneyCommands              MoneyCommand[]                 @relation("MoneyCommandActor")
+  moneyRefundRequests        MoneyRefundRequest[]           @relation("MoneyRefundRequester")
+  moneyEventsReviewed        MoneyExternalEvent[]           @relation("MoneyExternalEventReviewer")
+  manualReviewDecisions      MoneyManualReviewDecision[]
+  manualSettlements          MoneyManualSettlement[]
+  manualInspections          MoneyManualReceiptInspection[]
+  manualRefundDispatches     MoneyManualRefundOperation[]   @relation("ManualRefundDispatcher")
+  manualRefundConfirmations  MoneyManualRefundOperation[]   @relation("ManualRefundConfirmer")
+  manualRefundEvents         MoneyManualRefundEvent[]
+  reconciliationDecisionsMade MoneyReconciliationDecision[] @relation("ReconciliationDecisionMaker")
+  reconciliationDecisionsChecked MoneyReconciliationDecision[] @relation("ReconciliationDecisionChecker")
 
   @@index([deletedAt])
   @@index([status])
@@ -196,6 +208,8 @@ model VerificationToken {
   attemptCount Int          @default(0)
   resendCount  Int          @default(0)
   challengeId  String?      @unique
+  deliveryChannel String?
+  deliveryTarget  String?
   user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, purpose, usedAt])
@@ -266,8 +280,14 @@ model Bid {
   id                  String          @id @default(cuid())
   requestId           String
   providerId          String
+  /// K02 — integer amount in the unit named by `amountScale`.
   amount              Int
-  currency            String          @default("USD")
+  /// K02 — no default: the server assigns the approved currency (SAR).
+  /// Pre-K02 rows keep their original value (provenance).
+  currency            String
+  /// K02 — minor-unit scale. 2 = SAR halalas. NULL = LEGACY_UNVERIFIED
+  /// (pre-K02 unit unknown; quarantined, never converted or summed).
+  amountScale         Int?            @db.SmallInt
   pricingType         PricingType
   note                String?
   status              BidStatus       @default(PENDING)
@@ -310,8 +330,11 @@ model Booking {
   providerId         String
   status             BookingStatus       @default(SCHEDULED)
   scheduledAt        DateTime?
+  /// K02 — copied from the accepted bid with its currency and scale.
   priceAmount        Int
-  currency           String              @default("USD")
+  currency           String
+  /// K02 — see Bid.amountScale. NULL = LEGACY_UNVERIFIED.
+  amountScale        Int?                @db.SmallInt
   createdAt          DateTime            @default(now())
   updatedAt          DateTime            @updatedAt
   deletedAt          DateTime?
@@ -398,6 +421,10 @@ model SupportTicket {
   creationKey     String
   closedAt        DateTime?
   closedByUserId  String?
+  /// K06 — the app the requester opened the ticket from. Steers only where the
+  /// requester's own support notifications deep-link; it grants nothing. Null
+  /// for tickets created before K06 and for clients that do not send it.
+  experience      SupportTicketExperience?
   createdAt       DateTime            @default(now())
   updatedAt       DateTime            @updatedAt
 
@@ -489,7 +516,7 @@ model Message {
 
 model Notification {
   /// Internal domain event identity. Replay preserves read/deleted state.
-  dedupeKey String? @unique
+  dedupeKey    String?                   @unique
   id           String                    @id @default(cuid())
   userId       String
   type         NotificationType
@@ -1026,6 +1053,38 @@ enum AccountStatus {
   DELETED
 }
 
+/// K02 — public account-level policy documents. Provider onboarding consent
+/// (ProviderProfile.acceptedConsentVersion) is a separate agreement and is
+/// deliberately not represented here.
+enum LegalDocumentKind {
+  TERMS_OF_SERVICE
+  PRIVACY_NOTICE
+}
+
+enum LegalAcceptanceSource {
+  SIGNUP
+}
+
+/// K02 — one row per (user, document, exact version) the user accepted.
+///
+/// Append-only. `acceptedAt` is the SERVER time of the accepting request,
+/// never a client value. A pre-K02 account has no row: absence means "no
+/// recorded acceptance" and is never inferred or backfilled. Re-acceptance
+/// of a newer version adds a row; the older row stays as history.
+model UserLegalAcceptance {
+  id           String                @id @default(cuid())
+  userId       String
+  documentKind LegalDocumentKind
+  version      String                @db.VarChar(64)
+  locale       String                @db.VarChar(8)
+  source       LegalAcceptanceSource
+  acceptedAt   DateTime              @default(now())
+  user         User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, documentKind, version])
+  @@index([documentKind, version])
+}
+
 enum ClientKind {
   WEB
   MOBILE
@@ -1034,6 +1093,9 @@ enum ClientKind {
 enum TokenPurpose {
   EMAIL_VERIFICATION
   PASSWORD_RESET
+  PASSWORD_RESET_OTP
+  PHONE_VERIFICATION_OTP
+  EMAIL_CONTACT_OTP
   LOGIN_OTP
   REGISTRATION_OTP
 }
@@ -1046,10 +1108,19 @@ enum AuditEventType {
   MONEY_COMMAND_ACCEPTED
   MONEY_EXTERNAL_EVENT_PROCESSED
   MONEY_REFUND_RESULT_RECORDED
+  MONEY_RECEIPT_UPLOADED
+  MONEY_RECEIPT_SCANNED
+  MONEY_RECEIPT_VIEWED
+  MONEY_MANUAL_REVIEW_DECIDED
+  MONEY_MANUAL_SETTLEMENT_RECORDED
+  MONEY_MANUAL_REFUND_RECORDED
   DISPUTE_PRIVATE_RETENTION
   DISPUTE_EVIDENCE_READ
   USER_REGISTERED
   EMAIL_VERIFIED
+  PHONE_VERIFIED
+  PHONE_VERIFICATION_REQUESTED
+  OTP_RESENT
   EMAIL_VERIFICATION_RESENT
   LOGIN_SUCCESS
   LOGIN_FAILED
@@ -1215,6 +1286,11 @@ enum BookingStatus {
 enum SupportTicketStatus {
   OPEN
   CLOSED
+}
+
+enum SupportTicketExperience {
+  SEEKER
+  PROVIDER
 }
 
 enum SupportMessageAuthorRole {
@@ -2155,6 +2231,7 @@ model MediaAsset {
   // R19 — subscription money foundation (back-relations only; no column change).
   moneyReceiptConfirmations MoneyPaymentConfirmation[] @relation("MoneyConfirmationReceipt")
   moneyReceiptEvents        MoneyExternalEvent[]       @relation("MoneyExternalEventReceipt")
+  manualReceiptVersion      MoneyManualReceiptVersion?
 
   @@unique([serviceRequestId, requestAttachmentPosition])
   /// The retention sweep: what is due for deletion and not yet deleted.
@@ -2171,6 +2248,7 @@ model MediaAsset {
 /// R06 — the purpose a public upload reservation was issued for.
 enum MediaAssetPurpose {
   REQUEST_ATTACHMENT
+  FINANCIAL_RECEIPT
 }
 
 // Sprint 9B.3 — one more PARTIAL unique index that Prisma cannot express, so
@@ -2846,10 +2924,12 @@ model LedgerAccount {
   currency    String                 @db.Char(3)
   createdAt   DateTime               @default(now())
 
-  owner   User?         @relation("LedgerAccountOwner", fields: [ownerUserId], references: [id], onDelete: Restrict)
-  entries LedgerEntry[]
-  moneyDebitBindings  MoneyIntentBinding[] @relation("MoneyBindingDebit")
-  moneyCreditBindings MoneyIntentBinding[] @relation("MoneyBindingCredit")
+  owner                    User?                           @relation("LedgerAccountOwner", fields: [ownerUserId], references: [id], onDelete: Restrict)
+  entries                  LedgerEntry[]
+  moneyDebitBindings       MoneyIntentBinding[]            @relation("MoneyBindingDebit")
+  moneyCreditBindings      MoneyIntentBinding[]            @relation("MoneyBindingCredit")
+  manualDebitInstructions  MoneyManualInstructionVersion[] @relation("ManualInstructionDebit")
+  manualCreditInstructions MoneyManualInstructionVersion[] @relation("ManualInstructionCredit")
 
   // Target of LedgerEntry's (accountId, currency) foreign key: an entry can
   // only reference an account in its own currency.
@@ -2886,6 +2966,7 @@ model LedgerTransaction {
   // R19 — subscription money foundation (back-relations only; no column change).
   moneyConfirmation       MoneyPaymentConfirmation?
   moneyRefundCompensation MoneyRefund?
+  reconciliationCorrections MoneyReconciliationDecision[]
 
   @@unique([id, currency])
   @@index([bookingId])
@@ -2981,6 +3062,11 @@ enum MoneyReconciliationKind {
   DUPLICATE_EXTERNAL_CONFIRMATION
   REFUND_WITHOUT_COMPENSATION
   PERIOD_WITHOUT_CONFIRMATION
+  TIMING_DIFFERENCE
+  MISSING_EXTERNAL_EFFECT
+  UNMATCHED_EXTERNAL_REFERENCE
+  MISSING_ACTIVATION
+  AMBIGUOUS_REFUND_OUTCOME
 }
 
 /// An immutable commercial snapshot (ADR 0014 decision 3). Only retiredAt may
@@ -2997,8 +3083,9 @@ model SubscriptionPlanVersion {
   retiredAt       DateTime?
   createdAt       DateTime             @default(now())
 
-  paymentIntents MoneyPaymentIntent[]
-  subscriptions  ProviderSubscription[]
+  paymentIntents     MoneyPaymentIntent[]
+  subscriptions      ProviderSubscription[]
+  manualInstructions MoneyManualInstructionVersion[]
 
   @@unique([planKey, version])
   @@unique([id, currency])
@@ -3022,14 +3109,18 @@ model MoneyPaymentIntent {
   createdAt         DateTime                 @default(now())
   updatedAt         DateTime                 @updatedAt
 
-  providerProfile ProviderProfile           @relation(fields: [providerProfileId], references: [id], onDelete: Restrict)
-  planVersion     SubscriptionPlanVersion   @relation(fields: [planVersionId, currency], references: [id, currency], onDelete: Restrict)
-  coupon          MoneyCoupon?              @relation(fields: [couponId], references: [id], onDelete: Restrict)
-  attempts        MoneyPaymentAttempt[]
-  confirmation    MoneyPaymentConfirmation?
-  redemption      MoneyCouponRedemption?
-  binding         MoneyIntentBinding?
-  externalEvents  MoneyExternalEvent[]
+  providerProfile       ProviderProfile             @relation(fields: [providerProfileId], references: [id], onDelete: Restrict)
+  planVersion           SubscriptionPlanVersion     @relation(fields: [planVersionId, currency], references: [id, currency], onDelete: Restrict)
+  coupon                MoneyCoupon?                @relation(fields: [couponId], references: [id], onDelete: Restrict)
+  attempts              MoneyPaymentAttempt[]
+  confirmation          MoneyPaymentConfirmation?
+  redemption            MoneyCouponRedemption?
+  binding               MoneyIntentBinding?
+  externalEvents        MoneyExternalEvent[]
+  manualReview          MoneyManualReview?
+  manualReceipts        MoneyManualReceiptVersion[]
+  manualDecisions       MoneyManualReviewDecision[]
+  manualSettlementClaim MoneyManualSettlementClaim?
 
   @@unique([id, currency])
   @@index([providerProfileId, createdAt])
@@ -3045,8 +3136,8 @@ model MoneyPaymentAttempt {
   createdAt         DateTime                  @default(now())
   updatedAt         DateTime                  @updatedAt
 
-  paymentIntent MoneyPaymentIntent @relation(fields: [paymentIntentId], references: [id], onDelete: Restrict)
-  dispatch      MoneyDispatch?
+  paymentIntent  MoneyPaymentIntent   @relation(fields: [paymentIntentId], references: [id], onDelete: Restrict)
+  dispatch       MoneyDispatch?
   externalEvents MoneyExternalEvent[]
 
   @@unique([paymentIntentId, attemptNo])
@@ -3069,10 +3160,10 @@ model MoneyPaymentConfirmation {
   ledgerTransactionId    String                  @unique
   createdAt              DateTime                @default(now())
 
-  paymentIntent     MoneyPaymentIntent  @relation(fields: [paymentIntentId, currency], references: [id, currency], onDelete: Restrict)
-  ledgerTransaction LedgerTransaction   @relation(fields: [ledgerTransactionId, currency], references: [id, currency], onDelete: Restrict)
-  receiptMediaAsset MediaAsset?         @relation("MoneyConfirmationReceipt", fields: [receiptMediaAssetId], references: [id], onDelete: Restrict)
-  reviewer          User?               @relation("MoneyConfirmationReviewer", fields: [reviewerUserId], references: [id], onDelete: Restrict)
+  paymentIntent     MoneyPaymentIntent   @relation(fields: [paymentIntentId, currency], references: [id, currency], onDelete: Restrict)
+  ledgerTransaction LedgerTransaction    @relation(fields: [ledgerTransactionId, currency], references: [id, currency], onDelete: Restrict)
+  receiptMediaAsset MediaAsset?          @relation("MoneyConfirmationReceipt", fields: [receiptMediaAssetId], references: [id], onDelete: Restrict)
+  reviewer          User?                @relation("MoneyConfirmationReviewer", fields: [reviewerUserId], references: [id], onDelete: Restrict)
   period            SubscriptionPeriod?
   refunds           MoneyRefund[]
   refundRequests    MoneyRefundRequest[]
@@ -3133,10 +3224,11 @@ model MoneyRefund {
   createdAt                       DateTime          @default(now())
   updatedAt                       DateTime          @updatedAt
 
-  paymentConfirmation   MoneyPaymentConfirmation @relation(fields: [paymentConfirmationId, currency], references: [id, currency], onDelete: Restrict)
-  compensatingLedgerTxn LedgerTransaction?       @relation(fields: [compensatingLedgerTransactionId], references: [id], onDelete: Restrict)
+  paymentConfirmation   MoneyPaymentConfirmation    @relation(fields: [paymentConfirmationId, currency], references: [id, currency], onDelete: Restrict)
+  compensatingLedgerTxn LedgerTransaction?          @relation(fields: [compensatingLedgerTransactionId], references: [id], onDelete: Restrict)
   request               MoneyRefundRequest?
   dispatch              MoneyDispatch?
+  manualOperation       MoneyManualRefundOperation?
 
   @@index([paymentConfirmationId, status])
 }
@@ -3188,11 +3280,12 @@ model MoneyEntitlementUsage {
 }
 
 model MoneyReconciliationException {
-  id             String                  @id @default(cuid())
+  operation      MoneyReconciliationCase?
+  id             String                   @id @default(cuid())
   kind           MoneyReconciliationKind
   subjectType    String
   subjectId      String
-  detectedAt     DateTime                @default(now())
+  detectedAt     DateTime                 @default(now())
   resolvedAt     DateTime?
   resolutionCode String?
 
@@ -3256,20 +3349,20 @@ model MoneyCommand {
 /// Immutable server-selected binding for one paid obligation. No HTTP DTO
 /// accepts the adapter, mode, external account or ledger account identities.
 model MoneyIntentBinding {
-  paymentIntentId String @id
+  paymentIntentId  String           @id
   adapterId        String
   mode             MoneyAdapterMode
   accountReference String
   debitAccountId   String
   creditAccountId  String
   configVersion    String
-  currency         String @db.Char(3)
-  createdAt        DateTime @default(now())
+  currency         String           @db.Char(3)
+  createdAt        DateTime         @default(now())
 
   paymentIntent MoneyPaymentIntent @relation(fields: [paymentIntentId, currency], references: [id, currency], onDelete: Restrict)
-  debitAccount LedgerAccount @relation("MoneyBindingDebit", fields: [debitAccountId, currency], references: [id, currency], onDelete: Restrict)
-  creditAccount LedgerAccount @relation("MoneyBindingCredit", fields: [creditAccountId, currency], references: [id, currency], onDelete: Restrict)
-  dispatches MoneyDispatch[]
+  debitAccount  LedgerAccount      @relation("MoneyBindingDebit", fields: [debitAccountId, currency], references: [id, currency], onDelete: Restrict)
+  creditAccount LedgerAccount      @relation("MoneyBindingCredit", fields: [creditAccountId, currency], references: [id, currency], onDelete: Restrict)
+  dispatches    MoneyDispatch[]
 
   @@unique([paymentIntentId, currency])
 }
@@ -3278,7 +3371,7 @@ model MoneyIntentBinding {
 /// and credentials never enter this row. RECEIVED remains retryable after a
 /// failed activation transaction; PROCESSED freezes the committed response.
 model MoneyExternalEvent {
-  id                     String @id @default(cuid())
+  id                     String                   @id @default(cuid())
   adapterId              String
   mode                   MoneyAdapterMode
   accountReference       String
@@ -3289,20 +3382,20 @@ model MoneyExternalEvent {
   paymentAttemptId       String?
   source                 MoneyConfirmationSource
   amountMinor            BigInt
-  currency               String @db.Char(3)
+  currency               String                   @db.Char(3)
   confirmedAt            DateTime
-  receiptMediaAssetId     String?
+  receiptMediaAssetId    String?
   reviewerUserId         String?
-  requestDigest          String @db.Char(64)
+  requestDigest          String                   @db.Char(64)
   status                 MoneyExternalEventStatus @default(RECEIVED)
   response               Json?
-  createdAt              DateTime @default(now())
+  createdAt              DateTime                 @default(now())
   processedAt            DateTime?
 
-  paymentIntent MoneyPaymentIntent @relation(fields: [paymentIntentId, currency], references: [id, currency], onDelete: Restrict)
-  paymentAttempt MoneyPaymentAttempt? @relation(fields: [paymentAttemptId], references: [id], onDelete: Restrict)
-  receiptMediaAsset MediaAsset? @relation("MoneyExternalEventReceipt", fields: [receiptMediaAssetId], references: [id], onDelete: Restrict)
-  reviewer User? @relation("MoneyExternalEventReviewer", fields: [reviewerUserId], references: [id], onDelete: Restrict)
+  paymentIntent     MoneyPaymentIntent   @relation(fields: [paymentIntentId, currency], references: [id, currency], onDelete: Restrict)
+  paymentAttempt    MoneyPaymentAttempt? @relation(fields: [paymentAttemptId], references: [id], onDelete: Restrict)
+  receiptMediaAsset MediaAsset?          @relation("MoneyExternalEventReceipt", fields: [receiptMediaAssetId], references: [id], onDelete: Restrict)
+  reviewer          User?                @relation("MoneyExternalEventReviewer", fields: [reviewerUserId], references: [id], onDelete: Restrict)
 
   @@unique([adapterId, mode, accountReference, externalEventId], map: "MoneyExternalEvent_scoped_identity_key")
   @@index([status, createdAt, id])
@@ -3312,26 +3405,26 @@ model MoneyExternalEvent {
 /// A provider request is not a reservation or completed refund. Only the
 /// configured R32 policy may authorize its link to an R19 MoneyRefund.
 model MoneyRefundRequest {
-  id                    String @id @default(cuid())
-  commandId             String @unique
+  id                    String                   @id @default(cuid())
+  commandId             String                   @unique
   providerProfileId     String
   requestedByUserId     String
   paymentConfirmationId String
   amountMinor           BigInt
-  currency              String @db.Char(3)
+  currency              String                   @db.Char(3)
   reasonCode            String
   status                MoneyRefundRequestStatus @default(PENDING_POLICY)
   policyVersion         String?
   decisionCode          String?
-  refundId              String? @unique
-  createdAt             DateTime @default(now())
-  updatedAt             DateTime @updatedAt
+  refundId              String?                  @unique
+  createdAt             DateTime                 @default(now())
+  updatedAt             DateTime                 @updatedAt
 
-  command MoneyCommand @relation(fields: [commandId], references: [id], onDelete: Restrict)
-  providerProfile ProviderProfile @relation(fields: [providerProfileId], references: [id], onDelete: Restrict)
-  requester User @relation("MoneyRefundRequester", fields: [requestedByUserId], references: [id], onDelete: Restrict)
+  command             MoneyCommand             @relation(fields: [commandId], references: [id], onDelete: Restrict)
+  providerProfile     ProviderProfile          @relation(fields: [providerProfileId], references: [id], onDelete: Restrict)
+  requester           User                     @relation("MoneyRefundRequester", fields: [requestedByUserId], references: [id], onDelete: Restrict)
   paymentConfirmation MoneyPaymentConfirmation @relation(fields: [paymentConfirmationId, currency], references: [id, currency], onDelete: Restrict)
-  refund MoneyRefund? @relation(fields: [refundId], references: [id], onDelete: Restrict)
+  refund              MoneyRefund?             @relation(fields: [refundId], references: [id], onDelete: Restrict)
 
   @@index([providerProfileId, createdAt, id])
   @@index([status, createdAt, id])
@@ -3340,25 +3433,25 @@ model MoneyRefundRequest {
 /// Network work is claimed/recorded independently of financial transaction
 /// locks. A timeout preserves UNKNOWN and the same provider idempotency key.
 model MoneyDispatch {
-  id                     String @id @default(cuid())
+  id                     String              @id @default(cuid())
   kind                   MoneyDispatchKind
-  commandId              String @unique
-  paymentAttemptId       String? @unique
-  refundId               String? @unique
+  commandId              String              @unique
+  paymentAttemptId       String?             @unique
+  refundId               String?             @unique
   paymentIntentId        String
-  providerIdempotencyKey  String @unique
+  providerIdempotencyKey String              @unique
   status                 MoneyDispatchStatus @default(NOT_DISPATCHED)
   claimId                String?
   leaseUntil             DateTime?
   externalOperationId    String?
   observation            Json?
-  createdAt              DateTime @default(now())
-  updatedAt              DateTime @updatedAt
+  createdAt              DateTime            @default(now())
+  updatedAt              DateTime            @updatedAt
 
-  command MoneyCommand @relation(fields: [commandId], references: [id], onDelete: Restrict)
+  command        MoneyCommand         @relation(fields: [commandId], references: [id], onDelete: Restrict)
   paymentAttempt MoneyPaymentAttempt? @relation(fields: [paymentAttemptId], references: [id], onDelete: Restrict)
-  refund MoneyRefund? @relation(fields: [refundId], references: [id], onDelete: Restrict)
-  binding MoneyIntentBinding @relation(fields: [paymentIntentId], references: [paymentIntentId], onDelete: Restrict)
+  refund         MoneyRefund?         @relation(fields: [refundId], references: [id], onDelete: Restrict)
+  binding        MoneyIntentBinding   @relation(fields: [paymentIntentId], references: [paymentIntentId], onDelete: Restrict)
 
   @@index([status, leaseUntil, id])
 }
@@ -3471,4 +3564,341 @@ model EmailFeedbackEvent {
   @@unique([source, externalId])
   @@index([receivedAt])
   @@index([deliveryId])
+}
+
+// R30: immutable instruction/evidence history extends R24 obligations.
+// No seed enables a method, grants a reviewer permission, or supplies merchant data.
+model MoneyManualInstructionVersion {
+  id               String             @id @default(cuid())
+  planVersionId    String
+  method           MoneyPaymentMethod
+  mode             MoneyAdapterMode   @default(SANDBOX)
+  adapterId        String
+  accountReference String
+  currency         String             @db.Char(3)
+  debitAccountId   String
+  creditAccountId  String
+  configVersion    String             @unique
+  instructions     Json
+  market           String
+  minorUnitScale   Int
+  policyVersion    String
+  referencePolicy  String
+  maxAmountMinor   BigInt
+  receiptMaxBytes  Int
+  uploadTtlSeconds Int
+  quoteTtlSeconds  Int
+  retentionDays    Int
+  validFrom        DateTime
+  validUntil       DateTime
+  enabled          Boolean            @default(false)
+  approvedAt       DateTime?
+  createdAt        DateTime           @default(now())
+
+  planVersion   SubscriptionPlanVersion @relation(fields: [planVersionId, currency], references: [id, currency], onDelete: Restrict)
+  debitAccount  LedgerAccount           @relation("ManualInstructionDebit", fields: [debitAccountId, currency], references: [id, currency], onDelete: Restrict)
+  creditAccount LedgerAccount           @relation("ManualInstructionCredit", fields: [creditAccountId, currency], references: [id, currency], onDelete: Restrict)
+  reviews       MoneyManualReview[]
+
+  @@index([planVersionId, method, enabled, validFrom])
+}
+
+model MoneyManualReceiptVersion {
+  id              String    @id @default(cuid())
+  paymentIntentId String
+  mediaAssetId    String    @unique
+  revision        Int
+  predecessorId   String?   @unique
+  createdAt       DateTime  @default(now())
+  submittedAt     DateTime?
+
+  paymentIntent MoneyPaymentIntent             @relation(fields: [paymentIntentId], references: [id], onDelete: Restrict)
+  mediaAsset    MediaAsset                     @relation(fields: [mediaAssetId], references: [id], onDelete: Restrict)
+  predecessor   MoneyManualReceiptVersion?     @relation("ManualReceiptPredecessor", fields: [predecessorId], references: [id], onDelete: Restrict)
+  replacement   MoneyManualReceiptVersion?     @relation("ManualReceiptPredecessor")
+  currentFor    MoneyManualReview?             @relation("ManualCurrentReceipt")
+  decisions     MoneyManualReviewDecision[]
+  inspections   MoneyManualReceiptInspection[]
+
+  @@unique([paymentIntentId, revision])
+}
+
+model MoneyManualReview {
+  paymentIntentId        String    @id
+  instructionVersionId   String
+  currentReceiptId       String?   @unique
+  version                Int       @default(0)
+  state                  String    @default("RECEIPT_REQUIRED")
+  pendingDecisionId      String?   @unique
+  nextAttemptAt          DateTime?
+  attemptCount           Int       @default(0)
+  lastErrorCode          String?
+  reconciliationRequired Boolean   @default(false)
+  createdAt              DateTime  @default(now())
+  updatedAt              DateTime  @updatedAt
+
+  paymentIntent   MoneyPaymentIntent            @relation(fields: [paymentIntentId], references: [id], onDelete: Restrict)
+  instruction     MoneyManualInstructionVersion @relation(fields: [instructionVersionId], references: [id], onDelete: Restrict)
+  currentReceipt  MoneyManualReceiptVersion?    @relation("ManualCurrentReceipt", fields: [currentReceiptId], references: [id], onDelete: Restrict)
+  pendingDecision MoneyManualReviewDecision?    @relation("ManualPendingDecision", fields: [pendingDecisionId], references: [id], onDelete: Restrict)
+
+  @@index([state, nextAttemptAt, paymentIntentId])
+}
+
+model MoneyManualReviewDecision {
+  id              String   @id @default(cuid())
+  paymentIntentId String
+  receiptId       String
+  inspectionId    String
+  reviewerUserId  String
+  action          String
+  settlementId    String?
+  expectedVersion Int
+  providerMessage String
+  internalNote    String?
+  idempotencyKey  String   @unique
+  requestDigest   String   @db.Char(64)
+  createdAt       DateTime @default(now())
+
+  paymentIntent MoneyPaymentIntent           @relation(fields: [paymentIntentId], references: [id], onDelete: Restrict)
+  receipt       MoneyManualReceiptVersion    @relation(fields: [receiptId], references: [id], onDelete: Restrict)
+  inspection    MoneyManualReceiptInspection @relation(fields: [inspectionId], references: [id], onDelete: Restrict)
+  reviewer      User                         @relation(fields: [reviewerUserId], references: [id], onDelete: Restrict)
+  settlement    MoneyManualSettlement?       @relation(fields: [settlementId], references: [id], onDelete: Restrict)
+  pendingFor    MoneyManualReview?           @relation("ManualPendingDecision")
+  claim         MoneyManualSettlementClaim?
+
+  @@index([paymentIntentId, createdAt, id])
+}
+
+model MoneyManualSettlement {
+  id                 String           @id @default(cuid())
+  adapterId          String
+  mode               MoneyAdapterMode
+  accountReference   String
+  referenceCanonical String
+  amountMinor        BigInt
+  currency           String           @db.Char(3)
+  occurredAt         DateTime
+  recordedByUserId   String
+  evidenceSource     String
+  policyVersion      String
+  idempotencyKey     String           @unique
+  requestDigest      String           @db.Char(64)
+  createdAt          DateTime         @default(now())
+
+  recordedBy User                        @relation(fields: [recordedByUserId], references: [id], onDelete: Restrict)
+  decisions  MoneyManualReviewDecision[]
+  claim      MoneyManualSettlementClaim?
+
+  @@unique([adapterId, mode, accountReference, referenceCanonical], map: "MoneyManualSettlement_scoped_reference_key")
+  @@index([adapterId, mode, accountReference, createdAt])
+}
+
+model MoneyManualSettlementClaim {
+  settlementId    String   @id
+  paymentIntentId String   @unique
+  decisionId      String   @unique
+  createdAt       DateTime @default(now())
+
+  settlement    MoneyManualSettlement     @relation(fields: [settlementId], references: [id], onDelete: Restrict)
+  paymentIntent MoneyPaymentIntent        @relation(fields: [paymentIntentId], references: [id], onDelete: Restrict)
+  decision      MoneyManualReviewDecision @relation(fields: [decisionId], references: [id], onDelete: Restrict)
+}
+
+model MoneyManualReceiptInspection {
+  id             String   @id @default(cuid())
+  receiptId      String
+  reviewerUserId String
+  sha256         String   @db.Char(64)
+  createdAt      DateTime @default(now())
+
+  receipt  MoneyManualReceiptVersion @relation(fields: [receiptId], references: [id], onDelete: Restrict)
+  reviewer User                      @relation(fields: [reviewerUserId], references: [id], onDelete: Restrict)
+
+  decisions MoneyManualReviewDecision[]
+
+  @@index([receiptId, reviewerUserId, createdAt])
+}
+
+model MoneyManualRefundOperation {
+  refundId               String           @id
+  providerIdempotencyKey String           @unique
+  adapterId              String
+  mode                   MoneyAdapterMode
+  accountReference       String
+  amountMinor            BigInt
+  currency               String           @db.Char(3)
+  externalOperationId    String?
+  dispatchUserId         String?
+  confirmationUserId     String?
+  state                  String           @default("PENDING")
+  reference              String?
+  createdAt              DateTime         @default(now())
+  updatedAt              DateTime         @updatedAt
+
+  refund     MoneyRefund              @relation(fields: [refundId], references: [id], onDelete: Restrict)
+  dispatcher User?                    @relation("ManualRefundDispatcher", fields: [dispatchUserId], references: [id], onDelete: Restrict)
+  confirmer  User?                    @relation("ManualRefundConfirmer", fields: [confirmationUserId], references: [id], onDelete: Restrict)
+  events     MoneyManualRefundEvent[]
+
+  @@unique([adapterId, mode, accountReference, externalOperationId], map: "MoneyManualRefundOperation_scoped_operation_key")
+  @@unique([adapterId, mode, accountReference, reference], map: "MoneyManualRefundOperation_scoped_reference_key")
+}
+
+model MoneyManualRefundEvent {
+  id                  String   @id @default(cuid())
+  refundId            String
+  type                String
+  recordedByUserId    String
+  reference           String?
+  externalOperationId String?
+  evidenceSource      String
+  internalNote        String?
+  idempotencyKey      String   @unique
+  requestDigest       String   @db.Char(64)
+  createdAt           DateTime @default(now())
+
+  operation  MoneyManualRefundOperation @relation(fields: [refundId], references: [refundId], onDelete: Restrict)
+  recordedBy User                       @relation(fields: [recordedByUserId], references: [id], onDelete: Restrict)
+
+  @@index([refundId, createdAt, id])
+}
+
+// G3 frozen foundation. Configuration approvals are external authority: the
+// migration inserts no policy, permission, financial row or acceptance record.
+model MoneyApprovedRefundPolicy {
+  version           String                       @id @db.VarChar(100)
+  planVersionId     String                       @db.VarChar(64)
+  method            MoneyPaymentMethod
+  mode              MoneyAdapterMode
+  currency          String                       @db.Char(3)
+  approvalReference String                       @db.VarChar(200)
+  approvedAt        DateTime
+  validFrom         DateTime
+  validUntil        DateTime
+  rules             Json
+  entitlementEffect MoneyRefundEntitlementEffect
+  createdAt         DateTime                     @default(now())
+
+  @@index([planVersionId, method, mode, currency, validFrom, validUntil])
+}
+
+enum MoneyRefundEntitlementEffect {
+  SUSPEND_SUBSCRIPTION
+  CANCEL_SUBSCRIPTION
+}
+
+enum MoneyReconciliationRunState {
+  RUNNING
+  COMPLETED
+  BLOCKED
+  FAILED
+}
+
+enum MoneyReconciliationSeverity {
+  INFO
+  WARNING
+  CRITICAL
+}
+
+model MoneyReconciliationWindow {
+  id               String                           @id @default(cuid())
+  adapterId        String                           @db.VarChar(100)
+  mode             MoneyAdapterMode
+  accountReference String                           @db.VarChar(200)
+  currency         String                           @db.Char(3)
+  startsAt         DateTime
+  endsAt           DateTime
+  // Durable checkpoint advances only with committed observations/effects.
+  cursor           String?                          @db.VarChar(2048)
+  revision         Int                              @default(0)
+  leaseOwner       String?                          @db.VarChar(100)
+  leaseUntil       DateTime?
+  fence            Int                              @default(0)
+  createdAt        DateTime                         @default(now())
+  updatedAt        DateTime                         @updatedAt
+  runs             MoneyReconciliationRun[]
+  cases            MoneyReconciliationCase[]
+  observations     MoneyReconciliationObservation[]
+
+  @@unique([adapterId, mode, accountReference, currency, startsAt, endsAt], map: "money_reconciliation_window_scope_key")
+  @@index([leaseUntil, updatedAt, id])
+}
+
+model MoneyReconciliationRun {
+  id              String                      @id @default(cuid())
+  windowId        String
+  state           MoneyReconciliationRunState @default(RUNNING)
+  startedAt       DateTime                    @default(now())
+  completedAt     DateTime?
+  lastCheckedAt   DateTime                    @default(now())
+  sourceKind      String                      @db.VarChar(40)
+  sourceReference String                      @db.VarChar(200)
+  // A digest/reference, never a raw statement, credential or receipt.
+  evidenceDigest  String?                     @db.Char(64)
+  sourceComplete  Boolean                     @default(false)
+  matchedCount    Int                         @default(0)
+  unmatchedCount  Int                         @default(0)
+  failureCode     String?                     @db.VarChar(80)
+  fence           Int
+  window          MoneyReconciliationWindow   @relation(fields: [windowId], references: [id], onDelete: Restrict)
+
+  @@index([windowId, startedAt, id])
+  @@index([state, completedAt, id])
+}
+
+model MoneyReconciliationObservation {
+  id               String                    @id @default(cuid())
+  windowId         String
+  adapterId        String                    @db.VarChar(100)
+  mode             MoneyAdapterMode
+  accountReference String                    @db.VarChar(200)
+  currency         String                    @db.Char(3)
+  sourceEventId    String                    @db.VarChar(200)
+  payloadDigest    String                    @db.Char(64)
+  observedAt       DateTime
+  recordedAt       DateTime                  @default(now())
+  window           MoneyReconciliationWindow @relation(fields: [windowId], references: [id], onDelete: Restrict)
+
+  // Dedupe survives overlap and restart; differing payload hashes conflict.
+  @@unique([adapterId, mode, accountReference, currency, sourceEventId], map: "money_reconciliation_observation_source_key")
+  @@index([windowId, recordedAt, id])
+}
+
+model MoneyReconciliationCase {
+  exceptionId            String                        @id
+  windowId               String
+  severity               MoneyReconciliationSeverity
+  originalEvidenceDigest String                        @db.Char(64)
+  originalResolvedAt     DateTime?
+  originalResolutionCode String?                       @db.VarChar(64)
+  lastCheckedAt          DateTime
+  revision               Int                           @default(0)
+  exception              MoneyReconciliationException  @relation(fields: [exceptionId], references: [id], onDelete: Restrict)
+  window                 MoneyReconciliationWindow     @relation(fields: [windowId], references: [id], onDelete: Restrict)
+  decisions              MoneyReconciliationDecision[]
+
+  @@index([severity, lastCheckedAt, exceptionId])
+}
+
+model MoneyReconciliationDecision {
+  id                      String                  @id @default(cuid())
+  exceptionId             String
+  revision                Int
+  action                  String                  @db.VarChar(32)
+  makerUserId             String                  @db.VarChar(64)
+  checkerUserId           String?                 @db.VarChar(64)
+  idempotencyKey          String                  @unique @db.VarChar(128)
+  payloadHash             String                  @db.Char(64)
+  reasonCode              String                  @db.VarChar(64)
+  // Only a reference to a separately authorized correction; no balancing write.
+  correctionTransactionId String?                 @db.VarChar(64)
+  createdAt               DateTime                @default(now())
+  operation               MoneyReconciliationCase @relation(fields: [exceptionId], references: [exceptionId], onDelete: Restrict)
+  maker                   User @relation("ReconciliationDecisionMaker", fields: [makerUserId], references: [id], onDelete: Restrict, onUpdate: NoAction, map: "g3_decision_maker_fk")
+  checker                 User? @relation("ReconciliationDecisionChecker", fields: [checkerUserId], references: [id], onDelete: Restrict, onUpdate: NoAction, map: "g3_decision_checker_fk")
+  correctionTransaction   LedgerTransaction? @relation(fields: [correctionTransactionId], references: [id], onDelete: Restrict, onUpdate: NoAction, map: "g3_decision_correction_fk")
+
+  @@unique([exceptionId, revision])
 }

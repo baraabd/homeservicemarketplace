@@ -30,7 +30,10 @@ export class PermissionsGuard implements CanActivate {
         key.startsWith('money:') ||
         key === 'user:read:any' ||
         // R17-D: a revoked user-write grant must stop status changes at once.
-        key === 'user:write:any',
+        key === 'user:write:any' ||
+        // K06: approving admin access mints an administrator; a removed admin
+        // membership must not keep this grant through an unexpired token.
+        key === 'admin:access:grant',
     );
     const granted = sensitive
       ? await this.resolver.resolveFreshForUser(user.id)

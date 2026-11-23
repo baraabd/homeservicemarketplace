@@ -1,0 +1,257 @@
+{
+  "schemaVersion": 1,
+  "recordId": "g3-pr-repair-2026-10-24",
+  "repository": "baraabd/homeservicemarketplace",
+  "pullRequest": 198,
+  "branch": "coord/g3-wave4-start-gate",
+  "startingRemoteHead": "ec9d86df306b3f93bf1589bdee8dcc479c6d9809",
+  "baseSha": "73a4a64a77844db7815466f47d8afdefb0b35c2f",
+  "testedState": "scoped repair worktree before its normal-hook commit; final published identity and CI are recorded in PR metadata",
+  "g3Accepted": false,
+  "frozenSourceSha": null,
+  "wave4Authorized": false,
+  "configuration": {
+    "node": "24.21.0",
+    "pnpm": "10.32.1",
+    "prisma": "6.12.0",
+    "postgres": "16",
+    "redis": "7",
+    "scanner": "actual ClamAV with verified official signatures",
+    "stripeCredentials": "ABSENT",
+    "approvedFinancialPolicy": "ABSENT",
+    "policyFixtures": "SYNTHETIC XTS only",
+    "localSecrets": "random disposable credentials; values omitted",
+    "liveMoney": false
+  },
+  "repairFindings": [
+    {
+      "id": "PR198-CHECKOUT-CONTRAST",
+      "failedRunId": 40080751330,
+      "failedJobId": 120834646263,
+      "cause": "Checkout button color transitions produced transient low contrast in the real R31 theme-switch axe check.",
+      "change": "Reuse immediate foreground/background transition behavior on all four Stripe purchase controls.",
+      "remoteBrowserVerification": "PENDING_ON_FINAL_PUBLISHED_HEAD"
+    },
+    {
+      "id": "G3-REAL-REFUND-PARTICIPANT-ORDER",
+      "cause": "The actual subscription refund participant requires the successful refund state and compensation link, but the orchestrator called it before those writes.",
+      "change": "Write terminal refund/link then invoke the real participant inside the same transaction. All business writes roll back together on failure.",
+      "proof": "Both concrete manual refund effects pass; CANCEL fault after real participant writes rolls back and the identical query recovers."
+    },
+    {
+      "id": "G3-ASSEMBLED-MANUAL-EVIDENCE",
+      "change": "Add two actual AppModule/HTTP/PG/Redis/ClamAV success/failure-recovery paths without any money-port/scanner override; CI requires all six cases in their own report."
+    },
+    {
+      "id": "G3-EXTERNAL-RUNNER",
+      "change": "Add explicit approved-input external Stripe runner with authentic forwarded signatures and independent provider observations.",
+      "externalScenarios": 14,
+      "executedExternalScenarios": 0,
+      "guardTests": 49,
+      "status": "NOT_RUN_AUTHORITY_ABSENT",
+      "exclusions": [
+        "manual-rail",
+        "browser-payment-element",
+        "hosted",
+        "process-kill-crash",
+        "full-R29-required-external-matrix"
+      ]
+    },
+    {
+      "id": "PR198-CODEQL-ATOMIC-EVIDENCE-OUTPUT",
+      "observedSourceSha": "f3f8d960773f4bcc4bdd0a3db6c53b6f70f8b775",
+      "checkRunId": 120878327399,
+      "severity": "HIGH",
+      "title": "Potential file system race condition",
+      "path": "scripts/production/stripe-sandbox/verify-external.cjs",
+      "cause": "Evidence pathname existence check preceded a later pathname write.",
+      "change": "Atomically reserve a private new file before input/provider work, reject existing files and symlinks, retain the descriptor for writing and unconditional closure.",
+      "addedRealFilesystemCases": 9,
+      "codeqlRulesChanged": false,
+      "remoteSecurityResult": "REQUIRED_ON_FINAL_SOURCE"
+    }
+  ],
+  "checks": [
+    {
+      "command": "pnpm --filter @homeservicemarketplace/api exec jest --runInBand test/integration/g3-financial-foundation.integration.spec.ts",
+      "passed": 6,
+      "failed": 0,
+      "skipped": 0,
+      "infrastructure": ["PostgreSQL"],
+      "exitCode": 0,
+      "logSha256": "d6cbd3f2344d3140150b6c90580bf4262b08ab4ea41e8281c390b0b9156f1987",
+      "logName": "g3-db-checks.log"
+    },
+    {
+      "command": "pnpm --filter @homeservicemarketplace/api exec jest --runInBand test/integration/g3-financial-runtime.integration.spec.ts",
+      "passed": 6,
+      "failed": 0,
+      "skipped": 0,
+      "infrastructure": ["actual AppModule", "PostgreSQL", "Redis", "ClamAV"],
+      "commercialApproval": false,
+      "exitCode": 0,
+      "logName": "g3-financial-runtime-short-key.log",
+      "logSha256": "3a93c2f4e7b571d211408c48fd1aed2a9a0ad15bbd0aff5dd47a3e8edeb1c5d5",
+      "jsonReportName": "g3-financial-runtime-short-key.json",
+      "jsonReportSha256": "fb3b2158efe5b49ada4ad1fa6fbdd227ff02d16ea6e100f7f937b70cdbfe34ee"
+    },
+    {
+      "command": "pnpm --filter @homeservicemarketplace/api exec jest --runInBand --runTestsByPath test/integration/r30-manual-payments.integration.spec.ts",
+      "passed": 16,
+      "failed": 0,
+      "skipped": 0,
+      "exitCode": 0,
+      "logSha256": "346006e254f42e685b8e244e511edcc4309a99f0823a87be623cbfd77c0f21c3",
+      "logName": "r30-manual-service-local.log",
+      "jsonReportSha256": "2d6222ad71ef8143ff02fc8d2ae7630f0831621aab0e569b1467c8f835de9d68",
+      "jsonReportName": "r30-manual-service-local.json"
+    },
+    {
+      "command": "pnpm --filter @homeservicemarketplace/api exec jest --runInBand src/modules/money/application/money-command.service.spec.ts test/integration/r32-refund-recovery.integration.spec.ts",
+      "passed": 92,
+      "failed": 0,
+      "skipped": 0,
+      "infrastructure": ["PostgreSQL"],
+      "exitCode": 0,
+      "logSha256": "0cb3994d0ab3860e14ec36011eca89b7afe60ba37436c3f49c8a4935482a0972",
+      "logName": "refund-recovery.log"
+    },
+    {
+      "command": "pnpm --filter @homeservicemarketplace/web exec vitest run src/app/features/subscriptions/StripePlanPurchase.test.tsx src/app/features/subscriptions/stripe-purchase.api.test.ts",
+      "passed": 7,
+      "failed": 0,
+      "skipped": 0,
+      "exitCode": 0
+    },
+    {
+      "command": "node --test .github/scripts/*.test.mjs scripts/production/stripe-sandbox/verify-external.test.cjs",
+      "passed": 549,
+      "failed": 0,
+      "skipped": 0,
+      "cancelled": 0,
+      "todo": 0,
+      "includes": {
+        "governance": 500,
+        "externalRunnerGuards": 49,
+        "g3AndWaveSubset": 170
+      },
+      "exitCode": 0,
+      "logSha256": "34bc86dbd88a9fe9d300cf6b60b2ce2e7bac1f171c939da414768d8e79fd1fac",
+      "logName": "final-atomic-governance-tests.log"
+    }
+  ],
+  "staticChecks": {
+    "apiTypecheck": "PASS",
+    "scopedEslint": "PASS",
+    "prettier": "PASS",
+    "repositoryGovernance": "PASS",
+    "releaseBaseline": "PASS",
+    "g3RecordConsistency": "PASS",
+    "g3ReadyR34": "EXPECTED_BLOCKED"
+  },
+  "sourceFileDigests": [
+    {
+      "path": "apps/api/src/modules/money/application/money-command.service.ts",
+      "sha256": "7fac55d564c88dbfc84e13540bed0c3a4cc15694b0e30f468d603a585d8fdf94"
+    },
+    {
+      "path": "apps/api/test/integration/g3-financial-runtime.integration.spec.ts",
+      "sha256": "6ecd2de24dd19bd6fccbaa7364a3a1de9381adda74a9dbf0cfa5d946da87c284"
+    },
+    {
+      "path": "apps/api/test/integration/g3-financial-foundation.integration.spec.ts",
+      "sha256": "1b02e9ff188fe721ebffbfee4cdfe7ecfd490df5f21b2a94e9d09fdc06df7bad"
+    },
+    {
+      "path": "apps/api/test/integration/r30-manual-payments.integration.spec.ts",
+      "sha256": "388a795e4eaf1ee42db7ba0a0d5b2b7a6afd97fc05fb6a6e9edc58084ec420ce"
+    },
+    {
+      "path": "apps/api/test/integration/r32-refund-recovery.integration.spec.ts",
+      "sha256": "aa27390705f5b30e5d9e7ad848df69aa6af456d68af618135334d12d6332beb8"
+    },
+    {
+      "path": "apps/web/src/app/features/subscriptions/StripePlanPurchase.tsx",
+      "sha256": "84fcc6a59e9ab0c4af229a31a7e5e09fc85596946778b58a3f222aaad7913565"
+    },
+    {
+      "path": "apps/api/test/support/g3-stripe-external.fixture.ts",
+      "sha256": "d8a6d91031b2a2cdf3a43f1a89a5630ad290ef48a06d1e6c18b203b97ebe64b7"
+    },
+    {
+      "path": "scripts/production/stripe-sandbox/verify-external.cjs",
+      "sha256": "6d427027ac05ec97b56e418d572f2f4eb54597fd0485d3141692962fca577570"
+    },
+    {
+      "path": "scripts/production/stripe-sandbox/verify-external.test.cjs",
+      "sha256": "7efca1cc13101558b0abf453373e934971e2fe7d81f004814f48dde3bc03f5f0"
+    }
+  ],
+  "relatedPullRequests": [
+    {
+      "number": 196,
+      "headSha": "d634bfe66408c0f990e33713b7b0a83a983da51f",
+      "failedRunId": 40078253861,
+      "failedJobId": 120827610955,
+      "cause": "R17-E provider transition interactive transaction exceeded 5000ms (5599ms); the identical relevant source passed in peer PR runs.",
+      "action": "One root-requested failed-jobs rerun completed successfully on unchanged source.",
+      "sourceModified": false,
+      "runAttempt": 2,
+      "checks": "38_CURRENT_CHECKS_PASSED",
+      "r17e": {
+        "passed": 44,
+        "failed": 0,
+        "skipped": 0
+      }
+    },
+    {
+      "number": 197,
+      "headSha": "16d3a658bcf2116f49dd7aed6eb0709b6e82824e",
+      "checks": "38_CURRENT_CHECKS_PASSED",
+      "sourceModified": false
+    }
+  ],
+  "limitations": [
+    "Local Chromium download failed at official CDN; real final-source browser evidence must be inspected from CI.",
+    "Local task evidence does not substitute for final-source GitHub artifacts.",
+    "No actual external Stripe or Payment Element payment was performed.",
+    "No financial policy, G3 acceptance/publication, frozen SHA or R34 lease was fabricated."
+  ],
+  "secretScanRepair": {
+    "introducingGitObject": "2433b0fab1d5b3e826f5c28e278994702efe35dd",
+    "classification": "five individually reviewed occurrences of one synthetic entitlement domain identifier; no credential",
+    "historicalFingerprintsAdded": 5,
+    "currentFixtureIdentifier": "g3.test",
+    "scannerRulesChanged": false,
+    "historyRewritten": false
+  },
+  "interimRemoteEvidence": {
+    "sourceSha": "f3f8d960773f4bcc4bdd0a3db6c53b6f70f8b775",
+    "treeSha": "e00b8cff0c16cfd6ccad4a524e88f345aaa792c7",
+    "runId": 40095796959,
+    "finalSourceAcceptance": false,
+    "r31": {
+      "jobId": 120878522336,
+      "artifactId": 12560534468,
+      "artifactSha256": "1d6602f1365038d83b3741fe96e84a77a78b23b5c1992026d7f2bb5485e6de8d",
+      "journeysPassed": 4,
+      "commandsPassed": 8,
+      "screenshotsVerifiedAndInspected": 20,
+      "failed": 0,
+      "skipped": 0,
+      "flaky": 0
+    },
+    "r30AndG3": {
+      "jobId": 120878522233,
+      "artifactId": 12561410428,
+      "artifactSha256": "6a253076cec376c2d1a3e7ba68871d7500fc3eae1c7434d9a0d0833ab1dd117e",
+      "r30Passed": 16,
+      "g3Passed": 6,
+      "browserHarnessPassed": 1,
+      "browserScenariosPassed": 2,
+      "failed": 0,
+      "skipped": 0,
+      "flaky": 0
+    }
+  }
+}

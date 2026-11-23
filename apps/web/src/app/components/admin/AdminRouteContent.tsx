@@ -11,7 +11,6 @@ import { AdminDisputeInbox } from '../../features/disputes/workspace/AdminDisput
 import { WorkspacePanel } from '../../features/disputes/workspace/WorkspacePanel';
 import { ApprovalCenter } from '../../features/admin-approvals/ApprovalCenter';
 import { FinancialsSection } from './FinancialsSection';
-import { SettingsSection } from './SettingsSection';
 import { AuditLogsSection } from './AuditLogsSection';
 import { SupportSection } from './SupportSection';
 import { directoryReturn, type AdminRoute } from './admin-routes';
@@ -20,14 +19,33 @@ import { directoryReturn, type AdminRoute } from './admin-routes';
 // minification). Every other admin section and the approval queue above the
 // charts must not wait for, or download, that chunk. A failed load keeps the
 // approval queue usable and offers a reload in place of the charts.
+// Settings and contact enrollment are fetched when their route is opened.
+const SettingsSection = lazy(() =>
+  import('./SettingsSection').then((module) => ({ default: module.SettingsSection })),
+);
 const DashboardOverview = lazy(() =>
   import('./DashboardOverview').then((module) => ({ default: module.DashboardOverview })),
+);
+const ManualReviewScreen = lazy(() =>
+  import('../../features/manual-payments/ManualReviewScreen').then((module) => ({
+    default: module.ManualReviewScreen,
+  })),
 );
 
 export function AdminRouteContent({ route }: { route: AdminRoute }) {
   const { lang } = useLang();
   const location = useLocation();
   const navigate = useNavigate();
+  if (route.kind === 'manualPayments' || route.kind === 'manualPayment') {
+    return (
+      <AsyncBoundary>
+        <ManualReviewScreen
+          key={route.kind === 'manualPayment' ? route.paymentIntentId : 'queue'}
+          paymentIntentId={route.kind === 'manualPayment' ? route.paymentIntentId : undefined}
+        />
+      </AsyncBoundary>
+    );
+  }
   if (route.kind === 'legacy') {
     return <Navigate to={`/admin/reviews${location.search}`} state={location.state} replace />;
   }
@@ -91,13 +109,27 @@ export function AdminRouteContent({ route }: { route: AdminRoute }) {
     case 'identity-cases':
       return <AdminIdentityCasesPage />;
     case 'financials':
-      return <FinancialsSection lang={lang} />;
+      return (
+        <div className="ar-stack">
+          <Link className="ar-button" to="/admin/financial-operations">
+            {lang === 'ar' ? 'عمليات مدفوعات الاشتراكات' : 'Subscription payment operations'}
+          </Link>
+          <Link className="ar-button" to="/admin/manual-payments">
+            {lang === 'ar' ? 'مراجعة الدفعات اليدوية' : 'Review manual payments'}
+          </Link>
+          <FinancialsSection lang={lang} />
+        </div>
+      );
     case 'disputes':
       return <AdminDisputeInbox />;
     case 'support':
       return <SupportSection lang={lang} />;
     case 'settings':
-      return <SettingsSection lang={lang} />;
+      return (
+        <AsyncBoundary>
+          <SettingsSection lang={lang} />
+        </AsyncBoundary>
+      );
     case 'audit':
       return <AuditLogsSection lang={lang} />;
   }

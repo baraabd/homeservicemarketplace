@@ -33,6 +33,7 @@ const SERVER_ISSUES: ReadonlyArray<[field: string, code: string]> = [
   ['displayName', 'REQUIRED'],
   ['displayName', 'TOO_SHORT'],
   ['emailVerified', 'UNVERIFIED'],
+  ['contactVerified', 'UNVERIFIED'],
   ['headline', 'REQUIRED'],
   ['headline', 'TOO_SHORT'],
   ['legalBusinessName', 'REQUIRED'],

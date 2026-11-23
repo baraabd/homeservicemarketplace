@@ -203,6 +203,8 @@ d('R15 - authoritative double-entry ledger (real Postgres)', () => {
         requestId: `${bookingId}-request`,
         providerId: PROVIDER,
         amount: 100,
+        currency: 'SAR',
+        amountScale: 2,
         pricingType: 'FIXED',
         status: 'ACCEPTED',
       },
@@ -215,6 +217,8 @@ d('R15 - authoritative double-entry ledger (real Postgres)', () => {
         seekerUserId: SEEKER,
         providerId: PROVIDER,
         priceAmount: 100,
+        currency: 'SAR',
+        amountScale: 2,
         status: 'COMPLETED',
       },
     });

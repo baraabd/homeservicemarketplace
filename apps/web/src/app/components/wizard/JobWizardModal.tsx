@@ -24,6 +24,7 @@ import {
   LocateFixed,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { combineLocalDateTimeToIso, todayLocalDateString } from '../../../lib/schedule-time';
 // Leaflet is consumed only for the divIcon factory below — the
 // MapContainer / Marker / TileLayer are mounted inside LocationMap.
 import L from 'leaflet';
@@ -141,31 +142,6 @@ function StepProgress({
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
-// Build an ISO datetime string from the user's local-date + local-time
-// inputs. The browser's HTML5 inputs return strings in local-time
-// format (`YYYY-MM-DD` and `HH:MM`); we combine them and let the
-// Date constructor interpret them as local time, then ship the UTC
-// ISO string to the backend.
-function combineLocalDateTimeToIso(date: string, time: string): string | null {
-  if (!date || !time) return null;
-  // Modern browsers parse "YYYY-MM-DDTHH:MM" as LOCAL time (not UTC),
-  // which is what we want.
-  const local = new Date(`${date}T${time}`);
-  if (Number.isNaN(local.getTime())) return null;
-  return local.toISOString();
-}
-
-// Today as YYYY-MM-DD in the browser's local timezone, used as the
-// `min` attribute on the date input so past calendar days are
-// disabled at the picker level.
-function todayLocalDateString(): string {
-  const d = new Date();
-  const yyyy = d.getFullYear();
-  const mm = String(d.getMonth() + 1).padStart(2, '0');
-  const dd = String(d.getDate()).padStart(2, '0');
-  return `${yyyy}-${mm}-${dd}`;
-}
-
 // Comma-split heuristic — same as SavedAddressesPage's. Used when the
 // user typed/edited the address text and we cannot use the saved
 // addressId path.

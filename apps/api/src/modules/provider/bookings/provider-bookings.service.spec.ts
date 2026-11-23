@@ -12,6 +12,7 @@ import type { BookingEventRepository } from '../../../infrastructure/persistence
 import type {
   BookingRepository,
   BookingWithProviderRelations,
+  ProviderBookingListRow,
 } from '../../../infrastructure/persistence/bookings/booking.repository';
 import type { ProviderProfileRepository } from '../../../infrastructure/persistence/bids/provider-profile.repository';
 import type { TransactionRunner } from '../../../infrastructure/prisma/transaction.runner';
@@ -70,6 +71,7 @@ function makeBookingRow(
     scheduledAt: date,
     priceAmount: 4500,
     currency: 'USD',
+    amountScale: null,
     createdAt: date,
     updatedAt: date,
     deletedAt: null,
@@ -120,6 +122,7 @@ function makeBookingRow(
       providerId: profile.id,
       amount: 4500,
       currency: 'USD',
+      amountScale: null,
       pricingType: 'HOURLY',
       note: 'I can be there in 20 minutes',
       status: 'ACCEPTED',
@@ -149,7 +152,7 @@ function makeMocks(
     ownedRow?: BookingWithProviderRelations | null;
     setStatusCount?: number;
     reloadedRow?: BookingWithProviderRelations | null;
-    listRows?: BookingWithProviderRelations[];
+    listRows?: ProviderBookingListRow[];
     cursorOwned?: boolean;
   } = {},
 ): Mocks {
@@ -166,7 +169,7 @@ function makeMocks(
       findByUserId: jest.fn().mockResolvedValue(profile),
     } as unknown as ProviderProfileRepository,
     bookings: {
-      listForProvider: jest.fn().mockResolvedValue(args.listRows ?? []),
+      listForProviderSummary: jest.fn().mockResolvedValue(args.listRows ?? []),
       isCursorOwnedByProvider: jest.fn().mockResolvedValue(args.cursorOwned ?? true),
       findOwnedByProvider: jest.fn().mockImplementation(() => {
         call += 1;
@@ -226,7 +229,7 @@ describe('ProviderBookingsService', () => {
       const mocks = makeMocks({ listRows: [makeBookingRow('SCHEDULED', { id: 'c' })] });
       await makeService(mocks).list('user-provider-1', { cursor: 'b' });
       expect(mocks.bookings.isCursorOwnedByProvider).toHaveBeenCalledWith('b', makeProfile().id);
-      expect(mocks.bookings.listForProvider).toHaveBeenCalledWith(
+      expect(mocks.bookings.listForProviderSummary).toHaveBeenCalledWith(
         expect.objectContaining({ cursor: 'b', providerId: makeProfile().id }),
       );
     });
@@ -236,7 +239,7 @@ describe('ProviderBookingsService', () => {
       await expect(
         makeService(mocks).list('user-provider-1', { cursor: 'someone-elses' }),
       ).rejects.toMatchObject({ code: 'VALIDATION_ERROR', status: 400 });
-      expect(mocks.bookings.listForProvider).not.toHaveBeenCalled();
+      expect(mocks.bookings.listForProviderSummary).not.toHaveBeenCalled();
     });
 
     it('does not look up a cursor on the first page', async () => {
@@ -250,6 +253,51 @@ describe('ProviderBookingsService', () => {
       await expect(makeService(mocks).list('user-provider-1', {})).rejects.toMatchObject({
         status: 404,
         code: 'NOT_FOUND',
+      });
+      expect(mocks.bookings.listForProviderSummary).not.toHaveBeenCalled();
+    });
+
+    it('serializes the narrow list projection identically without loading a provider or full request', async () => {
+      const full = makeBookingRow('COMPLETED');
+      const narrow: ProviderBookingListRow = {
+        id: full.id,
+        requestId: full.requestId,
+        bidId: full.bidId,
+        status: full.status,
+        scheduledAt: full.scheduledAt,
+        priceAmount: full.priceAmount,
+        currency: full.currency,
+        amountScale: full.amountScale,
+        createdAt: full.createdAt,
+        updatedAt: full.updatedAt,
+        request: {
+          customServiceText: full.request.customServiceText,
+          addressSnapshot: full.request.addressSnapshot,
+          category: full.request.category && {
+            id: full.request.category.id,
+            slug: full.request.category.slug,
+            labelEn: full.request.category.labelEn,
+            labelAr: full.request.category.labelAr,
+          },
+        },
+        bid: { pricingType: full.bid.pricingType, note: full.bid.note },
+        seeker: { id: full.seeker.id, firstName: full.seeker.firstName },
+      };
+      const expected = await makeService(makeMocks({ listRows: [full] })).list(
+        'user-provider-1',
+        {},
+      );
+      const actual = await makeService(makeMocks({ listRows: [narrow] })).list(
+        'user-provider-1',
+        {},
+      );
+      expect(actual).toEqual(expected);
+      expect(actual.items[0]).toMatchObject({
+        priceAmount: 4500,
+        currency: 'USD',
+        pricingType: 'HOURLY',
+        bidNote: 'I can be there in 20 minutes',
+        addressSnapshot: { line1: '7 Main St' },
       });
     });
   });

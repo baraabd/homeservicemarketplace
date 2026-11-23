@@ -1,8 +1,232 @@
 # G2 coordinator ownership
 
+## Verified owner publication and R30 session — 2026-10-23
+
+The owner merged PR #183 as `986b4707776711e80564f0642133ede90ba16f3c`
+on 2026-10-23 at 04:11:34 UTC. Independent read-only GitHub and local Git
+verification establishes the accepted-source ancestry, identical reviewed/merged
+record trees, 38 latest successful PR checks and 30 successful postmerge checks.
+The frozen source/tree remain `72b4aaeb0a71d806b7fca7363dd9ca59bbcee644` /
+`43e9c6a4e58cfb934b12789feeb38b588e1cb7c6`.
+
+Root delegates only the eleven exact governance paths listed in
+`docs/production-readiness/r30/OWNERSHIP.md` to `pr_audit`. The lease permits
+recording the existing owner merge and assigning root session
+`hsm-r30-590834e66da5` to R30, preserving all peer records and policy holds.
+`PUBLICATION_VERIFICATION.json` and its companion narrative retain the observed
+proof. No validator, measured evidence, G1 identity or runtime source is changed
+under this lease. It returns to root after validation; commits and publication
+remain root-owned.
+
+Only R30 has an active implementation session. Source-writing ownership and any
+shared-runtime lease must be explicitly recorded before those edits. Root owns
+the single schema/migration writer and global composition; delegated runtime
+authors cannot extend their own scope. No merge, deployment, live funds,
+merchant setup, policy decision, account grant or resource spend is granted.
+
+All earlier entries below are historical leases for their named tasks and do
+not override this current handoff.
+
+## PR183 cold enum-decoding measurement correction — 2026-10-23
+
+Before edits, root retains the sole-writer lease for
+`apps/api/src/infrastructure/persistence/bookings/booking.repository.ts`,
+`apps/api/test/integration/g2-query-projections.integration.spec.ts`,
+`IMPLEMENTATION.md` and this ownership record. Exact candidate R27 artifact
+12466300374 measures seven application reads plus two PostgreSQL `pg_type`
+catalog reads while decoding enum output on a cold pooled connection. The
+unchanged ceiling correctly fails at nine. Project only consumed scalar fields
+and emit the two enum labels as built-in text, retaining their values and types
+at the application boundary. Add a real PostgreSQL wire-type/equivalence case.
+Do not alter counters, filters, budgets, comparator, pool settings or warm-up.
+
+## PR183 seeker enum follow-up — 2026-10-23
+
+Before edits, root extends its sole-writer lease to
+`apps/api/src/infrastructure/persistence/requests/service-request.repository.ts`
+and the already-owned `IMPLEMENTATION.md` and this record. Real integration job
+120132134430 now passes the financial generic plan but reaches the next seeker
+read in the isolated-schema case and rejects its explicit `BidStatus` lookup.
+Infer the fixed WITHDRAWN literal from the existing bid column, preserving
+withdrawn/deleted bid exclusion, page ownership and bound values. Audit all
+fixed enum literals in the three affected projection repositories together;
+retain both actual PostgreSQL suites and every assertion unchanged.
+
+## PR183 G3 review finding correction — 2026-10-23
+
+Before edits, root extends its sole-writer lease to
+`.github/scripts/wave-gate.mjs`, `.github/scripts/wave-gate.test.mjs`,
+`.github/scripts/g3-record.test.mjs`, `IMPLEMENTATION.md` and this record.
+Review comment 4353973365 correctly identifies an unbound G3 source archive.
+Require the exact candidate source/tree, positive artifact/run identities and
+inner archive digest, retaining all prior controls. Reproduce the defect with
+synthetic negative tests before repair. No actual G3 acceptance is granted.
+
+## PR183 source-bound acceptance recording — 2026-10-23
+
+Before evidence-record edits, root is the sole writer for the following exact
+coordinator files. Record technical acceptance only after complete successful
+checks and independently verified artifacts for one actual source. Keep owner
+publication unmerged, Wave 3/4 blocked, session assignments unallocated, and all
+existing hosted/live-money restrictions. No source, test, validator or workflow
+change is included in this evidence-only lease.
+
+- `docs/production-readiness/post-r18/gates/g2/SOURCE_MANIFEST.json`
+- `docs/production-readiness/post-r18/gates/g2/ACCEPTANCE_EVIDENCE.json`
+- `docs/production-readiness/post-r18/gates/g2/evidence/source-provenance.json`
+- `docs/production-readiness/post-r18/gates/g2/evidence/r25-summary.json`
+- `docs/production-readiness/post-r18/gates/g2/evidence/r26-summary.json`
+- `docs/production-readiness/post-r18/gates/g2/evidence/r27-summary.json`
+- `docs/production-readiness/post-r18/gates/g2/ACCEPTANCE.md`
+- `docs/production-readiness/post-r18/gates/g2/BLOCKERS.md`
+- `docs/production-readiness/post-r18/gates/g2/IMPLEMENTATION.md`
+- `docs/production-readiness/post-r18/gates/g2/OWNERSHIP.md`
+- `docs/production-readiness/post-r18/waves/wave-02.closeout.json`
+- `docs/production-readiness/post-r18/waves/wave-03.plan.json`
+- `docs/production-readiness/post-r18/SPRINT_REGISTRY.json`
+- `docs/production-readiness/post-r18/ACTIVE_STATUS.md`
+
+The reviewed source archive for `133c1c8aca806909e26737e83128b381ebefb3a7`
+already matches all 2,666 tracked blobs and reconstructed tree
+`9558a3495e6eed916fa469786b8bb63c15d52653`; remaining CI and domain artifacts
+are pending at lease creation. This statement grants no acceptance by itself.
+
+## PR183 isolated-schema follow-up — 2026-10-23
+
+Before edits, root retains the existing sole-writer lease for
+`apps/api/src/infrastructure/persistence/bookings/booking.repository.ts`,
+`IMPLEMENTATION.md` and this ownership record. Real PostgreSQL job 120122846017
+failed two existing isolated-schema regressions because the constant financial
+status literal explicitly resolved an enum name outside the temporary table's
+schema. Let PostgreSQL infer that literal's type from its existing column.
+Preserve predicates, bound inputs, indexes, query budgets and both regression
+suites. No schema, search-path, migration or fixture relaxation is authorized.
+
+## PR183 exact prose finding follow-up — 2026-10-23
+
+Before edits, root extends its sole-writer repair lease to `.gitleaksignore`,
+`docs/security/gitleaks-historical-baseline.md`,
+`docs/production-readiness/post-r18/gates/g2/prompts/R36.md`,
+`docs/production-readiness/post-r18/gates/g2/PROMPT_PROVENANCE.md`, and the
+already-owned `IMPLEMENTATION.md` and `OWNERSHIP.md`. CI job 120122846166
+identified one ordinary requirements-prose match. Review and record that exact
+historical fingerprint, preserve normalized prompt text through whitespace-only
+layout, and verify the unchanged scanner still detects new canaries. No rule,
+scan scope, failure policy or path exclusion is authorized.
+
+## PR183 merged-source repair — 2026-10-23
+
+The owner's request to repair PR183 and unblock G2 authorizes root as the sole
+writer for this correction, starting from
+`172776d24bed770440bfb2f4ef702bbff9510b89`. Earlier writer leases are closed;
+this task uses an isolated checkout and no delegated writers. Mode A applies.
+
+Exact repair paths:
+
+- `apps/api/src/infrastructure/persistence/bids/provider-profile.repository.ts`
+- `apps/api/src/infrastructure/persistence/bookings/booking.repository.ts`
+- `apps/api/src/infrastructure/persistence/bookings/booking-list-projections.repository.spec.ts`
+- `apps/api/src/modules/provider/available-requests/available-requests.service.spec.ts`
+- `apps/api/src/modules/provider/bookings/provider-bookings.service.ts`
+- `apps/api/src/modules/provider/bookings/provider-bookings.service.spec.ts`
+- `apps/api/test/integration/g2-query-projections.integration.spec.ts`
+- `apps/api/test/integration/r27-read-projections.integration.spec.ts`
+- `.github/workflows/r27-performance.yml`
+- `.github/scripts/r27-workflow.test.mjs`
+- `docs/production-readiness/post-r18/gates/g2/OWNERSHIP.md`
+- `docs/production-readiness/post-r18/gates/g2/IMPLEMENTATION.md`
+
+Reconcile duplicate read projections introduced by the PR182 merge, retaining
+both consumers and their regression suites, bounded generic plans, server
+authorization and cursor semantics. Correct repair-baseline checkout selection
+and test the workflow wiring. Keep original performance ceilings, comparator,
+G1 identity, dependency lock, schemas, migrations and all start barriers intact.
+Fresh exact-head CI is required. Publication to the existing review PR is
+authorized; merge, deployment and invented G2 acceptance are not.
+
+## R30 conditional package registration — 2026-10-22
+
+The owner's standing delegation to prepare G2 coordination and review fixes,
+together with the supplied R30 package and renewed continuation request,
+authorizes this bounded successor registration on
+`feat/r30-manual-payment-review`, starting at
+`96e92825f9b65cf124317f43b55ce42fc97f5b49` (tree
+`68f4e926eabeb37bb70382c62b75272cf67bd02c`). Both prior G2 branches were observed
+at already-merged tips, and there was no open PR or R30 branch before reservation.
+
+Root is the accountable coordinator. Before any edits to the following four
+records, it grants `r30_readiness_audit` an exclusive preparation lease:
+
+- `docs/production-readiness/post-r18/SPRINT_REGISTRY.json`
+- `docs/production-readiness/post-r18/ACTIVE_STATUS.md`
+- `docs/production-readiness/post-r18/waves/WAVE_03.md`
+- `docs/production-readiness/post-r18/waves/wave-03.plan.json`
+
+Scope: register only the supplied R30 package and finite proposed paths using
+the existing `PLANNED` / blocked G2 schema. Preserve null frozen identities,
+empty startable lanes, peer records, existing acceptance history and policy
+holds. No validation code, budget, source acceptance or runtime authority may
+be changed under this lease. Root owns this lease record and final validation.
+The lease ends with the R30 review PR or explicit coordinator revocation.
+See `docs/production-readiness/r30/OWNERSHIP.md` for exact sprint evidence
+writers. This registration cannot authorize R30 application implementation,
+merge, deployment, external spend, role grants or live payments.
+
+### Root lease: accepted-record contract double
+
+After the R30 registration reproduced `R30: inconsistent Wave 3 bases` in the
+existing synthetic accepted-wave test (63 passed / 1 failed), the coordinator
+grants root `.github/scripts/g2-current-record.test.mjs` before its edit.
+Synchronize frozen identities for provided packages in the in-memory double,
+keep R30 held, and add its inconsistent-base rejection. No production validator,
+real gate record, budget or release authority may be relaxed. The lease expires
+with this successor review PR; see the R30 ownership record for its scope.
+
 ## Authority and identity
 
+### R30 prerequisite successor: bounded query-projection repair
+
+On 2026-10-22 the owner-delegated coordinator assigns
+`r30_governance_ui_audit` the exact eleven-file performance sub-lease recorded
+in `docs/production-readiness/r30/OWNERSHIP.md`, before its source edits.
+Scope: repair the existing G2 query-count findings under unchanged proposed
+ceilings 5/10/7/3 with page-bounded parameterized projections. Retain every
+fresh authorization, ownership, cursor, no-store and financial-value invariant.
+No budget, policy, schema, migration, package version, CI or guard changes are
+authorized. The lease expires at completion of the successor review PR or
+coordinator revocation. This is earlier-wave remediation, not R30 runtime
+authorization. Only measured real-service evidence may establish its result;
+owner budget approval and accepted G2 publication remain separate.
+
+### R30 prerequisite successor: comparable repair baseline
+
+Before editing, the owner-delegated coordinator grants
+`r30_readiness_audit` the single additional shared path
+`.github/workflows/r27-performance.yml`. The verified PR181 G1/candidate
+comparison rejects different lockfile hashes after the owner's merged security
+upgrades. Add a third `repair-baseline` measurement using the immutable PR base
+and the same final-head harness, with an explicit full-SHA input for manual
+runs. Reject missing, invalid, equal-head, non-ancestor, checkout-mismatched or
+dependency-mismatched repair baselines. Preserve the original G1 and candidate
+measurements, comparator, numeric budgets, assertions, pins, permissions,
+timeouts, isolated services and artifact provenance. This exact CI lease is
+separate from the eleven-file source lease above and expires with the successor
+review PR. Root verifies the unchanged comparator reports a complete matrix;
+neither its exit code alone nor a workflow success approves a performance policy
+or a G2 freeze. Temporary guard fixtures may be created outside the repository.
+
 Repository owner baraabd explicitly delegated complete G2 coordination, remediation and a review pull request in this conversation at 2026-10-17T20:06:42Z. The delegation authorizes preparation and required repairs; it does not authorize merge, deployment, live money, external spend, production grants or fictional acceptance. R32 starts only after G2 is approved and its publication identity is verified.
+
+The first R30 prerequisite candidate `1a319133d387dd6747bfd412503f4458573cf10e`
+produced 50 passing / 2 failing original R27 budget checks. Both booking-list
+generic plans scan the large `ServiceRequest` relation. Before its correction,
+the coordinator reassigns `r30_governance_ui_audit` the two existing leased paths
+`apps/api/src/infrastructure/persistence/bookings/booking.repository.ts` and
+`apps/api/test/integration/g2-query-projections.integration.spec.ts`, as detailed
+in the R30 measured-follow-up lease. Preserve complete correctness and add actual
+generic-plan regression evidence. No index, schema, dependency, planner setting,
+performance harness, comparator or budget relaxation is authorized. Root owns
+all publication/evidence mutations and requires fresh successor measurements.
 
 - Delivery mode: Mode A, integration and correctness.
 - Branch: `chore/g2-wave2-acceptance`.
@@ -203,7 +427,7 @@ CI run `39071261819`, job `117510127234`, reported three `generic-api-key` findi
 
 Verify and document each finding's authored non-secret provenance, replace fixed fixture identifiers with `randomUUID()` while retaining every real-port and negative type assertion, and append only the three reported immutable historical fingerprints after classification. Preserve every existing baseline entry. No path/extension/regex exclusion, disabled rule, scan-range change, tolerated failure, workflow edit or history rewrite is authorized. Verify the unchanged pinned scanner still rejects a separately generated canary outside this repository and that the corrected tracked tree and exact published history range pass. Only paths, counts and redacted scanner findings may enter evidence; no real credentials are read or printed. Root performs the final commit and source-bound scan.
 
-The initial coherent review checkpoint comprises the 61 paths below. The individually leased security-review follow-up adds `.gitleaksignore` and `docs/security/gitleaks-historical-baseline.md`, making 63 exact changed paths for the corrected review candidate. Earlier lease sections establish the author and disposition for each source slice; this inventory adds no executable Wave3 ownership. The initial twelve-file R28 import is retained in history; the later one-file portable regression correction is separately leased above, and its other eleven files retain exact peer blobs. Final record-only successors are identified separately in acceptance evidence.
+The initial coherent review checkpoint comprises the 61 paths below. The individually leased security-review follow-up adds `.gitleaksignore` and `docs/security/gitleaks-historical-baseline.md`, making 63 exact changed paths for the corrected review candidate. Earlier lease sections establish the author and disposition for each source slice; this inventory adds no executable Wave 3 ownership. The initial twelve-file R28 import is retained in history; the later one-file portable regression correction is separately leased above, and its other eleven files retain exact peer blobs. Final record-only successors are identified separately in acceptance evidence.
 
 - `.github/scripts/sprint-registry.mjs`
 - `.github/scripts/sprint-registry.test.mjs`
@@ -266,3 +490,270 @@ The initial coherent review checkpoint comprises the 61 paths below. The individ
 - `scripts/perf/post-r18/query-profile.mjs`
 - `scripts/production/platform/validate-plan.cjs`
 - `scripts/production/platform/validate-plan.test.cjs`
+
+## 2026-10-22 successor: G2 repairs and Wave 3 preparation
+
+This section is a new, bounded coordinator lease under baraabd's continuing
+delegation and explicit 2026-10-22 instruction to resolve G2 so the later numbered
+sprints can begin. The earlier PR #180 leases above are historical and expired.
+Mode A applies. No merge, deployment, live rail, commercial-policy decision,
+account grant or resource spend is authorized by this successor.
+
+- Branch: `coord/g2-wave3-start-gate`.
+- Isolated checkout: `/workspace/scratch/02630349dc03/hsm-g2`.
+- Actual base: `96e92825f9b65cf124317f43b55ce42fc97f5b49`.
+- Base tree: `68f4e926eabeb37bb70382c62b75272cf67bd02c`.
+- Verified before edits: repository root, branch, HEAD, clean status, one isolated
+  worktree and no stashes. There were no open repository pull requests.
+- Pinned isolated runtime: Node 24.21.0 and pnpm 10.32.1; official Node SHA-256
+  and the repository's pnpm SHA-512 were verified. No machine-wide switch.
+- Root is the only Git/PR publisher. Subtasks do not change refs or install into
+  another checkout. Every lease below expires at this review PR's completion or
+  explicit coordinator revocation. Unlisted writes require a recorded extension.
+
+### R27 read-projection repair lease: /root/r25_client_review
+
+The coordinator approves these exact paths before implementation. Meet the
+existing 5/10/7/3 proposed scenario statement ceilings through measured query
+repairs; do not raise them. Preserve session, account, fresh capability and
+permission checks; ownership, soft-delete and category filters; cursor ordering
+and amount/currency semantics. Add real PostgreSQL, privacy, parameter-binding,
+page-bound and concurrent-state regression evidence. No schema, migration,
+dependency, API wire contract, authorization shortcut or live setting change.
+
+- `apps/api/src/infrastructure/persistence/requests/service-request.repository.ts`
+- `apps/api/src/infrastructure/persistence/requests/service-request.repository.spec.ts`
+- `apps/api/src/infrastructure/persistence/bids/provider-profile.repository.ts`
+- `apps/api/src/infrastructure/persistence/bids/provider-profile-marketplace.repository.spec.ts`
+- `apps/api/src/infrastructure/persistence/bookings/booking.repository.ts`
+- `apps/api/src/infrastructure/persistence/bookings/booking-list-projections.repository.spec.ts`
+- `apps/api/src/modules/provider/available-requests/available-requests.service.ts`
+- `apps/api/src/modules/provider/available-requests/available-requests.service.spec.ts`
+- `apps/api/src/modules/provider/bookings/provider-bookings.service.ts`
+- `apps/api/src/modules/provider/bookings/provider-bookings.service.spec.ts`
+- `apps/api/src/modules/admin/financials/admin-financials.service.ts`
+- `apps/api/src/modules/admin/financials/admin-financials.service.spec.ts`
+- `apps/api/test/integration/r27-read-projections.integration.spec.ts`
+
+Raw, parameterized read projections must remain inside the existing repositories,
+with a concrete need demonstrated by the retained SQL measurements. They are not
+a second money authority. Original tests and assertions remain required; a
+narrowed repository return type may update faithful contract doubles only.
+Root retains measurement harness, CI and evidence ownership until an exact
+separate extension is recorded.
+
+### Governance and future-wave package lease: /root/r25_gate_audit
+
+The coordinator approves the exact files below before edits. Recover full
+R29–R38 assignments from the hash-verified original prompt pack, reconcile one
+canonical registry, and declare conditional exact ownership with per-lane
+runtime isolation. R29–R33 require accepted and owner-published G2; R34–R38
+require a separate accepted and published G3. No future lane starts through this
+preparation. Reuse the existing gate/registry authorities; do not duplicate
+runtime money or subscription modules.
+
+Preserve every existing negative assertion using an immutable blocked-source
+fixture containing the original bytes and Git blob identities from the actual
+base. Make active-record checks state-aware without weakening acceptance,
+source evidence, unknown-package rejection or publication requirements.
+The G3 CLI is only the missing later-gate record adapter and must fail closed;
+it cannot certify unimplemented Wave 3. Root takes these records back only
+after the writer explicitly returns the lease and that transfer is recorded.
+
+- `.github/scripts/sprint-registry.mjs`
+- `.github/scripts/sprint-registry.test.mjs`
+- `.github/scripts/wave-gate.mjs`
+- `.github/scripts/wave-gate.test.mjs`
+- `.github/scripts/g2-current-record.test.mjs`
+- `docs/production-readiness/post-r18/SPRINT_REGISTRY.json`
+- `docs/production-readiness/post-r18/ACTIVE_STATUS.md`
+- `docs/production-readiness/post-r18/waves/wave-03.plan.json`
+- `docs/production-readiness/post-r18/waves/WAVE_03.md`
+- `docs/production-readiness/post-r18/waves/wave-04.plan.json`
+- `docs/production-readiness/post-r18/waves/WAVE_04.md`
+- `docs/production-readiness/post-r18/gates/g3/SOURCE_MANIFEST.json`
+- `docs/production-readiness/post-r18/gates/g3/REQUIREMENTS.md`
+- `docs/production-readiness/post-r18/gates/g2/history/pre-gate-96e92825/BUNDLE.json`
+- `.github/scripts/g3-record.mjs`
+- `.github/scripts/g3-record.test.mjs`
+- `docs/production-readiness/post-r18/waves/OWNERSHIP_R29_R38.md`
+
+### Root successor record and measurement lease
+
+Root is the exclusive writer for these files. Source and evidence status may
+advance only after the actual candidate checks and artifacts are verified.
+Complete prompt extracts preserve their original contents and provenance;
+the previously supplied R32 remains authoritative unless a difference is
+explicitly reconciled.
+
+The reviewed R28 dependency patches changed the lockfile relative to the
+historical frozen G1 measurement. The existing comparator correctly refuses
+that unmatched pair. The successor will therefore compare the owner-merged
+repair base `96e92825f9b65cf124317f43b55ce42fc97f5b49` and the new repaired
+candidate using identical dependency locks and the same harness. Historical G1
+measurements and identity remain retained. Record this deliberate measurement
+rebaseline, enforce the unchanged budget checker on the candidate, and preserve
+the comparator's lock/config/source protections; do not force a mismatched
+comparison to pass. This is not a change to G1's accepted source.
+
+- `docs/production-readiness/post-r18/gates/g2/OWNERSHIP.md`
+- `docs/production-readiness/post-r18/gates/g2/IMPLEMENTATION.md`
+- `docs/production-readiness/post-r18/gates/g2/ACCEPTANCE.md`
+- `docs/production-readiness/post-r18/gates/g2/RISKS.md`
+- `docs/production-readiness/post-r18/gates/g2/ROLLBACK.md`
+- `docs/production-readiness/post-r18/gates/g2/DECISION.md`
+- `docs/production-readiness/post-r18/gates/g2/SOURCE_MANIFEST.json`
+- `docs/production-readiness/post-r18/gates/g2/CONTRACT_CATALOG.md`
+- `docs/production-readiness/post-r18/gates/g2/REQUIREMENTS.md`
+- `docs/production-readiness/post-r18/gates/g2/MERGE_MATRIX.md`
+- `docs/production-readiness/post-r18/gates/g2/ACCEPTANCE_EVIDENCE.json`
+- `docs/production-readiness/post-r18/gates/g2/CHANGE_REQUESTS.md`
+- `docs/production-readiness/post-r18/gates/g2/PROMPT_PROVENANCE.md`
+- `docs/production-readiness/post-r18/gates/g2/shared-change-requests/CR-002-successor-publication.md`
+- `docs/production-readiness/post-r18/gates/g2/evidence/r25-summary.json`
+- `docs/production-readiness/post-r18/gates/g2/evidence/source-provenance.json`
+- `docs/production-readiness/post-r18/gates/g2/evidence/r27-budget-results.json`
+- `docs/production-readiness/post-r18/gates/g2/evidence/r27-comparison.json`
+- `docs/production-readiness/post-r18/waves/wave-02.closeout.json`
+- `docs/production-readiness/post-r18/waves/WAVE_02.md`
+- `.github/workflows/r27-performance.yml`
+- `docs/production-readiness/post-r18/gates/g2/prompts/R29.md`
+- `docs/production-readiness/post-r18/gates/g2/prompts/R30.md`
+- `docs/production-readiness/post-r18/gates/g2/prompts/R31.md`
+- `docs/production-readiness/post-r18/gates/g2/prompts/R32.md`
+- `docs/production-readiness/post-r18/gates/g2/prompts/R33.md`
+- `docs/production-readiness/post-r18/gates/g2/prompts/R34.md`
+- `docs/production-readiness/post-r18/gates/g2/prompts/R35.md`
+- `docs/production-readiness/post-r18/gates/g2/prompts/R36.md`
+- `docs/production-readiness/post-r18/gates/g2/prompts/R37.md`
+- `docs/production-readiness/post-r18/gates/g2/prompts/R38.md`
+
+### R27 acceptance postcondition helper lease — root coordinator
+
+Recorded before edits on 2026-10-22. Exclusive writer: `/root`.
+
+- `.github/scripts/r27-acceptance.mjs` (new)
+- `.github/scripts/r27-acceptance.test.mjs` (new)
+
+Purpose: reject incomplete browser matrices and wrong baseline/candidate/harness identities after the unchanged R27 comparison CLI; require the unchanged candidate budget CLI to succeed. The helper does not alter the comparator, budget definitions or runtime, and adds negative regressions for missing/wrong-source evidence. The workflow lease above is the sole writer for CI composition. No dependencies, schemas or migrations change.
+
+### R27 mapper type compatibility extension — `/root/r25_client_review`
+
+Recorded before edits on 2026-10-22 after the first API typecheck identified two additional consumers of the narrowed provider booking list projection.
+
+- `apps/api/src/modules/provider/wallet/provider-wallet.service.ts`
+- `apps/api/src/modules/provider/wallet/provider-earnings.service.ts`
+
+Exclusive scope is importing `ProviderBookingListRow` and annotating the existing list mapper with it. Existing fields are sufficient. Calculations, payout policy, filters, permissions, routes and runtime statements are unchanged. Existing wallet/earnings tests remain required. No new list authority, schema, migration or dependency is introduced.
+
+### R27 evidence label compatibility lease — root coordinator
+
+Recorded before edits on 2026-10-22. Exclusive writer: `/root`.
+
+- `scripts/perf/post-r18/lib/plans.mjs`
+- `scripts/perf/post-r18/lib/lib.test.mjs`
+
+The new parameterized repository reads use the caller's configured schema instead of hard-coding `public`. Expand statement labels to recognize quoted table identifiers in FROM/JOIN/UPDATE/INTO with optional schema qualification, and test both forms and enum-cast exclusion. This is diagnostic labeling only: classification, call counts, plan collection, large-table scan detection, budgets and comparison semantics remain unchanged. Both measured sources use this same candidate harness.
+
+### Canonical G2 R27-check binding extension — `/root/r25_gate_audit`
+
+Recorded before edits on 2026-10-22. Additional exact path:
+
+- `.github/scripts/g2-current-record.mjs`
+
+Require the new `R27 comparable measurements and unchanged budgets` check in the accepted exact-source check inventory, alongside existing required checks. Extend already-leased G2 negative fixtures to reject an absent/failed measurement acceptance job. This strengthens acceptance of the coordinator's unchanged-ceiling repair; no existing evidence requirement is removed.
+
+### Active blocker register synchronization — root coordinator
+
+Recorded before edit on 2026-10-22. Exact additional path: `docs/production-readiness/post-r18/gates/g2/BLOCKERS.md`. Replace the stale active inspection register with the verified successor state and preserve the old record through its execution-base Git history. Closing a historical observation does not close missing new-candidate evidence or owner publication.
+
+### Serialized handoff back to root — 2026-10-22
+
+The projection writer `/root/r25_client_review` completed and returned its 12 actually changed paths after the real PostgreSQL 27/27 result and independent consumer/security review. The governance writer `/root/r25_gate_audit` completed and explicitly returned all 18 leased paths after 438/438 full governance tests, scoped lint/formatting and fail-closed readiness checks. Both agents are read-only unless a new concrete correction is assigned. `/root` is now sole writer for final source review, record synchronization, normal commits, connected GitHub publication and subsequent actual-evidence updates. No merge/deployment authority is added.
+
+### Final governance fixture follow-up — `/root/r25_gate_audit`
+
+Before final publication, root reassigns only the following three test files on 2026-10-22:
+
+- `.github/scripts/wave-gate.test.mjs`
+- `.github/scripts/g3-record.test.mjs`
+- `.github/scripts/sprint-registry.test.mjs`
+
+Make active G3/Wave 4 assertions state-aware, retaining the current blocked/null expectations on explicit immutable/synthetic fixtures. This avoids breaking honest future gate advancement while preserving every readiness refusal. No production validator, current record, acceptance or ownership state change is authorized by this test-only follow-up. Return the three files immediately after verification.
+
+### Wave 3 assignment enforcement correction — `/root/r25_gate_audit`
+
+Recorded before edits on 2026-10-22 after independent review reproduced a synthetic accepted publication that lacked a lane-session assignment. The prior three-file test-only lease has been returned. Root grants the following exclusive correction lease:
+
+- `.github/scripts/wave-gate.mjs`
+- `.github/scripts/wave-gate.test.mjs`
+- `.github/scripts/g2-current-record.test.mjs`
+- `.github/scripts/g3-record.test.mjs`
+
+Require a startable Wave 3 lane to have the documented approved ownership state, matching registry approval, and an explicit assigned session identity, assigning coordinator and assignment timestamp. Preserve accepted-but-unpublished holds. Add missing-assignment and conditional-ownership regressions and update explicitly synthetic accepted fixtures to provide valid assignments. No current lane is assigned or released by this correction. Return all four files after focused verification; root owns records and final publication.
+
+### Final correction handoff — 2026-10-22
+
+The four-file Wave 3 assignment correction lease is returned to root after 452/452 governance tests, zero failed/cancelled/skipped/todo, and scoped formatting/lint/diff checks. Root is the sole writer for commit and publication. Independent review also confirmed the new PostgreSQL suite is discovered by the existing full real-service CI job; no workflow filter is changed.
+
+### Source artifact identity correction — `/root/r25_gate_audit`
+
+Recorded before edits on 2026-10-22 during independent publication review. An accepted record must reject a source archive proof for a different source or tree, even when its digest and reconstructed-tree fields are otherwise valid. Root grants this exclusive correction lease:
+
+- `.github/scripts/g2-current-record.mjs`
+- `.github/scripts/g2-current-record.test.mjs`
+- `.github/scripts/g3-record.test.mjs`
+
+Reproduce the missing binding with explicitly synthetic fixtures, then require sourceArtifact.sourceSha and sourceArtifact.treeSha to equal the candidate, positive artifact/run identifiers and the existing inner archive digest. Add wrong-source/tree and incomplete-provenance negatives; update only synthetic accepted fixtures. Retain external artifact verification as a separate coordinator responsibility. No current evidence, acceptance, ownership or publication approval is granted. Return all three paths after verification.
+
+### Source artifact correction handoff — 2026-10-22
+
+All three correction files are returned to root after the two original wrong-source/tree negatives reproduced the defect (exit 1), then 14/14 focused and 464/464 full governance cases passed (exit 0; zero failures/cancellations/skips/todo). Scoped lint, formatting and diff checks passed. The 12 added regressions cover source/tree mismatch, missing identities/digest, invalid run/artifact identifiers and G3 prerequisite propagation. Root is again the sole writer for publication and real-evidence recording.
+
+## Verified owner publication and R31 assignment — 2026-10-23
+
+Mode A. The owner-merged PR #183 and the continuing G2 coordination delegation
+permit this publication reconciliation. Root recorded the exact serialized
+lease before edits in `docs/production-readiness/r31/OWNERSHIP.md` and approved
+its scope in `docs/production-readiness/r31/shared-change-requests/CR-001-integration.md`.
+Exclusive delegated writer: `/root/pr_ci_audit`; accountable coordinator:
+`/root — owner-delegated engineering coordinator for baraabd`.
+
+The ten exact files in that lease are:
+
+- `docs/production-readiness/post-r18/gates/g2/SOURCE_MANIFEST.json`
+- `docs/production-readiness/post-r18/gates/g2/PUBLICATION_VERIFICATION.json`
+- `docs/production-readiness/post-r18/gates/g2/OWNERSHIP.md`
+- `docs/production-readiness/post-r18/gates/g2/BLOCKERS.md`
+- `docs/production-readiness/post-r18/gates/g2/IMPLEMENTATION.md`
+- `docs/production-readiness/post-r18/waves/wave-03.plan.json`
+- `docs/production-readiness/post-r18/waves/WAVE_03.md`
+- `docs/production-readiness/post-r18/waves/OWNERSHIP_R29_R38.md`
+- `docs/production-readiness/post-r18/SPRINT_REGISTRY.json`
+- `docs/production-readiness/post-r18/ACTIVE_STATUS.md`
+
+The separate verified publication is merge
+`986b4707776711e80564f0642133ede90ba16f3c`, with reviewed head
+`d2c0a9ab8862ffff886346a21377839f996152ca` and identical tree
+`7ab683ea8c5304929a2fa51f1dc824c7cb46f7d5`. The accepted frozen source remains
+`72b4aaeb0a71d806b7fca7363dd9ca59bbcee644`; its complete descendant delta is
+thirteen documentation/registry/evidence files only. Root applied those exact
+owner-merged blobs before this lease. No unmerged peer implementation is used.
+
+This assignment releases only session `r31-20261023-d799cbee` on
+`feat/r31-subscription-entitlements`, with the initial exact 31 paths unchanged.
+R29/R30/R32/R33 remain held for their own coordinator assignment; Wave 4 remains
+behind G3. Validators, mandatory evidence, prices, currencies, live-money
+settings, account grants, hosting/spending and R16/R18 decisions are unchanged.
+The lease expires on explicit handoff to root. No commit or remote write is
+delegated to this writer.
+
+### R31 publication lease handoff — 2026-10-23
+
+The ten coordinator files are saved and returned to `/root`. Existing G2
+consistency, R31 readiness and sprint-registry commands pass with exit 0 under
+Node 24.21.0. Only R31 is startable; the initial exact 31-file list remains
+unchanged. `/root/pr_ci_audit` is read-only after this handoff. Root may now
+record bounded shared integration leases and exact file extensions before
+product edits. Further governance/negative checks run read-only; no commit or
+remote mutation was performed by the publication writer.

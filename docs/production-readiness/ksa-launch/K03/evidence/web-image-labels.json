@@ -1,0 +1,24 @@
+{
+  "stripe-false": {
+    "imageId": "sha256:c94902ffd30260b383c43e22a313fb2803ac702ea05a7770562faedb9f33a726",
+    "labels": {
+      "io.hsm.web.api-url": "https://api.example.test",
+      "io.hsm.web.config-fingerprint": "c87ba282bb0185d89820f1d3980bcaf67f7625af3322ece4f7d92cf0af58c383",
+      "io.hsm.web.onboarding-v2": "false",
+      "io.hsm.web.stripe-sandbox": "false",
+      "maintainer": "NGINX Docker Maintainers <docker-maint@nginx.com>",
+      "org.opencontainers.image.revision": "e4458df34bceebccf0dd8126477bb90cdade4b48"
+    }
+  },
+  "stripe-true": {
+    "imageId": "sha256:6a40d23797b988b35d555f78e2d332043e702b65ece1f73947b59606456d63f2",
+    "labels": {
+      "io.hsm.web.api-url": "https://api.example.test",
+      "io.hsm.web.config-fingerprint": "01dd38d457aa41dafa9a3aa8b10c34107b8b0839bb7707c903e8b4e9dbf2f9e5",
+      "io.hsm.web.onboarding-v2": "false",
+      "io.hsm.web.stripe-sandbox": "true",
+      "maintainer": "NGINX Docker Maintainers <docker-maint@nginx.com>",
+      "org.opencontainers.image.revision": "e4458df34bceebccf0dd8126477bb90cdade4b48"
+    }
+  }
+}

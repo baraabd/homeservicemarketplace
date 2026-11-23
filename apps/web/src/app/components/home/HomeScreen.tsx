@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { LAUNCH_MARKET } from '@homeservicemarketplace/contracts';
 import { useLocation, useNavigate } from 'react-router';
 import { AnimatePresence, motion } from 'motion/react';
 import {
@@ -111,6 +112,8 @@ interface BookingItem {
   proInitials?: string;
   price: number;
   currency: string;
+  /** K02 — minor-unit scale; null = unverified pre-K02 amount. */
+  amountScale: number | null;
   pricingType: BookingListItem['pricingType'];
   address?: string;
   addressAr?: string;
@@ -134,8 +137,11 @@ function formatBookingDate(scheduledAt: string | null, lang: 'en' | 'ar'): strin
   // Use Intl with the active locale; mirror the slice-2 placeholder
   // shape ("Today, 3:00 PM" / "Mar 8, 2:00 PM") as closely as Intl
   // allows without re-implementing relative-day logic.
-  const dateOpts: Intl.DateTimeFormatOptions = { month: 'short', day: 'numeric' };
-  const timeOpts: Intl.DateTimeFormatOptions = { hour: 'numeric', minute: '2-digit' };
+  // K02 — schedules are shown in the launch market's zone, never the
+  // browser's, so the seeker and provider see the time they agreed on.
+  const timeZone = LAUNCH_MARKET.timeZone;
+  const dateOpts: Intl.DateTimeFormatOptions = { month: 'short', day: 'numeric', timeZone };
+  const timeOpts: Intl.DateTimeFormatOptions = { hour: 'numeric', minute: '2-digit', timeZone };
   const locale = lang === 'ar' ? 'ar-SA' : 'en-US';
   return `${d.toLocaleDateString(locale, dateOpts)}, ${d.toLocaleTimeString(locale, timeOpts)}`;
 }
@@ -165,6 +171,7 @@ function apiBookingToItem(row: BookingListItem, lang: 'en' | 'ar'): BookingItem 
     proInitials: row.provider?.initials ?? '',
     price: row.priceAmount,
     currency: row.currency,
+    amountScale: row.amountScale,
     pricingType: row.pricingType,
     // Sprint 7.13 — compact, display-only address (raw snapshot untouched).
     address: formatServiceAddressForDisplay(row.addressSnapshot) || undefined,
@@ -666,7 +673,8 @@ export function HomeScreen({ isOffline, onServiceSelect }: HomeScreenProps) {
     iconBg: 'bg-slate-100',
     iconColor: 'text-slate-600',
   };
-  const { data: serviceCategories } = useServiceCategories();
+  const catalog = useServiceCategories();
+  const specialties = (catalog.data ?? []).filter((category) => category.isLeaf);
 
   // ── Nav tabs ────────────────────────────────────────────────────────────────
   const unreadMessages = conversations.reduce((sum, c) => sum + (c.unreadCount ?? 0), 0);
@@ -762,8 +770,24 @@ export function HomeScreen({ isOffline, onServiceSelect }: HomeScreenProps) {
                   {t('services')}
                 </h3>
               </div>
+              {catalog.isPending && <p role="status">{t('servicesLoading')}</p>}
+              {catalog.isError && (
+                <div role="alert">
+                  {t('servicesUnavailable')}{' '}
+                  <button
+                    type="button"
+                    className="underline"
+                    onClick={() => void catalog.refetch()}
+                  >
+                    {t('retry')}
+                  </button>
+                </div>
+              )}
+              {catalog.isSuccess && specialties.length === 0 && (
+                <p role="status">{t('servicesEmpty')}</p>
+              )}
               <div className="grid grid-cols-3 gap-3" data-testid="service-categories-grid">
-                {(serviceCategories ?? []).map((c) => {
+                {specialties.map((c) => {
                   const visual = SERVICE_ICON_MAP[c.slug] ?? SERVICE_ICON_FALLBACK;
                   const label = lang === 'ar' ? c.labelAr : c.labelEn;
                   return (
@@ -1041,6 +1065,7 @@ export function HomeScreen({ isOffline, onServiceSelect }: HomeScreenProps) {
                               formatOffer(
                                 b.price,
                                 b.currency,
+                                b.amountScale,
                                 b.pricingType,
                                 lang === 'ar' ? 'ar' : 'en',
                               ).value
@@ -1054,6 +1079,7 @@ export function HomeScreen({ isOffline, onServiceSelect }: HomeScreenProps) {
                               formatOffer(
                                 b.price,
                                 b.currency,
+                                b.amountScale,
                                 b.pricingType,
                                 lang === 'ar' ? 'ar' : 'en',
                               ).basis

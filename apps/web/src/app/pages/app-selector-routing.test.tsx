@@ -1,3 +1,4 @@
+import { CURRENT_LEGAL_DOCUMENTS } from '@homeservicemarketplace/contracts';
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import MockAdapter from 'axios-mock-adapter';
@@ -91,6 +92,7 @@ let qc: QueryClient;
 
 beforeEach(() => {
   mock = new MockAdapter(api);
+  mock.onGet('/v1/auth/config').reply(200, { otpChannel: 'email', whatsappAvailable: false });
   qc = createAuthQueryClient();
   clearIntendedApp();
 });
@@ -226,6 +228,10 @@ describe('Provider intent survives the entire auth flow', () => {
       // real auth check to 200 and breaking the post-OTP redirect.
       let otpVerified = false;
       mock.onGet('/v1/auth/me').reply(() => (otpVerified ? [200, MOCK_ME] : [401, {}]));
+      mock.onGet('/v1/legal/documents').reply(200, {
+        documents: Object.values(CURRENT_LEGAL_DOCUMENTS),
+        acceptanceOpen: true,
+      });
       mock.onPost('/v1/auth/refresh').reply(401, {});
       mock.onPost('/v1/auth/login').reply(200, {
         otpRequired: true,
@@ -304,6 +310,10 @@ describe('Provider intent survives the entire auth flow', () => {
       // sibling test in this describe for the same rationale.
       let otpVerified = false;
       mock.onGet('/v1/auth/me').reply(() => (otpVerified ? [200, MOCK_ME] : [401, {}]));
+      mock.onGet('/v1/legal/documents').reply(200, {
+        documents: Object.values(CURRENT_LEGAL_DOCUMENTS),
+        acceptanceOpen: true,
+      });
       mock.onPost('/v1/auth/refresh').reply(401, {});
       mock.onPost('/v1/auth/register').reply(202, {
         otpRequired: true,
@@ -339,17 +349,16 @@ describe('Provider intent survives the entire auth flow', () => {
         signUpBtn!.click();
       });
 
-      // 4. step 1 of signup wizard: name + phone
+      // 4. step 1 of email signup wizard: name
       await waitFor(() => {
-        expect(document.querySelector('input[type="tel"]')).toBeTruthy();
+        expect(document.querySelector('input[type="text"]')).toBeTruthy();
       });
       const nameInput = document.querySelectorAll('input')[0] as HTMLInputElement;
-      const phoneInput = document.querySelector('input[type="tel"]') as HTMLInputElement;
       await act(async () => {
         fireEvent.change(nameInput, { target: { value: 'Ada Lovelace' } });
-        fireEvent.change(phoneInput, { target: { value: '5551234567' } });
       });
       const nextBtn = screen.getAllByRole('button').find((b) => /next/i.test(b.textContent ?? ''))!;
+      await waitFor(() => expect(nextBtn).toBeEnabled());
       await act(async () => {
         nextBtn.click();
       });
@@ -364,14 +373,13 @@ describe('Provider intent survives the entire auth flow', () => {
         fireEvent.change(emailInput, { target: { value: 'ada@example.com' } });
         fireEvent.change(passwordInput, { target: { value: 'a-reasonable-passphrase' } });
       });
-      const termsBtn = screen
-        .getAllByRole('button')
-        .find((b) => /privacyPolicy|agreeTerms|i agree/i.test(b.textContent ?? ''));
-      if (termsBtn) {
-        await act(async () => {
-          termsBtn.click();
-        });
-      }
+      // K02 — a real consent checkbox, enabled once the server's current
+      // policy versions have loaded.
+      const consent = (await screen.findByRole('checkbox')) as HTMLInputElement;
+      await waitFor(() => expect(consent.disabled).toBe(false));
+      await act(async () => {
+        consent.click();
+      });
       const registerBtn = screen
         .getAllByRole('button')
         .find((b) => /register|create/i.test(b.textContent ?? ''))!;
@@ -696,9 +704,9 @@ describe('Auth primary buttons follow the resolved experience', () => {
     });
     await waitFor(() => expect(screen.getByTestId('auth-hero-provider')).toBeInTheDocument());
 
-    const loginBtn = screen
-      .getAllByRole('button')
-      .find((b) => /^log ?in|^sign ?in/i.test(b.textContent ?? ''))!;
+    // The hero mounts before policy confirmation; wait for the selected email action.
+    const loginBtn = await screen.findByRole('button', { name: 'Log In', exact: true });
+    expect(loginBtn).toBeEnabled();
     expect(loginBtn.getAttribute('data-tone')).toBe('provider');
     expect(loginBtn.className).not.toMatch(/amber/);
     expect(loginBtn.className).toMatch(/blue/);
@@ -714,9 +722,9 @@ describe('Auth primary buttons follow the resolved experience', () => {
     });
     await waitFor(() => expect(screen.getByTestId('auth-hero-seeker')).toBeInTheDocument());
 
-    const loginBtn = screen
-      .getAllByRole('button')
-      .find((b) => /^log ?in|^sign ?in/i.test(b.textContent ?? ''))!;
+    // The hero mounts before policy confirmation; wait for the selected email action.
+    const loginBtn = await screen.findByRole('button', { name: 'Log In', exact: true });
+    expect(loginBtn).toBeEnabled();
     expect(loginBtn.getAttribute('data-tone')).toBe('seeker');
     expect(loginBtn.className).toMatch(/amber/);
     expect(loginBtn.className).not.toMatch(/\bblue\b|\bslate-700\b/);
@@ -730,9 +738,9 @@ describe('Auth primary buttons follow the resolved experience', () => {
     renderRouter('/login');
     await waitFor(() => expect(screen.getByTestId('auth-hero-admin')).toBeInTheDocument());
 
-    const loginBtn = screen
-      .getAllByRole('button')
-      .find((b) => /^log ?in|^sign ?in/i.test(b.textContent ?? ''))!;
+    // The hero mounts before policy confirmation; wait for the selected email action.
+    const loginBtn = await screen.findByRole('button', { name: 'Log In', exact: true });
+    expect(loginBtn).toBeEnabled();
     expect(loginBtn.getAttribute('data-tone')).toBe('admin');
     expect(loginBtn.className).not.toMatch(/amber|\bblue\b/);
     expect(loginBtn.className).toMatch(/slate/);

@@ -1,3 +1,10 @@
+import type {
+  BookingFeeStatus,
+  CurrencyBookedValue,
+  ExcludedAmountGroup,
+} from '../../money/amount-unit';
+import type { PricingType } from '../../seeker/bids/enums/pricing-type';
+
 // Admin financials (Sprint 6.4 — read-only).
 //
 //   GET /v1/admin/financials/summary
@@ -11,15 +18,15 @@
 // IN_PROGRESS rows (gross of fees, mirrors EarningsSummary on the
 // provider side).
 
+// K02 — booked value per currency (verified FIXED-price only); legacy-unit
+// and hourly-rate bookings are counted in `excluded`. No fee/net/refund
+// totals: no fee is approved and booking refunds do not exist.
 export interface AdminFinancialsSummary {
-  totalRevenue: number; // gross, lifetime
-  totalPlatformFees: number; // marketplace's take, lifetime
-  totalProviderEarnings: number; // net to providers, lifetime
-  totalRefunds: number; // lifetime refunds (always 0 until refund flow ships)
-  pendingBalance: number; // gross of in-flight bookings
+  byCurrency: CurrencyBookedValue[];
+  excluded: ExcludedAmountGroup[];
   completedBookingsCount: number;
-  currency: string;
-  platformFeeRateBps: number;
+  feeStatus: BookingFeeStatus;
+  platformFeeRateBps: null;
   generatedAt: string;
 }
 
@@ -29,10 +36,11 @@ export interface AdminFinancialsSummary {
 export interface AdminFinancialsBookingRow {
   id: string; // booking id
   bookingId: string;
-  amount: number; // gross priceAmount
-  platformFee: number;
-  netAmount: number; // amount - platformFee
+  amount: number; // priceAmount, minor units at amountScale
+  pricingType: PricingType;
   currency: string;
+  // K02 — minor-unit scale; null = LEGACY_UNVERIFIED pre-K02 amount.
+  amountScale: number | null;
   occurredAt: string; // ISO; booking.updatedAt at COMPLETED
   service: {
     categorySlug: string | null;
@@ -71,10 +79,10 @@ export interface AdminFinancialsProviderEarningsRow {
   userId: string | null;
   email: string | null;
   completedBookings: number;
+  /** Verified FIXED-price completed value in `currency` (one row per provider+currency). */
   grossEarnings: number;
-  platformFees: number;
-  netEarnings: number;
   currency: string;
+  amountScale: number;
 }
 
 export interface ListAdminFinancialsProviderEarningsQuery {

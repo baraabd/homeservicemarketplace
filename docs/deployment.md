@@ -1,17 +1,17 @@
 # Deployment Guide
 
-This document covers the three runtime profiles the app must support today and the exact env/cookie/CORS policy for each. It is the source of truth for "which knob changes between local, preview, and prod" — update it whenever the auth contract or hosting shape changes.
+For the current Vercel continuous-delivery setup, use [VERCEL_CD.md](deployment/VERCEL_CD.md). This overview records the runtime cookie/CORS contract; ADR 0001 and the enforced runtime policy take precedence over historical sprint notes below.
 
 ## 1. Environments
 
-| Profile              | Web origin                        | API origin                          | Transport  | Relationship                          |
-| -------------------- | --------------------------------- | ----------------------------------- | ---------- | ------------------------------------- |
-| Local dev            | `http://localhost:5173`           | `http://localhost:4000`             | plain HTTP | cross-origin (different ports)        |
-| Preview (same-site)  | `https://preview.<your-domain>`   | `https://api-preview.<your-domain>` | HTTPS      | same-site (shared registrable domain) |
-| Preview (cross-site) | `https://<branch>-web.vercel.app` | `https://api.<your-domain>`         | HTTPS      | cross-site                            |
-| Production           | `https://app.<your-domain>`       | `https://api.<your-domain>`         | HTTPS      | same-site (recommended)               |
+| Profile                | Web origin                        | API origin                          | Transport  | Relationship                          |
+| ---------------------- | --------------------------------- | ----------------------------------- | ---------- | ------------------------------------- |
+| Local dev              | `http://localhost:5173`           | `http://localhost:4000`             | plain HTTP | cross-origin (different ports)        |
+| Preview (same-site)    | `https://preview.<your-domain>`   | `https://api-preview.<your-domain>` | HTTPS      | same-site (shared registrable domain) |
+| Unsupported cross-site | `https://<branch>-web.vercel.app` | `https://api.<your-domain>`         | HTTPS      | cross-site                            |
+| Production             | `https://app.<your-domain>`       | `https://api.<your-domain>`         | HTTPS      | same-site (recommended)               |
 
-Same-site preview/prod is the recommended shape — it keeps the refresh cookie's `SameSite=Strict` protection intact. Cross-site deployments work but require `SameSite=None; Secure`.
+Same-site preview/production is required by [ADR 0001](adr/0001-web-api-deployment-topology.md). Direct cross-site Vercel/Railway browser authentication is unsupported: changing the access-cookie setting does not change the Strict refresh and CSRF cookies.
 
 ## 2. Frontend (Vercel)
 
@@ -40,24 +40,24 @@ Vite inlines `VITE_*` at build time — **not** at runtime. Preview and producti
 
 The API is a plain Node/Nest process. It needs:
 
-- Postgres, Mongo, Redis reachable from the container.
+- Postgres and Redis reachable from the container; Mongo is optional and disabled by default.
 - SMTP reachable for verification/reset emails.
 - Outbound `.env` with the variables below.
 
 ### 3.1 Required env vars for browser integration
 
-| Variable                          | Purpose                                                                                         | Example                                                     |
-| --------------------------------- | ----------------------------------------------------------------------------------------------- | ----------------------------------------------------------- |
-| `FRONTEND_URL`                    | Primary allowed origin for CORS (always allowed)                                                | `https://app.example.com`                                   |
-| `CORS_ORIGINS`                    | Comma-separated additional allowed origins (preview deployments, alt domains)                   | `https://preview-web.example.com,https://admin.example.com` |
-| `COOKIE_DOMAIN`                   | Leave empty for host-only cookies; set to `.example.com` only for same-site deployment          | `.example.com` or empty                                     |
-| `COOKIE_SECURE`                   | `true` for anything HTTPS                                                                       | `true`                                                      |
-| `COOKIE_SAMESITE`                 | `lax` same-site; `none` cross-site; never `strict` (breaks the access cookie on top-level navs) | `lax` or `none`                                             |
-| `JWT_ACCESS_SECRET`               | ≥32 chars; rotate by re-deploy                                                                  | long random base64url                                       |
-| `FRONTEND_URL`                    | Used in verification/reset email links                                                          | same as CORS                                                |
-| `SMTP_*`                          | Real SMTP provider                                                                              | see `.env.example`                                          |
-| `AUTH_REQUIRE_EMAIL_VERIFICATION` | Must be `true` in preview/prod                                                                  | `true`                                                      |
-| `NODE_ENV`                        | `production` in prod                                                                            | `production`                                                |
+| Variable                          | Purpose                                                                                  | Example                                                     |
+| --------------------------------- | ---------------------------------------------------------------------------------------- | ----------------------------------------------------------- |
+| `FRONTEND_URL`                    | Primary allowed origin for CORS (always allowed)                                         | `https://app.example.com`                                   |
+| `CORS_ORIGINS`                    | Comma-separated additional allowed origins (preview deployments, alt domains)            | `https://preview-web.example.com,https://admin.example.com` |
+| `COOKIE_DOMAIN`                   | Leave empty for host-only cookies; set to `.example.com` only for same-site deployment   | `.example.com` or empty                                     |
+| `COOKIE_SECURE`                   | `true` for anything HTTPS                                                                | `true`                                                      |
+| `COOKIE_SAMESITE`                 | `lax` for sibling hosts; topology A may use `strict`; cross-site web auth is unsupported | `lax` for this Vercel adapter                               |
+| `JWT_ACCESS_SECRET`               | ≥32 chars; rotate by re-deploy                                                           | long random base64url                                       |
+| `FRONTEND_URL`                    | Used in verification/reset email links                                                   | same as CORS                                                |
+| `SMTP_*`                          | Real SMTP provider                                                                       | see `.env.example`                                          |
+| `AUTH_REQUIRE_EMAIL_VERIFICATION` | Must be `true` in preview/prod                                                           | `true`                                                      |
+| `NODE_ENV`                        | `production` in prod                                                                     | `production`                                                |
 
 ### 3.2 CORS policy by environment
 
@@ -84,20 +84,23 @@ Implemented in `apps/api/src/modules/iam/authentication/helpers/cookies.ts`.
 
 Environment profiles:
 
-| Profile                 | `COOKIE_DOMAIN` | `COOKIE_SECURE` | `COOKIE_SAMESITE` | Notes                                                                                                                                                                                                    |
-| ----------------------- | --------------- | --------------- | ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Local dev               | empty           | `false`         | `lax`             | Plain HTTP localhost.                                                                                                                                                                                    |
-| Same-site preview/prod  | `.example.com`  | `true`          | `lax`             | Web + API share registrable domain; refresh `Strict` cookie works.                                                                                                                                       |
-| Cross-site preview/prod | empty           | `true`          | `none`            | Required for cross-site XHR. Refresh still `Strict` → web refresh must happen via a same-site top-level request **or** the client must switch to Bearer (`X-Client-Kind: mobile` transport) for refresh. |
+| Profile                | `COOKIE_DOMAIN` | `COOKIE_SECURE` | `COOKIE_SAMESITE` | Notes                                                              |
+| ---------------------- | --------------- | --------------- | ----------------- | ------------------------------------------------------------------ |
+| Local dev              | empty           | `false`         | `lax`             | Plain HTTP localhost.                                              |
+| Same-site preview/prod | `.example.com`  | `true`          | `lax`             | Web + API share registrable domain; refresh `Strict` cookie works. |
 
-**Important**: the refresh cookie is hardcoded `SameSite=Strict` and scoped to `Path=/v1/auth/refresh`. For a truly cross-site web deployment you have two options:
-
-1. Deploy web + API on the same registrable domain and rely on cookies (recommended).
-2. Switch the web client to the mobile transport (`X-Client-Kind: mobile`) and handle tokens explicitly. This removes the CSRF layer and increases XSS blast radius — only do this if option 1 is impossible.
+Cross-site browser sessions are unsupported. Do not switch the web client to the
+mobile bearer-token transport as a deployment workaround. For sibling hosts, set
+the shared owned COOKIE_DOMAIN so browser JavaScript can read the CSRF cookie.
+For same-origin topology A, leave COOKIE_DOMAIN unset.
 
 ### 3.4 Deploying the backend to a Vercel frontend
 
-Vercel does not host a long-lived Nest server comfortably. Deploy the API separately (Fly.io / Render / Railway are a good first stop) and point `VITE_API_URL` at it. Vercel's Serverless or Edge Functions are **not** a drop-in for the Nest process.
+The current API image includes persistent outbox, mail and evidence workers. Keep
+it on the selected container host and use the same-site API origin described
+above. Vercel supports backend frameworks, but migrating this application's
+worker lifecycle to a different runtime requires its own implementation and
+hosted acceptance. The Vercel CD workflow handles the static frontend only.
 
 ## 4. Local integration smoke
 
@@ -127,7 +130,7 @@ Before promoting to production, confirm:
 - [ ] `JWT_ACCESS_SECRET` is ≥32 chars and unique per environment (never reused from dev).
 - [ ] `FRONTEND_URL` + `CORS_ORIGINS` cover exactly the browser origins that should be allowed — no wildcards.
 - [ ] `COOKIE_SECURE=true`.
-- [ ] The active `COOKIE_SAMESITE` + `COOKIE_DOMAIN` combination matches the same-site-vs-cross-site shape of this deployment.
+- [ ] The active `COOKIE_SAMESITE` + `COOKIE_DOMAIN` combination matches the selected supported same-site topology.
 - [ ] Real SMTP credentials configured (`SMTP_HOST`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM`).
 - [ ] TLS termination in front of the API; `X-Forwarded-*` headers trusted by the platform.
 - [ ] Database backups enabled on Postgres.
@@ -186,20 +189,18 @@ event. The outbox `dedupeKey` is `evidence.scanned:<assetId>:<state>`.
 The scheduler cannot overlap itself: the next timer is armed in `.finally()`,
 so a pass slower than its interval delays the next one instead of running two.
 
-### 6.4 ROLLOUT BLOCKER — no production deployment configuration exists
+### 6.4 Deployment configuration and remaining hosted acceptance
 
-As of Sprint 09B.29 this repository contains **no committed production
-deployment configuration**: no `vercel.json`, `render.yaml`, `fly.toml`,
-Kubernetes manifests or Terraform, and `infra/docker/docker-compose.yml` is
-`NODE_ENV=development` and sets none of the variables above.
+The repository now contains Vercel configuration, guarded API runtime preflight,
+separate runner/migrator Docker targets and a staging release boundary. See
+[VERCEL_CD.md](deployment/VERCEL_CD.md) and
+[STAGING.md](../infra/production/STAGING.md) for current configuration.
 
-There is therefore **nowhere that enables `EVIDENCE_SCAN_WORKER_ENABLED` with a
-real scanner**, and no environment in which the provider journey completes.
-
-Until a production configuration exists and sets §6.2, the provider onboarding
-and verification journey is **verified but not deployable**. This is recorded
-rather than worked around; see
-`docs/provider-experience-v2/SPRINT_09B29_VERIFICATION.md` §3.12.5.
+These files do not prove that a hosted scanner, storage policy, mail transport or
+provider journey is active. The target must run the real scanner and scan worker,
+and the uploaded-evidence-to-work-grant journey must pass on that environment.
+Historical Sprint 09B.29 notes are retained as history, not current evidence that
+deployment files are absent.
 
 ---
 

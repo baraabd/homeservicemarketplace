@@ -49,6 +49,9 @@ describe('mail templates', () => {
     const samples: { [K in MailTemplateId]: unknown } = {
       'auth.registration_otp': { code: '123456', minutes: 5 },
       'auth.login_otp': { code: '123456', minutes: 5 },
+      'auth.password_reset_otp': { code: '123456', minutes: 5 },
+      'auth.phone_verification_otp': { code: '123456', minutes: 5 },
+      'auth.email_contact_otp': { code: '123456', minutes: 5 },
       'auth.email_verification': { token: TOKEN },
       'auth.password_reset': { token: TOKEN },
       'provider.verification_action_required': {},

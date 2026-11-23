@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { AuthChannelModule } from '../../infrastructure/auth-channel/auth-channel.module';
 
 import { AdminAccessModule } from '../iam/admin-access/admin-access.module';
 import { AuthenticationModule } from '../iam/authentication/authentication.module';
@@ -73,6 +74,7 @@ import { PortfolioMediaModule } from '../media/portfolio-media.module';
   // AdminAccessModule exports the AdminAccessService the review controller
   // below reuses — one lifecycle implementation for both sides of the axis.
   imports: [
+    AuthChannelModule,
     AuthenticationModule,
     AuthorizationModule,
     NotificationsModule,

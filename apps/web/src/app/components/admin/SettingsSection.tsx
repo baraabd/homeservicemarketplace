@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Save, ShieldCheck } from 'lucide-react';
 import { Link } from 'react-router';
 import type {
@@ -8,6 +8,7 @@ import type {
 
 import { useAdminSettings, useUpdateAdminSettings } from '../../hooks/admin/useAdminSettings';
 import { extractAuthError } from '../../../lib/auth-errors';
+import { AuthChannelSetting } from './AuthChannelSetting';
 
 // Sprint 6.5 — extracted, real, API-driven Settings section.
 // Replaces the prior PricingSettingsSection that used setTimeout(500)
@@ -27,15 +28,12 @@ export function SettingsSection({ lang }: { lang: string }) {
   const save = useUpdateAdminSettings();
 
   const data = settingsQuery.data;
-  const [draft, setDraft] = useState<AdminSettingsValues>({});
+  const [changes, setChanges] = useState<AdminSettingsValues>({});
+  const draft = useMemo(() => ({ ...data?.values, ...changes }), [data?.values, changes]);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [serverError, setServerError] = useState<string | null>(null);
 
-  // Hydrate the draft from the most recent server payload.
-  useEffect(() => {
-    if (data) setDraft({ ...data.values });
-  }, [data]);
-
+  // Keep unsaved edits across background refreshes; the server owns saved values.
   const dirtyKeys = useMemo(() => {
     if (!data) return [] as string[];
     const keys: string[] = [];
@@ -100,6 +98,7 @@ export function SettingsSection({ lang }: { lang: string }) {
     setServerError(null);
     try {
       await save.mutateAsync({ values: payload });
+      setChanges({});
     } catch (err: unknown) {
       // Fixed copy by outcome; the backend's raw message is never shown.
       const { status } = extractAuthError(err);
@@ -117,7 +116,7 @@ export function SettingsSection({ lang }: { lang: string }) {
 
   const onRevert = () => {
     if (!data) return;
-    setDraft({ ...data.values });
+    setChanges({});
     setErrors({});
     setServerError(null);
   };
@@ -174,24 +173,41 @@ export function SettingsSection({ lang }: { lang: string }) {
         </p>
       ) : data ? (
         <div className="bg-white dark:bg-slate-800 rounded-3xl border border-slate-100 dark:border-slate-700 shadow-sm p-5 flex flex-col gap-4">
-          {data.schema.map((field) => (
-            <FieldEditor
-              key={field.key}
-              field={field}
-              value={draft[field.key]}
-              defaultValue={data.defaults[field.key]}
-              error={errors[field.key]}
-              readOnlyNote={field.inEffect === false ? L.notInEffect : null}
-              onChange={(v) => setDraft((d) => ({ ...d, [field.key]: v }))}
-            />
-          ))}
+          {data.schema
+            .filter((field) => field.key === 'auth.otpChannel')
+            .map((field) => (
+              <AuthChannelSetting
+                key={field.key}
+                value={draft[field.key]}
+                savedValue={data.values[field.key]}
+                lang={lang}
+                disabled={save.isPending}
+                onChange={(v) => {
+                  setChanges((d) => ({ ...d, [field.key]: v }));
+                  setServerError(null);
+                }}
+              />
+            ))}
+          {data.schema
+            .filter((field) => field.key !== 'auth.otpChannel')
+            .map((field) => (
+              <FieldEditor
+                key={field.key}
+                field={field}
+                value={draft[field.key]}
+                defaultValue={data.defaults[field.key]}
+                error={errors[field.key]}
+                readOnlyNote={field.inEffect === false ? L.notInEffect : null}
+                onChange={(v) => setChanges((d) => ({ ...d, [field.key]: v }))}
+              />
+            ))}
 
-          <div className="flex items-center gap-3 pt-2 border-t border-slate-100 dark:border-slate-700">
+          <div className="flex flex-wrap items-center gap-3 pt-2 border-t border-slate-100 dark:border-slate-700">
             <button
               type="button"
               onClick={onSave}
               disabled={!isDirty || save.isPending}
-              className="px-3 py-1.5 rounded-2xl bg-blue-600 text-white disabled:opacity-50 flex items-center gap-1.5"
+              className="min-h-11 px-4 py-2 rounded-2xl bg-blue-600 text-white disabled:opacity-50 flex items-center gap-1.5"
               style={{ fontSize: '12px', fontWeight: 700 }}
             >
               <Save size={13} />
@@ -201,7 +217,7 @@ export function SettingsSection({ lang }: { lang: string }) {
               type="button"
               onClick={onRevert}
               disabled={!isDirty || save.isPending}
-              className="px-3 py-1.5 rounded-2xl bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200 disabled:opacity-50"
+              className="min-h-11 px-4 py-2 rounded-2xl bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200 disabled:opacity-50"
               style={{ fontSize: '12px', fontWeight: 700 }}
             >
               {L.revert}
@@ -235,6 +251,8 @@ function shallowEqual(a: unknown, b: unknown): boolean {
 }
 
 function validateClient(field: AdminSettingFieldSchema, value: unknown): string | null {
+  if (field.key === 'auth.otpChannel' && value !== 'email' && value !== 'whatsapp')
+    return 'Choose email or WhatsApp.';
   switch (field.type) {
     case 'integer':
       if (typeof value !== 'number' || !Number.isInteger(value)) return 'Must be an integer.';

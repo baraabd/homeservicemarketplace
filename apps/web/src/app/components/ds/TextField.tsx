@@ -19,6 +19,8 @@ export interface TextFieldProps {
   trailingIcon?: ReactNode;
   disabled?: boolean;
   placeholder?: string;
+  /** Strong auth label/helper contrast without changing existing product forms. */
+  contrast?: 'default' | 'strong';
   /**
    * Phase 1 Bug 2 — render a self-growing <textarea> instead of a
    * single-line <input>. Used for free-form descriptions (job-posting
@@ -52,6 +54,7 @@ export function TextField({
   trailingIcon,
   disabled = false,
   placeholder,
+  contrast = 'default',
   multiline = false,
   minRows = 3,
   maxRows = 10,
@@ -109,7 +112,26 @@ export function TextField({
 
   const bgClass = hasError ? 'bg-red-50/30' : disabled ? 'bg-slate-50' : 'bg-white';
 
-  const labelColor = hasError ? 'text-red-500' : focused ? 'text-amber-500' : 'text-slate-400';
+  const labelColor =
+    contrast === 'strong'
+      ? hasError
+        ? 'text-red-700'
+        : focused
+          ? 'text-amber-700'
+          : 'text-slate-600'
+      : hasError
+        ? 'text-red-500'
+        : focused
+          ? 'text-amber-500'
+          : 'text-slate-400';
+  const iconColor =
+    contrast === 'strong'
+      ? labelColor
+      : hasError
+        ? 'text-red-400'
+        : focused
+          ? 'text-amber-500'
+          : 'text-slate-400';
 
   const padStart = leadingIcon ? 'ps-11' : 'ps-4';
   const padEnd = trailingIcon ? 'pe-11' : 'pe-4';
@@ -143,7 +165,7 @@ export function TextField({
             className={[
               'absolute start-4 pointer-events-none transition-colors duration-200',
               leadingIconPosition,
-              hasError ? 'text-red-400' : focused ? 'text-amber-500' : 'text-slate-400',
+              iconColor,
             ].join(' ')}
           >
             {leadingIcon}
@@ -154,7 +176,7 @@ export function TextField({
         <label
           htmlFor={inputId}
           className={[
-            'absolute pointer-events-none select-none transition-all duration-200',
+            'absolute pointer-events-none select-none transition-all duration-200 motion-reduce:transition-none',
             labelColor,
             leadingIcon ? 'start-11' : 'start-4',
           ].join(' ')}
@@ -165,7 +187,7 @@ export function TextField({
             // center default.
             top: floated ? '8px' : multiline ? '1.25rem' : '50%',
             transform: floated ? 'translateY(0)' : multiline ? 'translateY(0)' : 'translateY(-50%)',
-            fontSize: floated ? '11px' : '14px',
+            fontSize: floated ? '11px' : '16px',
             fontWeight: floated ? 600 : 400,
             lineHeight: '1.2',
           }}
@@ -199,8 +221,11 @@ export function TextField({
               padStart,
               padEnd,
               'disabled:cursor-not-allowed disabled:text-slate-400',
+              contrast === 'strong' ? 'placeholder:text-slate-600' : '',
             ].join(' ')}
-            style={{ fontSize: '14px', lineHeight: '1.5' }}
+            // K02 — 16px: the project minimum for editable mobile text (and
+            // the size below which iOS Safari zooms the page on focus).
+            style={{ fontSize: '16px', lineHeight: '1.5' }}
           />
         ) : (
           <input
@@ -233,8 +258,11 @@ export function TextField({
               padStart,
               padEnd,
               'disabled:cursor-not-allowed disabled:text-slate-400',
+              contrast === 'strong' ? 'placeholder:text-slate-600' : '',
             ].join(' ')}
-            style={{ fontSize: '14px', lineHeight: '1.5' }}
+            // K02 — 16px: the project minimum for editable mobile text (and
+            // the size below which iOS Safari zooms the page on focus).
+            style={{ fontSize: '16px', lineHeight: '1.5' }}
           />
         )}
 
@@ -244,7 +272,7 @@ export function TextField({
           <span
             className={[
               'absolute end-4 top-1/2 -translate-y-1/2 transition-colors duration-200',
-              hasError ? 'text-red-400' : focused ? 'text-amber-500' : 'text-slate-400',
+              iconColor,
             ].join(' ')}
           >
             {trailingIcon}
@@ -259,7 +287,13 @@ export function TextField({
           role={error ? 'alert' : undefined}
           className={[
             'flex items-start gap-1.5 mt-1.5 px-1',
-            error ? 'text-red-500' : 'text-slate-400',
+            contrast === 'strong'
+              ? error
+                ? 'text-red-700'
+                : 'text-slate-600'
+              : error
+                ? 'text-red-500'
+                : 'text-slate-400',
           ].join(' ')}
           style={{ fontSize: '12px', lineHeight: '1.5' }}
         >

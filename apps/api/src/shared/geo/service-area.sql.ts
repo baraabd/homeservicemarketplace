@@ -103,11 +103,20 @@ export function filterByExactRadius<T>(
   });
 }
 
-/** How much the box over-selects, as a multiplier on the circle's area.
+/** K05 — the radius feed's per-page query budget.
  *
- *  Used by the repository to decide how far to over-fetch before the exact
- *  filter, so a page of N rows does not come back short after the corners are
- *  dropped. 4/π for a full square; 1 when the box degenerated to a latitude
- *  band, where the over-selection is unbounded and the caller should not rely
- *  on a fixed multiplier. */
-export const BOX_OVERSELECT_FACTOR = 4 / Math.PI;
+ *  The box over-selects by 4/π on AVERAGE over uniformly spread rows, but a
+ *  page sees whichever rows are newest. A fixed over-fetch cannot guarantee a
+ *  full page, so the repository scans keyset batches until the page fills,
+ *  the candidates run out, or this many queries are spent. In the last case
+ *  it returns the last scanned id as a truthful continuation. See ADR 0003,
+ *  addendum K05. */
+export const SCAN_MAX_ROUNDS = 8;
+
+/** Rows per scan batch: twice the page plus its look-ahead row, so a page
+ *  with typical corner density fills in one query. The floor keeps small
+ *  pages from issuing many tiny queries. The cap bounds the rows one query
+ *  can hydrate. */
+export function scanBatchSize(take: number): number {
+  return Math.min(Math.max((take + 1) * 2, 50), 250);
+}

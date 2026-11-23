@@ -1,0 +1,149 @@
+{
+  "schemaVersion": 2,
+  "scope": "phone input/country consistency follow-up; production Vite byte measurements, not hosted or browser latency acceptance",
+  "measuredAt": "2026-11-18T07:28:13.063Z",
+  "source": {
+    "baseCommit": "f29e7fb0884d560c68322a7a4e7fcfcd2a4d1ea4",
+    "branch": "feat/configurable-otp-channel-20261118",
+    "worktreeModified": true,
+    "lockfileSha256": "0a0e9798d23c0891dc2b0e3bf0ab0a1122a2d38a91fc9f2718e61572c06a4c12",
+    "sourceHashes": [
+      {
+        "path": "apps/web/src/app/components/auth/PhoneIdentityField.tsx",
+        "sha256": "c0525116104d2aef730c3be89bca89a1c85c1660e29fd6877927200584e15700"
+      },
+      {
+        "path": "apps/web/src/lib/phone-identity.ts",
+        "sha256": "a7da9aed4656c4433b7e4461593225cfdf9d63d8ef2bde0530c98dfe53ad4946"
+      },
+      {
+        "path": "apps/web/src/app/components/admin/AdminRouteContent.tsx",
+        "sha256": "d54c59077983072affdd7107d82ecb44449a6565bbeebe59b50cea22cae0ce73"
+      },
+      {
+        "path": "apps/web/src/app/components/auth/AuthScreens.tsx",
+        "sha256": "620f801dd48fb996d0143229e4d9e5c6c8077c0908ccf5fdd28630c6119b6937"
+      },
+      {
+        "path": "apps/web/src/app/components/auth/SignUpScreen.tsx",
+        "sha256": "6e2694e5612e32a5e6a9d3e86080ecbbeff7661066814a7f7fddba32c68c4199"
+      },
+      {
+        "path": "apps/web/src/app/components/auth/ForgotPasswordScreen.tsx",
+        "sha256": "bd841b734f4f214da14b2983e7ed4712f672424a6a1d115104a1a6242f488466"
+      },
+      {
+        "path": "apps/web/src/app/components/auth/AuthLayout.tsx",
+        "sha256": "41066d0f3a2c97578c5e91f381740f9e618402d0c2a265f739a78f75a419da8e"
+      },
+      {
+        "path": "apps/web/src/app/pages/AuthPages.tsx",
+        "sha256": "868bb0ad18022d95d19e92504bf582b79e3244b0d9f882eb563b8ccaa352f381"
+      }
+    ]
+  },
+  "compression": {
+    "gzip": "zlib level 1 (nginx.conf default)",
+    "brotli": "quality 11 (lower bound)"
+  },
+  "buildFlags": {
+    "VITE_API_URL": "http://127.0.0.1:4010"
+  },
+  "measurementBuildWallClockMs": 22865,
+  "thresholdFile": "scripts/perf/post-r18/budgets.proposed.json",
+  "thresholdsModified": false,
+  "measurements": [
+    {
+      "name": "shell",
+      "brotliBytes": 189275,
+      "limitKiB": 185
+    },
+    {
+      "name": "auth",
+      "brotliBytes": 19648,
+      "limitKiB": 20
+    },
+    {
+      "name": "seeker-home",
+      "brotliBytes": 58229,
+      "limitKiB": 60
+    },
+    {
+      "name": "provider-workspace",
+      "brotliBytes": 35974,
+      "limitKiB": 40
+    },
+    {
+      "name": "provider-onboarding",
+      "brotliBytes": 76587,
+      "limitKiB": 75
+    },
+    {
+      "name": "admin",
+      "brotliBytes": 108348,
+      "limitKiB": 110
+    },
+    {
+      "name": "disputes",
+      "brotliBytes": 43377,
+      "limitKiB": 45
+    },
+    {
+      "name": "job-wizard",
+      "brotliBytes": 64996,
+      "limitKiB": 65
+    }
+  ],
+  "deferredRoutes": [
+    {
+      "name": "signup",
+      "source": "src/app/components/auth/SignUpScreen.tsx",
+      "parent": "auth",
+      "additionalBrotliBytes": 8152,
+      "coldRouteIncrementBrotliBytes": 27800
+    },
+    {
+      "name": "email-recovery",
+      "source": "src/app/components/auth/ForgotPasswordScreen.tsx",
+      "parent": "auth",
+      "additionalBrotliBytes": 3721,
+      "coldRouteIncrementBrotliBytes": 23369
+    },
+    {
+      "name": "whatsapp-recovery",
+      "source": "src/app/components/auth/WhatsAppPasswordRecovery.tsx",
+      "parent": "auth",
+      "additionalBrotliBytes": 1750,
+      "coldRouteIncrementBrotliBytes": 21398
+    },
+    {
+      "name": "admin-settings",
+      "source": "src/app/components/admin/SettingsSection.tsx",
+      "parent": "admin",
+      "additionalBrotliBytes": 11813,
+      "coldRouteIncrementBrotliBytes": 120161
+    }
+  ],
+  "bundleChecks": {
+    "passed": 10,
+    "failed": 0,
+    "forbiddenLibraries": {
+      "recharts": "only admin-dashboard-charts",
+      "leaflet": "only job-wizard and address-map"
+    }
+  },
+  "notes": [
+    "Historical bundle evidence is unchanged.",
+    "International phone input consistency is included in the initial auth dependency graph.",
+    "Signup, recovery and admin settings boundaries retain their real additional network and compressed-byte cost.",
+    "The shell and provider-onboarding budgets retain limited headroom.",
+    "The synthetic API URL is a build fixture, not a production deployment or live WhatsApp acceptance result."
+  ],
+  "productionBuild": {
+    "command": "VITE_API_URL=http://127.0.0.1:4010 pnpm --filter @homeservicemarketplace/web build",
+    "status": "PASS",
+    "includes": ["contracts TypeScript build", "web tsc -b", "Vite production build"],
+    "viteBuildSeconds": 14.06,
+    "warning": "Existing Vite warning for chunks larger than 500 kB; limits not changed"
+  }
+}

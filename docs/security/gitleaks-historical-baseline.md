@@ -470,3 +470,126 @@ The corrected-tree verification uses a complete private copy of the reported
 tracked tree with only these three leased file changes overlaid. It creates
 no source commit or Git ref and cannot stand in for the coordinator's final
 commit-bound scan. Final remote CI remains an acceptance requirement.
+
+## 14. PR183 R36 recovery-inventory prose (2026-10-23)
+
+CI run `39863810716`, job `120122846166`, reported one `generic-api-key`
+finding in both its historical scan and tracked-source scan. The exact
+historical fingerprint is:
+
+`6c7aac2ea68ee4943d60b0db3be33012d572ac8d:docs/production-readiness/post-r18/gates/g2/prompts/R36.md:generic-api-key:72`
+
+The Codex coordinator reviewed that complete requirement at its introducing
+commit and the current source. It describes recovery inventory and build
+artifact names, with no assigned credential or runtime value. The prompt's
+recorded source provenance and surrounding recovery requirements confirm its
+documentation purpose. This is an agent classification under the owner's PR
+repair request, not independent human security approval or a credential-store
+audit. Verdict: one ordinary-prose false positive; rotation does not apply.
+
+Only this exact historical fingerprint is added; all 26 earlier entries remain
+unchanged. The current prompt changes one space into a Markdown continuation
+newline. Its normalized text is identical, and PROMPT_PROVENANCE.md records the
+new retained-file digest. No scanner rule, scan range, blocking status or path
+exclusion changes. A new occurrence outside the exact historical fingerprint
+continues to fail. Review/remove this entry using section 5 when its originating
+commit is no longer reachable and at each release review.
+
+Verification used Gitleaks 8.24.3 from the archive matching the workflow's
+pinned SHA-256 `9991e0b2903da4c8f6122b5c3186448b927a5da4deef1fe45271c3793f4ee29c`.
+The unchanged first-parent/non-merge PR range from `3139cafe` to `7843ed58`
+scanned three commits and 687,365 bytes, returning exactly that one finding
+with exit 2 before correction, then zero findings and exit 0 after the exact
+fingerprint. With the updated baseline, two freshly generated canaries in a
+separate temporary repository were both detected (`generic-api-key` and
+`github-pat`, exit 2). Canary values were never printed or committed here;
+their temporary repository was removed. All seven existing tracked-tree scanner
+policy tests also passed. Final corrected-commit tree scanning and exact-head
+CI remain required; the earlier failed run is retained.
+
+## 15. G3 evidence digest matches (2026-10-24)
+
+The Codex coordinator individually reviewed two `generic-api-key` findings
+in published commit `2757d86f7d9e4a3b1cd655a5c4c9cd1d7848787c` under the
+user's G3 integration authorization. This is an agent classification, not
+independent human security approval.
+
+| File                                                                     | Line | Classification                                   |
+| ------------------------------------------------------------------------ | ---- | ------------------------------------------------ |
+| `docs/production-readiness/post-r18/gates/g3/IMPLEMENTATION.md`          | 25   | SHA-256 of the sanitized configuration inventory |
+| `docs/production-readiness/post-r18/gates/g3/evidence/LOCAL_CHECKS.json` | 227  | SHA-256 of the local API test report             |
+
+Both complete source records were inspected at the originating commit. Each
+64-character value was independently recomputed from its exact input and
+matched: canonical sorted compact JSON for the configuration inventory, and
+raw bytes for the test report. They were authored by this session for evidence
+integrity. Neither authenticates, signs, authorizes or comes from a provider
+account or credential store. No production environment was inspected. This
+bounded derivation proof does not assert a repository-wide credential audit.
+
+The actual Gitleaks 8.24.3 first-parent/non-merge range from `73a4a64a` to
+`2757d86f` reproduced exactly these two findings (exit 2), matching the
+tracked-tree scan. The current prose and artifact-digest layout are clarified
+without changing either digest. Only the two exact historical fingerprints
+are added. No scanner rule, path pattern, range, budget or blocking status is
+changed, and no history is rewritten. Local-only commit aliases receive no
+ignore entries.
+
+Review/remove these entries under section 5 when the originating commit is
+unreachable or at release review. The corrected tracked-tree scan and final
+remote CI remain mandatory.
+
+Verification: the unchanged historical range scanned five commits and 134,200
+bytes after the two fingerprints, with exit 0 and no findings. An isolated
+temporary Git repository carrying the updated baseline received two freshly
+generated canaries. Both generic-api-key and github-pat were detected (exit 2,
+two findings); their values were never printed or committed here, and the
+temporary source was deleted.
+
+## 16. G3 assembled-fixture entitlement identifier (2026-10-24)
+
+The pinned Gitleaks 8.24.3 tracked-tree scan of the normal-hook repair commit
+reported five `generic-api-key` matches. The equivalent connector Git object is
+`2433b0fab1d5b3e826f5c28e278994702efe35dd`, whose tree exactly matches the
+local normal-hook commit. Its branch is not advanced until the corrective
+follow-up is ready. No commit is amended, squashed or removed.
+
+All five findings are in
+`apps/api/test/integration/g3-financial-runtime.integration.spec.ts`:
+
+| Line | Individually reviewed use                                                            |
+| ---- | ------------------------------------------------------------------------------------ |
+| 183  | Names the synthetic plan's entitlement in the newly created isolated test database.  |
+| 346  | Asserts that same named entitlement is allowed after actual subscription activation. |
+| 351  | Selects that entitlement for a real usage-service request.                           |
+| 532  | Asserts that entitlement is denied after the approved fixture refund consequence.    |
+| 537  | Selects the same entitlement for the expected denied usage request.                  |
+
+The author and coordinator inspected each complete occurrence and its data
+flow. The shared literal is a readable domain identifier authored for these
+fixtures. It is not an authentication input, token, signature, provider value,
+environment secret or external credential. Its public spelling has no security
+meaning. This is an agent classification under the user's PR repair request,
+not independent human security approval or a credential-store audit. Rotation
+does not apply.
+
+The current fixture consistently uses `g3.test` for all five occurrences; no
+behavioral assertion or fixture boundary changed. All six actual
+PostgreSQL/Redis/ClamAV cases passed again with zero failed/skipped cases.
+Exactly five historical fingerprints for the published Git object above are
+added. Local-only commit aliases receive no ignore entries. Existing entries,
+rules, scan ranges, path coverage and blocking behavior are unchanged. A new
+occurrence at another commit or line still fails.
+
+Review/remove these entries under section 5 when the originating commit is no
+longer reachable and at each release review. The final corrected tracked tree,
+the original historical range with these exact fingerprints, and fresh generic
+and GitHub-token canaries must be checked before publication. Final-source CI
+remains required; a clean local scan does not establish G3 acceptance.
+
+Verification for section 16: the exact original one-commit history range in a
+detached task-owned checkout scanned 113,732 bytes and produced those five
+findings (exit 2). With only the five reviewed historical fingerprints, the
+same range produced zero findings (exit 0). Fresh generated generic API and
+GitHub-token canaries were both detected with exit 2; values were never printed
+or committed. The temporary checkout and canary source were removed.

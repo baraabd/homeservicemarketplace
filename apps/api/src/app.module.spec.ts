@@ -1,10 +1,20 @@
 import 'reflect-metadata';
+import { StripeRuntimeModule } from './modules/money/runtime/stripe-runtime.module';
+import { StripeWebhookModule } from './modules/money/webhooks/stripe/stripe-webhook.module';
+import { StripeInboxScheduler } from './modules/money/runtime/stripe-inbox.scheduler';
 
 import { MODULE_METADATA } from '@nestjs/common/constants';
 
 import { AppModule } from './app.module';
 import { LedgerModule } from './modules/money/ledger/ledger.module';
 import { MoneyModule } from './modules/money/money.module';
+import { FinancialReportingModule } from './modules/money/reporting/financial-reporting.module';
+import { RefundsModule } from './modules/money/refunds/refunds.module';
+import { RefundOutboxConsumer } from './modules/money/recovery/refund-outbox.consumer';
+import { SubscriptionsModule } from './modules/money/subscriptions/subscriptions.module';
+import { SubscriptionOutboxHandler } from './modules/money/subscriptions/subscription-outbox.handler';
+import { OutboxModule } from './infrastructure/outbox/outbox.module';
+import { OUTBOX_HANDLERS } from './infrastructure/outbox/outbox.tokens';
 import { SupportModule } from './modules/support/support.module';
 import { AdminSupportController, SupportController } from './modules/support/support.controller';
 
@@ -16,6 +26,20 @@ jest.mock('./config/config.module', () => ({
 }));
 
 describe('AppModule feature registration', () => {
+  it('registers one refund outbox consumer with its existing financial module', () => {
+    const imports = Reflect.getMetadata(MODULE_METADATA.IMPORTS, AppModule) as unknown[];
+    expect(imports.filter((entry) => entry === RefundsModule)).toHaveLength(1);
+    const outbox = imports.find(
+      (entry) =>
+        typeof entry === 'object' &&
+        entry !== null &&
+        'module' in entry &&
+        entry.module === OutboxModule,
+    ) as { imports: unknown[]; providers: Array<{ provide?: unknown; inject?: unknown[] }> };
+    expect(outbox.imports).toContain(RefundsModule);
+    const registry = outbox.providers.find((entry) => entry.provide === OUTBOX_HANDLERS);
+    expect(registry?.inject?.filter((entry) => entry === RefundOutboxConsumer)).toHaveLength(1);
+  });
   it('keeps support routes mounted alongside the ledger foundation', () => {
     const imports = Reflect.getMetadata(MODULE_METADATA.IMPORTS, AppModule) as unknown[];
     const supportControllers = Reflect.getMetadata(
@@ -25,6 +49,7 @@ describe('AppModule feature registration', () => {
 
     expect(imports.filter((entry) => entry === SupportModule)).toHaveLength(1);
     expect(imports.filter((entry) => entry === MoneyModule)).toHaveLength(1);
+    expect(imports.filter((entry) => entry === FinancialReportingModule)).toHaveLength(1);
     expect(imports.filter((entry) => entry === LedgerModule)).toHaveLength(0);
     const moneyImports = Reflect.getMetadata(MODULE_METADATA.IMPORTS, MoneyModule) as unknown[];
     expect(moneyImports.filter((entry) => entry === LedgerModule)).toHaveLength(1);
@@ -34,4 +59,45 @@ describe('AppModule feature registration', () => {
       expect.arrayContaining([SupportController, AdminSupportController]),
     );
   });
+
+  it('registers the period-bound lifecycle handler in the actual outbox worker', () => {
+    const imports = Reflect.getMetadata(MODULE_METADATA.IMPORTS, AppModule) as Array<{
+      module?: unknown;
+      imports?: unknown[];
+      providers?: Array<{ provide?: unknown; inject?: unknown[] } | unknown>;
+    }>;
+    const outbox = imports.find((entry) => entry.module === OutboxModule);
+    expect(outbox?.imports).toContain(SubscriptionsModule);
+    const handlerList = outbox?.providers?.find(
+      (entry): entry is { provide: unknown; inject: unknown[] } =>
+        typeof entry === 'object' &&
+        entry !== null &&
+        'provide' in entry &&
+        entry.provide === OUTBOX_HANDLERS,
+    );
+    expect(handlerList?.inject.filter((entry) => entry === SubscriptionOutboxHandler)).toHaveLength(
+      1,
+    );
+  });
+});
+
+it('mounts one shared Stripe transport, one signed ingress and one scheduler', () => {
+  const imports = Reflect.getMetadata(MODULE_METADATA.IMPORTS, AppModule) as Array<
+    { module?: unknown; imports?: unknown[] } | unknown
+  >;
+  expect(imports.filter((entry) => entry === StripeRuntimeModule)).toHaveLength(1);
+  const ingress = imports.filter(
+    (entry): entry is { module: unknown; imports: unknown[] } =>
+      typeof entry === 'object' &&
+      entry !== null &&
+      'module' in entry &&
+      entry.module === StripeWebhookModule,
+  );
+  expect(ingress).toHaveLength(1);
+  expect(ingress[0]!.imports).toEqual([StripeRuntimeModule, MoneyModule]);
+  expect(
+    (Reflect.getMetadata(MODULE_METADATA.PROVIDERS, AppModule) as unknown[]).filter(
+      (entry) => entry === StripeInboxScheduler,
+    ),
+  ).toHaveLength(1);
 });

@@ -25,6 +25,7 @@ import { CsrfGuard } from '../../iam/authentication/guards/csrf.guard';
 import { JwtAuthGuard } from '../../iam/authentication/guards/jwt-auth.guard';
 import type { AuthenticatedUser } from '../../iam/authentication/types/authenticated-user';
 import { Roles } from '../../iam/authorization/decorators/roles.decorator';
+import { CurrentAdminGuard } from '../../iam/authorization/guards/current-admin.guard';
 import { RolesGuard } from '../../iam/authorization/guards/roles.guard';
 import { AdminSettingsService } from './admin-settings.service';
 import { ListSettingHistoryQueryDto } from './dto/list-setting-history.query';
@@ -36,7 +37,7 @@ import { UpdateAdminSettingsDto } from './dto/update-admin-settings.dto';
 //   • bulk (`GET /` + `PATCH /`)              — canonical UI surface
 //   • keyed (`GET /:key`, `PUT /:key`, `DELETE /:key`) — legacy
 //     ad-hoc surface
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, RolesGuard, CurrentAdminGuard)
 @Roles('admin')
 @Controller({ path: 'admin/settings', version: '1' })
 export class AdminSettingsController {

@@ -1,7 +1,7 @@
 export const IDENTITY_PREVIEW_COPY = {
   en: {
-    open: 'Inspect document',
-    description: 'Inspect the document here. Each opening checks your access and records the read.',
+    open: 'View document for review',
+    description: 'Review the document here. Each opening checks your access and records the read.',
     zoomIn: 'Zoom in',
     zoomOut: 'Zoom out',
     fit: 'Fit to window',
@@ -20,8 +20,8 @@ export const IDENTITY_PREVIEW_COPY = {
     pdf: 'Document page',
   },
   ar: {
-    open: 'فحص الوثيقة',
-    description: 'افحص الوثيقة هنا. يُتحقق من صلاحية وصولك ويُسجّل الاطلاع عند كل فتح.',
+    open: 'عرض الوثيقة للمراجعة',
+    description: 'راجع الوثيقة هنا. يُتحقق من صلاحية وصولك ويُسجّل الاطلاع عند كل فتح.',
     zoomIn: 'تكبير',
     zoomOut: 'تصغير',
     fit: 'ملاءمة النافذة',

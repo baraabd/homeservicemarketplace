@@ -26,6 +26,7 @@ import {
 import { CurrentUser } from '../../iam/authentication/decorators/current-user.decorator';
 import { JwtAuthGuard } from '../../iam/authentication/guards/jwt-auth.guard';
 import { CsrfGuard } from '../../iam/authentication/guards/csrf.guard';
+import { CurrentAdminGuard } from '../../iam/authorization/guards/current-admin.guard';
 import { RolesGuard } from '../../iam/authorization/guards/roles.guard';
 import { Roles } from '../../iam/authorization/decorators/roles.decorator';
 import type { AuthenticatedUser } from '../../iam/authentication/types/authenticated-user';
@@ -107,7 +108,7 @@ export class SetExpansionOverrideDto {
   expiresAt?: string | null;
 }
 
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, RolesGuard, CurrentAdminGuard)
 @Roles('admin')
 @Controller({ path: 'admin/service-area', version: '1' })
 export class AdminServiceAreaPolicyController {

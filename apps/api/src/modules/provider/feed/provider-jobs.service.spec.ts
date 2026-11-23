@@ -112,7 +112,10 @@ function makeProviders(profile: ProviderProfileWithCategories | null): ProviderP
 
 function makeRequests(rows: ServiceRequestWithCategory[]): ServiceRequestRepository {
   return {
-    listAvailableForProvider: jest.fn().mockResolvedValue(rows),
+    listAvailableForProvider: jest.fn().mockImplementation(async ({ take }: { take: number }) => ({
+      rows: rows.slice(0, take),
+      nextCursor: rows.length > take ? rows[take - 1].id : null,
+    })),
   } as unknown as ServiceRequestRepository;
 }
 
@@ -175,8 +178,8 @@ describe('ProviderJobsService.listAvailable', () => {
   it('emits nextCursor when more rows exist beyond the requested page', async () => {
     const cat = makeCategory();
     const profile = makeProviderProfile([cat]);
-    // Repository fetches `take + 1` rows; we simulate that here by
-    // returning 3 rows for limit=2.
+    // The repository reports the continuation (K05); the mock below returns
+    // 2 of these 3 rows for limit=2 plus a cursor.
     const rows = ['a', 'b', 'c'].map((id) => makeRequest(id, {}, cat));
     const service = new ProviderJobsService(
       makeProviders(profile),
@@ -327,7 +330,7 @@ describe('ProviderJobsService.listAvailable', () => {
     await service.listAvailable('user-provider-1', { limit: 9999 });
 
     expect(requests.listAvailableForProvider).toHaveBeenCalledWith(
-      expect.objectContaining({ take: 101 }),
+      expect.objectContaining({ take: 100 }),
     );
   });
 

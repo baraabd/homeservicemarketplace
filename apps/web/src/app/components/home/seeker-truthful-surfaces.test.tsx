@@ -1,9 +1,10 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import MockAdapter from 'axios-mock-adapter';
 import { MemoryRouter } from 'react-router';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
+import { launchCatalog } from '../../../test-support/launch-catalog';
 import { api } from '../../../lib/api';
 import { AuthProvider, createAuthQueryClient } from '../../../lib/auth-provider';
 import { LanguageProvider } from '../../i18n/LanguageContext';
@@ -48,6 +49,7 @@ const BOOKING_FIXED_EUR = {
   scheduledAt: '2026-04-29T15:00:00.000Z',
   priceAmount: 120,
   currency: 'EUR',
+  amountScale: null, // K02 — a pre-K02 row: unit unproven
   pricingType: 'FIXED' as const,
   createdAt: '2026-04-28T02:00:00.000Z',
   service: {
@@ -70,11 +72,18 @@ const BOOKING_FIXED_EUR = {
   addressSnapshot: { label: 'Home', line1: '1 Main', city: 'Riyadh', country: 'SA' },
 };
 
-const bid = (id: string, amount: number, currency: string, pricingType: 'HOURLY' | 'FIXED') => ({
+const bid = (
+  id: string,
+  amount: number,
+  currency: string,
+  pricingType: 'HOURLY' | 'FIXED',
+  amountScale: number | null = null,
+) => ({
   id,
   requestId: 'req-test-1',
   amount,
   currency,
+  amountScale,
   pricingType,
   note: null,
   status: 'PENDING' as const,
@@ -106,13 +115,13 @@ beforeEach(() => {
 });
 afterEach(() => mock.restore());
 
-function renderHome(path: string) {
+function renderHome(path: string, onServiceSelect = vi.fn()) {
   return render(
     <AuthProvider client={qc}>
       <LanguageProvider>
         <EcosystemProvider>
           <MemoryRouter initialEntries={[path]}>
-            <HomeScreen isOffline={false} onServiceSelect={() => {}} />
+            <HomeScreen isOffline={false} onServiceSelect={onServiceSelect} />
           </MemoryRouter>
         </EcosystemProvider>
       </LanguageProvider>
@@ -121,6 +130,36 @@ function renderHome(path: string) {
 }
 
 describe('seeker surfaces show only what the server holds', () => {
+  it.each(['en', 'ar'] as const)('opens each launch specialty by ID in %s', async (lang) => {
+    window.localStorage.setItem('hsm.lang', lang);
+    mock.onGet('/v1/services').reply(200, { items: launchCatalog });
+    const select = vi.fn();
+    renderHome('/home', select);
+    const grid = within(await screen.findByTestId('service-categories-grid'));
+    await waitFor(() => expect(grid.getAllByRole('button')).toHaveLength(6));
+    for (const item of launchCatalog) {
+      const label = lang === 'ar' ? item.labelAr : item.labelEn;
+      if (item.isLeaf) {
+        fireEvent.click(grid.getByRole('button', { name: label }));
+        expect(select).toHaveBeenLastCalledWith(label, item.id);
+      } else {
+        expect(grid.queryByRole('button', { name: label })).toBeNull();
+      }
+    }
+  });
+
+  it('distinguishes a catalogue fetch error from a successful empty catalogue on retry', async () => {
+    window.localStorage.setItem('hsm.lang', 'en');
+    qc.setQueryDefaults(['services', 'categories'], { retry: false });
+    mock.onGet('/v1/services').replyOnce(503).onGet('/v1/services').reply(200, { items: [] });
+    renderHome('/home');
+    await screen.findByText('The service list could not be refreshed.');
+    expect(screen.queryByText('No services are currently listed.')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'RETRY' }));
+    await screen.findByText('No services are currently listed.');
+    expect(screen.queryByText('The service list could not be refreshed.')).toBeNull();
+  });
+
   it('home: no invented marketplace stats, no pretend microphone, no dead "View all"', async () => {
     renderHome('/home');
     await screen.findByTestId('service-categories-grid');
@@ -138,11 +177,12 @@ describe('seeker surfaces show only what the server holds', () => {
     expect(screen.queryByText('Changes sync when reconnected')).toBeNull();
   });
 
-  it('bookings: a fixed-price EUR booking reads "120 EUR · fixed price", never "$120/hr"', async () => {
+  it('bookings: a legacy EUR booking reads "120 EUR · unverified legacy amount", never "$120/hr" or "1.20"', async () => {
     mock.onGet('/v1/me/bookings').reply(200, { items: [BOOKING_FIXED_EUR], nextCursor: null });
     renderHome('/home/bookings');
     await screen.findByText('Plumbing');
-    expect(screen.getByText('120 EUR')).toBeInTheDocument();
+    expect(screen.getByText('120 EUR · unverified legacy amount')).toBeInTheDocument();
+    expect(screen.queryByText(/1\.20/)).toBeNull();
     expect(screen.getByText('fixed price')).toBeInTheDocument();
     expect(screen.queryByText(/\$120/)).toBeNull();
     expect(screen.queryByText(/\/hr/)).toBeNull();
@@ -167,13 +207,16 @@ describe('bid comparison is in the bid’s own currency and basis', () => {
     );
   }
 
-  it('shows "35 SYP", no "$", and no Message button that does nothing', async () => {
+  it('shows "SAR 35.00" for a verified 3500-halala bid, no "$", and no Message button that does nothing', async () => {
     mock.onGet('/v1/me/requests/req-test-1/bids').reply(200, {
-      items: [bid('a', 35, 'SYP', 'HOURLY'), bid('b', 40, 'SYP', 'HOURLY')],
+      items: [bid('a', 3500, 'SAR', 'HOURLY', 2), bid('b', 4025, 'SAR', 'HOURLY', 2)],
       nextCursor: null,
     });
     renderBids();
-    await waitFor(() => expect(screen.getAllByText('35 SYP').length).toBeGreaterThan(0));
+    const exact = (text: string) => (_: string, el: Element | null) =>
+      el?.children.length === 0 && el.textContent?.replace(/\u00a0/g, ' ') === text;
+    await waitFor(() => expect(screen.getAllByText(exact('SAR 35.00')).length).toBeGreaterThan(0));
+    expect(screen.getAllByText(exact('SAR 40.25')).length).toBeGreaterThan(0);
     expect(screen.queryByText(/\$35/)).toBeNull();
     expect(screen.queryByRole('button', { name: /^message$/i })).toBeNull();
     // Same currency and basis: the range chart compares them.
@@ -182,11 +225,13 @@ describe('bid comparison is in the bid’s own currency and basis', () => {
 
   it('never averages bids in different currencies or on different bases', async () => {
     mock.onGet('/v1/me/requests/req-test-1/bids').reply(200, {
-      items: [bid('a', 35, 'SYP', 'HOURLY'), bid('b', 40, 'USD', 'FIXED')],
+      items: [bid('a', 3500, 'SAR', 'HOURLY', 2), bid('b', 40, 'USD', 'FIXED')],
       nextCursor: null,
     });
     renderBids();
-    await waitFor(() => expect(screen.getAllByText('40 USD').length).toBeGreaterThan(0));
+    await waitFor(() =>
+      expect(screen.getAllByText('40 USD · unverified legacy amount').length).toBeGreaterThan(0),
+    );
     expect(screen.queryByText(/Avg:/)).toBeNull();
   });
 });

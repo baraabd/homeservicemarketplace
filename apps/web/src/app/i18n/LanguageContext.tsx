@@ -108,10 +108,24 @@ export function useLang() {
 export function LangToggle() {
   const { lang, toggleLang } = useLang();
   return (
+    // K02 — the name says what the control does in the reader's language
+    // and names the target language in its own script; 44px minimum height
+    // (project target-size rule). The two letters are decorative.
+    // dir="ltr": the two options are language names, not directional
+    // content. Without it the flex order mirrors in RTL while the pill's
+    // physical `left` does not, so Arabic showed the pill on "EN".
     <button
+      type="button"
+      dir="ltr"
       onClick={toggleLang}
-      className="relative flex items-center bg-slate-100 dark:bg-slate-700 rounded-xl p-0.5 overflow-hidden"
-      aria-label="Switch language"
+      className="relative flex min-h-11 items-center bg-slate-100 dark:bg-slate-700 rounded-xl p-0.5 overflow-hidden focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
+      aria-label={
+        lang === 'en'
+          ? 'Switch language to العربية (current: English)'
+          : 'تبديل اللغة إلى English (الحالية: العربية)'
+      }
+      data-testid="lang-toggle"
+      data-lang={lang}
     >
       <motion.div
         className="absolute top-0.5 bottom-0.5 w-[calc(50%-2px)] bg-white dark:bg-slate-600 rounded-[10px] shadow-sm"
@@ -130,6 +144,7 @@ export function LangToggle() {
           lang === 'en' ? 'text-lang-toggle-active' : 'text-lang-toggle-inactive'
         }`}
         style={{ fontFamily: "'Inter', sans-serif" }}
+        aria-hidden="true"
       >
         EN
       </span>
@@ -138,6 +153,7 @@ export function LangToggle() {
           lang === 'ar' ? 'text-lang-toggle-active' : 'text-lang-toggle-inactive'
         }`}
         style={{ fontFamily: "'Cairo', sans-serif" }}
+        aria-hidden="true"
       >
         ع
       </span>

@@ -10,6 +10,8 @@ export interface CreateVerificationTokenInput {
   expiresAt: Date;
   // OTP-only. Link tokens leave these null.
   challengeId?: string | null;
+  deliveryChannel?: string | null;
+  deliveryTarget?: string | null;
 }
 
 @Injectable()
@@ -82,7 +84,7 @@ export class VerificationTokenRepository {
       WHERE "challengeId" = ${challengeId} AND "tokenHash" = ${tokenHash}
         AND "usedAt" IS NULL AND "expiresAt" > (clock_timestamp() AT TIME ZONE 'UTC')
         AND "attemptCount" < ${maxAttempts}
-        AND "purpose" IN ('REGISTRATION_OTP', 'LOGIN_OTP')
+        AND "purpose" IN ('REGISTRATION_OTP', 'LOGIN_OTP', 'PASSWORD_RESET_OTP', 'PHONE_VERIFICATION_OTP', 'EMAIL_CONTACT_OTP')
       RETURNING *`;
     return rows[0] ?? null;
   }
@@ -101,7 +103,7 @@ export class VerificationTokenRepository {
       WHERE "challengeId" = ${challengeId} AND "tokenHash" = ${expectedHash}
         AND "usedAt" IS NULL AND "expiresAt" > (clock_timestamp() AT TIME ZONE 'UTC')
         AND "attemptCount" < ${maxAttempts}
-        AND "purpose" IN ('REGISTRATION_OTP', 'LOGIN_OTP')
+        AND "purpose" IN ('REGISTRATION_OTP', 'LOGIN_OTP', 'PASSWORD_RESET_OTP', 'PHONE_VERIFICATION_OTP', 'EMAIL_CONTACT_OTP')
       RETURNING *`;
     return rows[0] ?? null;
   }
@@ -124,7 +126,7 @@ export class VerificationTokenRepository {
       WHERE "challengeId" = ${challengeId} AND "tokenHash" = ${expectedHash}
         AND "usedAt" IS NULL AND "expiresAt" > (clock_timestamp() AT TIME ZONE 'UTC')
         AND "attemptCount" < ${limits.attempts} AND "resendCount" < ${limits.resends}
-        AND "purpose" IN ('REGISTRATION_OTP', 'LOGIN_OTP')
+        AND "purpose" IN ('REGISTRATION_OTP', 'LOGIN_OTP', 'PASSWORD_RESET_OTP', 'PHONE_VERIFICATION_OTP', 'EMAIL_CONTACT_OTP')
       RETURNING "id"`;
     return rows.length === 1;
   }

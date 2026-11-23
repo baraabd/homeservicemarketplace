@@ -15,6 +15,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { fixtureEmailDomain, acquireAdvisoryLocks, type HeldLock } from '../support/db-isolation';
+import { currentLegalAcceptance } from '../support/legal-acceptance';
+import { withEmailAuthenticationPolicy } from '../support/auth-channel';
 
 // Sprint 9B.13 — the whole provider journey, through the REAL application.
 //
@@ -161,7 +163,13 @@ d('Provider journey, flags ON (real AppModule, real Postgres, real Redis)', () =
   async function registerAndSignIn(email: string): Promise<Session> {
     const registered = await request(http)
       .post('/v1/auth/register')
-      .send({ email, password: PASSWORD, firstName: 'Jo', lastName: 'Walker' })
+      .send({
+        email,
+        password: PASSWORD,
+        firstName: 'Jo',
+        lastName: 'Walker',
+        legalAcceptance: currentLegalAcceptance(),
+      })
       .expect(202);
     expect(registered.body.otpRequired).toBe(true);
 
@@ -418,10 +426,11 @@ d('Provider journey, flags ON (real AppModule, real Postgres, real Redis)', () =
     const { MAIL_PORT } = require('../../src/infrastructure/mail/mail.port');
     mail = new InMemoryMailAdapter();
 
-    const moduleRef = await Test.createTestingModule({ imports: [AppModule] })
-      .overrideProvider(MAIL_PORT)
-      .useValue(mail)
-      .compile();
+    const moduleRef = await withEmailAuthenticationPolicy(
+      Test.createTestingModule({ imports: [AppModule] })
+        .overrideProvider(MAIL_PORT)
+        .useValue(mail),
+    ).compile();
 
     app = moduleRef.createNestApplication();
 

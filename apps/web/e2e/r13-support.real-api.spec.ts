@@ -4,6 +4,7 @@ import { expect, test, type BrowserContext, type Page } from '@playwright/test';
 
 import { seedLanguage } from './fixtures';
 import { adminJar, api, newJar, otpFor, REAL_API, type Account, type Jar } from './real-api';
+import { LEGAL_ACCEPTANCE } from './legal-acceptance';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // R13 — durable help and support, through the real stack.
@@ -43,7 +44,13 @@ async function registerSeeker(tag: string): Promise<Seeker> {
   const password = `R13-${randomUUID()}-Aa1!`;
   const registered = await api<{ challengeId: string }>(jar, '/v1/auth/register', {
     method: 'POST',
-    body: { email, password, firstName: 'R13', lastName: 'Seeker' },
+    body: {
+      email,
+      password,
+      firstName: 'R13',
+      lastName: 'Seeker',
+      legalAcceptance: LEGAL_ACCEPTANCE,
+    },
   });
   expect(registered.status, 'R13 seeker registration should succeed').toBeLessThan(400);
   const verified = await api(jar, '/v1/auth/verify-otp', {

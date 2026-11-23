@@ -36,6 +36,7 @@ export class EvidenceRetentionRepository {
       where: {
         id: after ? { gt: after } : undefined,
         visibility: 'RESTRICTED',
+        purpose: null,
         uploadCompletedAt: { not: null },
         deletedAt: null,
         retentionJobs: { none: { status: { not: 'CANCELLED' } } },
@@ -141,6 +142,7 @@ export class EvidenceRetentionRepository {
       if (
         !asset ||
         asset.visibility !== 'RESTRICTED' ||
+        asset.purpose != null ||
         asset.deletedAt ||
         !asset.uploadCompletedAt
       ) {
@@ -186,7 +188,7 @@ export class EvidenceRetentionRepository {
       if (!job) return false;
       const policy = retentionPolicySchema.parse(job.policySnapshot);
       const asset = await tx.mediaAsset.findUnique({ where: { id: job.mediaAssetId } });
-      if (!asset?.erasureStartedAt || asset.visibility !== 'RESTRICTED')
+      if (!asset?.erasureStartedAt || asset.visibility !== 'RESTRICTED' || asset.purpose != null)
         throw new Error('retention-fence-missing');
       await tx.mediaAsset.update({
         where: { id: asset.id },
@@ -290,7 +292,7 @@ export class EvidenceRetentionRepository {
         },
       },
     });
-    if (!asset) return null;
+    if (!asset || asset.purpose != null) return null;
     const kase = asset.verificationCase;
     let decidedAt: Date | null = null;
     let lastActivityAt: Date | null = kase?.updatedAt ?? null;

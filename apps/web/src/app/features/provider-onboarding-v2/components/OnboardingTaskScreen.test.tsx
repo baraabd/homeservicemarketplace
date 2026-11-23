@@ -8,6 +8,8 @@ import { api } from '../../../../lib/api';
 import { LanguageProvider } from '../../../i18n/LanguageContext';
 import { OnboardingTaskScreen } from './OnboardingTaskScreen';
 import { ProviderOnboardingAutosaveProvider } from '../autosave/ProviderOnboardingAutosaveProvider';
+import { ProviderVerificationScreen } from '../../provider-verification/components/ProviderVerificationScreen';
+import { STATE_COPY, UI_COPY } from '../../provider-verification/copy/provider-verification-copy';
 
 // Sprint 9B.16 — the per-task route: what makes the hub resumable.
 //
@@ -117,6 +119,15 @@ function renderTask(taskId: string, lang: 'en' | 'ar' = 'en') {
           { path: ':taskId', element: <OnboardingTaskScreen /> },
         ],
       },
+      {
+        path: '/provider/verification',
+        element: (
+          <>
+            <LocationProbe />
+            <ProviderVerificationScreen />
+          </>
+        ),
+      },
       { path: '*', element: <LocationProbe /> },
     ],
     { initialEntries: [`/provider/onboarding/${taskId}`] },
@@ -130,7 +141,138 @@ function renderTask(taskId: string, lang: 'en' | 'ar' = 'en') {
   );
 }
 
+function stubIdentityCorrection(allowed = ['MANAGE_VERIFICATION', 'COMPLETE_ONBOARDING']) {
+  const draft = {
+    ...DRAFT,
+    state: 'RETURNED',
+    reviewFeedback: {
+      requestedAt: '2026-11-09T12:00:00.000Z',
+      items: [
+        {
+          id: 'identity-correction',
+          taskId: 'BASICS_IDENTITY',
+          field: 'identityDocument',
+          reasonCode: 'INFORMATION_UNCLEAR',
+          providerMessage: 'Please send your identity document for review.',
+        },
+      ],
+    },
+  };
+  mock.onGet(HUB_URL).reply(200, { ...HUB, status: 'RETURNED' });
+  mock.onGet(DRAFT_URL).reply(200, draft);
+  mock.onGet('/v1/me/provider/capabilities').reply(200, {
+    capabilities: [],
+    allowed,
+    nextActions: [],
+    primaryReason: 'ONBOARDING_INCOMPLETE',
+  });
+  mock.onGet('/v1/me/provider/verification/case').reply(200, { case: null });
+  mock.onGet('/v1/me/provider/profile').reply(200, {
+    profile: { id: 'pp-1', verified: false, topPro: false },
+  });
+  return draft;
+}
+
 describe('OnboardingTaskScreen', () => {
+  it.each(['en', 'ar'] as const)(
+    '%s: a returned Basics task clearly opens identity upload after saving pending profile edits',
+    async (lang) => {
+      const draft = stubIdentityCorrection();
+      let finishSave: ((response: [number, unknown]) => void) | undefined;
+      mock.onPatch('/v1/me/provider/onboarding/steps/IDENTITY').reply(
+        () =>
+          new Promise<[number, unknown]>((resolve) => {
+            finishSave = resolve;
+          }),
+      );
+      const verification = {
+        case: {
+          id: 'identity-case',
+          state: 'DRAFT',
+          policyVersion: 'identity-policy-v1',
+          createdAt: '2026-11-09T12:00:00.000Z',
+          updatedAt: '2026-11-09T12:00:00.000Z',
+          submittedAt: null,
+          verificationRequired: true,
+          requirements: [{ kind: 'INDIVIDUAL_IDENTITY', serviceCategoryId: null }],
+          documents: [],
+          latestDecision: null,
+          availableActions: ['submit'],
+        },
+      };
+      mock.onPost('/v1/me/provider/verification/case').reply(() => {
+        mock.onGet('/v1/me/provider/verification/case').reply(200, verification);
+        return [200, { ...verification, created: true }];
+      });
+      renderTask('BASICS_IDENTITY', lang);
+
+      const avatar = await screen.findByTestId('avatar-uploader');
+      const identityAction = screen.getByRole('button', {
+        name: lang === 'ar' ? 'رفع وثائق الهوية' : 'Upload identity documents',
+      });
+      expect(avatar).not.toContainElement(identityAction);
+      expect(screen.queryByLabelText(UI_COPY[lang].uploadLabel)).not.toBeInTheDocument();
+
+      fireEvent.change(screen.getByTestId('field-displayName'), {
+        target: { value: 'Updated Provider' },
+      });
+      fireEvent.click(identityAction);
+      await waitFor(() => expect(mock.history.patch).toHaveLength(1));
+      expect(screen.getByTestId('basics-task')).toBeInTheDocument();
+      expect(screen.queryByTestId('verification-NOT_STARTED')).not.toBeInTheDocument();
+      expect(JSON.parse(mock.history.patch[0].data)).toMatchObject({
+        displayName: 'Updated Provider',
+        version: draft.version,
+      });
+
+      await act(async () => {
+        if (!finishSave) throw new Error('The identity-step save did not start');
+        finishSave([
+          200,
+          {
+            ...draft,
+            version: draft.version + 1,
+            data: { ...draft.data, displayName: 'Updated Provider' },
+          },
+        ]);
+      });
+      await screen.findByTestId('verification-NOT_STARTED');
+      expect(screen.getByTestId('location')).toHaveTextContent('/provider/verification');
+      expect(screen.queryByTestId('avatar-uploader')).not.toBeInTheDocument();
+      fireEvent.click(
+        screen.getByRole('button', { name: STATE_COPY[lang].NOT_STARTED.cta as string }),
+      );
+      await screen.findByTestId('verification-EVIDENCE_REQUIRED');
+      expect(screen.getByLabelText(UI_COPY[lang].uploadLabel)).toHaveAttribute('type', 'file');
+      expect(mock.history.post.map((request) => request.url)).toEqual([
+        '/v1/me/provider/verification/case',
+      ]);
+      expect(screen.getByTestId('axis-identityVerified')).toHaveAttribute('data-active', 'false');
+      expect(screen.getByTestId('axis-workAccessActive')).toHaveAttribute('data-active', 'false');
+    },
+  );
+
+  it.each(['en', 'ar'] as const)(
+    '%s: an identity correction link does not grant an upload capability the server withholds',
+    async (lang) => {
+      stubIdentityCorrection(['COMPLETE_ONBOARDING']);
+      renderTask('BASICS_IDENTITY', lang);
+      fireEvent.click(
+        await screen.findByRole('button', {
+          name: lang === 'ar' ? 'رفع وثائق الهوية' : 'Upload identity documents',
+        }),
+      );
+
+      await screen.findByTestId('verification-ONBOARDING_INCOMPLETE');
+      expect(screen.getByTestId('location')).toHaveTextContent('/provider/verification');
+      expect(screen.queryByLabelText(UI_COPY[lang].uploadLabel)).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole('button', { name: STATE_COPY[lang].NOT_STARTED.cta as string }),
+      ).not.toBeInTheDocument();
+      expect(mock.history.post).toHaveLength(0);
+    },
+  );
+
   it.each(['displayName', 'phoneNumber'])(
     'opens the actual %s editor from a correction URL without saving or changing its value',
     async (field) => {

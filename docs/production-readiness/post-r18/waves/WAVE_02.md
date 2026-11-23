@@ -69,3 +69,7 @@ shared-file lease. It subsequently merged; the G2 closeout above records current
 execution state. R26 had integrated owner-merged #172 at
 `07c8e584c684111bfc80995c7efb0144cfb6161b` without importing unmerged peer code.
 The historical G1 start grant is not current Wave 2 completion or G2 acceptance.
+
+## 2026-10-22 successor closeout
+
+All five Wave2 implementations have owner-merged PRs, including R28 #179 and corrective #181. The actual coordinator repair base is96e92825f9b65cf124317f43b55ce42fc97f5b49. See `wave-02.closeout.json` and `../gates/g2/MERGE_MATRIX.md` for exact identities. The original G1 frozen start above remains historical authority. G2 successor acceptance and publication are separate requirements; restoring R29–R38 packages does not start their implementations.

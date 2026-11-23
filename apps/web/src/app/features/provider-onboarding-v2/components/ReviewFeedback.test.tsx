@@ -5,6 +5,7 @@ import type { ProviderOnboardingFeedback } from '@homeservicemarketplace/contrac
 import { ReviewFeedback } from './ReviewFeedback';
 import { feedbackTaskPath } from '../feedback-task-path';
 import { REVIEW_FEEDBACK_COPY } from '../copy/review-feedback-copy';
+import { VERIFICATION_CORRECTION_COPY } from '../copy/verification-correction-copy';
 
 const feedback: ProviderOnboardingFeedback = {
   requestedAt: '2026-09-15T10:00:00.000Z',
@@ -26,6 +27,35 @@ const feedback: ProviderOnboardingFeedback = {
 };
 
 describe('requested changes in the Provider journey', () => {
+  it('renders document corrections without invalid paragraph nesting', () => {
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      const { container } = render(
+        <ReviewFeedback
+          lang="ar"
+          feedback={{
+            ...feedback,
+            items: [
+              {
+                ...feedback.items[0],
+                taskId: 'BASICS_IDENTITY',
+                field: 'identityDocument',
+                providerMessage: 'يرجى إرسال صورة واضحة للهوية.',
+              },
+            ],
+          }}
+          onOpen={vi.fn()}
+        />,
+      );
+      expect(screen.getByText('يرجى إرسال صورة واضحة للهوية.')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'رفع وثائق الهوية' })).toBeInTheDocument();
+      expect(container.querySelector('p div')).toBeNull();
+      expect(errors.mock.calls.flat().join(' ')).not.toContain('validateDOMNesting');
+    } finally {
+      errors.mockRestore();
+    }
+  });
+
   it('renders all public instructions and opens the existing task without clearing anything', () => {
     const onOpen = vi.fn();
     const onResubmit = vi.fn();
@@ -52,6 +82,98 @@ describe('requested changes in the Provider journey', () => {
     render(<ReviewFeedback feedback={null} lang="en" />);
     expect(screen.queryByTestId('review-feedback')).not.toBeInTheDocument();
   });
+
+  for (const lang of ['en', 'ar'] as const) {
+    const identityLabel = lang === 'ar' ? 'رفع وثائق الهوية' : 'Upload identity documents';
+    const verificationLabel = lang === 'ar' ? 'رفع وثائق التوثيق' : 'Upload verification documents';
+    const uploadHint =
+      lang === 'ar'
+        ? 'وثائق التوثيق خاصة ومنفصلة عن الصورة الشخصية التي يراها العملاء.'
+        : 'Verification documents are private and separate from the profile photo customers see.';
+
+    for (const taskId of [undefined, 'BASICS_IDENTITY']) {
+      it(`names the identity upload action and opens it from ${taskId ?? 'the hub'} (${lang})`, () => {
+        const onOpen = vi.fn();
+        render(
+          <ReviewFeedback
+            feedback={{
+              ...feedback,
+              items: [
+                {
+                  ...feedback.items[0],
+                  taskId: 'BASICS_IDENTITY',
+                  field: 'identityDocument',
+                  providerMessage: 'Send a clear identity document.',
+                },
+              ],
+            }}
+            lang={lang}
+            taskId={taskId}
+            onOpen={onOpen}
+          />,
+        );
+
+        expect(screen.getByText(uploadHint)).toBeInTheDocument();
+        expect(screen.getAllByRole('button')).toHaveLength(1);
+        expect(
+          screen.queryByRole('button', {
+            name: lang === 'ar' ? /^مراجعة هذه المهمة:/ : /^Review this task:/,
+          }),
+        ).not.toBeInTheDocument();
+        fireEvent.click(screen.getByRole('button', { name: identityLabel }));
+        expect(onOpen).toHaveBeenCalledExactlyOnceWith('/provider/verification');
+      });
+    }
+
+    for (const field of ['verificationDocuments', 'categoryLicense']) {
+      it(`opens the named verification upload for ${field} (${lang})`, () => {
+        const onOpen = vi.fn();
+        const taskId = field === 'categoryLicense' ? 'SERVICES_EXPERIENCE' : 'BASICS_IDENTITY';
+        render(
+          <ReviewFeedback
+            feedback={{ ...feedback, items: [{ ...feedback.items[0], taskId, field }] }}
+            lang={lang}
+            taskId={taskId}
+            onOpen={onOpen}
+          />,
+        );
+
+        expect(screen.getByText(uploadHint)).toBeInTheDocument();
+        expect(screen.queryByRole('button', { name: identityLabel })).not.toBeInTheDocument();
+        fireEvent.click(screen.getByRole('button', { name: verificationLabel }));
+        expect(onOpen).toHaveBeenCalledExactlyOnceWith('/provider/verification');
+      });
+    }
+
+    it(`preserves the named basic field correction and its separate verification entry (${lang})`, () => {
+      const onOpen = vi.fn();
+      render(
+        <ReviewFeedback
+          feedback={{
+            ...feedback,
+            items: [{ ...feedback.items[0], taskId: 'BASICS_IDENTITY', field: 'phoneNumber' }],
+          }}
+          lang={lang}
+          taskId="BASICS_IDENTITY"
+          onOpen={onOpen}
+        />,
+      );
+
+      expect(screen.queryByText(uploadHint)).not.toBeInTheDocument();
+      fireEvent.click(
+        screen.getByRole('button', {
+          name: lang === 'ar' ? /^مراجعة هذه المهمة:/ : /^Review this task:/,
+        }),
+      );
+      expect(onOpen).toHaveBeenLastCalledWith(
+        '/provider/onboarding/BASICS_IDENTITY?reviewField=phoneNumber',
+      );
+      fireEvent.click(
+        screen.getByRole('button', { name: REVIEW_FEEDBACK_COPY[lang].viewVerification }),
+      );
+      expect(onOpen).toHaveBeenLastCalledWith('/provider/verification');
+    });
+  }
 
   it('treats reviewer text as text, including markup', () => {
     const message = '<script>alert("unsafe")</script>';
@@ -84,6 +206,9 @@ describe('requested changes in the Provider journey', () => {
       }),
     ).toBe('/provider/onboarding/SERVICES_EXPERIENCE?reviewField=yearsOfExperience#experience');
     expect(Object.keys(REVIEW_FEEDBACK_COPY.en)).toEqual(Object.keys(REVIEW_FEEDBACK_COPY.ar));
+    expect(Object.keys(VERIFICATION_CORRECTION_COPY.en)).toEqual(
+      Object.keys(VERIFICATION_CORRECTION_COPY.ar),
+    );
   });
 
   it('shows a named field and opens consent or gallery corrections in the exact existing sub-screen', () => {

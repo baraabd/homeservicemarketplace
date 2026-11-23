@@ -607,6 +607,8 @@ d('Sprint 2 constraints — concurrency and ownership', () => {
             requestId: req.id,
             providerId: provider.profile.id,
             amount,
+            currency: 'SAR',
+            amountScale: 2,
             pricingType: 'FIXED',
           },
         });
@@ -636,6 +638,8 @@ d('Sprint 2 constraints — concurrency and ownership', () => {
           requestId: req.id,
           providerId: provider.profile.id,
           amount: 100,
+          currency: 'SAR',
+          amountScale: 2,
           pricingType: 'FIXED',
         },
       });
@@ -646,6 +650,8 @@ d('Sprint 2 constraints — concurrency and ownership', () => {
           requestId: req.id,
           providerId: provider.profile.id,
           amount: 90,
+          currency: 'SAR',
+          amountScale: 2,
           pricingType: 'FIXED',
         },
       });
@@ -666,10 +672,24 @@ d('Sprint 2 constraints — concurrency and ownership', () => {
       const req = await makeOpenRequest(seeker.user.id);
 
       await prisma.bid.create({
-        data: { requestId: req.id, providerId: p1.profile.id, amount: 100, pricingType: 'FIXED' },
+        data: {
+          requestId: req.id,
+          providerId: p1.profile.id,
+          amount: 100,
+          currency: 'SAR',
+          amountScale: 2,
+          pricingType: 'FIXED',
+        },
       });
       await prisma.bid.create({
-        data: { requestId: req.id, providerId: p2.profile.id, amount: 110, pricingType: 'FIXED' },
+        data: {
+          requestId: req.id,
+          providerId: p2.profile.id,
+          amount: 110,
+          currency: 'SAR',
+          amountScale: 2,
+          pricingType: 'FIXED',
+        },
       });
 
       const count = await prisma.bid.count({ where: { requestId: req.id } });

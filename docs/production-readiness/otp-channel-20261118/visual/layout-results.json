@@ -1,0 +1,650 @@
+[
+  {
+    "app": "customer",
+    "channel": "WhatsApp policy",
+    "lang": "ar",
+    "requestedWidth": 320,
+    "contentWidth": 305,
+    "direction": "rtl",
+    "scrollWidth": 305
+  },
+  {
+    "app": "customer",
+    "channel": "WhatsApp policy",
+    "lang": "ar",
+    "requestedWidth": 390,
+    "contentWidth": 375,
+    "direction": "rtl",
+    "scrollWidth": 375
+  },
+  {
+    "app": "customer",
+    "channel": "WhatsApp policy",
+    "lang": "ar",
+    "requestedWidth": 430,
+    "contentWidth": 415,
+    "direction": "rtl",
+    "scrollWidth": 415
+  },
+  {
+    "app": "customer",
+    "channel": "WhatsApp policy",
+    "lang": "ar",
+    "requestedWidth": 768,
+    "contentWidth": 753,
+    "direction": "rtl",
+    "scrollWidth": 753
+  },
+  {
+    "app": "customer",
+    "channel": "WhatsApp policy",
+    "lang": "ar",
+    "requestedWidth": 1024,
+    "contentWidth": 1009,
+    "direction": "rtl",
+    "scrollWidth": 1009
+  },
+  {
+    "app": "customer",
+    "channel": "WhatsApp policy",
+    "lang": "ar",
+    "requestedWidth": 1440,
+    "contentWidth": 1425,
+    "direction": "rtl",
+    "scrollWidth": 1425
+  },
+  {
+    "app": "customer",
+    "channel": "WhatsApp policy",
+    "lang": "en",
+    "requestedWidth": 320,
+    "contentWidth": 305,
+    "direction": "ltr",
+    "scrollWidth": 305
+  },
+  {
+    "app": "customer",
+    "channel": "WhatsApp policy",
+    "lang": "en",
+    "requestedWidth": 390,
+    "contentWidth": 375,
+    "direction": "ltr",
+    "scrollWidth": 375
+  },
+  {
+    "app": "customer",
+    "channel": "WhatsApp policy",
+    "lang": "en",
+    "requestedWidth": 430,
+    "contentWidth": 415,
+    "direction": "ltr",
+    "scrollWidth": 415
+  },
+  {
+    "app": "customer",
+    "channel": "WhatsApp policy",
+    "lang": "en",
+    "requestedWidth": 768,
+    "contentWidth": 753,
+    "direction": "ltr",
+    "scrollWidth": 753
+  },
+  {
+    "app": "customer",
+    "channel": "WhatsApp policy",
+    "lang": "en",
+    "requestedWidth": 1024,
+    "contentWidth": 1009,
+    "direction": "ltr",
+    "scrollWidth": 1009
+  },
+  {
+    "app": "customer",
+    "channel": "WhatsApp policy",
+    "lang": "en",
+    "requestedWidth": 1440,
+    "contentWidth": 1425,
+    "direction": "ltr",
+    "scrollWidth": 1425
+  },
+  {
+    "app": "provider",
+    "channel": "WhatsApp policy",
+    "lang": "ar",
+    "requestedWidth": 320,
+    "contentWidth": 305,
+    "direction": "rtl",
+    "scrollWidth": 305
+  },
+  {
+    "app": "provider",
+    "channel": "WhatsApp policy",
+    "lang": "ar",
+    "requestedWidth": 390,
+    "contentWidth": 375,
+    "direction": "rtl",
+    "scrollWidth": 375
+  },
+  {
+    "app": "provider",
+    "channel": "WhatsApp policy",
+    "lang": "ar",
+    "requestedWidth": 430,
+    "contentWidth": 415,
+    "direction": "rtl",
+    "scrollWidth": 415
+  },
+  {
+    "app": "provider",
+    "channel": "WhatsApp policy",
+    "lang": "ar",
+    "requestedWidth": 768,
+    "contentWidth": 753,
+    "direction": "rtl",
+    "scrollWidth": 753
+  },
+  {
+    "app": "provider",
+    "channel": "WhatsApp policy",
+    "lang": "ar",
+    "requestedWidth": 1024,
+    "contentWidth": 1009,
+    "direction": "rtl",
+    "scrollWidth": 1009
+  },
+  {
+    "app": "provider",
+    "channel": "WhatsApp policy",
+    "lang": "ar",
+    "requestedWidth": 1440,
+    "contentWidth": 1425,
+    "direction": "rtl",
+    "scrollWidth": 1425
+  },
+  {
+    "app": "provider",
+    "channel": "WhatsApp policy",
+    "lang": "en",
+    "requestedWidth": 320,
+    "contentWidth": 305,
+    "direction": "ltr",
+    "scrollWidth": 305
+  },
+  {
+    "app": "provider",
+    "channel": "WhatsApp policy",
+    "lang": "en",
+    "requestedWidth": 390,
+    "contentWidth": 375,
+    "direction": "ltr",
+    "scrollWidth": 375
+  },
+  {
+    "app": "provider",
+    "channel": "WhatsApp policy",
+    "lang": "en",
+    "requestedWidth": 430,
+    "contentWidth": 415,
+    "direction": "ltr",
+    "scrollWidth": 415
+  },
+  {
+    "app": "provider",
+    "channel": "WhatsApp policy",
+    "lang": "en",
+    "requestedWidth": 768,
+    "contentWidth": 753,
+    "direction": "ltr",
+    "scrollWidth": 753
+  },
+  {
+    "app": "provider",
+    "channel": "WhatsApp policy",
+    "lang": "en",
+    "requestedWidth": 1024,
+    "contentWidth": 1009,
+    "direction": "ltr",
+    "scrollWidth": 1009
+  },
+  {
+    "app": "provider",
+    "channel": "WhatsApp policy",
+    "lang": "en",
+    "requestedWidth": 1440,
+    "contentWidth": 1425,
+    "direction": "ltr",
+    "scrollWidth": 1425
+  },
+  {
+    "app": "admin",
+    "channel": "WhatsApp policy",
+    "lang": "ar",
+    "requestedWidth": 320,
+    "contentWidth": 305,
+    "direction": "rtl",
+    "scrollWidth": 305
+  },
+  {
+    "app": "admin",
+    "channel": "WhatsApp policy",
+    "lang": "ar",
+    "requestedWidth": 390,
+    "contentWidth": 375,
+    "direction": "rtl",
+    "scrollWidth": 375
+  },
+  {
+    "app": "admin",
+    "channel": "WhatsApp policy",
+    "lang": "ar",
+    "requestedWidth": 430,
+    "contentWidth": 415,
+    "direction": "rtl",
+    "scrollWidth": 415
+  },
+  {
+    "app": "admin",
+    "channel": "WhatsApp policy",
+    "lang": "ar",
+    "requestedWidth": 768,
+    "contentWidth": 753,
+    "direction": "rtl",
+    "scrollWidth": 753
+  },
+  {
+    "app": "admin",
+    "channel": "WhatsApp policy",
+    "lang": "ar",
+    "requestedWidth": 1024,
+    "contentWidth": 1009,
+    "direction": "rtl",
+    "scrollWidth": 1009
+  },
+  {
+    "app": "admin",
+    "channel": "WhatsApp policy",
+    "lang": "ar",
+    "requestedWidth": 1440,
+    "contentWidth": 1425,
+    "direction": "rtl",
+    "scrollWidth": 1425
+  },
+  {
+    "app": "admin",
+    "channel": "WhatsApp policy",
+    "lang": "en",
+    "requestedWidth": 320,
+    "contentWidth": 305,
+    "direction": "ltr",
+    "scrollWidth": 305
+  },
+  {
+    "app": "admin",
+    "channel": "WhatsApp policy",
+    "lang": "en",
+    "requestedWidth": 390,
+    "contentWidth": 375,
+    "direction": "ltr",
+    "scrollWidth": 375
+  },
+  {
+    "app": "admin",
+    "channel": "WhatsApp policy",
+    "lang": "en",
+    "requestedWidth": 430,
+    "contentWidth": 415,
+    "direction": "ltr",
+    "scrollWidth": 415
+  },
+  {
+    "app": "admin",
+    "channel": "WhatsApp policy",
+    "lang": "en",
+    "requestedWidth": 768,
+    "contentWidth": 753,
+    "direction": "ltr",
+    "scrollWidth": 753
+  },
+  {
+    "app": "admin",
+    "channel": "WhatsApp policy",
+    "lang": "en",
+    "requestedWidth": 1024,
+    "contentWidth": 1009,
+    "direction": "ltr",
+    "scrollWidth": 1009
+  },
+  {
+    "app": "admin",
+    "channel": "WhatsApp policy",
+    "lang": "en",
+    "requestedWidth": 1440,
+    "contentWidth": 1425,
+    "direction": "ltr",
+    "scrollWidth": 1425
+  },
+  {
+    "app": "customer",
+    "channel": "Email policy",
+    "lang": "ar",
+    "requestedWidth": 320,
+    "contentWidth": 320,
+    "direction": "rtl",
+    "scrollWidth": 320
+  },
+  {
+    "app": "customer",
+    "channel": "Email policy",
+    "lang": "ar",
+    "requestedWidth": 390,
+    "contentWidth": 390,
+    "direction": "rtl",
+    "scrollWidth": 390
+  },
+  {
+    "app": "customer",
+    "channel": "Email policy",
+    "lang": "ar",
+    "requestedWidth": 430,
+    "contentWidth": 430,
+    "direction": "rtl",
+    "scrollWidth": 430
+  },
+  {
+    "app": "customer",
+    "channel": "Email policy",
+    "lang": "ar",
+    "requestedWidth": 768,
+    "contentWidth": 768,
+    "direction": "rtl",
+    "scrollWidth": 768
+  },
+  {
+    "app": "customer",
+    "channel": "Email policy",
+    "lang": "ar",
+    "requestedWidth": 1024,
+    "contentWidth": 1024,
+    "direction": "rtl",
+    "scrollWidth": 1024
+  },
+  {
+    "app": "customer",
+    "channel": "Email policy",
+    "lang": "ar",
+    "requestedWidth": 1440,
+    "contentWidth": 1440,
+    "direction": "rtl",
+    "scrollWidth": 1440
+  },
+  {
+    "app": "customer",
+    "channel": "Email policy",
+    "lang": "en",
+    "requestedWidth": 320,
+    "contentWidth": 320,
+    "direction": "ltr",
+    "scrollWidth": 320
+  },
+  {
+    "app": "customer",
+    "channel": "Email policy",
+    "lang": "en",
+    "requestedWidth": 390,
+    "contentWidth": 390,
+    "direction": "ltr",
+    "scrollWidth": 390
+  },
+  {
+    "app": "customer",
+    "channel": "Email policy",
+    "lang": "en",
+    "requestedWidth": 430,
+    "contentWidth": 430,
+    "direction": "ltr",
+    "scrollWidth": 430
+  },
+  {
+    "app": "customer",
+    "channel": "Email policy",
+    "lang": "en",
+    "requestedWidth": 768,
+    "contentWidth": 768,
+    "direction": "ltr",
+    "scrollWidth": 768
+  },
+  {
+    "app": "customer",
+    "channel": "Email policy",
+    "lang": "en",
+    "requestedWidth": 1024,
+    "contentWidth": 1024,
+    "direction": "ltr",
+    "scrollWidth": 1024
+  },
+  {
+    "app": "customer",
+    "channel": "Email policy",
+    "lang": "en",
+    "requestedWidth": 1440,
+    "contentWidth": 1440,
+    "direction": "ltr",
+    "scrollWidth": 1440
+  },
+  {
+    "app": "provider",
+    "channel": "Email policy",
+    "lang": "ar",
+    "requestedWidth": 320,
+    "contentWidth": 320,
+    "direction": "rtl",
+    "scrollWidth": 320
+  },
+  {
+    "app": "provider",
+    "channel": "Email policy",
+    "lang": "ar",
+    "requestedWidth": 390,
+    "contentWidth": 390,
+    "direction": "rtl",
+    "scrollWidth": 390
+  },
+  {
+    "app": "provider",
+    "channel": "Email policy",
+    "lang": "ar",
+    "requestedWidth": 430,
+    "contentWidth": 430,
+    "direction": "rtl",
+    "scrollWidth": 430
+  },
+  {
+    "app": "provider",
+    "channel": "Email policy",
+    "lang": "ar",
+    "requestedWidth": 768,
+    "contentWidth": 768,
+    "direction": "rtl",
+    "scrollWidth": 768
+  },
+  {
+    "app": "provider",
+    "channel": "Email policy",
+    "lang": "ar",
+    "requestedWidth": 1024,
+    "contentWidth": 1024,
+    "direction": "rtl",
+    "scrollWidth": 1024
+  },
+  {
+    "app": "provider",
+    "channel": "Email policy",
+    "lang": "ar",
+    "requestedWidth": 1440,
+    "contentWidth": 1440,
+    "direction": "rtl",
+    "scrollWidth": 1440
+  },
+  {
+    "app": "provider",
+    "channel": "Email policy",
+    "lang": "en",
+    "requestedWidth": 320,
+    "contentWidth": 320,
+    "direction": "ltr",
+    "scrollWidth": 320
+  },
+  {
+    "app": "provider",
+    "channel": "Email policy",
+    "lang": "en",
+    "requestedWidth": 390,
+    "contentWidth": 390,
+    "direction": "ltr",
+    "scrollWidth": 390
+  },
+  {
+    "app": "provider",
+    "channel": "Email policy",
+    "lang": "en",
+    "requestedWidth": 430,
+    "contentWidth": 430,
+    "direction": "ltr",
+    "scrollWidth": 430
+  },
+  {
+    "app": "provider",
+    "channel": "Email policy",
+    "lang": "en",
+    "requestedWidth": 768,
+    "contentWidth": 768,
+    "direction": "ltr",
+    "scrollWidth": 768
+  },
+  {
+    "app": "provider",
+    "channel": "Email policy",
+    "lang": "en",
+    "requestedWidth": 1024,
+    "contentWidth": 1024,
+    "direction": "ltr",
+    "scrollWidth": 1024
+  },
+  {
+    "app": "provider",
+    "channel": "Email policy",
+    "lang": "en",
+    "requestedWidth": 1440,
+    "contentWidth": 1440,
+    "direction": "ltr",
+    "scrollWidth": 1440
+  },
+  {
+    "app": "admin",
+    "channel": "Email policy",
+    "lang": "ar",
+    "requestedWidth": 320,
+    "contentWidth": 320,
+    "direction": "rtl",
+    "scrollWidth": 320
+  },
+  {
+    "app": "admin",
+    "channel": "Email policy",
+    "lang": "ar",
+    "requestedWidth": 390,
+    "contentWidth": 390,
+    "direction": "rtl",
+    "scrollWidth": 390
+  },
+  {
+    "app": "admin",
+    "channel": "Email policy",
+    "lang": "ar",
+    "requestedWidth": 430,
+    "contentWidth": 430,
+    "direction": "rtl",
+    "scrollWidth": 430
+  },
+  {
+    "app": "admin",
+    "channel": "Email policy",
+    "lang": "ar",
+    "requestedWidth": 768,
+    "contentWidth": 768,
+    "direction": "rtl",
+    "scrollWidth": 768
+  },
+  {
+    "app": "admin",
+    "channel": "Email policy",
+    "lang": "ar",
+    "requestedWidth": 1024,
+    "contentWidth": 1024,
+    "direction": "rtl",
+    "scrollWidth": 1024
+  },
+  {
+    "app": "admin",
+    "channel": "Email policy",
+    "lang": "ar",
+    "requestedWidth": 1440,
+    "contentWidth": 1440,
+    "direction": "rtl",
+    "scrollWidth": 1440
+  },
+  {
+    "app": "admin",
+    "channel": "Email policy",
+    "lang": "en",
+    "requestedWidth": 320,
+    "contentWidth": 320,
+    "direction": "ltr",
+    "scrollWidth": 320
+  },
+  {
+    "app": "admin",
+    "channel": "Email policy",
+    "lang": "en",
+    "requestedWidth": 390,
+    "contentWidth": 390,
+    "direction": "ltr",
+    "scrollWidth": 390
+  },
+  {
+    "app": "admin",
+    "channel": "Email policy",
+    "lang": "en",
+    "requestedWidth": 430,
+    "contentWidth": 430,
+    "direction": "ltr",
+    "scrollWidth": 430
+  },
+  {
+    "app": "admin",
+    "channel": "Email policy",
+    "lang": "en",
+    "requestedWidth": 768,
+    "contentWidth": 768,
+    "direction": "ltr",
+    "scrollWidth": 768
+  },
+  {
+    "app": "admin",
+    "channel": "Email policy",
+    "lang": "en",
+    "requestedWidth": 1024,
+    "contentWidth": 1024,
+    "direction": "ltr",
+    "scrollWidth": 1024
+  },
+  {
+    "app": "admin",
+    "channel": "Email policy",
+    "lang": "en",
+    "requestedWidth": 1440,
+    "contentWidth": 1440,
+    "direction": "ltr",
+    "scrollWidth": 1440
+  }
+]

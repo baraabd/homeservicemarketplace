@@ -549,7 +549,12 @@ d('R09 — geographic matching is one rule on every path (real Postgres)', () =>
         for (const site of SITES) {
           const requestId = idOf(site.key);
           const attempt = await providerBids
-            .submit(p.user, { requestId, amount: 10_000, pricingType: 'FIXED' })
+            .submit(p.user, {
+              requestId,
+              amountDecimal: '100.00',
+              currency: 'SAR',
+              pricingType: 'FIXED',
+            })
             .then(
               () => 'accepted',
               (e: any) => e,

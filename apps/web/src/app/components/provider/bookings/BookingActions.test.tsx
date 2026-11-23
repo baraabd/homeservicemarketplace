@@ -14,10 +14,22 @@ const COMPLETE = '/v1/provider/bookings/bk-1/complete';
 const CANCEL = '/v1/provider/bookings/bk-1/cancel';
 const booking = (status: string) => ({ booking: { id: 'bk-1', status } });
 
+// A response the test releases explicitly. Transient states (pending, locked
+// controls) are asserted while the request is provably still open, instead of
+// racing a timer-delayed mock against the test runner's load.
+type MockReply = [number, unknown];
+function heldResponse() {
+  let release!: (reply: MockReply) => void;
+  const reply = new Promise<MockReply>((resolve) => {
+    release = resolve;
+  });
+  return { reply: () => reply, release };
+}
+
 let mock: MockAdapter;
 let qc: QueryClient;
 beforeEach(() => {
-  mock = new MockAdapter(api, { delayResponse: 20 });
+  mock = new MockAdapter(api);
   qc = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
@@ -56,17 +68,53 @@ describe('BookingActions', () => {
   });
 
   it('shows "Starting…" while in flight and "Job started" only after the server confirmed', async () => {
-    mock.onPost(START).reply(200, booking('IN_PROGRESS'));
+    const response = heldResponse();
+    mock.onPost(START).reply(response.reply);
     renderActions('SCHEDULED');
-    fireEvent.click(screen.getByTestId('provider-booking-start-bk-1'));
+    const startButton = screen.getByTestId('provider-booking-start-bk-1');
+    fireEvent.click(startButton);
+
+    // The request is held open: the pending state cannot be skipped.
     expect(await screen.findByText('Starting…')).toBeInTheDocument();
+    await waitFor(() => expect(mock.history.post.filter((r) => r.url === START)).toHaveLength(1));
     expect(screen.queryByTestId('provider-booking-action-done-bk-1')).toBeNull();
-    // Both actions are locked while one is in flight.
+    expect(screen.queryByTestId('provider-booking-action-error-bk-1')).toBeNull();
+    expect(startButton).toHaveAttribute('aria-busy', 'true');
+    // Both actions are locked while one is in flight, so a second press sends nothing.
+    expect(startButton).toBeDisabled();
     expect(screen.getByTestId('provider-booking-cancel-bk-1')).toBeDisabled();
+    fireEvent.click(startButton);
+
+    response.release([200, booking('IN_PROGRESS')]);
     expect(await screen.findByTestId('provider-booking-action-done-bk-1')).toHaveTextContent(
       'Job started.',
     );
+    expect(screen.queryByText('Starting…')).toBeNull();
+    expect(startButton).toHaveAttribute('aria-busy', 'false');
     expect(mock.history.post.filter((r) => r.url === START)).toHaveLength(1);
+  });
+
+  it('a held request that fails stays pending until the server answers, then reports and unlocks', async () => {
+    const response = heldResponse();
+    mock.onPost(COMPLETE).reply(response.reply);
+    renderActions('IN_PROGRESS');
+    const completeButton = screen.getByTestId('provider-booking-complete-bk-1');
+    fireEvent.click(completeButton);
+
+    expect(await screen.findByText('Completing…')).toBeInTheDocument();
+    expect(completeButton).toBeDisabled();
+    expect(screen.queryByTestId('provider-booking-action-error-bk-1')).toBeNull();
+
+    response.release([409, { error: { code: 'CONFLICT' } }]);
+    expect(await screen.findByTestId('provider-booking-action-error-bk-1')).toHaveAttribute(
+      'data-error',
+      'CONFLICT',
+    );
+    expect(screen.queryByText('Completing…')).toBeNull();
+    expect(screen.queryByTestId('provider-booking-action-done-bk-1')).toBeNull();
+    // The failure unlocks the control; the component itself never retries.
+    expect(completeButton).toBeEnabled();
+    expect(mock.history.post.filter((r) => r.url === COMPLETE)).toHaveLength(1);
   });
 
   it.each([

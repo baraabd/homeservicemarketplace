@@ -1,6 +1,7 @@
 export * from './enums/role-name';
 export * from './enums/account-status';
 export * from './enums/auth-error-code';
+export * from './legal/legal-documents';
 export * from './request/register.request';
 export * from './request/login.request';
 export * from './request/verify-email.request';
@@ -15,3 +16,6 @@ export * from './response/otp-challenge.response';
 // Phase 4 — the admin ACCESS-REQUEST axis, kept separate from AccountStatus
 // (authentication standing) and RoleName (authorization).
 export * from './admin-access';
+
+export * from './response/auth-channel.response';
+export * from './request/phone-auth.request';

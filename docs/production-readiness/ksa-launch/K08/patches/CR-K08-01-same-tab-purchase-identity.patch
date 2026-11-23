@@ -1,0 +1,225 @@
+diff --git a/apps/web/src/app/features/subscriptions/StripePlanPurchase.same-tab.test.tsx b/apps/web/src/app/features/subscriptions/StripePlanPurchase.same-tab.test.tsx
+new file mode 100644
+index 00000000..2fd3b021
+--- /dev/null
++++ b/apps/web/src/app/features/subscriptions/StripePlanPurchase.same-tab.test.tsx
+@@ -0,0 +1,100 @@
++import { afterEach, beforeEach, describe, expect, it } from 'vitest';
++import { cleanup, fireEvent, render, screen } from '@testing-library/react';
++import MockAdapter from 'axios-mock-adapter';
++import type { MoneyPlanVersionWireV1 } from '@homeservicemarketplace/contracts';
++import { api } from '../../../lib/api';
++import { StripePlanPurchase } from './StripePlanPurchase';
++
++// K08 same-tab boundary. The real key module and real tab sessionStorage are
++// used; only HTTP is an explicit Axios double, so this is component evidence,
++// not sandbox or real-API acceptance. Unmount + remount with the same storage
++// models reload and sign-out/sign-in in the same browser tab.
++const plan = { id: 'plan-v1', planKey: 'Synthetic plan', version: 1 } as MoneyPlanVersionWireV1;
++const user = 'synthetic-owner';
++let mock: MockAdapter;
++let attempts = 0;
++let sessionState: 'PROCESSING' | 'CONFIRMED';
++let failNextIntent = false;
++
++const keysFor = (url: string) =>
++  mock.history.post
++    .filter((request) => request.url === url)
++    .map((request) => request.headers?.['Idempotency-Key'] as string);
++
++beforeEach(() => {
++  sessionStorage.clear();
++  attempts = 0;
++  failNextIntent = false;
++  mock = new MockAdapter(api);
++  mock.onPost('/v1/money/intents').reply(() => {
++    if (failNextIntent) {
++      failNextIntent = false;
++      return [503, { code: 'TEMPORARILY_UNAVAILABLE' }];
++    }
++    const id = `intent-${keysFor('/v1/money/intents').length}`;
++    return [200, { id, total: { amountMinor: '100', currency: 'XTS' } }];
++  });
++  mock.onPost(/\/v1\/money\/intents\/[^/]+\/attempts$/u).reply(() => {
++    attempts += 1;
++    return [202, { status: 'ACCEPTED', resourceId: `attempt-${attempts}` }];
++  });
++  mock
++    .onGet(/\/v1\/money\/stripe\/attempts\/[^/]+\/session$/u)
++    .reply(() => [200, { state: sessionState, clientSecret: null, publishableKey: null }]);
++});
++afterEach(() => {
++  cleanup();
++  mock.restore();
++});
++
++async function purchaseOnce() {
++  render(<StripePlanPurchase plan={plan} userId={user} lang="en" />);
++  fireEvent.click(screen.getByRole('button', { name: 'Review sandbox purchase' }));
++  fireEvent.click(await screen.findByRole('button', { name: 'Continue with this amount' }));
++  await screen.findByRole('button', { name: 'Check payment status' });
++  await screen.findAllByRole('status');
++}
++
++describe('K08 same-tab same-plan purchase identity', () => {
++  it('a confirmed purchase does not absorb a second explicit purchase after reload/sign-in', async () => {
++    sessionState = 'CONFIRMED';
++    await purchaseOnce();
++    expect(await screen.findByText(/confirmed by the server/u)).toBeInTheDocument();
++    cleanup(); // reload, sign out, sign in: same tab keeps sessionStorage
++
++    await purchaseOnce();
++    const intentKeys = keysFor('/v1/money/intents');
++    const attemptKeys = mock.history.post
++      .filter((request) => /attempts$/u.test(request.url ?? ''))
++      .map((request) => request.headers?.['Idempotency-Key']);
++    expect(intentKeys).toHaveLength(2);
++    expect(new Set(intentKeys).size).toBe(2);
++    expect(new Set(attemptKeys).size).toBe(2);
++  });
++
++  it('a pending outcome keeps its original identities through reload and repeat submission', async () => {
++    sessionState = 'PROCESSING';
++    await purchaseOnce();
++    cleanup();
++    await purchaseOnce();
++    const intentKeys = keysFor('/v1/money/intents');
++    expect(intentKeys).toHaveLength(2);
++    expect(new Set(intentKeys).size).toBe(1);
++  });
++
++  it('a transport error never rotates the identity', async () => {
++    sessionState = 'PROCESSING';
++    failNextIntent = true;
++    render(<StripePlanPurchase plan={plan} userId={user} lang="en" />);
++    const review = screen.getByRole('button', { name: 'Review sandbox purchase' });
++    fireEvent.click(review);
++    await screen.findByRole('alert');
++    cleanup();
++    render(<StripePlanPurchase plan={plan} userId={user} lang="en" />);
++    fireEvent.click(screen.getByRole('button', { name: 'Review sandbox purchase' }));
++    await screen.findByRole('button', { name: 'Continue with this amount' });
++    const intentKeys = keysFor('/v1/money/intents');
++    expect(intentKeys).toHaveLength(2);
++    expect(new Set(intentKeys).size).toBe(1);
++  });
++});
+diff --git a/apps/web/src/app/features/subscriptions/StripePlanPurchase.test.tsx b/apps/web/src/app/features/subscriptions/StripePlanPurchase.test.tsx
+index 85fc3aa0..8a2ed2a6 100644
+--- a/apps/web/src/app/features/subscriptions/StripePlanPurchase.test.tsx
++++ b/apps/web/src/app/features/subscriptions/StripePlanPurchase.test.tsx
+@@ -12,6 +12,7 @@ vi.mock('./stripe-purchase.api', () => ({
+   createStripePurchase: vi.fn(),
+   startStripePurchase: vi.fn(),
+   resumeStripePurchase: vi.fn(),
++  retireStripePurchaseKeys: vi.fn(),
+   stripePurchaseSession: vi.fn(),
+ }));
+ const plan = { id: 'plan', planKey: 'Synthetic plan', version: 1 } as MoneyPlanVersionWireV1;
+diff --git a/apps/web/src/app/features/subscriptions/StripePlanPurchase.tsx b/apps/web/src/app/features/subscriptions/StripePlanPurchase.tsx
+index 84f15184..ae2d89d9 100644
+--- a/apps/web/src/app/features/subscriptions/StripePlanPurchase.tsx
++++ b/apps/web/src/app/features/subscriptions/StripePlanPurchase.tsx
+@@ -10,6 +10,7 @@ import {
+   createStripePurchase,
+   startStripePurchase,
+   resumeStripePurchase,
++  retireStripePurchaseKeys,
+   stripePurchaseKeys,
+   stripePurchaseSession,
+ } from './stripe-purchase.api';
+@@ -123,6 +124,9 @@ export function StripePlanPurchase({
+   }
+   async function loadSession(id: string) {
+     const value = await stripePurchaseSession(id);
++    // Only the server's confirmation ends this purchase identity. The next
++    // explicit purchase of the same plan then gets new intent/attempt keys.
++    if (value.state === 'CONFIRMED') retireStripePurchaseKeys(userId, plan.id, keys);
+     if (active.current) {
+       setReady(false);
+       setSession(value);
+diff --git a/apps/web/src/app/features/subscriptions/stripe-purchase.api.test.ts b/apps/web/src/app/features/subscriptions/stripe-purchase.api.test.ts
+index b1e2ec24..535e3d17 100644
+--- a/apps/web/src/app/features/subscriptions/stripe-purchase.api.test.ts
++++ b/apps/web/src/app/features/subscriptions/stripe-purchase.api.test.ts
+@@ -7,6 +7,7 @@ import {
+   resumeStripePurchase,
+   stripePurchaseSession,
+   stripePurchaseKeys,
++  retireStripePurchaseKeys,
+ } from './stripe-purchase.api';
+ let mock: MockAdapter;
+ beforeEach(() => {
+@@ -49,3 +50,16 @@ it('retains only opaque idempotency identities across refresh and scopes them to
+   expect(stripePurchaseKeys('synthetic-owner', 'plan-b')).not.toEqual(first);
+   expect(Object.keys(first).sort()).toEqual(['attempt', 'intent', 'resume']);
+ });
++
++it('retires only the exact server-confirmed identity so a later purchase gets new keys', () => {
++  sessionStorage.clear();
++  const confirmed = stripePurchaseKeys('synthetic-owner', 'plan-c');
++  retireStripePurchaseKeys('synthetic-owner', 'plan-c', { ...confirmed, intent: 'checkout_other' });
++  expect(stripePurchaseKeys('synthetic-owner', 'plan-c')).toEqual(confirmed);
++  retireStripePurchaseKeys('synthetic-owner', 'plan-c', confirmed);
++  const next = stripePurchaseKeys('synthetic-owner', 'plan-c');
++  expect(next.intent).not.toBe(confirmed.intent);
++  expect(next.attempt).not.toBe(confirmed.attempt);
++  retireStripePurchaseKeys('synthetic-owner', 'plan-c', confirmed);
++  expect(stripePurchaseKeys('synthetic-owner', 'plan-c')).toEqual(next);
++});
+diff --git a/apps/web/src/app/features/subscriptions/stripe-purchase.api.ts b/apps/web/src/app/features/subscriptions/stripe-purchase.api.ts
+index a1788f1a..b69c387f 100644
+--- a/apps/web/src/app/features/subscriptions/stripe-purchase.api.ts
++++ b/apps/web/src/app/features/subscriptions/stripe-purchase.api.ts
+@@ -6,8 +6,11 @@ import {
+ } from '@homeservicemarketplace/contracts';
+ import { api } from '../../../lib/api';
+ const version = { contractVersion: MONEY_CONTRACT_VERSION };
++type StripePurchaseKeys = { intent: string; attempt: string; resume: string };
++const purchaseStorageKey = (userId: string, planId: string) =>
++  `hsm:stripe-purchase:${userId}:${planId}`;
+ export function stripePurchaseKeys(userId: string, planId: string) {
+-  const storageKey = `hsm:stripe-purchase:${userId}:${planId}`;
++  const storageKey = purchaseStorageKey(userId, planId);
+   try {
+     const saved = JSON.parse(sessionStorage.getItem(storageKey) ?? 'null') as Record<
+       string,
+@@ -20,7 +23,7 @@ export function stripePurchaseKeys(userId: string, planId: string) {
+           typeof saved[key] === 'string' && /^checkout_[a-f0-9-]{36}$/u.test(saved[key] as string),
+       )
+     )
+-      return saved as { intent: string; attempt: string; resume: string };
++      return saved as StripePurchaseKeys;
+   } catch {
+     /* No authority is read from browser storage. */
+   }
+@@ -37,6 +40,29 @@ export function stripePurchaseKeys(userId: string, planId: string) {
+   }
+   return keys;
+ }
++/**
++ * Retire one purchase identity after the server confirms that purchase.
++ * Only the exact identity is removed, so a newer purchase is never discarded.
++ * Pending, unknown, timed-out and failed transports must keep their keys.
++ */
++export function retireStripePurchaseKeys(userId: string, planId: string, keys: StripePurchaseKeys) {
++  const storageKey = purchaseStorageKey(userId, planId);
++  try {
++    const saved = JSON.parse(sessionStorage.getItem(storageKey) ?? 'null') as Record<
++      string,
++      unknown
++    > | null;
++    if (
++      saved &&
++      saved.intent === keys.intent &&
++      saved.attempt === keys.attempt &&
++      saved.resume === keys.resume
++    )
++      sessionStorage.removeItem(storageKey);
++  } catch {
++    /* Unavailable storage already prevents reuse after a reload. */
++  }
++}
+ export async function createStripePurchase(planVersionId: string, key: string) {
+   return (
+     await api.post<PaymentIntentWireV1>(

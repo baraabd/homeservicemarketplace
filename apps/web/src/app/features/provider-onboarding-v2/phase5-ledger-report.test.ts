@@ -30,7 +30,7 @@ describe('Phase 5 ledger', () => {
 
     const lines = [
       '',
-      'Presentation acceptance: states 6–9 use the scoped September repair brief; the other 14 retain immutable prototype pixel parity.',
+      'Presentation acceptance proposal D5-02: states 6–9 retain the September repair revision; only state 14 uses STATUS_RECOVERY_2026_11 after recorded owner/source-review approval. The other 13 states, including 17, retain immutable prototype pixel parity at 0.005.',
       'Revised cells retain expected/actual/diff PNGs and measured ratios; revision.json adds same-run semantic and geometry observations. This counter does not claim prototype identity for revised screens.',
       `presentation migrated:       ${c.presentationMigrated}/${c.total}`,
       `production-route integrated: ${c.productionRouteIntegrated}/${c.total}`,

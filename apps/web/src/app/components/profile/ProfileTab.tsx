@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { lazy, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import {
   User,
@@ -17,11 +17,15 @@ import {
 import { EditProfilePage } from './EditProfilePage';
 import { SavedAddressesPage } from './SavedAddressesPage';
 import { HelpSupportPage } from './HelpSupportPage';
-import { SettingsPage } from './SettingsPage';
+import { AsyncBoundary } from '../../AsyncBoundary';
 import { CompletedPostsPage } from './CompletedPostsPage';
 import { useLang } from '../../i18n/LanguageContext';
 import { AppNotification } from '../notifications/NotificationDrawer';
 import { useAuthIdentity } from '../../../lib/use-auth-identity';
+
+const SettingsPage = lazy(() =>
+  import('./SettingsPage').then((module) => ({ default: module.SettingsPage })),
+);
 
 // ─── Notification types ───────────────────────────────────────────────────────
 type NotifTypeKey = 'bid' | 'tracking' | 'confirmed' | 'message' | 'payment' | 'promo';
@@ -313,7 +317,7 @@ function ProfileList({
   onNavigate: (v: ProfileView) => void;
 }) {
   const { lang, t } = useLang();
-  // Bind the hero card's avatar/name/email to the authenticated user. The
+  // Bind the hero card's avatar, name and contact to the authenticated user. The
   // demo stats grid ("12 jobs · 3 active · $420 spent" for everyone) is gone:
   // no server figure stood behind it.
   const identity = useAuthIdentity();
@@ -334,7 +338,7 @@ function ProfileList({
               {identity.initials ?? ''}
             </span>
           </motion.button>
-          <div>
+          <div className="min-w-0">
             <p
               className="text-white"
               style={{ fontSize: '18px', fontWeight: 800 }}
@@ -343,11 +347,11 @@ function ProfileList({
               {identity.displayName ?? ''}
             </p>
             <p
-              className="text-white/70"
+              className="break-words text-white/70"
               style={{ fontSize: '13px' }}
               data-testid="profile-hero-email"
             >
-              {identity.email ?? ''}
+              <bdi dir="ltr">{identity.email ?? identity.phoneNumber ?? ''}</bdi>
             </p>
           </div>
         </div>
@@ -477,8 +481,14 @@ export function ProfileTab({
             }}
           />
         )}
-        {view === 'helpSupport' && <HelpSupportPage key="help" onBack={() => setView(null)} />}
-        {view === 'settings' && <SettingsPage key="settings" onBack={() => setView(null)} />}
+        {view === 'helpSupport' && (
+          <HelpSupportPage key="help" experience="seeker" onBack={() => setView(null)} />
+        )}
+        {view === 'settings' && (
+          <AsyncBoundary key="settings">
+            <SettingsPage onBack={() => setView(null)} />
+          </AsyncBoundary>
+        )}
       </AnimatePresence>
     </div>
   );

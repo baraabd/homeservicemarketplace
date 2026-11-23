@@ -1,4 +1,9 @@
-import type { MeResponse, OtpChallengeResponse } from '@homeservicemarketplace/contracts';
+import type {
+  LegalAcceptanceInput,
+  LegalDocumentsResponse,
+  MeResponse,
+  OtpChallengeResponse,
+} from '@homeservicemarketplace/contracts';
 import { api } from './api';
 import { authRequestScope, recordSessionEnded, recordVerifiedLogin } from './auth-session-boundary';
 import { withAuthCookieLock } from './auth-cookie-lock';
@@ -13,15 +18,50 @@ import { withAuthCookieLock } from './auth-cookie-lock';
 // must await before treating the user as authenticated.
 
 export interface RegisterInput {
-  email: string;
+  email?: string;
+  phoneNumber?: string;
   password: string;
   firstName: string;
   lastName: string;
+  /** K02 — the exact policy versions shown next to the consent box. */
+  legalAcceptance: LegalAcceptanceInput;
+}
+
+/** K02 — public: the current Terms/Privacy versions and whether signup is open. */
+export async function getLegalDocuments(): Promise<LegalDocumentsResponse> {
+  const { data } = await api.get<LegalDocumentsResponse>('/v1/legal/documents');
+  // AuthProvider loads this module for every route. Defer runtime contracts
+  // until signup requests its policy versions so the public selector stays isolated.
+  const { LEGAL_DOCUMENT_KINDS } = await import('@homeservicemarketplace/contracts');
+  if (
+    !data ||
+    !Array.isArray(data.documents) ||
+    typeof data.acceptanceOpen !== 'boolean' ||
+    data.documents.length !== LEGAL_DOCUMENT_KINDS.length ||
+    !data.documents.every(
+      (document) =>
+        document &&
+        typeof document.kind === 'string' &&
+        typeof document.version === 'string' &&
+        typeof document.path === 'string',
+    ) ||
+    !LEGAL_DOCUMENT_KINDS.every((kind) => data.documents.some((doc) => doc.kind === kind))
+  ) {
+    throw new Error('Legal policy information is unavailable');
+  }
+  return data;
 }
 
 export interface LoginInput {
-  email: string;
-  password: string;
+  email?: string;
+  phoneNumber?: string;
+  /** Email sign-in requires a password; WhatsApp sign-in requests an OTP with a phone only. */
+  password?: string;
+}
+
+export interface OtpResendResponse {
+  success: true;
+  expiresInSeconds: number;
 }
 
 export async function register(data: RegisterInput): Promise<OtpChallengeResponse> {
@@ -43,8 +83,16 @@ export async function verifyOtp(challengeId: string, code: string): Promise<void
   });
 }
 
-export async function resendOtp(challengeId: string): Promise<void> {
-  await api.post('/v1/auth/resend-otp', { challengeId });
+export async function resendOtp(challengeId: string): Promise<OtpResendResponse> {
+  const { data } = await api.post<OtpResendResponse>('/v1/auth/resend-otp', { challengeId });
+  if (
+    !data ||
+    data.success !== true ||
+    !Number.isFinite(data.expiresInSeconds) ||
+    data.expiresInSeconds <= 0
+  )
+    throw new Error('The verification request could not be confirmed.');
+  return data;
 }
 
 export async function getMe(signal?: AbortSignal): Promise<MeResponse> {
@@ -53,11 +101,15 @@ export async function getMe(signal?: AbortSignal): Promise<MeResponse> {
 }
 
 export async function logout(): Promise<void> {
-  await withAuthCookieLock(authRequestScope(), () => api.post('/v1/auth/logout', undefined, { timeout: 10_000 }).then(() => undefined));
+  await withAuthCookieLock(authRequestScope(), () =>
+    api.post('/v1/auth/logout', undefined, { timeout: 10_000 }).then(() => undefined),
+  );
 }
 
 export async function refresh(): Promise<void> {
-  await withAuthCookieLock(authRequestScope(), () => api.post('/v1/auth/refresh', undefined, { timeout: 15_000 }).then(() => undefined));
+  await withAuthCookieLock(authRequestScope(), () =>
+    api.post('/v1/auth/refresh', undefined, { timeout: 15_000 }).then(() => undefined),
+  );
 }
 
 export async function forgotPassword(email: string): Promise<void> {
@@ -78,4 +130,27 @@ export async function verifyEmail(token: string): Promise<void> {
 
 export async function resendVerification(email: string): Promise<void> {
   await api.post('/v1/auth/resend-verification', { email });
+}
+
+export async function forgotPasswordOtp(phoneNumber: string): Promise<OtpChallengeResponse> {
+  const { data } = await api.post<OtpChallengeResponse>('/v1/auth/forgot-password-otp', {
+    phoneNumber,
+  });
+  return data;
+}
+
+export async function resetPasswordOtp(
+  challengeId: string,
+  code: string,
+  newPassword: string,
+): Promise<void> {
+  await withAuthCookieLock(authRequestScope(), async () => {
+    await api.post(
+      '/v1/auth/reset-password-otp',
+      { challengeId, code, newPassword },
+      { timeout: 15_000 },
+    );
+    recordSessionEnded();
+    window.dispatchEvent(new Event('auth:credentials-reset'));
+  });
 }

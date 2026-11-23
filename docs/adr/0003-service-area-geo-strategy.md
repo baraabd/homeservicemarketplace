@@ -151,3 +151,40 @@ Move to PostGIS when any of these becomes true:
 The promoted columns are what make that migration cheap: adding a `geography`
 column generated from `locationLat`/`locationLng` is an additive change, and
 the predicate module is the one place that would have to learn the new SQL.
+
+## Addendum (K05, 2026-11-03) — paging over a superset prefilter
+
+The box is a superset, so the exact filter can only remove rows. That makes
+the filter **sound**, but it does not make a fixed over-fetch **complete**. The
+original list query fetched `ceil(take × 4/π) + 1` box rows, trimmed the
+corners and returned what was left. The services then treated any short page
+as the end of the feed (`nextCursor = null`). 4/π is the _average_
+over-selection for uniformly spread rows, not a bound on any particular page.
+When the newest box rows were corners, the first page came back short or
+empty, and every eligible request behind them became unreachable. The web
+Live Jobs screen reads only that first page.
+
+The repository now owns the continuation:
+
+- City matching stays a single exact query with one look-ahead row.
+- Radius matching scans forward in keyset batches over
+  `(createdAt desc, id desc)` and applies the exact Haversine to each batch.
+  It stops once `take + 1` rows match, once a short batch proves the
+  candidates are exhausted, or once `SCAN_MAX_ROUNDS` queries are spent.
+  When the budget is spent, `nextCursor` is the id of the last row **scanned**.
+  The page may then be short or empty while truthfully saying "more may
+  exist". `nextCursor = null` is returned only when the end is real.
+- The query budget per page is `SCAN_MAX_ROUNDS` (`service-area.sql.ts`), with
+  batches of `scanBatchSize(take)` rows.
+
+Not chosen: an exact Haversine predicate in raw SQL. It would make every page
+exact in one query, but it would fork the visibility rules (category, status,
+soft-delete, ownership, already-bid) into a second hand-written query. That
+divergence is what this ADR exists to prevent. If the budget is ever measured
+to bind in practice, revisit through the PostGIS route above.
+
+A spent-budget cursor is the id of a request that is inside the box but
+outside the circle. It reveals no location and opens nothing: detail and bid
+authorization re-apply the exact rule and answer 404.
+
+Pinned by `apps/api/test/integration/r09-geo-pagination.integration.spec.ts`.

@@ -1,14 +1,9 @@
-import type {
-  ProviderProfileServiceCategory,
-  ServiceCategory,
-  ServiceRequest,
-  User,
-} from '@homeservicemarketplace/database';
+import type { ServiceCategory, ServiceRequest, User } from '@homeservicemarketplace/database';
 
 import type { BidRepository } from '../../../infrastructure/persistence/bids/bid.repository';
 import type {
   ProviderProfileRepository,
-  ProviderProfileWithCategories,
+  ProviderMarketplaceProfile,
 } from '../../../infrastructure/persistence/bids/provider-profile.repository';
 import type {
   ServiceRequestRepository,
@@ -35,41 +30,21 @@ function makeCategory(over: Partial<ServiceCategory> = {}): ServiceCategory {
 
 function makeProfile(
   categories: ServiceCategory[] = [],
-  over: Partial<ProviderProfileWithCategories> = {},
-): ProviderProfileWithCategories {
-  const baseDate = new Date('2026-04-30T00:00:00Z');
+  over: Partial<ProviderMarketplaceProfile> = {},
+): ProviderMarketplaceProfile {
   return {
     id: 'pp-provider-1',
     userId: 'user-provider-1',
-    displayName: 'Ada Lovelace',
-    initials: 'AL',
-    avatarUrl: null,
-    ratingAvg: 4.7,
-    reviewCount: 23,
-    completedJobs: 17,
-    verified: true,
-    topPro: false,
-    bio: null,
-    headline: null,
-    phoneNumber: null,
     serviceAreaCity: 'Riyadh',
-    serviceAreaCountry: 'SA',
+    serviceAreaCityKey: null,
     serviceAreaLat: null,
     serviceAreaLng: null,
     serviceAreaRadiusKm: 25,
-    availability: 'ONLINE',
-    status: 'ACTIVE',
-    createdAt: baseDate,
-    updatedAt: baseDate,
-    deletedAt: null,
     serviceCategories: categories.map((c) => ({
-      providerProfileId: 'pp-provider-1',
       serviceCategoryId: c.id,
-      createdAt: baseDate,
-      serviceCategory: c,
-    })) as (ProviderProfileServiceCategory & { serviceCategory: ServiceCategory })[],
+    })),
     ...over,
-  } as ProviderProfileWithCategories;
+  };
 }
 
 // Default seeker preview. Layla Mansour → "Layla M." on the wire.
@@ -123,9 +98,19 @@ function makeRequest(
   } as unknown as ServiceRequestForProvider;
 }
 
+/** Emulates the repository's page contract: at most `take` rows, and a
+ *  continuation cursor whenever more matching rows exist. The repository owns
+ *  the cursor because only it knows how far it scanned (K05). */
+function repoPage<T extends { id: string }>(rows: T[], take: number) {
+  return {
+    rows: rows.slice(0, take),
+    nextCursor: rows.length > take ? rows[take - 1].id : null,
+  };
+}
+
 function makeMocks(
   args: {
-    profile?: ProviderProfileWithCategories | null;
+    profile?: ProviderMarketplaceProfile | null;
     rows?: ServiceRequestForProvider[];
     detailRow?: ServiceRequestForProvider | null;
     bidCounts?: Map<string, number>;
@@ -134,12 +119,15 @@ function makeMocks(
 ) {
   return {
     providers: {
-      findByUserIdWithCategories: jest
+      findMarketplaceProfileByUserId: jest
         .fn()
         .mockResolvedValue(args.profile === undefined ? makeProfile([]) : args.profile),
+      findByUserIdWithCategories: jest.fn(),
     } as unknown as ProviderProfileRepository,
     requests: {
-      listAvailableForProvider: jest.fn().mockResolvedValue(args.rows ?? []),
+      listAvailableForProvider: jest
+        .fn()
+        .mockImplementation(async ({ take }: { take: number }) => repoPage(args.rows ?? [], take)),
       findAvailableForProvider: jest
         .fn()
         .mockResolvedValue(args.detailRow === undefined ? null : args.detailRow),
@@ -177,6 +165,8 @@ describe('AvailableRequestsService.list', () => {
     expect(out.items).toHaveLength(2);
     expect(out.nextCursor).toBeNull();
     expect(out.items[0]).toMatchObject({ id: 'r1', bidsCount: 3 });
+    expect(m.providers.findMarketplaceProfileByUserId).toHaveBeenCalledWith('user-provider-1');
+    expect(m.providers.findByUserIdWithCategories).not.toHaveBeenCalled();
   });
 
   it('emits nextCursor when more rows exist beyond the page', async () => {
@@ -243,12 +233,12 @@ describe('AvailableRequestsService.list', () => {
     ).rejects.toMatchObject({ status: 400, code: 'VALIDATION_ERROR' });
   });
 
-  it('clamps an out-of-bounds limit and asks the repo for take + 1', async () => {
+  it('clamps an out-of-bounds limit and asks the repo for exactly that page', async () => {
     const cat = makeCategory();
     const m = makeMocks({ profile: makeProfile([cat]), catalog: [cat] });
     await makeService(m).list('user-provider-1', { limit: 9999 });
     expect(m.requests.listAvailableForProvider).toHaveBeenCalledWith(
-      expect.objectContaining({ take: 101 }),
+      expect.objectContaining({ take: 100 }),
     );
   });
 
@@ -332,7 +322,7 @@ describe('AvailableRequestsService.list', () => {
     (m.requests.listAvailableForProvider as jest.Mock).mockImplementation(
       async (args: { serviceArea: { cityKey: string | null } }) => {
         calls.push(args.serviceArea.cityKey);
-        return [];
+        return { rows: [], nextCursor: null };
       },
     );
 

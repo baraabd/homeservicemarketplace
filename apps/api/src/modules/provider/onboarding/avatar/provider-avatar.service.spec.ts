@@ -1,5 +1,6 @@
 import { AppError } from '../../../../shared/errors/app-error';
 import { AVATAR_KEY_PREFIX, avatarOwnerRef } from './avatar-policy';
+import type { OnboardingStepPersistenceEffect } from '../provider-onboarding-wizard.service';
 import {
   AVATAR_MAX_BYTES,
   ProviderAvatarService,
@@ -50,10 +51,19 @@ function build(
     readObjectHead: jest.fn(async () => stored),
     publicUrlForKey: jest.fn((key: string) => `https://cdn.test/${key}`),
   };
+  const trx = { transaction: 'avatar-write' };
   const wizard = {
     get: jest.fn(async () => view(currentImageUrl)),
-    patchStep: jest.fn(async (_u: string, _s: string, body: { profileImageUrl?: string | null }) =>
-      view(body.profileImageUrl ?? null),
+    patchStep: jest.fn(
+      async (
+        _u: string,
+        _s: string,
+        body: { profileImageUrl?: string | null },
+        persistRelated?: OnboardingStepPersistenceEffect,
+      ) => {
+        await persistRelated?.(trx as never, { profileImageUrl: currentImageUrl });
+        return view(body.profileImageUrl ?? null);
+      },
     ),
   };
   const config = { get: (k: string) => (k === 'JWT_ACCESS_SECRET' ? SECRET : undefined) };
@@ -63,7 +73,7 @@ function build(
   // idempotent replay), and the ledger's own conditional-claim behaviour is
   // covered by its own spec rather than asserted twice from here.
   const ledger = {
-    claim: jest.fn(async () => ({ id: 'asset-1' })),
+    claim: jest.fn(async (): Promise<{ id: string } | null> => ({ id: 'asset-1' })),
     retire: jest.fn(async () => undefined),
     reserve: jest.fn(async () => undefined),
   };
@@ -74,7 +84,7 @@ function build(
     ledger as never,
     wizard as never,
   );
-  return { service, storage, wizard, ledger };
+  return { service, storage, wizard, ledger, trx };
 }
 
 async function refusal(fn: () => Promise<unknown>): Promise<AppError> {
@@ -94,10 +104,12 @@ describe('ProviderAvatarService.finalize — what it accepts', () => {
     await service.finalize(USER, { key, version: 3 });
 
     // Written through the SAME versioned step path as every other field.
-    expect(wizard.patchStep).toHaveBeenCalledWith(USER, 'IDENTITY', {
-      version: 3,
-      profileImageUrl: `https://cdn.test/${key}`,
-    });
+    expect(wizard.patchStep).toHaveBeenCalledWith(
+      USER,
+      'IDENTITY',
+      { version: 3, profileImageUrl: `https://cdn.test/${key}` },
+      expect.any(Function),
+    );
   });
 
   it('recomputes the URL from the key rather than trusting one from the client', async () => {
@@ -221,16 +233,77 @@ describe('ProviderAvatarService.remove', () => {
   it('clears the avatar through the same versioned write', async () => {
     const { service, wizard } = build({ currentImageUrl: 'https://cdn.test/avatars/a/b.png' });
     await service.remove(USER, 3);
-    expect(wizard.patchStep).toHaveBeenCalledWith(USER, 'IDENTITY', {
-      version: 3,
-      profileImageUrl: null,
-    });
+    expect(wizard.patchStep).toHaveBeenCalledWith(
+      USER,
+      'IDENTITY',
+      { version: 3, profileImageUrl: null },
+      expect.any(Function),
+    );
   });
 
   it('is a no-op when there is nothing to remove', async () => {
     const { service, wizard } = build({ currentImageUrl: null });
     await service.remove(USER, 3);
     expect(wizard.patchStep).not.toHaveBeenCalled();
+  });
+});
+
+describe('ProviderAvatarService — atomic ledger writes', () => {
+  it.each(['finalize', 'remove'] as const)(
+    '%s never retires the current photo when the versioned write is refused',
+    async (operation) => {
+      const h = build({ currentImageUrl: `https://cdn.test/${ownKey('old.png')}` });
+      h.wizard.patchStep.mockRejectedValueOnce(new AppError('CONFLICT', 'Edit refused', 409));
+      const result =
+        operation === 'finalize'
+          ? h.service.finalize(USER, { key: ownKey(), version: 2 })
+          : h.service.remove(USER, 2);
+      await expect(result).rejects.toMatchObject({ status: 409 });
+      expect(h.ledger.claim).not.toHaveBeenCalled();
+      expect(h.ledger.retire).not.toHaveBeenCalled();
+    },
+  );
+
+  it('storage failure cannot claim or retire any asset', async () => {
+    const h = build({ currentImageUrl: `https://cdn.test/${ownKey('old.png')}` });
+    h.storage.readObjectHead.mockRejectedValueOnce(new Error('storage unavailable'));
+    await expect(h.service.finalize(USER, { key: ownKey(), version: 3 })).rejects.toThrow(
+      'storage unavailable',
+    );
+    expect(h.wizard.patchStep).not.toHaveBeenCalled();
+    expect(h.ledger.claim).not.toHaveBeenCalled();
+    expect(h.ledger.retire).not.toHaveBeenCalled();
+  });
+
+  it('uses the transaction and its current predecessor for claim and retirement', async () => {
+    const h = build({ currentImageUrl: `https://cdn.test/${ownKey('stale.png')}` });
+    h.wizard.patchStep.mockImplementationOnce(async (_u, _s, body, effect) => {
+      await effect?.(h.trx as never, {
+        profileImageUrl: `https://cdn.test/${ownKey('actual.png')}`,
+      });
+      return { version: 4, data: { profileImageUrl: body.profileImageUrl ?? null } };
+    });
+    await h.service.finalize(USER, { key: ownKey(), version: 3 });
+    expect(h.ledger.claim).toHaveBeenCalledWith(
+      { userId: USER, storageKey: ownKey() },
+      expect.any(Date),
+      h.trx,
+    );
+    expect(h.ledger.retire).toHaveBeenCalledWith(
+      { userId: USER, storageKey: ownKey('actual.png'), reason: 'PROVIDER_REPLACED_AVATAR' },
+      expect.any(Date),
+      h.trx,
+    );
+  });
+
+  it('refuses an unavailable reservation rather than linking an unreadable photo', async () => {
+    const h = build({ currentImageUrl: `https://cdn.test/${ownKey('old.png')}` });
+    h.ledger.claim.mockResolvedValueOnce(null);
+    await expect(h.service.finalize(USER, { key: ownKey(), version: 3 })).rejects.toMatchObject({
+      status: 400,
+      details: { reason: 'UPLOAD_UNAVAILABLE' },
+    });
+    expect(h.ledger.retire).not.toHaveBeenCalled();
   });
 });
 

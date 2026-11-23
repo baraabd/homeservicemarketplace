@@ -1,0 +1,294 @@
+{
+  "run": "b5aaf636",
+  "startedAt": "2026-11-03T20:46:22.208Z",
+  "steps": [
+    {
+      "name": "bootstrap-roles",
+      "postgres": "16.13",
+      "ok": true
+    },
+    {
+      "name": "migrate-base-as-migrator",
+      "ok": true,
+      "applied": 72,
+      "of": 74,
+      "last": "20261017220000_g2_completed_booking_read_index"
+    },
+    {
+      "name": "after-first-migrate-as-migrator",
+      "ok": true
+    },
+    {
+      "name": "seed-synthetic-data-as-runtime",
+      "ok": true,
+      "nonEmptyTables": 11,
+      "rows": 112
+    },
+    {
+      "name": "upgrade-to-head-on-representative-data",
+      "ok": true,
+      "applied": 74,
+      "last": "20261024120000_g3_financial_integration",
+      "preexistingTablesWithChangedRowCounts": [],
+      "newTables": 15
+    },
+    {
+      "name": "runtime-negative-truncate-ledger",
+      "refused": true,
+      "reason": "permission denied for table LedgerAccount"
+    },
+    {
+      "name": "runtime-negative-truncate-user",
+      "refused": true,
+      "reason": "permission denied for table User"
+    },
+    {
+      "name": "runtime-negative-create-table",
+      "refused": true,
+      "reason": "permission denied for schema public"
+    },
+    {
+      "name": "runtime-negative-alter-table",
+      "refused": true,
+      "reason": "must be owner of table User"
+    },
+    {
+      "name": "runtime-negative-create-schema",
+      "refused": true,
+      "reason": "permission denied for database hsm_rehearsal"
+    },
+    {
+      "name": "runtime-negative-read-migration-history",
+      "refused": true,
+      "reason": "permission denied for table _prisma_migrations"
+    },
+    {
+      "name": "runtime-negative-write-migration-history",
+      "refused": true,
+      "reason": "permission denied for table _prisma_migrations"
+    },
+    {
+      "name": "runtime-negative-set-role-migrator",
+      "refused": true,
+      "reason": "permission denied to set role \"hsm_migrator\""
+    },
+    {
+      "name": "runtime-ledger-update-guard",
+      "refused": true,
+      "reason": "ledger account k03-rehearsal is immutable"
+    },
+    {
+      "name": "runtime-ledger-delete",
+      "refused": false,
+      "reason": null
+    },
+    {
+      "name": "effective-privileges",
+      "applicationTables": 106,
+      "runtimeTruncateTables": 0,
+      "runtimeTriggerOrReferencesTables": 0,
+      "runtimeMigrationHistoryAccess": false,
+      "runtimeSchemaCreate": false,
+      "databaseCreate": {
+        "runtime": false,
+        "migrator": false
+      },
+      "ownsDatabase": {
+        "runtime": false,
+        "migrator": false
+      },
+      "runtimeOwnedRelations": 0,
+      "roleAttributes": [
+        {
+          "role": "hsm_migrator",
+          "super": false,
+          "createdb": false,
+          "createrole": false,
+          "replication": false,
+          "bypassrls": false
+        },
+        {
+          "role": "hsm_api",
+          "super": false,
+          "createdb": false,
+          "createrole": false,
+          "replication": false,
+          "bypassrls": false
+        }
+      ],
+      "userTriggers": 54,
+      "truncateTriggers": 0,
+      "guardedTables": {
+        "EvidenceRetentionJob": {
+          "update": true,
+          "delete": false
+        },
+        "LedgerAccount": {
+          "update": true,
+          "delete": false
+        },
+        "LedgerEntry": {
+          "update": true,
+          "delete": true
+        },
+        "LedgerTransaction": {
+          "update": true,
+          "delete": true
+        },
+        "MediaAsset": {
+          "update": true,
+          "delete": true
+        },
+        "MoneyApprovedRefundPolicy": {
+          "update": true,
+          "delete": true
+        },
+        "MoneyCommand": {
+          "update": true,
+          "delete": true
+        },
+        "MoneyCouponRedemption": {
+          "update": true,
+          "delete": true
+        },
+        "MoneyDispatch": {
+          "update": true,
+          "delete": true
+        },
+        "MoneyEntitlementUsage": {
+          "update": true,
+          "delete": true
+        },
+        "MoneyExternalEvent": {
+          "update": true,
+          "delete": true
+        },
+        "MoneyIntentBinding": {
+          "update": true,
+          "delete": true
+        },
+        "MoneyManualInstructionVersion": {
+          "update": true,
+          "delete": true
+        },
+        "MoneyManualReceiptInspection": {
+          "update": true,
+          "delete": true
+        },
+        "MoneyManualReceiptVersion": {
+          "update": true,
+          "delete": true
+        },
+        "MoneyManualRefundEvent": {
+          "update": true,
+          "delete": true
+        },
+        "MoneyManualRefundOperation": {
+          "update": true,
+          "delete": true
+        },
+        "MoneyManualReview": {
+          "update": true,
+          "delete": true
+        },
+        "MoneyManualReviewDecision": {
+          "update": true,
+          "delete": true
+        },
+        "MoneyManualSettlement": {
+          "update": true,
+          "delete": true
+        },
+        "MoneyManualSettlementClaim": {
+          "update": true,
+          "delete": true
+        },
+        "MoneyPaymentAttempt": {
+          "update": true,
+          "delete": true
+        },
+        "MoneyPaymentConfirmation": {
+          "update": true,
+          "delete": true
+        },
+        "MoneyPaymentIntent": {
+          "update": true,
+          "delete": true
+        },
+        "MoneyReconciliationCase": {
+          "update": true,
+          "delete": true
+        },
+        "MoneyReconciliationDecision": {
+          "update": true,
+          "delete": true
+        },
+        "MoneyReconciliationException": {
+          "update": true,
+          "delete": true
+        },
+        "MoneyReconciliationObservation": {
+          "update": true,
+          "delete": true
+        },
+        "MoneyReconciliationWindow": {
+          "update": true,
+          "delete": false
+        },
+        "MoneyRefund": {
+          "update": true,
+          "delete": true
+        },
+        "MoneyRefundRequest": {
+          "update": true,
+          "delete": true
+        },
+        "ProviderPortfolioItem": {
+          "update": true,
+          "delete": false
+        },
+        "ProviderSubscription": {
+          "update": true,
+          "delete": true
+        },
+        "SubscriptionPeriod": {
+          "update": true,
+          "delete": true
+        },
+        "SubscriptionPlanVersion": {
+          "update": true,
+          "delete": true
+        },
+        "VerificationDocument": {
+          "update": true,
+          "delete": false
+        }
+      }
+    },
+    {
+      "name": "runtime-negative-migrate-deploy",
+      "refused": true,
+      "probeTableCreated": false,
+      "applied": 75
+    },
+    {
+      "name": "failing-migration-no-automatic-rollback",
+      "firstDeployFailed": true,
+      "retryRefused": true,
+      "retryCode": "P3009",
+      "historyRow": {
+        "finished": false,
+        "rolledBack": false
+      },
+      "partialObjectPresent": false,
+      "rowCountsUnchanged": true
+    },
+    {
+      "name": "forward-repair-resolve-then-redeploy",
+      "resolved": true,
+      "redeployOk": true
+    }
+  ],
+  "result": "COMPLETED",
+  "finishedAt": "2026-11-03T20:48:34.508Z"
+}

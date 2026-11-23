@@ -1,0 +1,100 @@
+{
+  "schemaVersion": 1,
+  "gateId": "G3",
+  "decision": "BLOCKED",
+  "authority": "Owner-delegated G3 integration coordinator, 2026-10-24; implementation based on develop 73a4a64a77844db7815466f47d8afdefb0b35c2f. Source verification is not independent financial acceptance.",
+  "candidateSourceSha": null,
+  "candidateTreeSha": null,
+  "frozenBaseSha": null,
+  "frozenTreeSha": null,
+  "prerequisite": {
+    "gateId": "G2",
+    "record": "docs/production-readiness/post-r18/gates/g2/SOURCE_MANIFEST.json",
+    "frozenBaseSha": null,
+    "acceptanceRecordCommitSha": null
+  },
+  "acceptedSprints": [],
+  "mandatoryEvidence": [
+    {
+      "id": "combined-wave3-checks",
+      "status": "NOT_RUN",
+      "sourceSha": null,
+      "treeSha": null,
+      "reference": "docs/production-readiness/post-r18/gates/g3/REQUIREMENTS.md"
+    },
+    {
+      "id": "r29-real-stripe-sandbox",
+      "status": "NOT_RUN",
+      "sourceSha": null,
+      "treeSha": null,
+      "reference": "docs/production-readiness/post-r18/gates/g3/REQUIREMENTS.md"
+    },
+    {
+      "id": "r30-real-manual-review",
+      "status": "NOT_RUN",
+      "sourceSha": null,
+      "treeSha": null,
+      "reference": "docs/production-readiness/post-r18/gates/g3/REQUIREMENTS.md"
+    },
+    {
+      "id": "r31-atomic-subscription-entitlements",
+      "status": "NOT_RUN",
+      "sourceSha": null,
+      "treeSha": null,
+      "reference": "docs/production-readiness/post-r18/gates/g3/REQUIREMENTS.md"
+    },
+    {
+      "id": "r32-refund-ambiguity-recovery",
+      "status": "NOT_RUN",
+      "sourceSha": null,
+      "treeSha": null,
+      "reference": "docs/production-readiness/post-r18/gates/g3/REQUIREMENTS.md"
+    },
+    {
+      "id": "r33-financial-operations",
+      "status": "NOT_RUN",
+      "sourceSha": null,
+      "treeSha": null,
+      "reference": "docs/production-readiness/post-r18/gates/g3/REQUIREMENTS.md"
+    },
+    {
+      "id": "integrated-confirmation-activation-refund-outbox",
+      "status": "NOT_RUN",
+      "sourceSha": null,
+      "treeSha": null,
+      "reference": "docs/production-readiness/post-r18/gates/g3/REQUIREMENTS.md"
+    }
+  ],
+  "blockers": [
+    {
+      "id": "G3-INTEGRATION-CANDIDATE-REVIEW",
+      "owner": "G3 coordinator",
+      "reason": "Stripe runtime/purchase integration, durable approved refund policy composition and reconciliation foundation are implemented in the draft integration candidate. Final candidate CI, real database, browser and independent sandbox evidence must pass before acceptance."
+    },
+    {
+      "id": "G3-APPROVED-POLICY-INPUT-MISSING",
+      "owner": "Product/policy owner and authorized sandbox operator",
+      "reason": "A real immutable sandbox refund policy and explicit whole-subscription consequence must be supplied. The implementation supports explicitly approved SUSPEND_SUBSCRIPTION or CANCEL_SUBSCRIPTION; neither is selected by migration or module boot. Synthetic test policy records are not approval."
+    },
+    {
+      "id": "G3-COMBINED-REAL-SANDBOX-EVIDENCE-MISSING",
+      "owner": "G3 coordinator and authorized sandbox operator",
+      "reason": "Authorized Stripe test credentials, authentic provider webhook forwarding and explicit sandbox financial policy/operator inputs are absent from this execution. The external runner and concrete integration regressions do not replace an executed, artifact-backed combined sandbox acceptance run. No frozen G3 SHA or Wave 4 start authorization is issued. Hosted acceptance belongs to its separate in-scope release gate."
+    }
+  ],
+  "publication": {
+    "branch": "coord/g3-wave4-start-gate",
+    "state": "NOT_PREPARED",
+    "acceptanceRecordCommitSha": null,
+    "verifiedMerge": false
+  },
+  "restrictions": {
+    "liveMoney": false,
+    "deploy": false,
+    "merge": false,
+    "accountGrants": false,
+    "spend": false,
+    "preserveG1": true,
+    "preserveR16R18Holds": true
+  }
+}

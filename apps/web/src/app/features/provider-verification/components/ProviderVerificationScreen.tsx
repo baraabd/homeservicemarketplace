@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { isAxiosError } from 'axios';
+import { useNavigate } from 'react-router';
 import type { VerificationDocumentKindCode } from '@homeservicemarketplace/contracts';
 
 import { useLang } from '../../../i18n/LanguageContext';
@@ -7,9 +9,10 @@ import { Button } from '../../../components/ds/Button';
 import { Badge } from '../../../components/ui/badge';
 import { Progress } from '../../../components/ui/progress';
 import { Skeleton } from '../../../components/ui/skeleton';
+import { useProviderCapabilities } from '../../../hooks/provider/useProviderCapabilities';
 import { useProviderProfile } from '../../../hooks/provider/useProviderProfile';
+import { isProviderOnboardingV2Enabled } from '../../../../lib/feature-flags';
 import {
-  getProviderCapabilities,
   getVerificationCase,
   startVerificationCase,
   submitVerificationCase,
@@ -18,11 +21,13 @@ import {
 import {
   DOCUMENT_KIND_LABELS,
   SCAN_STATE_LABELS,
+  NEXT_STEP_COPY,
   STATE_COPY,
   UI_COPY,
   reasonText,
 } from '../copy/provider-verification-copy';
-import { deriveVerificationView } from '../verification-view-state';
+import { deriveVerificationView, verificationApplicationStep } from '../verification-view-state';
+import { VERIFICATION_CASE_QUERY_KEY, verificationRefreshInterval } from '../verification-query';
 import { VerificationAxisBadges } from './VerificationAxisBadges';
 
 // Sprint 9B.11 — the provider's verification screen.
@@ -39,17 +44,67 @@ import { VerificationAxisBadges } from './VerificationAxisBadges';
 // corners, Cairo for Arabic — is lifted from ProviderStatusState so this screen
 // belongs to the same app rather than looking like a bolt-on.
 
-const CASE_KEY = ['provider', 'verification', 'case'] as const;
+const CASE_KEY = VERIFICATION_CASE_QUERY_KEY;
 const CAPS_KEY = ['provider', 'verification', 'capabilities'] as const;
-const ACCEPTED = 'image/jpeg,image/png,image/webp,application/pdf';
+const ACCEPTED = 'image/jpeg,image/png,application/pdf';
+
+type ApplicationCorrection = 'profileRequired' | 'termsRequired' | 'profileAndTermsRequired';
+
+/** Explain only the server's documented readiness blockers; never echo its prose. */
+function applicationCorrectionFrom(error: unknown): ApplicationCorrection | null {
+  if (
+    !isAxiosError<{ error?: { code?: unknown; details?: { blockers?: unknown } } }>(error) ||
+    error.response?.status !== 422 ||
+    error.response.data?.error?.code !== 'VALIDATION_ERROR'
+  ) {
+    return null;
+  }
+  const blockers = error.response.data.error.details?.blockers;
+  if (!Array.isArray(blockers)) return null;
+  const codes = new Set(
+    blockers.flatMap((blocker: unknown) =>
+      blocker !== null && typeof blocker === 'object' && 'code' in blocker ? [blocker.code] : [],
+    ),
+  );
+  const profile = codes.has('ONBOARDING_INCOMPLETE');
+  const terms = codes.has('TERMS_NOT_ACCEPTED');
+  return profile && terms
+    ? 'profileAndTermsRequired'
+    : profile
+      ? 'profileRequired'
+      : terms
+        ? 'termsRequired'
+        : null;
+}
 
 export function ProviderVerificationScreen() {
   const { lang, dir } = useLang();
+  const navigate = useNavigate();
   const qc = useQueryClient();
   const t = UI_COPY[lang];
+  const onboardingV2 = isProviderOnboardingV2Enabled();
+  const applicationHref = onboardingV2 ? '/provider/onboarding' : '/provider/profile';
 
-  const capsQuery = useQuery({ queryKey: CAPS_KEY, queryFn: getProviderCapabilities });
-  const caseQuery = useQuery({ queryKey: CASE_KEY, queryFn: getVerificationCase });
+  const capsQuery = useProviderCapabilities();
+  // The case GET has the same MANAGE_VERIFICATION guard as its mutations.
+  // Resolve this visit's capabilities first: a new applicant needs account
+  // setup, not a forbidden case request that replaces that route with Retry.
+  const canReadCase =
+    capsQuery.isFetchedAfterMount &&
+    capsQuery.isSuccess &&
+    capsQuery.data.allowed.includes('MANAGE_VERIFICATION');
+  const caseQuery = useQuery({
+    queryKey: CASE_KEY,
+    queryFn: getVerificationCase,
+    enabled: canReadCase,
+    staleTime: 0,
+    refetchOnMount: 'always',
+    refetchOnWindowFocus: 'always',
+    refetchInterval: (query) => {
+      if (!canReadCase || query.state.status === 'error') return false;
+      return verificationRefreshInterval(query.state.data?.case);
+    },
+  });
   const profileQuery = useProviderProfile();
 
   const [progress, setProgress] = useState<number | null>(null);
@@ -80,11 +135,24 @@ export function ProviderVerificationScreen() {
     void qc.invalidateQueries({ queryKey: CAPS_KEY });
   };
 
-  const startMut = useMutation({ mutationFn: startVerificationCase, onSuccess: invalidate });
-  const submitMut = useMutation({ mutationFn: submitVerificationCase, onSuccess: invalidate });
+  const startMut = useMutation({
+    mutationFn: startVerificationCase,
+    onMutate: () => setErrorText(null),
+    onSuccess: invalidate,
+    onError: () => setErrorText(t.startFailed),
+  });
+  const submitMut = useMutation({
+    mutationFn: submitVerificationCase,
+    onMutate: () => setErrorText(null),
+    onSuccess: invalidate,
+    onError: (error) => setErrorText(t[applicationCorrectionFrom(error) ?? 'submitFailed']),
+  });
 
-  const loading = capsQuery.isLoading || caseQuery.isLoading;
-  const failed = capsQuery.isError || caseQuery.isError;
+  const loading =
+    !capsQuery.isFetchedAfterMount ||
+    capsQuery.isLoading ||
+    (canReadCase && (!caseQuery.isFetchedAfterMount || caseQuery.isLoading));
+  const failed = capsQuery.isError || (canReadCase && caseQuery.isError);
 
   if (loading) {
     return (
@@ -112,7 +180,9 @@ export function ProviderVerificationScreen() {
           tone="provider"
           onClick={() => {
             void capsQuery.refetch();
-            void caseQuery.refetch();
+            // refetch() can execute even a disabled query. Never turn a retry
+            // of unavailable capabilities into a forbidden evidence request.
+            if (canReadCase && caseQuery.isError) void caseQuery.refetch();
           }}
         >
           {t.retry}
@@ -121,9 +191,12 @@ export function ProviderVerificationScreen() {
     );
   }
 
+  // A disabled query retains cached data. A withheld capability must remove
+  // that data from this surface as well as stop further case requests.
+  const verificationCase = canReadCase ? (caseQuery.data?.case ?? null) : null;
   const view = deriveVerificationView({
     capabilities: capsQuery.data ?? null,
-    verificationCase: caseQuery.data?.case ?? null,
+    verificationCase,
     profile: profileQuery.data?.profile
       ? {
           verified: profileQuery.data.profile.verified,
@@ -134,10 +207,45 @@ export function ProviderVerificationScreen() {
     // than hard-coded so the badge is real the day one exists — see the doc.
     vip: false,
   });
-  const copy = STATE_COPY[lang][view.state];
+  const capabilities = capsQuery.data;
+  const needsProfile = capsQuery.data?.primaryReason === 'NO_PROVIDER_PROFILE';
+  const canResumeApplication =
+    view.state === 'ONBOARDING_INCOMPLETE' &&
+    (needsProfile
+      ? capsQuery.data?.nextActions.includes('COMPLETE_PROFILE')
+      : capsQuery.data?.allowed.includes('COMPLETE_ONBOARDING'));
+  const recoveryHref = needsProfile && onboardingV2 ? '/provider/activate' : applicationHref;
+  const applicationNext = verificationApplicationStep(view, capabilities);
+  const canOpenWorkspace =
+    (view.state === 'VERIFIED_ACTIVE' || view.state === 'NOT_REQUIRED') &&
+    capabilities?.allowed.includes('SUBMIT_BID');
+  const noDocumentWorkAccess =
+    view.state === 'NOT_REQUIRED' && capabilities?.primaryReason === 'NO_WORK_ACCESS';
+  const canContactSupport =
+    view.state === 'VERIFIED_NO_ACCESS' ||
+    noDocumentWorkAccess ||
+    (view.state === 'ACCOUNT_LOCKED' && capabilities?.nextActions.includes('CONTACT_SUPPORT')) ||
+    (view.state === 'SUSPENDED' &&
+      capabilities?.allowed.includes('APPEAL_DECISION') &&
+      capabilities.nextActions.includes('APPEAL_DECISION'));
+  const navigationHref = canResumeApplication
+    ? recoveryHref
+    : applicationNext
+      ? applicationHref
+      : canOpenWorkspace
+        ? '/provider/jobs'
+        : canContactSupport
+          ? '/provider/support'
+          : null;
+  const copy = applicationNext
+    ? NEXT_STEP_COPY[lang][applicationNext]
+    : noDocumentWorkAccess
+      ? NEXT_STEP_COPY[lang].workAccess
+      : STATE_COPY[lang][view.state];
+  const primaryLabel = canOpenWorkspace ? t.openWorkspace : copy.cta;
 
   async function onFileChosen(file: File) {
-    if (!pendingKind) return;
+    if (!pendingKind || !view.canManageVerification || busy || offline) return;
     setErrorText(null);
     setProgress(0);
     try {
@@ -155,13 +263,20 @@ export function ProviderVerificationScreen() {
       // shape, and a provider on a phone needs "try again" far more than a
       // taxonomy. The specific refusals they CAN act on arrive as scan states
       // on the document list below.
-      setErrorText(t.loadFailed);
+      setErrorText(t.uploadFailed);
     } finally {
       setProgress(null);
     }
   }
 
   function primaryAction() {
+    // Navigation recovers the application; it is not a document mutation and
+    // must not require the very capability that application setup obtains.
+    if (navigationHref) {
+      navigate(navigationHref);
+      return;
+    }
+    if (!view.canManageVerification || busy || offline) return;
     switch (view.state) {
       // Sprint 9B.24 — opening a NEW case is the answer to an expired one.
       // VERIFIED_NO_ACCESS is deliberately absent from this group: that
@@ -178,9 +293,11 @@ export function ProviderVerificationScreen() {
       case 'EVIDENCE_REQUIRED':
       case 'EVIDENCE_UNUSABLE':
       case 'CHANGES_REQUESTED': {
-        const first = view.outstanding[0] ?? null;
-        setPendingKind((first?.kind as VerificationDocumentKindCode) ?? 'INDIVIDUAL_IDENTITY');
-        setPendingCategory(first?.serviceCategoryId ?? null);
+        const first = view.uploadTarget;
+        // Never invent a document kind when the server supplied no target.
+        if (!first) return;
+        setPendingKind(first.kind);
+        setPendingCategory(first.serviceCategoryId);
         fileInput.current?.click();
         return;
       }
@@ -204,18 +321,34 @@ export function ProviderVerificationScreen() {
    * where pressing it means something.
    */
   const canSubmitCase =
-    view.state === 'READY_TO_SUBMIT' && view.availableActions.includes('submit');
+    view.canManageVerification &&
+    (view.state === 'READY_TO_SUBMIT' || view.state === 'CHANGES_REQUESTED') &&
+    view.outstanding.length === 0 &&
+    view.availableActions.includes('submit');
 
-  /** Only the states where sending a document is actually possible.
-   *
-   *  The picker is not rendered otherwise, and that is an accessibility fix
-   *  rather than tidiness: a file input is exposed as a BUTTON to assistive
-   *  technology, so leaving it mounted puts a "choose a file" control in the
-   *  tab order of a screen — "with our team" — where uploading does nothing. */
+  /** Mount the programmatic picker only where uploading is permitted.
+   * Visible Add/Replace buttons select the document target before opening it. */
   const canUpload =
-    view.state === 'EVIDENCE_REQUIRED' ||
-    view.state === 'EVIDENCE_UNUSABLE' ||
-    view.state === 'CHANGES_REQUESTED';
+    view.canManageVerification &&
+    view.uploadTarget !== null &&
+    (view.state === 'EVIDENCE_REQUIRED' ||
+      view.state === 'EVIDENCE_UNUSABLE' ||
+      view.state === 'CHANGES_REQUESTED');
+  const canRunPrimaryAction =
+    navigationHref !== null ||
+    canUpload ||
+    (view.canManageVerification &&
+      (view.state === 'NOT_STARTED' ||
+        view.state === 'REJECTED' ||
+        view.state === 'REVERIFICATION_REQUIRED' ||
+        (view.state === 'READY_TO_SUBMIT' && canSubmitCase)));
+  const correctionRequested = verificationCase?.state === 'ACTION_REQUIRED';
+  const submissionNeedsApplication =
+    submitMut.isError && applicationCorrectionFrom(submitMut.error) !== null;
+  const showApplicationReturn =
+    view.state === 'PENDING_REVIEW' &&
+    capsQuery.data?.primaryReason === 'ONBOARDING_INCOMPLETE' &&
+    capsQuery.data.allowed.includes('COMPLETE_ONBOARDING');
 
   return (
     <section
@@ -255,15 +388,39 @@ export function ProviderVerificationScreen() {
       )}
 
       {errorText && (
-        <p role="alert" data-testid="verification-error" className="text-sm text-destructive">
-          {errorText}
-        </p>
+        <div className="space-y-2">
+          <p role="alert" data-testid="verification-error" className="text-sm text-destructive">
+            {errorText}
+          </p>
+          {submissionNeedsApplication && (
+            <a
+              className="inline-flex min-h-11 items-center text-sm font-semibold underline"
+              href={applicationHref}
+            >
+              {t.returnToApplication}
+            </a>
+          )}
+        </div>
+      )}
+
+      {showApplicationReturn && (
+        <div className="space-y-2 rounded-xl border p-3">
+          <p role="status" className="text-sm">
+            {t.applicationNext}
+          </p>
+          <a
+            className="inline-flex min-h-11 items-center text-sm font-semibold underline"
+            href={applicationHref}
+          >
+            {t.returnToApplication}
+          </a>
+        </div>
       )}
 
       <VerificationAxisBadges axes={view.axes} />
 
       {/* What the reviewer said, when there is something to act on. */}
-      {(view.state === 'CHANGES_REQUESTED' || view.state === 'REJECTED') && (
+      {(correctionRequested || view.state === 'REJECTED') && (
         <section aria-label={t.reasonHeading} className="rounded-xl border p-3">
           <h3 className="text-sm font-semibold">{t.reasonHeading}</h3>
           <p className="mt-1 text-sm" data-testid="verification-reason">
@@ -289,20 +446,20 @@ export function ProviderVerificationScreen() {
       {/* What has been sent, and where each file stands. */}
       <section aria-label={t.documentsHeading} className="space-y-1">
         <h3 className="text-sm font-semibold">{t.documentsHeading}</h3>
-        {(caseQuery.data?.case?.documents ?? []).length === 0 ? (
+        {(verificationCase?.documents ?? []).length === 0 ? (
           <p className="text-sm text-muted-foreground" data-testid="verification-no-documents">
             {t.noDocuments}
           </p>
         ) : (
           <ul className="space-y-2" data-testid="verification-documents">
-            {(caseQuery.data?.case?.documents ?? []).map((d) => (
+            {(verificationCase?.documents ?? []).map((d) => (
               <li key={d.id} className="flex flex-wrap items-center gap-2 text-sm">
                 <span>{DOCUMENT_KIND_LABELS[lang][d.kind]}</span>
                 <Badge
                   variant={
                     d.scanState === 'CLEAN'
                       ? 'default'
-                      : d.scanState === 'PENDING'
+                      : d.scanState === 'PENDING' || d.scanState === 'SCAN_FAILED'
                         ? 'secondary'
                         : 'destructive'
                   }
@@ -312,6 +469,31 @@ export function ProviderVerificationScreen() {
                   {SCAN_STATE_LABELS[lang][d.scanState]}
                 </Badge>
                 {d.superseded && <span className="text-xs text-muted-foreground">↺</span>}
+                {!d.superseded &&
+                  d.scanState === 'SCAN_FAILED' &&
+                  view.state !== 'SCAN_RETRY_PENDING' && (
+                    <span className="basis-full text-xs text-muted-foreground">
+                      {t.scanRetryNote}
+                    </span>
+                  )}
+                {canUpload &&
+                  !d.superseded &&
+                  d.scanState !== 'PENDING' &&
+                  d.scanState !== 'SCAN_FAILED' && (
+                    <Button
+                      variant="secondary"
+                      tone="provider"
+                      state={busy || offline ? 'disabled' : 'default'}
+                      onClick={() => {
+                        setPendingKind(d.kind);
+                        setPendingCategory(d.serviceCategoryId);
+                        fileInput.current?.click();
+                      }}
+                    >
+                      {t.replace}
+                      <span className="sr-only">: {DOCUMENT_KIND_LABELS[lang][d.kind]}</span>
+                    </Button>
+                  )}
               </li>
             ))}
           </ul>
@@ -330,10 +512,9 @@ export function ProviderVerificationScreen() {
           ref={fileInput}
           type="file"
           accept={ACCEPTED}
-          className="sr-only"
-          // Its own accessible name, distinct from the button that opens it:
-          // two controls sharing one name is an ambiguity for anyone
-          // navigating by name.
+          // Keyboard and assistive-technology users use the visible buttons,
+          // which establish a document target before opening the file picker.
+          hidden
           aria-label={t.uploadLabel}
           onChange={(e) => {
             const file = e.target.files?.[0];
@@ -343,19 +524,63 @@ export function ProviderVerificationScreen() {
         />
       )}
 
-      {/* Sprint 9B.24 — READY_TO_SUBMIT is the one state whose CTA is a case
-          TRANSITION rather than a local navigation, so it is the one gated on
-          the server's own action list. The others open a file picker or start a
-          new case, neither of which the transition table governs. */}
-      {copy.cta && (view.state !== 'READY_TO_SUBMIT' || canSubmitCase) && (
+      {/* Submission and resubmission both use the server's action list.
+          Opening a case and uploading still require MANAGE_VERIFICATION. */}
+      {primaryLabel && canRunPrimaryAction && (
+        <Button
+          variant={view.state === 'CHANGES_REQUESTED' && canSubmitCase ? 'secondary' : 'primary'}
+          tone="provider"
+          fullWidth
+          state={busy ? 'loading' : offline && !navigationHref ? 'disabled' : 'default'}
+          onClick={primaryAction}
+        >
+          {primaryLabel}
+        </Button>
+      )}
+      {view.state === 'CHANGES_REQUESTED' && canSubmitCase && (
         <Button
           tone="provider"
           fullWidth
-          state={busy ? 'loading' : 'default'}
-          onClick={primaryAction}
+          state={busy ? 'loading' : offline ? 'disabled' : 'default'}
+          onClick={() => submitMut.mutate()}
         >
-          {copy.cta}
+          {t.resubmit}
         </Button>
+      )}
+      {(view.state === 'SCANNING' ||
+        view.state === 'SCAN_RETRY_PENDING' ||
+        view.state === 'PENDING_REVIEW' ||
+        view.state === 'UNAVAILABLE') && (
+        <div className="space-y-2">
+          <Button
+            variant="secondary"
+            tone="provider"
+            fullWidth
+            state={
+              caseQuery.isFetching || capsQuery.isFetching
+                ? 'loading'
+                : offline
+                  ? 'disabled'
+                  : 'default'
+            }
+            onClick={() => {
+              void capsQuery.refetch();
+              if (canReadCase) void caseQuery.refetch();
+            }}
+          >
+            {t.refresh}
+          </Button>
+          {(view.state === 'SCANNING' || view.state === 'SCAN_RETRY_PENDING') && (
+            <Button
+              variant="secondary"
+              tone="provider"
+              fullWidth
+              onClick={() => navigate('/provider/support')}
+            >
+              {t.contactSupport}
+            </Button>
+          )}
+        </div>
       )}
     </section>
   );

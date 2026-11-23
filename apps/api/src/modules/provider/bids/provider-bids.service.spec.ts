@@ -82,7 +82,8 @@ function makeBid(over: Partial<Bid> = {}): Bid {
     requestId: 'req-1',
     providerId: 'pp-1',
     amount: 4500,
-    currency: 'USD',
+    currency: 'SAR',
+    amountScale: 2,
     pricingType: 'HOURLY',
     note: null,
     status: 'PENDING',
@@ -192,7 +193,8 @@ describe('ProviderBidsService.submit', () => {
 
     const out = await service.submit('user-provider-1', {
       requestId: 'req-1',
-      amount: 4500,
+      amountDecimal: '45.00',
+      currency: 'SAR',
       pricingType: 'HOURLY',
       note: 'I can be there in 20 minutes',
     });
@@ -203,7 +205,10 @@ describe('ProviderBidsService.submit', () => {
       expect.objectContaining({
         requestId: 'req-1',
         providerId: 'pp-1',
+        // K02 — "45.00" SAR is stored once as 4500 halalas at scale 2.
         amount: 4500,
+        currency: 'SAR',
+        amountScale: 2,
         pricingType: 'HOURLY',
       }),
       undefined,
@@ -227,12 +232,67 @@ describe('ProviderBidsService.submit', () => {
     );
   });
 
+  it('K02: converts "100.25" SAR exactly to 10025 halalas at scale 2', async () => {
+    const mocks = makeMocks();
+    await makeService(mocks).submit('user-provider-1', {
+      requestId: 'req-1',
+      amountDecimal: '100.25',
+      currency: 'SAR',
+      pricingType: 'FIXED',
+    });
+    expect(mocks.bids.createForProvider).toHaveBeenCalledWith(
+      expect.objectContaining({
+        amount: 10025,
+        currency: 'SAR',
+        amountScale: 2,
+        pricingType: 'FIXED',
+      }),
+      undefined,
+    );
+  });
+
+  it('K02: refuses a currency other than the approved launch currency before any write', async () => {
+    const mocks = makeMocks();
+    await expect(
+      makeService(mocks).submit('user-provider-1', {
+        requestId: 'req-1',
+        amountDecimal: '100',
+        currency: 'USD',
+        pricingType: 'FIXED',
+      }),
+    ).rejects.toMatchObject({
+      status: 400,
+      code: 'VALIDATION_ERROR',
+      details: { reason: 'CURRENCY_NOT_APPROVED' },
+    });
+    expect(mocks.requests.lockForLifecycle).not.toHaveBeenCalled();
+    expect(mocks.bids.createForProvider).not.toHaveBeenCalled();
+  });
+
+  it('K02: refuses more fraction digits than the currency scale instead of rounding', async () => {
+    const mocks = makeMocks();
+    await expect(
+      makeService(mocks).submit('user-provider-1', {
+        requestId: 'req-1',
+        amountDecimal: '1.005',
+        currency: 'SAR',
+        pricingType: 'FIXED',
+      }),
+    ).rejects.toMatchObject({
+      status: 400,
+      code: 'VALIDATION_ERROR',
+      details: { reason: 'TOO_MANY_FRACTION_DIGITS' },
+    });
+    expect(mocks.bids.createForProvider).not.toHaveBeenCalled();
+  });
+
   it('returns 404 if the request does not exist', async () => {
     const mocks = makeMocks({ request: null });
     await expect(
       makeService(mocks).submit('user-provider-1', {
         requestId: 'req-missing',
-        amount: 100,
+        amountDecimal: '100',
+        currency: 'SAR',
         pricingType: 'HOURLY',
       }),
     ).rejects.toMatchObject({ status: 404, code: 'NOT_FOUND' });
@@ -245,7 +305,8 @@ describe('ProviderBidsService.submit', () => {
     await expect(
       makeService(mocks).submit('user-provider-1', {
         requestId: 'req-1',
-        amount: 100,
+        amountDecimal: '100',
+        currency: 'SAR',
         pricingType: 'HOURLY',
       }),
     ).rejects.toMatchObject({ status: 404, code: 'NOT_FOUND' });
@@ -258,7 +319,8 @@ describe('ProviderBidsService.submit', () => {
     await expect(
       makeService(mocks).submit('user-provider-1', {
         requestId: 'req-1',
-        amount: 100,
+        amountDecimal: '100',
+        currency: 'SAR',
         pricingType: 'HOURLY',
       }),
     ).rejects.toMatchObject({ status: 404, code: 'NOT_FOUND' });
@@ -269,7 +331,8 @@ describe('ProviderBidsService.submit', () => {
     await expect(
       makeService(mocks).submit('user-provider-1', {
         requestId: 'req-1',
-        amount: 100,
+        amountDecimal: '100',
+        currency: 'SAR',
         pricingType: 'HOURLY',
       }),
     ).rejects.toMatchObject({ status: 404, code: 'NOT_FOUND' });
@@ -280,7 +343,8 @@ describe('ProviderBidsService.submit', () => {
     const mocks = makeMocks();
     await makeService(mocks).submit('user-provider-1', {
       requestId: 'req-1',
-      amount: 100,
+      amountDecimal: '100',
+      currency: 'SAR',
       pricingType: 'HOURLY',
     });
     expect(mocks.requests.lockForLifecycle).toHaveBeenCalledWith('req-1', undefined);
@@ -295,7 +359,8 @@ describe('ProviderBidsService.submit', () => {
     await expect(
       makeService(mocks).submit('user-provider-1', {
         requestId: 'req-1',
-        amount: 100,
+        amountDecimal: '100',
+        currency: 'SAR',
         pricingType: 'HOURLY',
       }),
     ).rejects.toMatchObject({ status: 409, code: 'CONFLICT' });
@@ -306,7 +371,8 @@ describe('ProviderBidsService.submit', () => {
     await expect(
       makeService(mocks).submit('user-provider-1', {
         requestId: 'req-1',
-        amount: 100,
+        amountDecimal: '100',
+        currency: 'SAR',
         pricingType: 'HOURLY',
       }),
     ).rejects.toMatchObject({ status: 404, code: 'NOT_FOUND' });
@@ -316,7 +382,8 @@ describe('ProviderBidsService.submit', () => {
     const mocks = makeMocks({ createdBid: makeBid({ id: 'bid-x' }) });
     const out = await makeService(mocks).submit('user-provider-1', {
       requestId: 'req-1',
-      amount: 100,
+      amountDecimal: '100',
+      currency: 'SAR',
       pricingType: 'HOURLY',
     });
     const wire = JSON.stringify(out);

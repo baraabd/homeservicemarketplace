@@ -21,6 +21,17 @@ export function resolveAdminRoute(pathname: string) {
   if (path === '/admin/settings/verification-policies') {
     return { kind: 'policies', section: 'settings' } as const;
   }
+  if (path === '/admin/manual-payments') {
+    return { kind: 'manualPayments', section: 'financials' } as const;
+  }
+  const payment = matchPath('/admin/manual-payments/:paymentIntentId', path);
+  if (payment?.params.paymentIntentId) {
+    return {
+      kind: 'manualPayment',
+      section: 'financials',
+      paymentIntentId: payment.params.paymentIntentId,
+    } as const;
+  }
   const dispute = matchPath('/admin/disputes/:caseId', path);
   if (dispute?.params.caseId)
     return { kind: 'dispute', section: 'disputes', caseId: dispute.params.caseId } as const;

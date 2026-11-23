@@ -173,6 +173,7 @@ export function apiEnv({ profile = 'fixture', overrides = {} } = {}) {
     VERIFICATION_ENFORCED: production ? 'false' : 'true',
     WORK_ACCESS_ENFORCED: 'true',
     OUTBOX_WORKER_ENABLED: 'false',
+    MAIL_DISPATCHER_ENABLED: 'false',
     DISPUTE_WORKER_ENABLED: 'false',
     VERIFICATION_EXPIRY_WORKER_ENABLED: 'false',
     EVIDENCE_SCAN_WORKER_ENABLED: 'false',

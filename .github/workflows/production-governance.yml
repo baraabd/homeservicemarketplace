@@ -34,12 +34,18 @@ jobs:
         run: node scripts/runtime/toolchain.cjs
       - name: Test fail-closed governance validation
         run: node --test .github/scripts/*.test.mjs
+      - name: Test Vercel environment and release smoke controls
+        run: node --test scripts/deploy/*.test.mjs
       - name: Test isolated staging release controls
         run: node --test infra/production/check-runtime.test.cjs infra/production/staging.test.cjs
       - name: Validate R28 checked platform and edge plans
         run: |
           node scripts/production/platform/validate-plan.cjs --check
           node --test scripts/production/platform/validate-plan.test.cjs
+      - name: Verify the CI environment inventory and required-check boundary
+        run: |
+          node scripts/ci/environment-inventory.cjs
+          node --test scripts/ci/environment-inventory.test.cjs
       - name: Validate repository governance files
         run: node .github/scripts/production-governance.mjs
       - name: Validate current release baseline and ownership

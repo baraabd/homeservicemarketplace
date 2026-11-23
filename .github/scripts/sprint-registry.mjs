@@ -105,7 +105,7 @@ export function registryProblems(registry, statusIndex = null) {
       if (!sprint.owner) problems.push(`${id} needs an owner`);
       // A known lane may be planned while its start gate is explicitly blocked.
       // It owns no executable baseline until the separate gate is accepted.
-      const startGate = { 2: 'G1', 3: 'G2' }[sprint.wave];
+      const startGate = { 2: 'G1', 3: 'G2', 4: 'G3' }[sprint.wave];
       const awaitingGate =
         sprint.status === 'PLANNED' &&
         sprint.frozenBase === null &&
@@ -203,6 +203,7 @@ export async function verifyRegistry(root) {
   const index = await readFile(path.join(root, STATUS_INDEX), 'utf8');
   const problems = registryProblems(registry, index);
   let g1;
+  let g2;
   if (registry.gates?.G1 || registry.waveManifests?.['2']) {
     const expectedGate = 'docs/production-readiness/post-r18/gates/g1/SOURCE_MANIFEST.json';
     const expectedWave = 'docs/production-readiness/post-r18/waves/wave-02.plan.json';
@@ -229,6 +230,7 @@ export async function verifyRegistry(root) {
     const gate = JSON.parse(await readFile(path.join(root, expectedGate), 'utf8'));
     const wave = JSON.parse(await readFile(path.join(root, expectedWave), 'utf8'));
     problems.push(...waveGateProblems(gate, wave, registry));
+    g2 = gate;
     if (
       gate.decision === 'ACCEPTED' &&
       (g1?.decision !== 'ACCEPTED' ||
@@ -236,6 +238,33 @@ export async function verifyRegistry(root) {
         !SHA.test(g1.publication?.acceptanceRecordCommitSha ?? ''))
     )
       problems.push('G2 acceptance requires the verified merged G1 prerequisite');
+  }
+  // Wave 4 can be packaged now, but its actual source can come only from G3.
+  // Neither a planned package nor accepted G2 is a shortcut around Wave 3.
+  if (
+    registry.gates?.G3 ||
+    registry.waveManifests?.['4'] ||
+    registry.sprints?.some(
+      (sprint) => sprint.wave === 4 && sprint.status !== 'RESERVED_PENDING_PACKAGE',
+    )
+  ) {
+    const expectedGate = 'docs/production-readiness/post-r18/gates/g3/SOURCE_MANIFEST.json';
+    const expectedWave = 'docs/production-readiness/post-r18/waves/wave-04.plan.json';
+    if (registry.gates?.G3 !== expectedGate || registry.waveManifests?.['4'] !== expectedWave)
+      return [...problems, 'G3 records must use the canonical paths'];
+    const gate = JSON.parse(await readFile(path.join(root, expectedGate), 'utf8'));
+    const wave = JSON.parse(await readFile(path.join(root, expectedWave), 'utf8'));
+    problems.push(...waveGateProblems(gate, wave, registry));
+    if (
+      gate.decision === 'ACCEPTED' &&
+      (g2?.decision !== 'ACCEPTED' ||
+        g2.publication?.state !== 'MERGED' ||
+        g2.publication?.verifiedMerge !== true ||
+        !SHA.test(g2.publication?.acceptanceRecordCommitSha ?? '') ||
+        gate.prerequisite?.frozenBaseSha !== g2.frozenBaseSha ||
+        gate.prerequisite?.acceptanceRecordCommitSha !== g2.publication.acceptanceRecordCommitSha)
+    )
+      problems.push('G3 acceptance requires the exact verified merged G2 prerequisite');
   }
   return problems;
 }

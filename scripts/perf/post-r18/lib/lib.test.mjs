@@ -252,6 +252,19 @@ test('statement classification separates transaction control from reads', () => 
   assert.equal(statementLabel(result.data[0].query), 'SELECT Bid');
 });
 
+test('statement labels preserve schema-relative and qualified projection evidence', () => {
+  for (const schema of ['', 'public.', '"public".', '"isolated_lane".']) {
+    const query = `SELECT page.* FROM (SELECT * FROM ${schema}"Booking"
+      WHERE status = $1::"public"."BookingStatus" LIMIT $2) page
+      JOIN ${schema}"ServiceRequest" request ON request.id = page."requestId"
+      LEFT JOIN ${schema}"Bid" bid ON bid.id = page."bidId"`;
+    assert.equal(statementLabel(query), 'SELECT Booking,ServiceRequest,Bid');
+  }
+  assert.equal(statementLabel('SELECT $1::"public"."BookingStatus"'), 'SELECT (no table)');
+  assert.equal(statementLabel('UPDATE "Booking" SET status = $1'), 'UPDATE Booking');
+  assert.equal(statementLabel('INSERT INTO "Bid" (id) VALUES ($1)'), 'INSERT Bid');
+});
+
 test('plan walking finds nested scans and filters by table size', () => {
   const plan = [
     {

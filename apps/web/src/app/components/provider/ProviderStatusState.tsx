@@ -3,6 +3,7 @@ import { Clock, ShieldAlert, ShieldCheck, ShieldX } from 'lucide-react';
 import type { ProviderProfileStatus } from '@homeservicemarketplace/contracts';
 import { useLang } from '../../i18n/LanguageContext';
 import { useAuth } from '../../../lib/auth-provider';
+import { ProviderButton } from '../../features/provider-ui';
 
 // Sprint 5.1.2 — non-ACTIVE provider state surface.
 //
@@ -87,12 +88,12 @@ function copyFor(status: ProviderProfileStatus, lang: 'en' | 'ar'): CopyBlock {
         lang === 'ar'
           ? ar({
               title: 'الحساب موقوف',
-              body: 'تم إيقاف حسابك مؤقتاً. للاستفسار، تواصل مع الدعم عبر القنوات الرسمية.',
+              body: 'تم إيقاف حسابك مؤقتاً. تواصل مع الدعم لمعرفة التفاصيل.',
               ctaLabel: 'العودة إلى التطبيقات',
             })
           : en({
               title: 'Account suspended',
-              body: 'Your provider account has been temporarily suspended. Please contact support through the official channels for details.',
+              body: 'Your provider account has been temporarily suspended. Contact support for details.',
               ctaLabel: 'Back to apps',
             });
       return {
@@ -161,12 +162,15 @@ export interface ProviderStatusStateProps {
   onContinueOnboarding?: () => void;
   /** Legacy ACTIVE is not itself a work-access decision. */
   workAccessDenied?: boolean;
+  /** The latest server capability; status alone never authorizes verification. */
+  canManageVerification?: boolean;
 }
 
 export function ProviderStatusState({
   status,
   onContinueOnboarding,
   workAccessDenied = false,
+  canManageVerification = false,
 }: ProviderStatusStateProps) {
   const navigate = useNavigate();
   const { logout } = useAuth();
@@ -239,6 +243,28 @@ export function ProviderStatusState({
         >
           {copy.ctaLabel}
         </button>
+        {/* K06 — every state here tells the provider to contact support, so offer
+            it. /provider/support is outside the workspace status gate. */}
+        <ProviderButton
+          tone="secondary"
+          shape="onboarding"
+          size="block"
+          data-testid="provider-status-support"
+          onClick={() => navigate('/provider/support')}
+        >
+          {lang === 'ar' ? 'تواصل مع الدعم' : 'Contact support'}
+        </ProviderButton>
+        {canManageVerification && (
+          <ProviderButton
+            tone="secondary"
+            shape="onboarding"
+            size="block"
+            data-testid="provider-status-verification"
+            onClick={() => navigate('/provider/verification')}
+          >
+            {lang === 'ar' ? 'وثائق الهوية' : 'Identity documents'}
+          </ProviderButton>
+        )}
         <button
           data-testid="provider-status-logout"
           onClick={async () => {

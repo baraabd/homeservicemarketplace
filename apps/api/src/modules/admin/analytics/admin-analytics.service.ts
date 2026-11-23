@@ -68,6 +68,7 @@ export class AdminAnalyticsService {
       lifetime,
       last30,
       undated,
+      excludedAmounts,
       disputesOpen,
       disputesInReview,
       disputesResolved,
@@ -92,6 +93,7 @@ export class AdminAnalyticsService {
       this.queries.lifetimeByCurrency(),
       this.queries.completionsByCurrencyDay(thirtyDaysAgo, now),
       this.queries.undatedCompletions(),
+      this.queries.excludedAmounts(),
       disputes.dispute.count({ where: { deletedAt: null, status: 'OPEN' } }),
       disputes.dispute.count({ where: { deletedAt: null, status: 'IN_REVIEW' } }),
       disputes.dispute.count({
@@ -102,6 +104,7 @@ export class AdminAnalyticsService {
     const recent = sumByCurrency(last30);
     const byCurrency = lifetime.map((row) => ({
       currency: row.currency,
+      amountScale: row.amountScale,
       bookedValueLifetime: row.bookedValue,
       completedLifetime: row.completed,
       bookedValueLast30Days: recent.get(row.currency)?.bookedValue ?? 0,
@@ -139,6 +142,7 @@ export class AdminAnalyticsService {
         currency: single?.currency ?? null,
         bookedValueByCurrency: byCurrency,
         undatedCompletions: undated,
+        excludedAmounts,
       },
       disputes: {
         open: disputesOpen,
@@ -157,6 +161,7 @@ export class AdminAnalyticsService {
       lifetime,
       inRange,
       undated,
+      excludedAmounts,
       cancelled,
       usersTotal,
       providersTotal,
@@ -166,6 +171,7 @@ export class AdminAnalyticsService {
       this.queries.lifetimeByCurrency(),
       this.queries.completionsByCurrencyDay(from, to),
       this.queries.undatedCompletions(),
+      this.queries.excludedAmounts(),
       this.queries.cancellationsWithin(from, to),
       c.user.count({ where: { deletedAt: null } }),
       c.providerProfile.count({ where: { deletedAt: null } }),
@@ -184,6 +190,7 @@ export class AdminAnalyticsService {
         const range = ranged.get(currency);
         return {
           currency,
+          amountScale: life?.amountScale ?? range!.amountScale,
           bookedValueLifetime: life?.bookedValue ?? 0,
           completedLifetime: life?.completed ?? 0,
           bookedValueWithinRange: range?.bookedValue ?? 0,
@@ -197,7 +204,8 @@ export class AdminAnalyticsService {
         users: usersTotal,
         providers: providersTotal,
         requests: requestsTotal,
-        bookingsCompleted: [...ranged.values()].reduce((n, r) => n + r.completed, 0),
+        // A count, not money: every completion in range, summable or not.
+        bookingsCompleted: inRange.reduce((n, r) => n + r.completedAll, 0),
         bookingsCancelled: cancelled,
         disputesOpen,
         undatedCompletions: undated,
@@ -215,6 +223,7 @@ export class AdminAnalyticsService {
           lifetime.length === 0 ? 0 : lifetime.length === 1 ? lifetime[0].bookedValue : null,
       },
       revenueByCurrency: byCurrency,
+      excludedAmounts,
       currency: byCurrency.length === 1 ? byCurrency[0].currency : null,
       platformFeeRateBps: null,
       feeStatus: 'NOT_APPROVED',
@@ -224,12 +233,15 @@ export class AdminAnalyticsService {
 
   async revenue(rawFrom?: string, rawTo?: string): Promise<AdminAnalyticsRevenue> {
     const { from, to } = resolveRange(rawFrom, rawTo);
-    const rows = await this.queries.completionsByCurrencyDay(from, to);
+    const allRows = await this.queries.completionsByCurrencyDay(from, to);
+    // K02 — money series use summable (verified FIXED) rows only.
+    const rows = allRows.filter((r) => r.completed > 0);
     const days: string[] = [];
     for (let d = new Date(from); d < to; d = addDays(d, 1)) days.push(toIsoDay(d));
     const currencies = [...new Set(rows.map((r) => r.currency))].sort();
     const series: AdminAnalyticsCurrencySeries[] = currencies.map((currency) => ({
       currency,
+      amountScale: rows.find((r) => r.currency === currency)!.amountScale!,
       buckets: days.map((date) => {
         const hit = rows.find((r) => r.currency === currency && r.day === date);
         return { date, bookedValue: hit?.bookedValue ?? 0, completedBookings: hit?.completed ?? 0 };
@@ -245,7 +257,9 @@ export class AdminAnalyticsService {
           dayRows.length === 0 ? 0 : dayRows.length === 1 ? dayRows[0].bookedValue : null,
         platformFees: null,
         netProviderEarnings: null,
-        completedBookings: dayRows.reduce((n, r) => n + r.completed, 0),
+        completedBookings: allRows
+          .filter((r) => r.day === date)
+          .reduce((n, r) => n + r.completedAll, 0),
       };
     });
     return {
@@ -263,10 +277,16 @@ export class AdminAnalyticsService {
 
 function sumByCurrency(
   rows: CurrencyDay[],
-): Map<string, { bookedValue: number; completed: number }> {
-  const out = new Map<string, { bookedValue: number; completed: number }>();
+): Map<string, { bookedValue: number; completed: number; amountScale: number }> {
+  const out = new Map<string, { bookedValue: number; completed: number; amountScale: number }>();
   for (const row of rows) {
-    const acc = out.get(row.currency) ?? { bookedValue: 0, completed: 0 };
+    // K02 — a day with only legacy/hourly completions adds no money entry.
+    if (row.completed === 0 || row.amountScale === null) continue;
+    const acc = out.get(row.currency) ?? {
+      bookedValue: 0,
+      completed: 0,
+      amountScale: row.amountScale,
+    };
     acc.bookedValue += row.bookedValue;
     acc.completed += row.completed;
     out.set(row.currency, acc);

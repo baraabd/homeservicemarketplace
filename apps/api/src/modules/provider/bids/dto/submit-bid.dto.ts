@@ -8,20 +8,23 @@ import { PricingType } from '@homeservicemarketplace/database';
 // `forbidNonWhitelisted: true` rejects those fields, and the service
 // pulls identity from the session.
 //
-// `amount` is the marketplace's integer currency unit (cents-equivalent
-// in the schema). The 1..100_000_000 range is wide enough for every
-// reasonable price and tight enough to reject overflow + fractional
-// inputs at the boundary.
+// K02 — `amountDecimal` is a major-unit decimal string ("100.25"). Shape
+// and length only here; ProviderBidsService converts it exactly
+// (parseApprovedBidAmount) and enforces the approved currency and range.
+// The legacy integer `amount` is not whitelisted, so a pre-K02 client is
+// refused with 400.
 export class SubmitBidDto implements SubmitBidRequest {
   @IsString()
   @Length(1, 64)
   requestId!: string;
 
-  @Type(() => Number)
-  @IsInt()
-  @Min(1)
-  @Max(100_000_000)
-  amount!: number;
+  @IsString()
+  @Length(1, 32)
+  amountDecimal!: string;
+
+  @IsString()
+  @Length(3, 3)
+  currency!: string;
 
   @IsEnum(PricingType)
   pricingType!: PricingType;

@@ -337,7 +337,8 @@ d('R07 — request-to-provider lifecycle hardening (real Postgres)', () => {
 
     const accepted = await providerBids.submit(ELIGIBLE_USER, {
       requestId: created.id,
-      amount: 12500,
+      amountDecimal: '125.00',
+      currency: 'SAR',
       pricingType: 'FIXED',
       note: 'Eligible provider bid',
     });
@@ -347,7 +348,8 @@ d('R07 — request-to-provider lifecycle hardening (real Postgres)', () => {
     await expect(
       providerBids.submit(INELIGIBLE_USER, {
         requestId: created.id,
-        amount: 9000,
+        amountDecimal: '90.00',
+        currency: 'SAR',
         pricingType: 'FIXED',
       }),
     ).rejects.toMatchObject({ code: 'NOT_FOUND', status: 404 });
@@ -384,7 +386,8 @@ d('R07 — request-to-provider lifecycle hardening (real Postgres)', () => {
 
     const bidAttempt = providerBids.submit(ELIGIBLE_USER, {
       requestId: created.id,
-      amount: 11000,
+      amountDecimal: '110.00',
+      currency: 'SAR',
       pricingType: 'FIXED',
     });
 

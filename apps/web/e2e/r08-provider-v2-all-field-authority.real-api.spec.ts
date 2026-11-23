@@ -47,7 +47,8 @@ const HUB = '/v1/me/provider/onboarding/hub';
 
 // What the provider enters. Arabic, English and mixed text on purpose.
 const DISPLAY_NAME = 'ليلى منصور Layla';
-const PHONE = '+963 944 123 456';
+const PHONE_INPUT = '+963 944 123 456';
+const PHONE = '+963944123456';
 const CITY = 'حلب الجديدة';
 const BIO =
   'فنية كهرباء منزلية بخبرة طويلة في حلب. Licensed home electrician, careful and on time.';
@@ -350,11 +351,11 @@ test.describe.serial('R08 Provider V2 all-field authority — real browser, API 
     const phoned = await acknowledged(
       page,
       'IDENTITY',
-      () => page.getByTestId('field-phoneNumber').fill(PHONE),
+      () => page.getByTestId('field-phoneNumber').fill(PHONE_INPUT),
       (v) => v.data.phoneNumber === PHONE,
     );
-    // Stored exactly as typed: the server validates the E.164 shape but does
-    // not rewrite the provider's formatting.
+    // K02 stores the canonical E.164 value. Exercise formatted input while
+    // asserting the server acknowledgement and persisted normalized number.
     expect(phoned.data.phoneNumber).toBe(PHONE);
     expect(phoned.version).toBeGreaterThan(named.version);
 

@@ -1,3 +1,4 @@
+import { AuthChannelModule } from '../../../infrastructure/auth-channel/auth-channel.module';
 import { Module } from '@nestjs/common';
 import { JwtModule } from '@nestjs/jwt';
 import { PassportModule } from '@nestjs/passport';
@@ -6,6 +7,8 @@ import { AppConfigService } from '../../../config/app-config.service';
 import { ConfigModule } from '../../../config/config.module';
 import { AuditModule } from '../audit/audit.module';
 import { AuthenticationController } from './controllers/authentication.controller';
+import { LegalAcceptanceService } from '../legal/legal-acceptance.service';
+import { LegalController } from '../legal/legal.controller';
 import { AuthenticationService } from './services/authentication.service';
 import { LoginAttemptService } from './services/login-attempt.service';
 import { OtpService } from './services/otp.service';
@@ -39,10 +42,12 @@ import { JwtStrategy } from './strategies/jwt.strategy';
       }),
     }),
     AuditModule,
+    AuthChannelModule,
   ],
-  controllers: [AuthenticationController],
+  controllers: [AuthenticationController, LegalController],
   providers: [
     AuthenticationService,
+    LegalAcceptanceService,
     PasswordService,
     TokenService,
     SessionService,

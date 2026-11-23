@@ -69,6 +69,10 @@ async function run(data) {
   try {
     // ── Real password/OTP login, honouring Retry-After on a shared IP budget.
     await page.goto(`${data.web}/login`);
+    // This real-API fixture explicitly selects email; the public screen exposes
+    // only the operator-selected method, with no client-side channel override.
+    await expect(page.getByTestId('auth-channel-email')).toBeVisible({ timeout: 180000 });
+    await expect(page.getByTestId('auth-channel-whatsapp')).toHaveCount(0);
     await page.locator('input[type=email]').waitFor({ timeout: 180000 });
     await page.locator('input[type=email]').fill(data.admin.email);
     await page.locator('input[type=password]').fill(data.admin.password);
@@ -117,13 +121,14 @@ async function run(data) {
     check('settings: inert read-only, validation, save, reload, database read-back');
 
     // ── Analytics: booked value per currency, never summed; no fee claim.
+    // K02 — the verified SAR value is exact; the legacy-unit row is not money.
     await page.goto(`${data.web}/admin`);
     const inRange = page.getByTestId('kpi-value-in-range');
-    await expect(inRange).toContainText('XTS');
-    await expect(inRange).toContainText('XXX');
+    await expect(inRange).toContainText('SAR');
     const text = await inRange.innerText();
-    expect(text).toContain(data.expect.xts);
-    expect(text).toContain(data.expect.xxx);
+    expect(text).toContain(data.expect.sar);
+    expect(text).not.toContain(data.expect.legacyCurrency);
+    expect(text).not.toContain('1,801');
     await expect(page.getByTestId('analytics-value-note')).toContainText('not payments');
     expect(await page.locator('body').innerText()).not.toMatch(/platform fee \d|After \d+%/i);
     await page.screenshot({ path: path.join(out, 'dashboard-en-1440.png'), fullPage: true });

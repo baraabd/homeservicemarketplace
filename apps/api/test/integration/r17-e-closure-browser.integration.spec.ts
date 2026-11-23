@@ -166,6 +166,8 @@ const enabled = process.env.RUN_PROVIDER_BROWSER === '1';
         requestId: `${tag}-req`,
         providerId: PROVIDER.profile,
         amount: 100 + i,
+        currency: 'SAR',
+        amountScale: 2,
         pricingType: 'FIXED' as const,
         status: 'ACCEPTED' as const,
       })),
@@ -180,6 +182,8 @@ const enabled = process.env.RUN_PROVIDER_BROWSER === '1';
         status: 'SCHEDULED' as const,
         scheduledAt: i % 3 === 2 ? null : new Date(base + Math.floor(i / 4) * 3_600_000),
         priceAmount: 100 + i,
+        currency: 'SAR',
+        amountScale: 2,
         createdAt: new Date(base - Math.floor(i / 2) * 60_000),
       })),
     });

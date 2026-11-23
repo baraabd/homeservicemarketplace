@@ -6,12 +6,22 @@ import cookieParser from 'cookie-parser';
 import express from 'express';
 import helmet from 'helmet';
 import { InMemoryMailAdapter } from '../../src/infrastructure/mail/in-memory-mail.adapter';
+import { WhatsAppAuthAdapter } from '../../src/infrastructure/auth-channel/whatsapp-auth.adapter';
 import { workspaceFixture } from './dispute-workspace-fixture';
+import { withEmailAuthenticationPolicy } from './auth-channel';
 
 /** Real AppModule, guards, sessions, database, Redis, storage and HTTP.
- * Only documented NODE_ENV=test adapters are selected; no provider/guard override.
+ * Only documented NODE_ENV=test adapters are selected; no guard override.
+ * Existing email journeys explicitly use the email policy fixture by default.
+ * A policy/WhatsApp journey opts out and may capture only the external sender.
  * OTPs are obtained in-process from the real test mailbox, never a debug route. */
-export async function disputeHttpApp(options: { env?: Record<string, string> } = {}) {
+export async function disputeHttpApp(
+  options: {
+    env?: Record<string, string>;
+    emailAuthentication?: boolean;
+    whatsapp?: Pick<WhatsAppAuthAdapter, 'isConfigured' | 'sendCode'>;
+  } = {},
+) {
   const fixture = await workspaceFixture({ authentication: true });
   const redis = new URL(process.env.REDIS_URL ?? 'redis://127.0.0.1:6379/0');
   const previous = { ...process.env };
@@ -48,7 +58,10 @@ export async function disputeHttpApp(options: { env?: Record<string, string> } =
   try {
     // ConfigModule validates at import time, after the synthetic environment exists.
     const { AppModule } = await import('../../src/app.module');
-    const module = await Test.createTestingModule({ imports: [AppModule] }).compile();
+    const builder = Test.createTestingModule({ imports: [AppModule] });
+    if (options.emailAuthentication !== false) withEmailAuthenticationPolicy(builder);
+    if (options.whatsapp) builder.overrideProvider(WhatsAppAuthAdapter).useValue(options.whatsapp);
+    const module = await builder.compile();
     app = module.createNestApplication<NestExpressApplication>({
       bodyParser: false,
       logger: ['error', 'warn'],

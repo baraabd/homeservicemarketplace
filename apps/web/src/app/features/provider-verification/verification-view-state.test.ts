@@ -86,7 +86,7 @@ describe('the account outranks everything', () => {
     ).toBe('SUSPENDED');
   });
 
-  it('onboarding outranks verification, because it is the task they are on', () => {
+  it('keeps onboarding blocked when the server has not allowed verification', () => {
     expect(
       stateOf({
         capabilities: CAPS({ primaryReason: 'ONBOARDING_INCOMPLETE' }),
@@ -94,9 +94,58 @@ describe('the account outranks everything', () => {
       }),
     ).toBe('ONBOARDING_INCOMPLETE');
   });
+
+  it('keeps a missing provider profile in setup with no completed-onboarding claim', () => {
+    const view = deriveVerificationView({
+      capabilities: CAPS({ primaryReason: 'NO_PROVIDER_PROFILE' }),
+      verificationCase: null,
+      profile: null,
+    });
+    expect(view.state).toBe('ONBOARDING_INCOMPLETE');
+    expect(view.axes.onboardingComplete).toBe(false);
+    expect(view.canManageVerification).toBe(false);
+  });
+
+  it.each([
+    [null, 'NOT_STARTED'],
+    [kase({ state: 'DRAFT' }), 'EVIDENCE_REQUIRED'],
+    [kase({ state: 'ACTION_REQUIRED' }), 'CHANGES_REQUESTED'],
+  ])(
+    'honors verification permission while onboarding is incomplete: %s',
+    (verificationCase, state) => {
+      const view = deriveVerificationView({
+        capabilities: CAPS({
+          primaryReason: 'ONBOARDING_INCOMPLETE',
+          allowed: ['COMPLETE_ONBOARDING', 'MANAGE_VERIFICATION'],
+        }),
+        verificationCase,
+        profile: PROFILE,
+      });
+      expect(view.state).toBe(state);
+      expect(view.canManageVerification).toBe(true);
+      expect(view.axes.onboardingComplete).toBe(false);
+      expect(view.axes.workAccessActive).toBe(false);
+    },
+  );
 });
 
 describe('before there is a case', () => {
+  it.each([
+    ['VERIFIED', false, true],
+    ['EXPIRED', true, false],
+    ['ACTION_REQUIRED', true, false],
+  ] as const)(
+    'uses the current %s case rather than a stale profile badge',
+    (state, verified, expected) => {
+      const view = deriveVerificationView({
+        capabilities: CAPS({ allowed: ['MANAGE_VERIFICATION'] }),
+        verificationCase: kase({ state }),
+        profile: { verified, topPro: false },
+      });
+      expect(view.axes.identityVerified).toBe(expected);
+    },
+  );
+
   it('is NOT_STARTED with no case at all', () => {
     expect(stateOf({ verificationCase: null })).toBe('NOT_STARTED');
   });
@@ -111,6 +160,24 @@ describe('before there is a case', () => {
 });
 
 describe('while the provider still has to act', () => {
+  it.each([
+    ['SUBMITTED', 'PENDING'],
+    ['SUBMITTED', 'SCAN_FAILED'],
+    ['SUBMITTED', 'QUARANTINED'],
+    ['IN_REVIEW', 'PENDING'],
+    ['IN_REVIEW', 'SCAN_FAILED'],
+    ['IN_REVIEW', 'QUARANTINED'],
+  ])('keeps %s with the reviewer despite an optional %s document', (state, scanState) => {
+    expect(
+      stateOf({
+        verificationCase: kase({
+          state,
+          documents: [doc(), doc({ id: 'optional', kind: 'BUSINESS_REGISTRATION', scanState })],
+        }),
+      }),
+    ).toBe('PENDING_REVIEW');
+  });
+
   it('asks for the documents that are missing', () => {
     expect(stateOf({ verificationCase: kase({ requirements: [req()], documents: [] }) })).toBe(
       'EVIDENCE_REQUIRED',
@@ -123,20 +190,23 @@ describe('while the provider still has to act', () => {
     );
   });
 
-  it('is SCANNING when everything is supplied but not yet cleared', () => {
+  it('is SCANNING when a supplied required slot is not yet cleared', () => {
     // "Wait" is a different instruction from "act", and the difference matters
     // to someone refreshing the page.
     expect(
       stateOf({
         verificationCase: kase({
-          requirements: [req()],
-          documents: [doc({ scanState: 'CLEAN' }), doc({ id: 'd2', scanState: 'PENDING' })],
+          requirements: [req(), req({ kind: 'BUSINESS_REGISTRATION' })],
+          documents: [
+            doc({ scanState: 'CLEAN' }),
+            doc({ id: 'd2', kind: 'BUSINESS_REGISTRATION', scanState: 'PENDING' }),
+          ],
         }),
       }),
     ).toBe('SCANNING');
   });
 
-  it.each(['QUARANTINED', 'SCAN_FAILED', 'REJECTED'])(
+  it.each(['QUARANTINED', 'REJECTED'])(
     'a %s document outranks everything else the provider could do',
     (scanState) => {
       // The one thing they must replace. Burying it under "3 documents
@@ -152,6 +222,50 @@ describe('while the provider still has to act', () => {
     },
   );
 
+  it.each(['DRAFT', 'ACTION_REQUIRED'])(
+    'keeps a technical scan failure waiting for retry in %s',
+    (state) => {
+      const failedDocument = doc({ scanState: 'SCAN_FAILED' });
+      const view = deriveVerificationView({
+        capabilities: CAPS({ allowed: ['MANAGE_VERIFICATION'] }),
+        profile: PROFILE,
+        verificationCase: kase({ state, documents: [failedDocument] }),
+      });
+      expect(view.state).toBe('SCAN_RETRY_PENDING');
+      expect(view.unusable).toEqual([]);
+      expect(view.scanFailures).toEqual([failedDocument]);
+      expect(view.outstanding).toEqual([req()]);
+    },
+  );
+
+  it('targets a genuinely missing document while another document awaits a scan retry', () => {
+    const missing = req({ kind: 'BUSINESS_REGISTRATION' });
+    const view = deriveVerificationView({
+      capabilities: CAPS({ allowed: ['MANAGE_VERIFICATION'] }),
+      profile: PROFILE,
+      verificationCase: kase({
+        requirements: [req(), missing],
+        documents: [doc({ scanState: 'SCAN_FAILED' })],
+      }),
+    });
+    expect(view.state).toBe('EVIDENCE_REQUIRED');
+    expect(view.uploadTarget).toEqual(missing);
+    expect(view.unusable).toEqual([]);
+  });
+
+  it('does not let a superseded technical failure block its clean replacement', () => {
+    expect(
+      stateOf({
+        verificationCase: kase({
+          documents: [
+            doc({ scanState: 'SCAN_FAILED', superseded: true }),
+            doc({ id: 'replacement' }),
+          ],
+        }),
+      }),
+    ).toBe('READY_TO_SUBMIT');
+  });
+
   it('a PENDING document is NOT unusable — it is a wait, not a problem', () => {
     expect(
       stateOf({
@@ -160,7 +274,49 @@ describe('while the provider still has to act', () => {
           documents: [doc({ scanState: 'PENDING' })],
         }),
       }),
-    ).toBe('EVIDENCE_REQUIRED');
+    ).toBe('SCANNING');
+  });
+
+  it('asks for the missing requirement while another document is scanning', () => {
+    const view = deriveVerificationView({
+      capabilities: CAPS(),
+      profile: PROFILE,
+      verificationCase: kase({
+        requirements: [req(), req({ kind: 'CATEGORY_LICENSE', serviceCategoryId: 'electrical' })],
+        documents: [doc({ scanState: 'PENDING' })],
+      }),
+    });
+    expect(view.state).toBe('EVIDENCE_REQUIRED');
+    expect(view.uploadTarget).toEqual({
+      kind: 'CATEGORY_LICENSE',
+      serviceCategoryId: 'electrical',
+    });
+  });
+
+  it('waits for the replacement scan in a returned verification case', () => {
+    expect(
+      stateOf({
+        verificationCase: kase({
+          state: 'ACTION_REQUIRED',
+          documents: [doc({ superseded: true }), doc({ id: 'replacement', scanState: 'PENDING' })],
+        }),
+      }),
+    ).toBe('SCANNING');
+  });
+
+  it('retains the correction instruction and offers the correct business document target', () => {
+    const view = deriveVerificationView({
+      capabilities: CAPS(),
+      profile: PROFILE,
+      verificationCase: kase({
+        state: 'ACTION_REQUIRED',
+        requirements: [req({ kind: 'BUSINESS_REGISTRATION' })],
+        documents: [doc({ kind: 'BUSINESS_REGISTRATION' })],
+      }),
+    });
+    expect(view.state).toBe('CHANGES_REQUESTED');
+    expect(view.uploadTarget?.kind).toBe('BUSINESS_REGISTRATION');
+    expect(view.outstanding).toEqual([]);
   });
 
   it('a superseded bad document does not block a good replacement', () => {
@@ -339,6 +495,56 @@ describe("the server's action list is passed through, not re-derived", () => {
   });
 });
 
+describe.each(['DRAFT', 'ACTION_REQUIRED'] as const)('required evidence in %s', (state) => {
+  it.each(['PENDING', 'SCAN_FAILED', 'QUARANTINED', 'REJECTED'] as const)(
+    'does not turn an optional %s document into a submission blocker',
+    (scanState) => {
+      const optional = doc({
+        id: 'optional',
+        kind: 'CATEGORY_LICENSE',
+        serviceCategoryId: 'optional-category',
+        scanState,
+      });
+      const view = deriveVerificationView({
+        capabilities: CAPS({ allowed: ['MANAGE_VERIFICATION'] }),
+        verificationCase: kase({
+          state,
+          documents: [doc(), optional],
+          availableActions: ['submit'],
+        }),
+        profile: PROFILE,
+      });
+      expect(view.outstanding).toEqual([]);
+      expect(view.state).toBe(state === 'DRAFT' ? 'READY_TO_SUBMIT' : 'CHANGES_REQUESTED');
+      // Optional files retain their individual verdict; readiness never clears one.
+      expect([...view.scanning, ...view.scanFailures, ...view.unusable]).toContainEqual(optional);
+    },
+  );
+
+  it('targets the missing required category before an unusable optional upload', () => {
+    const required = req({ kind: 'CATEGORY_LICENSE', serviceCategoryId: 'required-category' });
+    const view = deriveVerificationView({
+      capabilities: CAPS({ allowed: ['MANAGE_VERIFICATION'] }),
+      verificationCase: kase({
+        state,
+        requirements: [req(), required],
+        documents: [
+          doc(),
+          doc({
+            id: 'optional',
+            kind: 'CATEGORY_LICENSE',
+            serviceCategoryId: 'optional-category',
+            scanState: 'QUARANTINED',
+          }),
+        ],
+      }),
+      profile: PROFILE,
+    });
+    expect(view.outstanding).toEqual([required]);
+    expect(view.uploadTarget).toEqual(required);
+  });
+});
+
 describe('the five axes stay separate', () => {
   it('reports each axis independently', () => {
     const view = deriveVerificationView({
@@ -390,6 +596,7 @@ describe('every declared state is reachable', () => {
     // Non-vacuity for the type: a state nobody can reach is a screen nobody
     // will ever see, and it would sit in the copy file forever.
     const reached = new Set<VerificationViewState>([
+      stateOf({ verificationCase: kase({ state: 'FUTURE_STATE' }) }),
       stateOf({ capabilities: CAPS({ primaryReason: 'ACCOUNT_INELIGIBLE' }) }),
       stateOf({ capabilities: CAPS({ primaryReason: 'PROVIDER_SUSPENDED' }) }),
       stateOf({ capabilities: CAPS({ primaryReason: 'ONBOARDING_INCOMPLETE' }) }),
@@ -397,9 +604,10 @@ describe('every declared state is reachable', () => {
       stateOf({ verificationCase: kase({ verificationRequired: false }) }),
       stateOf({ verificationCase: kase({ documents: [] }) }),
       stateOf({
-        verificationCase: kase({ documents: [doc({ scanState: 'PENDING' })], requirements: [] }),
+        verificationCase: kase({ documents: [doc({ scanState: 'PENDING' })] }),
       }),
       stateOf({ verificationCase: kase({ documents: [doc({ scanState: 'QUARANTINED' })] }) }),
+      stateOf({ verificationCase: kase({ documents: [doc({ scanState: 'SCAN_FAILED' })] }) }),
       stateOf({ verificationCase: kase({ documents: [doc()] }) }),
       stateOf({ verificationCase: kase({ state: 'SUBMITTED' }) }),
       stateOf({ verificationCase: kase({ state: 'ACTION_REQUIRED' }) }),
@@ -416,7 +624,8 @@ describe('every declared state is reachable', () => {
       stateOf({ verificationCase: kase({ state: 'EXPIRED' }) }),
     ]);
 
-    expect(reached.size).toBe(15);
+    expect(reached.size).toBe(17);
+    expect(reached.has('UNAVAILABLE')).toBe(true);
     expect(reached.has('REVERIFICATION_REQUIRED')).toBe(true);
     expect(reached.has('VERIFIED_NO_ACCESS')).toBe(true);
   });

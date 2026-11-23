@@ -127,7 +127,11 @@ const enabled = process.env.RUN_DB_INTEGRATION === '1';
   async function submitBid(s: Session, requestId: string, amount = 120) {
     return s.request<{ bid: { id: string; currency: string; pricingType: string } }>(
       '/v1/provider/bids',
-      { method: 'POST', body: { requestId, amount, pricingType: 'HOURLY' } },
+      // K02 — a major-unit decimal in the approved currency; stored as halalas.
+      {
+        method: 'POST',
+        body: { requestId, amountDecimal: String(amount), currency: 'SAR', pricingType: 'HOURLY' },
+      },
     );
   }
 
@@ -932,13 +936,14 @@ const enabled = process.env.RUN_DB_INTEGRATION === '1';
   it('P24 price honesty: the wire carries amount, currency and pricing type end to end; no badge is fabricated', async () => {
     const requestId = await freshRequest();
     const bid = await submitBid(p3, requestId, 210);
-    expect(bid.body.bid).toMatchObject({ currency: 'USD', pricingType: 'HOURLY' });
+    expect(bid.body.bid).toMatchObject({ amount: 21_000, currency: 'SAR', pricingType: 'HOURLY' });
     const seen = await seeker.request<{
       items: { amount: number; currency: string; pricingType: string; badge: unknown }[];
     }>(`/v1/me/requests/${requestId}/bids`);
     expect(seen.body.items[0]).toMatchObject({
-      amount: 210,
-      currency: 'USD',
+      amount: 21_000,
+      currency: 'SAR',
+      amountScale: 2,
       pricingType: 'HOURLY',
       badge: null,
     });
@@ -953,13 +958,18 @@ const enabled = process.env.RUN_DB_INTEGRATION === '1';
       }>(`/v1/me/requests/${requestId}/bids`);
       expect(again.body.items[0]).toMatchObject({ badge: null, provider: { topPro: false } });
       const accepted = await accept(requestId, bid.body.bid.id);
-      expect(accepted.body.booking).toMatchObject({ priceAmount: 210, currency: 'USD' });
+      expect(accepted.body.booking).toMatchObject({
+        priceAmount: 21_000,
+        currency: 'SAR',
+        amountScale: 2,
+      });
       const detail = await p3.request<Record<string, unknown>>(
         `/v1/provider/bookings/${accepted.body.booking.id}`,
       );
       expect(detail.body).toMatchObject({
-        priceAmount: 210,
-        currency: 'USD',
+        priceAmount: 21_000,
+        currency: 'SAR',
+        amountScale: 2,
         pricingType: 'HOURLY',
       });
       const seekerBooking = await seeker.request(`/v1/me/bookings/${accepted.body.booking.id}`);

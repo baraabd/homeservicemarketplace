@@ -70,11 +70,25 @@ function PriceChart({ bids, selectedId }: { bids: BidSummary[]; selectedId: stri
   if (bids.length === 0) return null;
   // Amounts in different currencies or on different bases (hourly vs fixed)
   // cannot be averaged or ranked; the chart is shown only when they agree.
-  const { currency, pricingType } = bids[0];
-  if (bids.some((b) => b.currency !== currency || b.pricingType !== pricingType)) return null;
+  // K02 — and never across units: a legacy (null-scale) amount cannot be
+  // ranked against a verified one.
+  const { currency, pricingType, amountScale } = bids[0];
+  if (
+    bids.some(
+      (b) =>
+        b.currency !== currency || b.pricingType !== pricingType || b.amountScale !== amountScale,
+    )
+  )
+    return null;
   const money = (n: number) =>
-    formatOffer(n, currency, pricingType, lang === 'ar' ? 'ar' : 'en').value;
-  const basis = formatOffer(0, currency, pricingType, lang === 'ar' ? 'ar' : 'en').basis;
+    formatOffer(n, currency, amountScale, pricingType, lang === 'ar' ? 'ar' : 'en').value;
+  const basis = formatOffer(
+    0,
+    currency,
+    amountScale,
+    pricingType,
+    lang === 'ar' ? 'ar' : 'en',
+  ).basis;
   const prices = bids.map((b) => b.amount);
   const min = Math.min(...prices);
   const max = Math.max(...prices);
@@ -441,6 +455,7 @@ export function BidsScreen({ lead, onBack, onBookBid }: BidsScreenProps) {
                           formatOffer(
                             bid.amount,
                             bid.currency,
+                            bid.amountScale,
                             bid.pricingType,
                             lang === 'ar' ? 'ar' : 'en',
                           ).value
@@ -449,6 +464,7 @@ export function BidsScreen({ lead, onBack, onBookBid }: BidsScreenProps) {
                           formatOffer(
                             bid.amount,
                             bid.currency,
+                            bid.amountScale,
                             bid.pricingType,
                             lang === 'ar' ? 'ar' : 'en',
                           ).basis
@@ -535,6 +551,7 @@ export function BidsScreen({ lead, onBack, onBookBid }: BidsScreenProps) {
                                   formatOffer(
                                     bid.amount,
                                     bid.currency,
+                                    bid.amountScale,
                                     bid.pricingType,
                                     lang === 'ar' ? 'ar' : 'en',
                                   ).value

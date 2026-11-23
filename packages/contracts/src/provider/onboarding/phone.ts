@@ -48,5 +48,13 @@ export function isPlausibleE164(value: string): boolean {
  *  system can dial, and silently deleting the letters would store a number
  *  that looks valid and rings nobody. */
 export function normalisePhoneNumber(value: string): string {
-  return value.replace(/[\s\-().]/g, '');
+  // K02 — Arabic-Indic (U+0660–0669) and Extended Arabic-Indic (U+06F0–06F9)
+  // digits become ASCII, bidi marks pasted with RTL text are dropped, and an
+  // international `00` prefix becomes `+` (`00966…` → `+966…`). A national
+  // number such as `05…` is NOT converted: the country is not known here.
+  const ascii = value
+    .replace(/[٠-٩]/g, (d) => String(d.charCodeAt(0) - 0x0660))
+    .replace(/[۰-۹]/g, (d) => String(d.charCodeAt(0) - 0x06f0))
+    .replace(/[\s\-().\u200e\u200f\u202a-\u202e]/g, '');
+  return ascii.startsWith('00') ? `+${ascii.slice(2)}` : ascii;
 }

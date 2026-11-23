@@ -264,7 +264,18 @@ export function IntakeForm({
             </CaseNotice>
           )}
           {!context.canOpen && context.blocker && (
-            <CaseNotice alert>{t.blocked[context.blocker]}</CaseNotice>
+            <CaseNotice alert>
+              {t.blocked[context.blocker]}
+              {/* K06 — a denied dispute capability must still leave a way to get help. */}
+              <div>
+                <Link
+                  className="case-button"
+                  to={context.role === 'PROVIDER' ? '/provider/support' : '/home/support'}
+                >
+                  {t.contactSupport}
+                </Link>
+              </div>
+            </CaseNotice>
           )}
           <div className="case-actions">
             {step > 0 && (

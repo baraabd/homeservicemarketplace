@@ -8,7 +8,8 @@
 // is now its own module behind its own route; behaviour is unchanged by this
 // move.
 
-import { useState } from 'react';
+import { lazy, useState } from 'react';
+import { AsyncBoundary } from '../../../AsyncBoundary';
 import { useLang } from '../../../i18n/LanguageContext';
 import { PortfolioSection } from '../portfolio/PortfolioSection';
 import { ProviderVerificationScreen } from '../../../features/provider-verification/components/ProviderVerificationScreen';
@@ -22,7 +23,21 @@ import { useAuth } from '../../../../lib/auth-provider';
 import { clearIntendedApp } from '../../../../lib/intended-app';
 import { EditProfilePage } from '../../profile/EditProfilePage';
 import type { ProviderAvailability } from '@homeservicemarketplace/contracts';
-import { User, ChevronRight, CheckCircle2, WifiOff, Award, Clock, LogOut } from 'lucide-react';
+import {
+  User,
+  ChevronRight,
+  CheckCircle2,
+  WifiOff,
+  Award,
+  Clock,
+  LogOut,
+  CreditCard,
+  Settings,
+} from 'lucide-react';
+
+const SettingsPage = lazy(() =>
+  import('../../profile/SettingsPage').then((module) => ({ default: module.SettingsPage })),
+);
 
 // ─── Provider Profile ─────────────────────────────────────────────────────────
 // Tailwind palette for skill chips. Cycled by index so the chip colours
@@ -64,7 +79,7 @@ export function ProviderProfileScreen() {
   // at apps/web/src/app/components/profile/ProfileTab.tsx:467). When
   // the user finishes editing they hit Back which sets view=null and
   // returns here.
-  const [view, setView] = useState<'editProfile' | null>(null);
+  const [view, setView] = useState<'editProfile' | 'settings' | null>(null);
   // Phase 5 Bug 4 — debounce double-clicks on Sign Out so the user
   // can't fire two logout requests while the auth-provider is still
   // tearing down the session.
@@ -103,6 +118,13 @@ export function ProviderProfileScreen() {
   if (view === 'editProfile') {
     return <EditProfilePage onBack={() => setView(null)} appContext="provider" />;
   }
+  if (view === 'settings') {
+    return (
+      <AsyncBoundary>
+        <SettingsPage onBack={() => setView(null)} />
+      </AsyncBoundary>
+    );
+  }
 
   const profile = profileQuery.data?.profile ?? null;
   // Onboarding: only when the cache has NO profile yet AND the last GET
@@ -127,6 +149,7 @@ export function ProviderProfileScreen() {
     rating: lang === 'ar' ? 'التقييم' : 'Rating',
     reviews: lang === 'ar' ? 'مراجعات' : 'Reviews',
     editProfile: lang === 'ar' ? 'تعديل الملف' : 'Edit Profile',
+    myPlan: lang === 'ar' ? 'خطتي واستخدامي' : 'My plan and usage',
     settings: lang === 'ar' ? 'الإعدادات' : 'Settings',
     support: lang === 'ar' ? 'الدعم الفني' : 'Support',
     signOut: lang === 'ar' ? 'تسجيل الخروج' : 'Sign Out',
@@ -407,15 +430,25 @@ export function ProviderProfileScreen() {
         {/* Menu */}
         <div className="bg-white dark:bg-slate-800 rounded-3xl border border-slate-100 dark:border-slate-700 shadow-sm overflow-hidden mb-4">
           {[
-            // R18 — Edit Profile is the only row with a destination. "My
-            // Analytics", "Notifications" and "My Reviews" looked enabled and
-            // did nothing; they are gone (notifications have the header bell,
-            // and the rating is shown on this screen).
+            // Every row has a real destination. R31 billing remains separate
+            // from the verification and work-access controls below.
             {
               icon: <User size={16} />,
               label: L.editProfile,
               onClick: () => setView('editProfile'),
               testId: 'provider-menu-edit-profile',
+            },
+            {
+              icon: <CreditCard size={16} />,
+              label: L.myPlan,
+              onClick: () => navigate('/provider/my-plan'),
+              testId: 'provider-menu-my-plan',
+            },
+            {
+              icon: <Settings size={16} />,
+              label: L.settings,
+              onClick: () => setView('settings'),
+              testId: 'provider-menu-settings',
             },
           ].map(({ icon, label, onClick, testId }, i) => (
             <button

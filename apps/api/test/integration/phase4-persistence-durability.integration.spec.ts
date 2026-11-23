@@ -18,6 +18,8 @@ import {
 } from '../support/db-isolation';
 import { clearAuthRateBudget } from '../support/rate-limit-reset';
 import { makeTestSecret } from '../support/test-secrets';
+import { currentLegalAcceptance } from '../support/legal-acceptance';
+import { withEmailAuthenticationPolicy } from '../support/auth-channel';
 
 // Derived, never written: a literal here is indistinguishable from a real key
 // to the CI secret scanner. See test/support/test-secrets.ts.
@@ -48,8 +50,9 @@ const SECRET = makeTestSecret('phase4-persistence-durability');
 // be independent — a client comparing bare integers across them would show one
 // provider the other's application.
 //
-// NOTHING IS MOCKED except the mail transport, because an OTP is deliberately
-// readable only by whoever received the mail.
+// The email policy is explicit for this journey, and the mail transport is
+// in-memory because an OTP is deliberately readable only by its recipient.
+// Global policy persistence has its own isolated DB suite.
 //
 // Gated by RUN_DB_INTEGRATION=1.
 
@@ -173,7 +176,13 @@ d('Phase 4 — onboarding persistence is durable across sessions (real Postgres 
     await clearRegistrationBudget(email);
     const registered = await request(http)
       .post('/v1/auth/register')
-      .send({ email, password: PASSWORD, firstName: 'Dur', lastName: 'Able' })
+      .send({
+        email,
+        password: PASSWORD,
+        firstName: 'Dur',
+        lastName: 'Able',
+        legalAcceptance: currentLegalAcceptance(),
+      })
       .expect(202);
     const verified = await request(http)
       .post('/v1/auth/verify-otp')
@@ -314,10 +323,11 @@ d('Phase 4 — onboarding persistence is durable across sessions (real Postgres 
     const { MAIL_PORT } = require('../../src/infrastructure/mail/mail.port');
     mail = new InMemoryMailAdapter();
 
-    const moduleRef = await Test.createTestingModule({ imports: [AppModule] })
-      .overrideProvider(MAIL_PORT)
-      .useValue(mail)
-      .compile();
+    const moduleRef = await withEmailAuthenticationPolicy(
+      Test.createTestingModule({ imports: [AppModule] })
+        .overrideProvider(MAIL_PORT)
+        .useValue(mail),
+    ).compile();
 
     app = moduleRef.createNestApplication();
 
@@ -342,7 +352,14 @@ d('Phase 4 — onboarding persistence is durable across sessions (real Postgres 
     await cleanupCategories();
 
     await prisma.serviceCategory.create({
-      data: { id: CAT_ROOT, slug: CAT_ROOT, labelEn: 'Plumbing', labelAr: 'سباكة', icon: 'wrench' },
+      data: {
+        id: CAT_ROOT,
+        slug: CAT_ROOT,
+        labelEn: 'Plumbing',
+        labelAr: 'سباكة',
+        icon: 'wrench',
+        isLeaf: false,
+      },
     });
     await prisma.serviceCategory.create({
       data: {

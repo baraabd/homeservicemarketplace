@@ -8,6 +8,8 @@ import { useLang } from '../../../i18n/LanguageContext';
 import { adminProvidersQueryKeys } from '../../../hooks/admin/useAdminProviders';
 import { getProviderReview, requestStatus, reviewQueryKey } from '../api';
 import { REVIEW_COPY, statusLabel } from '../copy';
+import { applicationStatusValue } from '../application-presentation';
+import { hasPendingIdentityScan, IDENTITY_SCAN_REFRESH_MS } from '../identity-review-guidance';
 import { ReviewBadge, ReviewBanner, StatusBadge } from './ReviewPrimitives';
 import { ReviewDossier } from './ReviewDossier';
 import { ReviewTaskTabs } from './ReviewTaskTabs';
@@ -53,7 +55,12 @@ function ReviewWorkspace({
   const query = useQuery({
     queryKey: reviewQueryKey(providerProfileId),
     queryFn: ({ signal }) => getProviderReview(providerProfileId, signal),
+    staleTime: 0,
     refetchOnWindowFocus: false,
+    refetchInterval: (query) =>
+      query.state.status !== 'error' && hasPendingIdentityScan(query.state.data?.verification)
+        ? IDENTITY_SCAN_REFRESH_MS
+        : false,
     retry: false,
   });
   const review = query.data;
@@ -180,9 +187,15 @@ function ReviewWorkspace({
                 <StatusBadge value={review.provider.standingState} lang={lang} />
               )}
             </div>
-            <div className="ar-status-cell">
+            <div className="ar-status-cell" data-testid="review-application-status">
               <span className="ar-muted">{t.application}</span>
-              <StatusBadge value={review.provider.providerStatus} lang={lang} />
+              <StatusBadge
+                value={applicationStatusValue(
+                  review.provider.onboardingState,
+                  review.provider.providerStatus,
+                )}
+                lang={lang}
+              />
             </div>
             <div className="ar-status-cell">
               <span className="ar-muted">{t.identity}</span>

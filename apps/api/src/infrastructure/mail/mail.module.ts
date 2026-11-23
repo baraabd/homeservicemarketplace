@@ -1,3 +1,4 @@
+import { WhatsAppAuthAdapter } from '../auth-channel/whatsapp-auth.adapter';
 import { TelemetryService } from '../telemetry/telemetry.service';
 import { Global, Logger, Module } from '@nestjs/common';
 
@@ -25,6 +26,7 @@ import { ProviderStatusEmailHandler } from './provider-status-email.handler';
 @Module({
   controllers: [MailFeedbackController],
   providers: [
+    WhatsAppAuthAdapter,
     InMemoryMailAdapter,
     {
       provide: MAIL_TRANSPORT,
@@ -102,6 +104,7 @@ import { ProviderStatusEmailHandler } from './provider-status-email.handler';
     { provide: MailPort, useExisting: MAIL_PORT },
   ],
   exports: [
+    WhatsAppAuthAdapter,
     MAIL_PORT,
     MailPort,
     MAIL_TRANSPORT,

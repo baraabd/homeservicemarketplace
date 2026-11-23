@@ -13,6 +13,8 @@ export {};
 import { randomUUID } from 'node:crypto';
 import { withAdvisoryLock } from '../support/db-isolation';
 import { makeTestSecret } from '../support/test-secrets';
+import { currentLegalAcceptance, legalAcceptanceServiceFor } from '../support/legal-acceptance';
+import { emailAuthenticationServices } from '../support/auth-channel';
 
 const suite = process.env.RUN_DB_INTEGRATION === '1' ? describe : describe.skip;
 const SMTP_PORT = Number(process.env.R21_MAILPIT_SMTP_PORT ?? 0);
@@ -46,6 +48,10 @@ suite('R21 durable mail (real Postgres)', () => {
   let prisma: any;
   let s: any;
   const createdUserIds = new Set<string>();
+  const pendingDispatches = new Set<Promise<void>>();
+  const settleDeliveries = async () => {
+    await Promise.allSettled([...pendingDispatches]);
+  };
   const addresses = new Set<string>();
   const ctx = {
     device: { ipAddress: '127.0.0.1', userAgent: 'r21-fixture', clientKind: 'WEB' as const },
@@ -183,6 +189,8 @@ suite('R21 durable mail (real Postgres)', () => {
       cfg,
       securityEvents,
       mail,
+      legalAcceptanceServiceFor(cfg),
+      ...emailAuthenticationServices(cfg, mail),
     );
     const dispatcher = (svc = mail) =>
       new MailDispatcher(repo, svc, config({ MAIL_DISPATCH_POLL_INTERVAL_MS: 1000 }), metrics);
@@ -202,7 +210,20 @@ suite('R21 durable mail (real Postgres)', () => {
     };
   });
 
+  beforeEach(() => {
+    const dispatch = s.mail.dispatch.bind(s.mail);
+    jest.spyOn(s.mail, 'dispatch').mockImplementation((ticket: unknown) => {
+      const pending: Promise<void> = dispatch(ticket);
+      pendingDispatches.add(pending);
+      void pending.finally(() => pendingDispatches.delete(pending)).catch(() => undefined);
+      return pending;
+    });
+  });
+
   afterEach(async () => {
+    // Anonymous routes intentionally answer before SMTP; drain this fixture's
+    // background sends before deleting its users or restoring transport spies.
+    await settleDeliveries();
     jest.restoreAllMocks();
     const { recipientHash } = require('../../src/infrastructure/mail/mail-envelope.cipher');
     const hashes = [...addresses].map((a) => recipientHash(a));
@@ -231,11 +252,18 @@ suite('R21 durable mail (real Postgres)', () => {
 
   async function register(address = email()) {
     const challenge = await s.auth.register(
-      { email: address, password, firstName: 'Synthetic', lastName: 'R21' },
+      {
+        email: address,
+        password,
+        firstName: 'Synthetic',
+        lastName: 'R21',
+        legalAcceptance: currentLegalAcceptance(),
+      },
       ctx,
     );
     const user = await prisma.user.findUniqueOrThrow({ where: { email: address } });
     createdUserIds.add(user.id);
+    await settleDeliveries();
     return { address, challenge, user };
   }
 
@@ -285,6 +313,7 @@ suite('R21 durable mail (real Postgres)', () => {
         data: { emailVerifiedAt: new Date(), status: 'ACTIVE' },
       });
       await s.auth.forgotPassword(f.address, ctx);
+      await settleDeliveries();
       const reset = (await mailpitFor(f.address)).find((m) =>
         m.Subject.startsWith('Reset your password'),
       )!;
@@ -301,6 +330,7 @@ suite('R21 durable mail (real Postgres)', () => {
       ).rejects.toBeDefined();
 
       await s.auth.forgotPassword(f.address, ctx);
+      await settleDeliveries();
       const second = (await mailpitFor(f.address)).filter((m) =>
         m.Subject.startsWith('Reset your password'),
       );
@@ -328,6 +358,7 @@ suite('R21 durable mail (real Postgres)', () => {
     });
     createdUserIds.add(user.id);
     await s.auth.resendVerification(address, ctx);
+    await settleDeliveries();
     const [msg] = await mailpitFor(address);
     const token = /https:\/\/app\.example\.test\/verify-email\?token=([A-Za-z0-9_-]+)/.exec(
       msg!.Text,
@@ -363,6 +394,7 @@ suite('R21 durable mail (real Postgres)', () => {
       .mockRejectedValueOnce(new Error('P2028'));
     send.mockClear();
     await s.auth.forgotPassword(f.address, ctx);
+    await settleDeliveries();
     expect(await deliveriesFor(f.address)).toHaveLength(before);
     expect(send).not.toHaveBeenCalled();
   });

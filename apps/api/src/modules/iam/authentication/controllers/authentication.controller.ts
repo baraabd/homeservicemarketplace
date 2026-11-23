@@ -4,6 +4,7 @@ import {
   Controller,
   Get,
   HttpCode,
+  HttpException,
   HttpStatus,
   Post,
   Req,
@@ -20,6 +21,16 @@ import type {
   RoleName,
 } from '@homeservicemarketplace/contracts';
 
+import { contactIdentity } from '../helpers/contact-identity';
+import { isWhatsAppLoginChallenge } from '../helpers/otp-codec';
+import { OTP_TTL_MINUTES } from '../services/otp.service';
+import { AppError } from '../../../../shared/errors/app-error';
+import {
+  PhoneIdentityDto,
+  PhoneEnrollmentDto,
+  EmailEnrollmentDto,
+  ResetPasswordOtpDto,
+} from '../dto/phone-auth.dto';
 import { AppConfigService } from '../../../../config/app-config.service';
 import {
   RegistrationThrottleService,
@@ -39,9 +50,7 @@ import { VerifyOtpDto } from '../dto/verify-otp.dto';
 import { CsrfGuard } from '../guards/csrf.guard';
 import { JwtAuthGuard } from '../guards/jwt-auth.guard';
 import {
-  ACCESS_COOKIE,
-  CSRF_COOKIE,
-  REFRESH_COOKIE,
+  authCookieNames,
   accessCookieOptions,
   clearAuthCookies,
   csrfCookieOptions,
@@ -59,6 +68,17 @@ import { validatedEnv } from '../../../../config/env.validation';
 
 const MOBILE_REFRESH_HEADER = 'x-refresh-token';
 const CLIENT_KIND_HEADER = 'x-client-kind';
+const NEUTRAL_PHONE_VERIFY_ERRORS = new Set([
+  'AUTH_OTP_INVALID',
+  'AUTH_OTP_EXPIRED',
+  'AUTH_OTP_LOCKED',
+]);
+const NEUTRAL_PHONE_RESEND_ERRORS = new Set([
+  ...NEUTRAL_PHONE_VERIFY_ERRORS,
+  'AUTH_OTP_RESEND_EXCEEDED',
+  'RATE_LIMITED',
+  'DEPENDENCY_UNAVAILABLE',
+]);
 
 @Controller({ path: 'auth', version: '1' })
 export class AuthenticationController {
@@ -93,7 +113,7 @@ export class AuthenticationController {
     try {
       await this.registrationThrottle.assertWithinBudget({
         ipAddress: ctx.device.ipAddress,
-        email: body.email,
+        email: contactIdentity(body).destination,
       });
     } catch (err) {
       if (err instanceof RegistrationThrottledError) {
@@ -109,6 +129,8 @@ export class AuthenticationController {
       challengeId: challenge.challengeId,
       expiresInSeconds: challenge.expiresInSeconds,
       codeLength: challenge.codeLength,
+      channel: challenge.channel,
+      maskedDestination: challenge.maskedDestination,
     };
   }
 
@@ -144,6 +166,8 @@ export class AuthenticationController {
       challengeId: challenge.challengeId,
       expiresInSeconds: challenge.expiresInSeconds,
       codeLength: challenge.codeLength,
+      channel: challenge.channel,
+      maskedDestination: challenge.maskedDestination,
     };
   }
 
@@ -168,8 +192,23 @@ export class AuthenticationController {
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
   ): Promise<AuthResponse> {
-    const result = await this.auth.verifyOtp(body.challengeId, body.code, buildContext(req));
-    return this.shapeAuthResponse(req, res, result);
+    const startedAt = Date.now();
+    const anonymousPhoneLogin = isWhatsAppLoginChallenge(body.challengeId);
+    try {
+      const result = await this.auth.verifyOtp(body.challengeId, body.code, buildContext(req));
+      return this.shapeAuthResponse(req, res, result);
+    } catch (error) {
+      // The marker selects only public response shaping. Never strip it or
+      // reinterpret an old challenge: authorization uses the complete ID.
+      if (anonymousPhoneLogin && expectedOtpError(error, NEUTRAL_PHONE_VERIFY_ERRORS))
+        throw new BadRequestException({ code: 'AUTH_OTP_INVALID' });
+      throw error;
+    } finally {
+      if (anonymousPhoneLogin) {
+        const remaining = this.config.get('AUTH_ANTI_ENUM_DELAY_MS') - (Date.now() - startedAt);
+        if (remaining > 0) await new Promise((resolve) => setTimeout(resolve, remaining));
+      }
+    }
   }
 
   // --- Resend OTP (same challengeId, new code) --------------------------
@@ -181,8 +220,17 @@ export class AuthenticationController {
     @Body() body: ResendOtpDto,
     @Req() req: Request,
   ): Promise<{ success: true; expiresInSeconds: number }> {
-    const { expiresInSeconds } = await this.auth.resendOtp(body.challengeId, buildContext(req));
-    return { success: true, expiresInSeconds };
+    try {
+      const { expiresInSeconds } = await this.auth.resendOtp(body.challengeId, buildContext(req));
+      return { success: true, expiresInSeconds };
+    } catch (error) {
+      if (
+        isWhatsAppLoginChallenge(body.challengeId) &&
+        expectedOtpError(error, NEUTRAL_PHONE_RESEND_ERRORS)
+      )
+        return { success: true, expiresInSeconds: OTP_TTL_MINUTES * 60 };
+      throw error;
+    }
   }
 
   // --- Refresh ------------------------------------------------------------
@@ -194,12 +242,13 @@ export class AuthenticationController {
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
   ): Promise<AuthResponse> {
-    const presented = extractRefreshToken(req);
+    const names = authCookieNames(this.config);
+    const presented = extractRefreshToken(req, names.refresh);
     if (!presented) throw new UnauthorizedException({ code: 'AUTH_REFRESH_INVALID' });
 
     // CSRF for web: refresh is a state-changing cookie-mounted endpoint.
-    if (readRefreshCookie(req)) {
-      const csrfCookie = readCookie(req, CSRF_COOKIE);
+    if (readRefreshCookie(req, names.refresh)) {
+      const csrfCookie = readCookie(req, names.csrf);
       const csrfHeader = req.header('x-csrf-token');
       if (!csrfCookie || !csrfHeader || csrfCookie !== csrfHeader) {
         throw new BadRequestException({ code: 'AUTH_CSRF_FAILED' });
@@ -273,6 +322,103 @@ export class AuthenticationController {
     return { success: true };
   }
 
+  @Public()
+  @Throttle({ default: { limit: 5, ttl: 60 * 60 * 1000 } })
+  @Post('forgot-password-otp')
+  @HttpCode(HttpStatus.ACCEPTED)
+  async forgotOtp(
+    @Body() body: PhoneIdentityDto,
+    @Req() req: Request,
+  ): Promise<OtpChallengeResponse> {
+    return {
+      otpRequired: true,
+      ...(await this.auth.forgotPasswordOtp(body.phoneNumber, buildContext(req))),
+    };
+  }
+
+  @Public()
+  @Throttle({ default: { limit: 10, ttl: 60 * 60 * 1000 } })
+  @Post('reset-password-otp')
+  @HttpCode(HttpStatus.OK)
+  async resetOtp(
+    @Body() body: ResetPasswordOtpDto,
+    @Req() req: Request,
+  ): Promise<{ success: true }> {
+    await this.auth.resetPasswordOtp(
+      body.challengeId,
+      body.code,
+      body.newPassword,
+      buildContext(req),
+    );
+    return { success: true };
+  }
+
+  @UseGuards(JwtAuthGuard, CsrfGuard)
+  @Throttle({ default: { limit: 5, ttl: 60 * 60 * 1000 } })
+  @Post('phone/challenge')
+  @HttpCode(HttpStatus.ACCEPTED)
+  async phoneChallenge(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() body: PhoneEnrollmentDto,
+    @Req() req: Request,
+  ): Promise<OtpChallengeResponse> {
+    return {
+      otpRequired: true,
+      ...(await this.auth.requestPhoneEnrollment(
+        user.id,
+        body.phoneNumber,
+        body.password,
+        buildContext(req),
+      )),
+    };
+  }
+
+  @UseGuards(JwtAuthGuard, CsrfGuard)
+  @Throttle({ default: { limit: 10, ttl: 60 * 60 * 1000 } })
+  @Post('phone/verify')
+  @HttpCode(HttpStatus.OK)
+  async phoneVerify(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() body: VerifyOtpDto,
+    @Req() req: Request,
+  ): Promise<{ success: true }> {
+    await this.auth.verifyPhoneEnrollment(user.id, body.challengeId, body.code, buildContext(req));
+    return { success: true };
+  }
+
+  @UseGuards(JwtAuthGuard, CsrfGuard)
+  @Throttle({ default: { limit: 5, ttl: 60 * 60 * 1000 } })
+  @Post('email/challenge')
+  @HttpCode(HttpStatus.ACCEPTED)
+  async emailChallenge(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() body: EmailEnrollmentDto,
+    @Req() req: Request,
+  ): Promise<OtpChallengeResponse> {
+    return {
+      otpRequired: true,
+      ...(await this.auth.requestEmailEnrollment(
+        user.id,
+        body.email,
+        body.password,
+        buildContext(req),
+      )),
+    };
+  }
+
+  @UseGuards(JwtAuthGuard, CsrfGuard)
+  @Throttle({ default: { limit: 10, ttl: 60 * 60 * 1000 } })
+  @Post('email/verify')
+  @HttpCode(HttpStatus.OK)
+  async emailVerify(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() body: VerifyOtpDto,
+    @Req() req: Request,
+  ): Promise<{ success: true }> {
+    await this.auth.verifyEmailEnrollment(user.id, body.challengeId, body.code, buildContext(req));
+    return { success: true };
+  }
+
   // --- Me -----------------------------------------------------------------
   @UseGuards(JwtAuthGuard)
   @Get('me')
@@ -283,6 +429,8 @@ export class AuthenticationController {
     return {
       id: row.id,
       email: row.email,
+      phoneNumber: row.phoneNumber,
+      phoneVerifiedAt: row.phoneVerifiedAt?.toISOString() ?? null,
       firstName: row.firstName,
       lastName: row.lastName,
       status: row.status,
@@ -305,18 +453,19 @@ export class AuthenticationController {
     };
 
     if (kind === 'WEB') {
+      const names = authCookieNames(this.config);
       res.cookie(
-        ACCESS_COOKIE,
+        names.access,
         result.issued.access.token,
         accessCookieOptions(this.config, result.issued.access.ttlSeconds),
       );
       res.cookie(
-        REFRESH_COOKIE,
+        names.refresh,
         result.issued.refresh.raw,
         refreshCookieOptions(this.config, result.issued.refresh.expiresAt),
       );
       res.cookie(
-        CSRF_COOKIE,
+        names.csrf,
         randomBytes(24).toString('base64url'),
         csrfCookieOptions(this.config, result.issued.access.ttlSeconds),
       );
@@ -331,6 +480,19 @@ export class AuthenticationController {
     };
     return body;
   }
+}
+
+function expectedOtpError(error: unknown, allowedCodes: ReadonlySet<string>): boolean {
+  if (error instanceof AppError) return allowedCodes.has(error.code);
+  if (!(error instanceof HttpException)) return false;
+  const response = error.getResponse();
+  return (
+    typeof response === 'object' &&
+    response !== null &&
+    'code' in response &&
+    typeof response.code === 'string' &&
+    allowedCodes.has(response.code)
+  );
 }
 
 function buildContext(req: Request): ClientContext {
@@ -349,8 +511,8 @@ function detectClientKind(req: Request): ClientKind {
   return raw === 'mobile' ? 'MOBILE' : 'WEB';
 }
 
-function extractRefreshToken(req: Request): string | null {
-  const cookie = readRefreshCookie(req);
+function extractRefreshToken(req: Request, cookieName: string): string | null {
+  const cookie = readRefreshCookie(req, cookieName);
   const header = req.header(MOBILE_REFRESH_HEADER);
   if (cookie && header) {
     throw new BadRequestException({ code: 'AUTH_AMBIGUOUS_TRANSPORT' });
@@ -358,8 +520,8 @@ function extractRefreshToken(req: Request): string | null {
   return cookie ?? header ?? null;
 }
 
-function readRefreshCookie(req: Request): string | null {
-  return readCookie(req, REFRESH_COOKIE);
+function readRefreshCookie(req: Request, cookieName: string): string | null {
+  return readCookie(req, cookieName);
 }
 
 function readCookie(req: Request, name: string): string | null {

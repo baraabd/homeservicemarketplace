@@ -1,4 +1,5 @@
 import type { Page, Route } from '@playwright/test';
+import type { CurrentVerificationCaseResponse } from '@homeservicemarketplace/contracts';
 
 import {
   APPLYING_CAPABILITIES,
@@ -746,12 +747,37 @@ export async function installPrecondition(
           : state.precondition === 'draft-submitted'
             ? 'IN_REVIEW'
             : null;
-      return json(route, {
+      const response: CurrentVerificationCaseResponse = {
         case:
           caseState === null
             ? null
-            : { id: 'vc-phase5', state: caseState, documents: [], requirements: [] },
-      });
+            : {
+                id: 'vc-phase5',
+                state: caseState,
+                policyVersion: 'phase5-policy-v1',
+                createdAt: SUBMITTED_AT,
+                submittedAt: SUBMITTED_AT,
+                updatedAt: SUBMITTED_AT,
+                verificationRequired: true,
+                requirements: [{ kind: 'INDIVIDUAL_IDENTITY', serviceCategoryId: null }],
+                documents: [
+                  {
+                    id: 'vd-phase5',
+                    kind: 'INDIVIDUAL_IDENTITY',
+                    serviceCategoryId: null,
+                    scanState: 'CLEAN',
+                    uploadedAt: SUBMITTED_AT,
+                    superseded: false,
+                  },
+                ],
+                latestDecision:
+                  caseState === 'VERIFIED'
+                    ? { outcome: 'APPROVED', reasonCode: 'APPROVED', decidedAt: SUBMITTED_AT }
+                    : null,
+                availableActions: [],
+              },
+      };
+      return json(route, response);
     }
 
     // The operator's market registry (C2), as the SETTLED case.

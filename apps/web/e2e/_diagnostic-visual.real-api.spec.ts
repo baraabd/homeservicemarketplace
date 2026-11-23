@@ -5,6 +5,7 @@ import { dirname, join } from 'node:path';
 
 import { seedLanguage } from './fixtures';
 import { api, newJar, otpFor, REAL_API, type Jar } from './real-api';
+import { LEGAL_ACCEPTANCE } from './legal-acceptance';
 import {
   assertFontsReady,
   freezeMotion,
@@ -252,7 +253,13 @@ test.describe('DIAGNOSTIC — visual residue', () => {
     const email = `vdiag-${Date.now()}-${Math.floor(Math.random() * 1e6)}@itest.local`;
     const reg = await api<{ challengeId: string }>(jar, '/v1/auth/register', {
       method: 'POST',
-      body: { email, password: PASSWORD, firstName: 'Sam', lastName: 'Seeker' },
+      body: {
+        email,
+        password: PASSWORD,
+        firstName: 'Sam',
+        lastName: 'Seeker',
+        legalAcceptance: LEGAL_ACCEPTANCE,
+      },
     });
     expect(reg.status).toBeLessThan(400);
     expect(

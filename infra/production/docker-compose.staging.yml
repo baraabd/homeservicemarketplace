@@ -20,7 +20,9 @@ services:
     <<: *api
     network_mode: none
     restart: 'no'
-    command: ['node', '--env-file=/run/secrets/api_env', 'deploy/check-runtime.cjs', '/app']
+    # Release policy: also requires the effective R21 mail dispatcher (K03).
+    command:
+      ['node', '--env-file=/run/secrets/api_env', 'deploy/check-runtime.cjs', '/app', '--release']
     healthcheck:
       disable: true
 

@@ -13,6 +13,29 @@ function makeHarness() {
 }
 
 describe('AuditService', () => {
+  it('retains R30 evidence identifiers while excluding receipt content, settlement references and notes', async () => {
+    const h = makeHarness();
+    const identifiers = {
+      paymentIntentId: 'intent-r30',
+      receiptVersionId: 'receipt-r30',
+      receiptInspectionId: 'inspection-r30',
+      manualDecisionId: 'decision-r30',
+      manualSettlementId: 'settlement-r30',
+      manualRefundEventId: 'refund-event-r30',
+    };
+    await h.svc.record({
+      type: 'MONEY_RECEIPT_VIEWED',
+      metadata: {
+        ...identifiers,
+        storageKey: 'financial-receipts/private-object',
+        sha256: 'private-evidence-digest',
+        settlementReference: 'private-deposit-reference',
+        internalNote: 'private-reviewer-note',
+        receiptContents: 'private-original-bytes',
+      },
+    });
+    expect(h.repo.write.mock.calls[0]![0].metadata).toEqual(identifiers);
+  });
   it('writes an audit row with userId, type, ip, userAgent, and requestId', async () => {
     const h = makeHarness();
     await h.svc.record({

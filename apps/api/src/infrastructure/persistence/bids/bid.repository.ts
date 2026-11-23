@@ -30,7 +30,10 @@ export interface CreateBidInput {
   requestId: string;
   providerId: string;
   amount: number;
-  currency?: string;
+  /** K02 — required; no currency is ever defaulted. */
+  currency: string;
+  /** K02 — minor-unit scale, or null for an explicitly legacy fixture. */
+  amountScale: number | null;
   pricingType: 'HOURLY' | 'FIXED';
   note?: string | null;
   responseTimeMinutes?: number | null;
@@ -261,7 +264,10 @@ export class BidRepository {
       requestId: string;
       providerId: string;
       amount: number;
-      currency?: string;
+      /** K02 — required; there is no USD (or any) fallback. */
+      currency: string;
+      /** K02 — the approved minor-unit scale of `currency`. */
+      amountScale: number;
       pricingType: 'HOURLY' | 'FIXED';
       note?: string | null;
       responseTimeMinutes?: number | null;
@@ -273,7 +279,8 @@ export class BidRepository {
         requestId: input.requestId,
         providerId: input.providerId,
         amount: input.amount,
-        currency: input.currency ?? 'USD',
+        currency: input.currency,
+        amountScale: input.amountScale,
         pricingType: input.pricingType,
         note: input.note ?? null,
         responseTimeMinutes: input.responseTimeMinutes ?? null,
@@ -334,7 +341,8 @@ export class BidRepository {
     });
     const data = {
       amount: input.amount,
-      currency: input.currency ?? 'USD',
+      currency: input.currency,
+      amountScale: input.amountScale,
       pricingType: input.pricingType,
       note: input.note ?? null,
       responseTimeMinutes: input.responseTimeMinutes ?? null,

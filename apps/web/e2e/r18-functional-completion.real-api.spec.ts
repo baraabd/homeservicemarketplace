@@ -271,13 +271,19 @@ test.describe.serial('R18 cross-role lifecycle — real browsers, API and Postgr
       '/v1/provider/bids',
       {
         method: 'POST',
-        body: { requestId, amount: 150, pricingType: 'FIXED', note: 'R18 first offer' },
+        body: {
+          requestId,
+          amountDecimal: '150',
+          currency: 'SAR',
+          pricingType: 'FIXED',
+          note: 'R18 first offer',
+        },
       },
     );
     expect(first.status).toBe(201);
     const duplicate = await api(provider.jar, '/v1/provider/bids', {
       method: 'POST',
-      body: { requestId, amount: 151, pricingType: 'FIXED' },
+      body: { requestId, amountDecimal: '151', currency: 'SAR', pricingType: 'FIXED' },
     });
     expect(duplicate.status).toBe(409);
     const withdrawn = await api<{ bid: { status: string } }>(
@@ -309,7 +315,7 @@ test.describe.serial('R18 cross-role lifecycle — real browsers, API and Postgr
     await providerPage.getByTestId('pull-up-control').click({ force: true });
     await providerPage.getByTestId(`job-card-${requestId}`).click();
     await providerPage.getByTestId('job-detail-place-bid').click();
-    await providerPage.locator('input[type="number"]').last().fill('140');
+    await providerPage.locator('#bid-price-input').fill('140');
     await providerPage.getByRole('button', { name: '30 min', exact: true }).click();
     await providerPage.locator('textarea').last().fill('R18 cross-role offer');
     const submitted = providerPage.waitForResponse(isCall('POST', `${REAL_API}/v1/provider/bids`));

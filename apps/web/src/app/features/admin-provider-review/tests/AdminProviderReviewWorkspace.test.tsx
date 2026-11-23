@@ -44,6 +44,61 @@ afterEach(() => {
 
 describe('Admin application dossier', () => {
   it.each(['en', 'ar'] as const)(
+    'shows a returned application accurately after identity approval in %s',
+    async (lang) => {
+      localStorage.setItem('hsm.lang', lang);
+      review.provider.providerStatus = 'REJECTED';
+      review.provider.onboardingState = 'RETURNED';
+      review.provider.verificationState = 'VERIFIED';
+      review.submission!.decision = 'RETURNED';
+      review.availableActions = [];
+      review.blockers = [
+        { code: 'SUBMISSION_ALREADY_DECIDED', taskId: 'REVIEW_SUBMISSION' },
+        { code: 'SUBMITTED_CONTENT_CHANGED', taskId: 'REVIEW_SUBMISSION' },
+      ];
+      setup();
+      await screen.findByRole('heading', { name: 'Current provider' });
+      const application = within(screen.getByText(REVIEW_COPY[lang].application).parentElement!);
+      expect(application.getByText(statusLabel('RETURNED', lang))).toHaveClass('ar-badge-warning');
+      expect(application.queryByText(statusLabel('REJECTED', lang))).not.toBeInTheDocument();
+      expect(screen.queryByTestId('review-approve')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('review-request-changes')).not.toBeInTheDocument();
+    },
+  );
+
+  it('keeps rejection of identity evidence distinct from a returned joining application', async () => {
+    review.provider.providerStatus = 'REJECTED';
+    review.provider.onboardingState = 'RETURNED';
+    review.provider.verificationState = 'REJECTED';
+    setup();
+    await screen.findByRole('heading', { name: 'Current provider' });
+    const identity = within(screen.getByText(REVIEW_COPY.en.identity).parentElement!);
+    expect(identity.getByText('Rejected')).toHaveClass('ar-badge-danger');
+    const application = within(screen.getByText(REVIEW_COPY.en.application).parentElement!);
+    expect(application.getByText('Returned for changes')).toHaveClass('ar-badge-warning');
+  });
+
+  it.each([
+    ['DRAFT', 'REJECTED', 'Draft', 'neutral'],
+    ['NOT_STARTED', 'DRAFT', 'Not started', 'neutral'],
+    ['ACCEPTED', 'ACTIVE', 'Accepted', 'success'],
+    ['SUBMITTED', 'PENDING_REVIEW', 'Awaiting review', 'warning'],
+    [null, 'REJECTED', 'Rejected', 'danger'],
+    ['FUTURE_STATE', 'ACTIVE', REVIEW_COPY.en.notProvided, 'neutral'],
+  ] as const)(
+    'keeps application axis %s distinct from legacy profile status %s',
+    async (onboardingState, providerStatus, label, tone) => {
+      review.provider.onboardingState = onboardingState;
+      review.provider.providerStatus = providerStatus;
+      setup();
+      await screen.findByRole('heading', { name: 'Current provider' });
+      const application = within(screen.getByTestId('review-application-status'));
+      expect(application.getByText(label)).toHaveClass(`ar-badge-${tone}`);
+      expect(application.queryByText('FUTURE_STATE')).not.toBeInTheDocument();
+    },
+  );
+
+  it.each(['en', 'ar'] as const)(
     'explains a submitted application with received evidence and unset legacy status axes in %s',
     async (lang) => {
       localStorage.setItem('hsm.lang', lang);
@@ -322,5 +377,53 @@ describe('review decisions', () => {
     await waitFor(() => expect(screen.getByTestId('review-confirm')).not.toBeDisabled());
     fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Cancel' }));
     await waitFor(() => expect(opener).toHaveFocus());
+  });
+});
+
+describe('account and profile contact evidence', () => {
+  it.each(['en', 'ar'] as const)(
+    'shows verified account WhatsApp separately from unverified profile phone and absent email in %s',
+    async (lang) => {
+      localStorage.setItem('hsm.lang', lang);
+      const profile = review.submission!.snapshot!.profile;
+      profile.email = null;
+      profile.emailVerified = false;
+      profile.accountPhoneNumber = '+966501234567';
+      profile.accountPhoneVerified = true;
+      profile.contactVerified = true;
+      profile.phoneNumber = '+966509876543';
+      profile.phoneVerifiedAt = null;
+      setup();
+      await screen.findByRole('heading', { name: 'Current provider' });
+      const t = REVIEW_COPY[lang];
+      const accountPhone = within(screen.getByText(t.accountPhone).parentElement!);
+      expect(accountPhone.getByText('+966501234567')).toBeInTheDocument();
+      expect(accountPhone.getByText(t.proven)).toHaveClass('ar-badge-success');
+      const profilePhone = within(screen.getByText(t.phone).parentElement!);
+      expect(profilePhone.getByText('+966509876543')).toBeInTheDocument();
+      expect(profilePhone.getByText(t.unproven)).toBeInTheDocument();
+      const email = within(screen.getByText(t.email).parentElement!);
+      expect(email.getByText(t.notProvided)).toBeInTheDocument();
+      expect(email.queryByText(t.proven)).not.toBeInTheDocument();
+      expect(
+        within(screen.getByText(t.accountContact).parentElement!).getByText(t.proven),
+      ).toBeInTheDocument();
+    },
+  );
+
+  it('does not infer account proof from a historically verified provider-profile phone', async () => {
+    review.submission!.snapshot!.profile.phoneVerifiedAt = STAMP;
+    setup();
+    await screen.findByRole('heading', { name: 'Current provider' });
+    const t = REVIEW_COPY.en;
+    const accountContact = within(screen.getByText(t.accountContact).parentElement!);
+    expect(accountContact.getByText(t.notCaptured)).toBeInTheDocument();
+    expect(accountContact.queryByText(t.proven)).not.toBeInTheDocument();
+    expect(
+      within(screen.getByText(t.accountPhone).parentElement!).getByText(t.notCaptured),
+    ).toBeInTheDocument();
+    expect(
+      within(screen.getByText(t.phone).parentElement!).getByText(t.proven),
+    ).toBeInTheDocument();
   });
 });

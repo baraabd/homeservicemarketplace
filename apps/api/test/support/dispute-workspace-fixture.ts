@@ -291,6 +291,8 @@ export async function workspaceFixture(options: { authentication?: boolean } = {
           requestId,
           providerId: profileId,
           amount: 100,
+          currency: 'SAR',
+          amountScale: 2,
           pricingType: 'FIXED',
           status: 'ACCEPTED',
         },
@@ -303,6 +305,8 @@ export async function workspaceFixture(options: { authentication?: boolean } = {
           seekerUserId: users.seeker,
           providerId: profileId,
           priceAmount: 100,
+          currency: 'SAR',
+          amountScale: 2,
           status: 'SCHEDULED',
         },
       });

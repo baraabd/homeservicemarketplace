@@ -15,6 +15,27 @@ const {
   deploy,
   main,
 } = require('./staging.cjs');
+const { buildWebCsp, injectWebCsp } = require('../../scripts/production/security-app/web-csp.cjs');
+const {
+  DOCUMENT_HEADER_CSP,
+  configFingerprint,
+  publicWebConfig,
+  webBuildInfo,
+} = require('../../scripts/production/security-app/web-build-identity.cjs');
+
+function webEnv(manifest, stripeSandbox = manifest.stripeSandbox) {
+  return {
+    VITE_API_URL: manifest.apiOrigin,
+    VITE_PROVIDER_ONBOARDING_V2: String(manifest.onboardingV2),
+    VITE_STRIPE_SANDBOX_ENABLED: String(stripeSandbox),
+  };
+}
+function servedDocument(env) {
+  return injectWebCsp(
+    '<!doctype html><html><head><meta charset="UTF-8" /><title>HSM</title></head></html>',
+    buildWebCsp(env),
+  );
+}
 
 function fixture(t) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'hsm-release-test-'));
@@ -23,7 +44,7 @@ function fixture(t) {
   const db = (user) =>
     `postgresql://${user}:fixture@db.example.test/app?sslmode=require&sslaccept=strict`;
   const manifest = {
-    schemaVersion: 1,
+    schemaVersion: 2,
     sourceSha,
     dockerContext: 'default',
     projectName: 'hsm-staging-fixture',
@@ -39,7 +60,10 @@ function fixture(t) {
     webOrigin: 'https://web.example.test',
     apiOrigin: 'https://api.example.test',
     onboardingV2: false,
+    stripeSandbox: true,
+    webConfigFingerprint: null,
   };
+  manifest.webConfigFingerprint = configFingerprint(publicWebConfig(webEnv(manifest)));
   const api = `NODE_ENV=production\nAPP_ENV=staging\nFRONTEND_URL=${manifest.webOrigin}\nCORS_ORIGINS=${manifest.webOrigin}\nDATABASE_URL=${db('app_user')}\n`;
   const migration = `DATABASE_URL=${db('migration_user')}\n`;
   fs.writeFileSync(manifest.secretFiles.api, api, { mode: 0o600 });
@@ -47,6 +71,15 @@ function fixture(t) {
   const manifestPath = path.join(dir, 'release.json');
   fs.writeFileSync(manifestPath, JSON.stringify(manifest));
   return { dir, manifest, manifestPath, api, migration, db };
+}
+function webLabels(manifest) {
+  return {
+    'org.opencontainers.image.revision': manifest.sourceSha,
+    'io.hsm.web.api-url': manifest.apiOrigin,
+    'io.hsm.web.onboarding-v2': String(manifest.onboardingV2),
+    'io.hsm.web.stripe-sandbox': String(manifest.stripeSandbox),
+    'io.hsm.web.config-fingerprint': manifest.webConfigFingerprint,
+  };
 }
 function runner(manifest, { fail, labels, after, endpoint = 'unix:///var/run/docker.sock' } = {}) {
   const calls = [];
@@ -64,13 +97,7 @@ function runner(manifest, { fail, labels, after, endpoint = 'unix:///var/run/doc
       if (fail?.(args)) throw new Error('fixture-secret-must-never-escape');
       after?.(args);
       if (args[2] === 'context') return JSON.stringify(endpoint);
-      if (args[2] === 'image')
-        return JSON.stringify(
-          labels ?? {
-            'org.opencontainers.image.revision': manifest.sourceSha,
-            'io.hsm.web.api-url': manifest.apiOrigin,
-          },
-        );
+      if (args[2] === 'image') return JSON.stringify(labels ?? webLabels(manifest));
       return '';
     },
   };
@@ -82,9 +109,33 @@ test('valid release uses explicit immutable images, origins and isolated resourc
 });
 const invalidManifests = [
   [
-    'version',
+    'legacy version 1 without web configuration',
     (m) => {
-      m.schemaVersion = 2;
+      m.schemaVersion = 1;
+    },
+  ],
+  [
+    'future version',
+    (m) => {
+      m.schemaVersion = 3;
+    },
+  ],
+  [
+    'implicit Stripe sandbox state',
+    (m) => {
+      m.stripeSandbox = 'true';
+    },
+  ],
+  [
+    'missing web configuration fingerprint',
+    (m) => {
+      delete m.webConfigFingerprint;
+    },
+  ],
+  [
+    'short web configuration fingerprint',
+    (m) => {
+      m.webConfigFingerprint = 'abc';
     },
   ],
   [
@@ -504,7 +555,8 @@ test('post-rollout HTTPS failure is explicit and never triggers destructive roll
     false,
   );
 });
-function probe(manifest, change = () => {}) {
+function probe(manifest, change = () => {}, { compiled = webEnv(manifest), document } = {}) {
+  const html = document ?? servedDocument(compiled);
   return async (url, options) => {
     assert.equal(options.redirect, 'error');
     const route = new URL(url).pathname;
@@ -514,15 +566,22 @@ function probe(manifest, change = () => {}) {
         ready: true,
         dependencies: ['postgres', 'redis'].map((name) => ({ name, status: 'up' })),
       },
-      '/build-info.json': {
+      '/build-info.json': webBuildInfo({
         sourceSha: manifest.sourceSha,
-        apiUrl: manifest.apiOrigin,
-        onboardingV2: manifest.onboardingV2,
-      },
+        env: compiled,
+        html: servedDocument(compiled),
+      }),
+      '/': { html, headerCsp: DOCUMENT_HEADER_CSP },
       '/v1/auth/me': { error: 'Unauthorized' },
     }[route];
     assert.ok(reply);
     change(route, reply);
+    if (route === '/') {
+      const headers = new Headers();
+      if (reply.headerCsp !== undefined) headers.append('content-security-policy', reply.headerCsp);
+      if (reply.edgeCsp !== undefined) headers.append('content-security-policy', reply.edgeCsp);
+      return new Response(reply.html, { status: 200, headers });
+    }
     return new Response(JSON.stringify(reply), {
       status: route === '/v1/auth/me' ? 401 : 200,
       headers: {
@@ -572,6 +631,61 @@ for (const [name, change] of [
     },
   ],
   [
+    'Stripe sandbox state differing from the release',
+    (route, value) => {
+      if (route === '/build-info.json') value.stripeSandbox = false;
+    },
+  ],
+  [
+    'self-consistent summary with tampered public configuration',
+    (route, value) => {
+      if (route === '/build-info.json') value.publicConfig.cspMediaOrigins = ['https://x.test'];
+    },
+  ],
+  [
+    'build identity with no configuration fingerprint (pre-K03 image)',
+    (route, value) => {
+      if (route === '/build-info.json') {
+        delete value.publicConfig;
+        delete value.configFingerprint;
+      }
+    },
+  ],
+  [
+    'an edge-added stricter document CSP header (intersects and blocks Stripe.js)',
+    (route, value) => {
+      if (route === '/') value.edgeCsp = "default-src 'self'; script-src 'self'";
+    },
+  ],
+  [
+    'an edge that replaced the image document header CSP',
+    (route, value) => {
+      if (route === '/') value.headerCsp = "script-src 'self'";
+    },
+  ],
+  [
+    'an edge that stripped the frame-ancestors document header',
+    (route, value) => {
+      if (route === '/') delete value.headerCsp;
+    },
+  ],
+  [
+    'served document without a CSP',
+    (route, value) => {
+      if (route === '/') value.html = value.html.replace(/<meta http-equiv[^>]+>/u, '');
+    },
+  ],
+  [
+    'served document with a duplicated CSP',
+    (route, value) => {
+      if (route === '/')
+        value.html = value.html.replace(
+          '</head>',
+          `${value.html.match(/<meta http-equiv[^>]+>/u)[0]}</head>`,
+        );
+    },
+  ],
+  [
     'missing dependency',
     (route, value) => {
       if (route === '/health/ready') value.dependencies = [];
@@ -594,6 +708,47 @@ for (const [name, change] of [
       ),
     );
   });
+test('K03: the audited image (sandbox declared, Stripe CSP never compiled) is rejected', async (t) => {
+  const { manifest } = fixture(t);
+  // build-info claims the release state, but the served bundle was compiled
+  // without the flag: exactly what the pre-K03 Dockerfile produced.
+  await assert.rejects(
+    verifyHttps(
+      manifest,
+      operatorOrigins(),
+      probe(manifest, () => {}, {
+        document: servedDocument(webEnv(manifest, false)),
+      }),
+    ),
+    /served document CSP differs/u,
+  );
+});
+for (const stripeSandbox of [false, true])
+  test(`K03: HTTPS accepts each explicitly declared Stripe state (${stripeSandbox})`, async (t) => {
+    const { manifest } = fixture(t);
+    manifest.stripeSandbox = stripeSandbox;
+    manifest.webConfigFingerprint = configFingerprint(publicWebConfig(webEnv(manifest)));
+    await verifyHttps(manifest, operatorOrigins(), probe(manifest));
+    // The other state's genuine image must not satisfy this release.
+    await assert.rejects(
+      verifyHttps(
+        manifest,
+        operatorOrigins(),
+        probe(manifest, () => {}, {
+          compiled: webEnv(manifest, !stripeSandbox),
+        }),
+      ),
+      /build identity or build-time flags differ/u,
+    );
+  });
+test('K03: a release fingerprint differing from the deployed configuration is rejected', async (t) => {
+  const { manifest } = fixture(t);
+  manifest.webConfigFingerprint = 'f'.repeat(64);
+  await assert.rejects(
+    verifyHttps(manifest, operatorOrigins(), probe(manifest)),
+    /build identity or build-time flags differ/u,
+  );
+});
 test('CORS failure is not hidden by a legitimate 401 status', async (t) => {
   const { manifest } = fixture(t);
   const normal = probe(manifest);
@@ -810,12 +965,13 @@ test('only independently authorized origins and fixed paths/headers are sent ove
       'https://api.example.test/health/live',
       'https://api.example.test/health/ready',
       'https://web.example.test/build-info.json',
+      'https://web.example.test/',
       'https://api.example.test/v1/auth/me',
     ],
   );
   assert.deepEqual(
     requests.map(([, options]) => options.headers),
-    [{}, {}, {}, { Origin: 'https://web.example.test', 'X-Client-Kind': 'web' }],
+    [{}, {}, {}, {}, { Origin: 'https://web.example.test', 'X-Client-Kind': 'web' }],
   );
   const serialized = JSON.stringify(requests);
   for (const privateValue of [

@@ -1,0 +1,207 @@
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { createMemoryRouter, RouterProvider } from 'react-router';
+import { AUTH_EXPERIENCES } from '../lib/auth-experience';
+import { Root } from './Root';
+import { LoginScreen, type LoginOtpChallenge } from './components/auth/AuthScreens';
+import type { OtpChannel } from '../lib/auth-channel';
+
+// Keep Root, LanguageProvider, AnimatePresence and the real credential/OTP
+// components together. Screen-only tests cannot see a shell remount on language
+// changes. Authentication callbacks are doubles; these are UI state regressions,
+// not evidence that a real backend accepted credentials or issued a session.
+vi.mock('../lib/auth-provider', () => ({
+  useAuth: () => ({ user: null, logoutState: 'idle', logout: vi.fn() }),
+}));
+vi.mock('./components/ui/sonner', () => ({ Toaster: () => null }));
+
+let router: ReturnType<typeof createMemoryRouter> | undefined;
+
+beforeEach(() => {
+  localStorage.setItem('hsm.lang', 'en');
+  vi.useFakeTimers();
+});
+
+afterEach(() => {
+  cleanup();
+  router?.dispose();
+  router = undefined;
+  vi.useRealTimers();
+  vi.restoreAllMocks();
+});
+
+function renderLogin(experience: 'seeker' | 'provider' | 'admin', channel: OtpChannel) {
+  const challenge: LoginOtpChallenge = {
+    challengeId: crypto.randomUUID(),
+    codeLength: 6,
+    expiresInSeconds: 300,
+    channel,
+  };
+  const onLogin = vi
+    .fn<(identity: string, password: string | undefined) => Promise<LoginOtpChallenge>>()
+    .mockResolvedValue(challenge);
+  const onOtpVerify = vi
+    .fn<(challengeId: string, code: string) => Promise<void>>()
+    .mockResolvedValue(undefined);
+  const onOtpResend = vi
+    .fn<(challengeId: string) => Promise<{ success: true; expiresInSeconds: number }>>()
+    .mockResolvedValue({ success: true, expiresInSeconds: 300 });
+  router = createMemoryRouter(
+    [
+      {
+        Component: Root,
+        children: [
+          {
+            path: '/login',
+            element: (
+              <LoginScreen
+                configuration={{ status: 'ready' }}
+                // Exercise the shared WhatsApp default; email is an explicit policy.
+                channel={channel === 'email' ? 'email' : undefined}
+                whatsappAvailable
+                experience={AUTH_EXPERIENCES[experience]}
+                onLogin={onLogin}
+                onOtpVerify={onOtpVerify}
+                onOtpResend={onOtpResend}
+                onSignUp={vi.fn()}
+                onForgotPassword={vi.fn()}
+              />
+            ),
+          },
+        ],
+      },
+    ],
+    { initialEntries: ['/login'] },
+  );
+  render(<RouterProvider router={router} />);
+  return { challenge, onLogin, onOtpVerify, onOtpResend };
+}
+
+function enterCredentials(identity: string, password: string, channel: OtpChannel) {
+  fireEvent.change(
+    screen.getByLabelText(channel === 'whatsapp' ? 'WhatsApp phone number' : 'Email Address', {
+      exact: true,
+    }),
+    {
+      target: { value: identity },
+    },
+  );
+  if (channel === 'email') {
+    fireEvent.change(screen.getByLabelText('Password', { exact: true }), {
+      target: { value: password },
+    });
+  }
+}
+
+async function toggleLanguage() {
+  fireEvent.click(screen.getByTestId('lang-toggle'));
+  // Advance the animation clock beyond the existing 200 ms exit transition.
+  // Reading Arabic labels immediately can still observe the outgoing form
+  // before AnimatePresence removes it; that was the missed regression.
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(300);
+  });
+}
+
+describe.each(['seeker', 'provider', 'admin'] as const)(
+  'Root preserves the %s login flow when language changes',
+  (experience) => {
+    it.each(['whatsapp', 'email'] as const)(
+      'keeps %s credentials and submits them once from the Arabic form',
+      async (channel) => {
+        const identity = channel === 'whatsapp' ? '+966501234567' : 'root-language@example.test';
+        const password = crypto.randomUUID();
+        const { onLogin, onOtpVerify } = renderLogin(experience, channel);
+        enterCredentials(identity, password, channel);
+
+        await toggleLanguage();
+
+        expect(document.documentElement).toHaveAttribute('lang', 'ar');
+        expect(document.documentElement).toHaveAttribute('dir', 'rtl');
+        expect(
+          screen.getByLabelText(
+            channel === 'whatsapp' ? 'رقم الهاتف المسجل في واتساب' : 'البريد الإلكتروني',
+            { exact: true },
+          ),
+        ).toHaveValue(identity);
+        if (channel === 'email')
+          expect(screen.getByLabelText('كلمة المرور', { exact: true })).toHaveValue(password);
+        else expect(screen.queryByLabelText('كلمة المرور', { exact: true })).toBeNull();
+        expect(onLogin).not.toHaveBeenCalled();
+
+        // The language animation is settled; lazy loading and findBy need the real clock.
+        vi.useRealTimers();
+        await act(async () => {
+          fireEvent.click(
+            screen.getByRole('button', {
+              name: channel === 'whatsapp' ? 'إرسال رمز التحقق' : 'دخول',
+              exact: true,
+            }),
+          );
+        });
+        expect(onLogin).toHaveBeenCalledExactlyOnceWith(
+          identity,
+          channel === 'email' ? password : undefined,
+          channel,
+        );
+        expect(await screen.findByTestId('otp-input')).toBeInTheDocument();
+        expect(onOtpVerify).not.toHaveBeenCalled();
+      },
+    );
+
+    it.each(['whatsapp', 'email'] as const)(
+      'keeps the %s OTP challenge and partial code through Arabic and English changes',
+      async (channel) => {
+        const { challenge, onLogin, onOtpVerify, onOtpResend } = renderLogin(experience, channel);
+        enterCredentials(
+          channel === 'whatsapp' ? '+966501234567' : 'root-otp@example.test',
+          crypto.randomUUID(),
+          channel,
+        );
+        await act(async () => {
+          fireEvent.click(
+            screen.getByRole('button', {
+              name: channel === 'whatsapp' ? 'Send verification code' : 'Log In',
+              exact: true,
+            }),
+          );
+        });
+        fireEvent.change(screen.getByTestId('otp-input'), { target: { value: '123' } });
+
+        await toggleLanguage();
+
+        expect(
+          screen.getByRole('heading', {
+            name: channel === 'whatsapp' ? 'تحقق من واتساب' : 'تحقق من بريدك الإلكتروني',
+          }),
+        ).toBeVisible();
+        expect(screen.getByTestId('otp-input')).toHaveValue('123');
+        expect(screen.getByTestId('otp-countdown')).toHaveTextContent('05:00');
+        expect(screen.queryByLabelText('كلمة المرور', { exact: true })).toBeNull();
+        expect(screen.getByRole('button', { name: 'تأكيد', exact: true })).toBeDisabled();
+
+        await toggleLanguage();
+
+        expect(document.documentElement).toHaveAttribute('lang', 'en');
+        expect(document.documentElement).toHaveAttribute('dir', 'ltr');
+        expect(
+          screen.getByRole('heading', {
+            name: channel === 'whatsapp' ? 'Check WhatsApp' : 'Verify your email',
+          }),
+        ).toBeVisible();
+        expect(screen.getByTestId('otp-input')).toHaveValue('123');
+        expect(screen.getByTestId('otp-countdown')).toHaveTextContent('05:00');
+        expect(onLogin).toHaveBeenCalledTimes(1);
+        expect(onOtpVerify).not.toHaveBeenCalled();
+        expect(onOtpResend).not.toHaveBeenCalled();
+
+        fireEvent.change(screen.getByTestId('otp-input'), { target: { value: '123456' } });
+        await act(async () => {
+          fireEvent.click(screen.getByRole('button', { name: 'Confirm', exact: true }));
+        });
+        expect(onOtpVerify).toHaveBeenCalledExactlyOnceWith(challenge.challengeId, '123456');
+        expect(onLogin).toHaveBeenCalledTimes(1);
+      },
+    );
+  },
+);

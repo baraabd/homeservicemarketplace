@@ -12,6 +12,7 @@ import { LanguageProvider } from '../../i18n/LanguageContext';
 import { EcosystemProvider } from '../../context/EcosystemContext';
 import {
   APPLYING_CAPABILITIES,
+  SUBMITTED_CAPABILITIES,
   WORKING_CAPABILITIES,
 } from '../../../test-support/provider-capability-fixtures';
 import { ProviderApp } from './ProviderApp';
@@ -88,6 +89,10 @@ function renderProvider(path = '/provider/jobs') {
               <Route path="/login" element={<LoginProbe />} />
               <Route element={<RequireAuth />}>
                 <Route path="/provider/onboarding" element={<div>Complete your application</div>} />
+                <Route
+                  path="/provider/verification"
+                  element={<div>Identity verification destination</div>}
+                />
                 <Route path="/provider/*" element={<ProviderApp />} />
               </Route>
             </Routes>
@@ -148,6 +153,47 @@ describe('ProviderApp — canonical access survives navigation and authenticatio
     expect(screen.getByTestId('location')).toHaveTextContent('/provider/status');
     expectNoWorkspace();
   });
+
+  it.each([
+    ['PENDING_REVIEW', 'SUBMITTED', SUBMITTED_CAPABILITIES],
+    ['REJECTED', 'RETURNED', APPLYING_CAPABILITIES],
+  ] as const)(
+    'keeps identity documents reachable for %s with V2 off using the server capability',
+    async (status, onboardingState, capabilities) => {
+      window.localStorage.setItem(PROVIDER_ONBOARDING_V2_OVERRIDE_KEY, 'false');
+      mock.onGet(PROFILE).reply(200, {
+        profile: { ...ACTIVE_PROFILE, status, onboardingState },
+      });
+      mock.onGet(CAPS).reply(200, capabilities);
+      renderProvider('/provider/status');
+      const entry = await screen.findByRole('button', { name: 'Identity documents', exact: true });
+      expectNoWorkspace();
+      fireEvent.click(entry);
+      expect(await screen.findByText('Identity verification destination')).toBeInTheDocument();
+      expect(screen.getByTestId('location')).toHaveTextContent('/provider/verification');
+      expectNoWorkspace();
+    },
+  );
+
+  it.each(['PENDING_REVIEW', 'REJECTED'])(
+    'does not infer verification access from legacy %s status with V2 off',
+    async (status) => {
+      window.localStorage.setItem(PROVIDER_ONBOARDING_V2_OVERRIDE_KEY, 'false');
+      mock.onGet(PROFILE).reply(200, { profile: { ...ACTIVE_PROFILE, status } });
+      mock.onGet(CAPS).reply(200, {
+        allowed: ['VIEW_OWN_PROFILE', 'COMPLETE_ONBOARDING'],
+        capabilities: [],
+        primaryReason: 'AWAITING_REVIEW',
+        nextActions: ['WAIT_FOR_REVIEW'],
+      });
+      renderProvider('/provider/status');
+      expect(
+        await screen.findByTestId(`provider-status-${status.toLowerCase()}`),
+      ).toBeInTheDocument();
+      expect(screen.queryByTestId('provider-status-verification')).toBeNull();
+      expectNoWorkspace();
+    },
+  );
 
   it.each([200, 403, 404])(
     'never reuses cached work capabilities when the profile is absent (HTTP %s)',

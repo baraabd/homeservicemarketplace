@@ -1,13 +1,19 @@
 import axios from 'axios';
+import { AUTH_CONFIG_PATH } from './auth-policy-query';
 import type { AxiosError, InternalAxiosRequestConfig } from 'axios';
 import { authRequestScope, isLocallySignedOut } from './auth-session-boundary';
 import { withAuthCookieLock } from './auth-cookie-lock';
+import { csrfCookieName, readCsrfCookie } from './auth-cookie-names';
+
+const CSRF_COOKIE_NAME = csrfCookieName(import.meta.env.VITE_AUTH_COOKIE_PREFIX);
 
 interface RetryableConfig extends InternalAxiosRequestConfig {
   _retry?: boolean;
   _authScope?: string;
 }
 function requireCurrentScope(config?: RetryableConfig): void {
+  // This exact GET returns public delivery policy, never an account identity.
+  if (config?.url === AUTH_CONFIG_PATH && (config.method ?? 'get').toLowerCase() === 'get') return;
   if (config?._authScope !== undefined && config._authScope !== authRequestScope()) {
     throw new axios.CanceledError('Authentication changed while the request was in flight');
   }
@@ -42,15 +48,14 @@ export const api = axios.create({
   },
 });
 
-// ─── CSRF: read hsm_csrf cookie → echo as X-CSRF-Token on mutations ─────────
+// ─── CSRF: echo the configured environment cookie on mutations ─────────────
 // Exported so the realtime socket-client can mirror it into the
 // handshake `auth.token` field. Cookie auth carries the session over
 // `withCredentials: true`; the CSRF token is the only piece the
 // gateway needs in the handshake to bind the connection to the
 // authenticated session in the same way mutations bind it.
 export function getCsrfToken(): string | undefined {
-  const match = document.cookie.match(/(?:^|;\s*)hsm_csrf=([^;]*)/);
-  return match?.[1];
+  return readCsrfCookie(document.cookie, CSRF_COOKIE_NAME);
 }
 
 api.interceptors.request.use((config: RetryableConfig) => {
@@ -74,6 +79,13 @@ api.interceptors.request.use((config: RetryableConfig) => {
 // refresh is logically wrong (login with wrong password should not trigger a
 // refresh attempt).
 const NO_RETRY_PATHS = new Set([
+  '/v1/auth/config',
+  '/v1/auth/forgot-password-otp',
+  '/v1/auth/reset-password-otp',
+  '/v1/auth/email/challenge',
+  '/v1/auth/email/verify',
+  '/v1/auth/phone/challenge',
+  '/v1/auth/phone/verify',
   '/v1/auth/login',
   '/v1/auth/register',
   '/v1/auth/verify-otp',
@@ -123,7 +135,9 @@ api.interceptors.response.use(
     // retry a previous account's mutation with a new account's cookies.
     const scope = authRequestScope();
     if (!refreshFlight || refreshFlight.scope !== scope) {
-      const promise = withAuthCookieLock(scope, () => api.post('/v1/auth/refresh', undefined, { timeout: 15_000 }).then(() => undefined));
+      const promise = withAuthCookieLock(scope, () =>
+        api.post('/v1/auth/refresh', undefined, { timeout: 15_000 }).then(() => undefined),
+      );
       refreshFlight = { scope, promise };
     }
     const flight = refreshFlight;

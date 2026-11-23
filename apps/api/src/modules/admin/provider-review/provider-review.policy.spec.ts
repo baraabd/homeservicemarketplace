@@ -54,6 +54,47 @@ describe('complete provider review policy', () => {
     );
   });
 
+  it('accepts unchanged pending snapshots captured before account phone authentication', () => {
+    const data = reviewFixture();
+    // The saved schemaVersion 1 fixture has no accountPhone*/contactVerified
+    // fields. A post-deployment read adds facts without changing user input.
+    data.current.profile.accountPhoneNumber = null;
+    data.current.profile.accountPhoneVerified = false;
+    data.current.profile.contactVerified = true;
+    expect(codes(data)).toEqual([]);
+  });
+
+  it('uses live account contact proof while keeping proof changes outside submitted content', () => {
+    const data = reviewFixture();
+    const originalRevision = reviewRevision(data);
+    data.current.profile.emailVerified = false;
+    data.current.profile.accountPhoneNumber = '+966501234567';
+    data.current.profile.accountPhoneVerified = true;
+    data.current.profile.contactVerified = true;
+    data.current.profile.phoneVerifiedAt = now.toISOString();
+    expect(codes(data)).toEqual([]);
+    expect(reviewRevision(data)).not.toBe(originalRevision);
+
+    // Historical email proof and a provider profile phone cannot replace a
+    // verified authentication contact at the time an admin approves.
+    data.current.profile.accountPhoneVerified = false;
+    data.current.profile.contactVerified = false;
+    expect(codes(data)).toContain('ACCOUNT_INELIGIBLE');
+    expect(codes(data)).not.toContain('SUBMITTED_CONTENT_CHANGED');
+  });
+
+  it.each(['phoneNumber', 'bio'] as const)(
+    'still requires resubmission when provider input %s changes on an old snapshot',
+    (field) => {
+      const data = reviewFixture();
+      data.current.profile.accountPhoneNumber = null;
+      data.current.profile.accountPhoneVerified = false;
+      data.current.profile.contactVerified = true;
+      data.current.profile[field] = field === 'phoneNumber' ? '+966501234567' : 'Edited biography';
+      expect(codes(data)).toContain('SUBMITTED_CONTENT_CHANGED');
+    },
+  );
+
   it.each(['PENDING', 'QUARANTINED', 'REJECTED'])('refuses evidence scanned as %s', (state) => {
     const data = reviewFixture();
     data.verificationCase!.documents[0].mediaAsset.scanState = state as never;

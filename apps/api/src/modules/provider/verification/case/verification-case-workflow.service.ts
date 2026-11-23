@@ -1,3 +1,7 @@
+import {
+  hasVerifiedAuthenticationContact,
+  type AuthenticationContacts,
+} from '../../../../shared/identity/verified-contact';
 import { Injectable, Logger } from '@nestjs/common';
 import { Prisma } from '@homeservicemarketplace/database';
 import type {
@@ -86,8 +90,8 @@ interface LoadedCase {
     serviceAreaCountryCode?: string | null;
     serviceAreaRadiusKm: number | null;
     acceptedConsentVersion: string | null;
-    user?: { emailVerifiedAt?: Date | null } | null;
-    _count?: { serviceCategories?: number } | null;
+    user?: AuthenticationContacts | null;
+    _count?: { serviceCategories?: number; categoryApplications?: number } | null;
   };
   documents: Array<{
     id: string;
@@ -977,8 +981,22 @@ export class VerificationCaseWorkflowService {
           include: {
             // emailVerifiedAt, not a boolean: the column records WHEN, and a
             // derived boolean is what the onboarding policy wants.
-            user: { select: { emailVerifiedAt: true } },
-            _count: { select: { serviceCategories: true } },
+            user: {
+              select: {
+                email: true,
+                emailVerifiedAt: true,
+                phoneNumber: true,
+                phoneVerifiedAt: true,
+              },
+            },
+            _count: {
+              select: {
+                serviceCategories: true,
+                // Match the onboarding profile projection: a current pending
+                // specialty is awaiting our review, not missing provider input.
+                categoryApplications: { where: { status: 'PENDING', supersededAt: null } },
+              },
+            },
           },
         },
         documents: {
@@ -1044,7 +1062,9 @@ export class VerificationCaseWorkflowService {
       serviceAreaCountry: p.serviceAreaCountryCode ?? p.serviceAreaCountry,
       serviceAreaRadiusKm: p.serviceAreaRadiusKm,
       serviceCategoryCount: p._count?.serviceCategories ?? 0,
-      emailVerified: p.user?.emailVerifiedAt != null,
+      pendingSpecialtyCount: p._count?.categoryApplications ?? 0,
+      emailVerified: Boolean(p.user?.email && p.user.emailVerifiedAt),
+      contactVerified: hasVerifiedAuthenticationContact(p.user),
     };
   }
 }

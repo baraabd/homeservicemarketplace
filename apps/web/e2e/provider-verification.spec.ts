@@ -133,6 +133,7 @@ const COPY = {
     readyCta: 'Send for review',
     evidenceTitle: 'Send us your documents',
     pendingTitle: 'With our team',
+    refresh: 'Refresh status',
     suspendedTitle: 'Your account is suspended',
     verifiedTitle: 'You are verified',
     renewTitle: 'Your verification needs renewing',
@@ -146,6 +147,7 @@ const COPY = {
     readyCta: 'إرسال للمراجعة',
     evidenceTitle: 'أرسل لنا مستنداتك',
     pendingTitle: 'لدى فريقنا',
+    refresh: 'تحديث الحالة',
     suspendedTitle: 'حسابك موقوف',
     verifiedTitle: 'تم توثيقك',
     renewTitle: 'توثيقك بحاجة إلى تجديد',
@@ -367,12 +369,38 @@ for (const lang of ['en', 'ar'] as const) {
       await expect(page.getByTestId('verification-EVIDENCE_UNUSABLE')).toHaveCount(0);
     });
 
-    test('pending review offers no action at all', async ({ page }) => {
+    test('pending review can refresh its status without offering a document mutation', async ({
+      page,
+    }) => {
+      const mutations: string[] = [];
+      page.on('request', (request) => {
+        if (
+          request.url().includes('/v1/me/provider/verification') &&
+          !['GET', 'HEAD', 'OPTIONS'].includes(request.method())
+        ) {
+          mutations.push(request.method());
+        }
+      });
       await openVerification(page, lang, { verificationCase: kase({ state: 'SUBMITTED' }) });
 
       const section = page.getByTestId('verification-PENDING_REVIEW');
       await expect(section).toContainText(c.pendingTitle);
-      await expect(section.getByRole('button')).toHaveCount(0);
+      await expect(section.getByRole('button')).toHaveCount(1);
+      await expect(section.locator('input[type="file"]')).toHaveCount(0);
+      await expect(section.getByRole('button', { name: c.readyCta, exact: true })).toHaveCount(0);
+      const refreshed = Promise.all(
+        ['/v1/me/provider/capabilities', '/v1/me/provider/verification/case'].map((endpoint) =>
+          page.waitForResponse(
+            (response) =>
+              response.url().endsWith(endpoint) && response.request().method() === 'GET',
+          ),
+        ),
+      );
+      await section.getByRole('button', { name: c.refresh, exact: true }).click();
+      for (const response of await refreshed) expect(response.status()).toBe(200);
+      await expect(section).toContainText(c.pendingTitle);
+      await expect(section.getByRole('button')).toHaveCount(1);
+      expect(mutations).toEqual([]);
     });
 
     test('the primary action is keyboard reachable with a visible focus ring', async ({ page }) => {

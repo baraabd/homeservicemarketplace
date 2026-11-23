@@ -1,5 +1,6 @@
 import type { ProviderProfile } from '@homeservicemarketplace/database';
 
+import type { BookedValueGroupRow } from '../../../infrastructure/persistence/bookings/booked-value';
 import type { BookingRepository } from '../../../infrastructure/persistence/bookings/booking.repository';
 import type { ProviderProfileRepository } from '../../../infrastructure/persistence/bids/provider-profile.repository';
 import { ProviderWalletService } from './provider-wallet.service';
@@ -38,16 +39,24 @@ interface Mocks {
   bookings: BookingRepository;
 }
 
+function group(over: Partial<BookedValueGroupRow> = {}): BookedValueGroupRow {
+  return {
+    currency: 'SAR',
+    amountScale: 2,
+    pricingType: 'FIXED',
+    completedCount: 0,
+    completedValue: 0,
+    currentMonthValue: 0,
+    inFlightCount: 0,
+    inFlightValue: 0,
+    ...over,
+  };
+}
+
 function makeMocks(
   over: {
     profile?: ProviderProfile | null;
-    aggregate?: {
-      totalGross: number;
-      currentMonthGross: number;
-      pendingAmount: number;
-      completedJobsCount: number;
-      dominantCurrency: string | null;
-    };
+    groups?: BookedValueGroupRow[];
     listRows?: unknown[];
   } = {},
 ): Mocks {
@@ -57,15 +66,7 @@ function makeMocks(
       findByUserId: jest.fn().mockResolvedValue(profile),
     } as unknown as ProviderProfileRepository,
     bookings: {
-      aggregateEarningsForProvider: jest.fn().mockResolvedValue(
-        over.aggregate ?? {
-          totalGross: 0,
-          currentMonthGross: 0,
-          pendingAmount: 0,
-          completedJobsCount: 0,
-          dominantCurrency: null,
-        },
-      ),
+      bookedValueGroups: jest.fn().mockResolvedValue(over.groups ?? []),
       listForProvider: jest.fn().mockResolvedValue(over.listRows ?? []),
     } as unknown as BookingRepository,
   };
@@ -76,43 +77,63 @@ function makeService(m: Mocks): ProviderWalletService {
 }
 
 describe('ProviderWalletService.summary', () => {
-  it('returns the four aggregate amounts plus rating + currency', async () => {
+  it('returns per-currency booked value plus rating (K02 shape, no fee)', async () => {
     const mocks = makeMocks({
-      aggregate: {
-        totalGross: 12_000,
-        currentMonthGross: 4_500,
-        pendingAmount: 800,
-        completedJobsCount: 17,
-        dominantCurrency: 'USD',
-      },
+      groups: [
+        group({
+          completedCount: 17,
+          completedValue: 12_000,
+          currentMonthValue: 4_500,
+          inFlightCount: 2,
+          inFlightValue: 800,
+        }),
+      ],
       profile: makeProfile({ ratingAvg: 4.7, reviewCount: 23 }),
     });
     const out = await makeService(mocks).summary('user-provider-1');
     expect(out).toEqual({
-      totalGross: 12_000,
-      currentMonthGross: 4_500,
-      pendingAmount: 800,
+      byCurrency: [
+        {
+          currency: 'SAR',
+          amountScale: 2,
+          completedValue: 12_000,
+          completedCount: 17,
+          currentMonthValue: 4_500,
+          inFlightValue: 800,
+          inFlightCount: 2,
+        },
+      ],
+      excluded: [],
       completedJobsCount: 17,
-      currency: 'USD',
+      feeStatus: 'NOT_APPROVED',
       ratingAvg: 4.7,
       reviewCount: 23,
     });
   });
 
-  it('falls back to USD when no completed bookings exist', async () => {
+  it('never adds two currencies together and never invents a fallback currency', async () => {
     const mocks = makeMocks({
-      aggregate: {
-        totalGross: 0,
-        currentMonthGross: 0,
-        pendingAmount: 1500,
-        completedJobsCount: 0,
-        dominantCurrency: null,
-      },
+      groups: [
+        // A verified SAR booking and a legacy USD booking with no proven unit.
+        group({ completedCount: 1, completedValue: 10_025 }),
+        group({ currency: 'USD', amountScale: null, completedCount: 3, completedValue: 1_000 }),
+      ],
     });
     const out = await makeService(mocks).summary('user-provider-1');
-    expect(out.currency).toBe('USD');
-    expect(out.totalGross).toBe(0);
-    expect(out.pendingAmount).toBe(1500);
+    expect(out.byCurrency).toEqual([
+      expect.objectContaining({ currency: 'SAR', completedValue: 10_025 }),
+    ]);
+    expect(out.excluded).toEqual([
+      { currency: 'USD', reason: 'LEGACY_UNVERIFIED', completedCount: 3, inFlightCount: 0 },
+    ]);
+    expect(out.completedJobsCount).toBe(4);
+  });
+
+  it('returns no currency at all when there is no booked value', async () => {
+    const out = await makeService(makeMocks()).summary('user-provider-1');
+    expect(out.byCurrency).toEqual([]);
+    expect(out.excluded).toEqual([]);
+    expect(out.completedJobsCount).toBe(0);
   });
 
   it('returns 404 when the provider profile is missing', async () => {
@@ -126,8 +147,9 @@ describe('ProviderWalletService.summary', () => {
   it('queries the aggregate with a UTC start-of-month timestamp', async () => {
     const mocks = makeMocks();
     await makeService(mocks).summary('user-provider-1');
-    const callArgs = (mocks.bookings.aggregateEarningsForProvider as jest.Mock).mock.calls[0];
-    const monthStart = callArgs[1] as Date;
+    const callArgs = (mocks.bookings.bookedValueGroups as jest.Mock).mock.calls[0];
+    expect(callArgs[0].providerId).toBe('pp-1');
+    const monthStart = callArgs[0].monthStart as Date;
     expect(monthStart.getUTCDate()).toBe(1);
     expect(monthStart.getUTCHours()).toBe(0);
     expect(monthStart.getUTCMinutes()).toBe(0);
@@ -146,7 +168,8 @@ describe('ProviderWalletService.transactions', () => {
       status: 'COMPLETED',
       scheduledAt: date,
       priceAmount: 4500,
-      currency: 'USD',
+      currency: 'SAR',
+      amountScale: 2,
       createdAt: date,
       updatedAt: date,
       deletedAt: null,
@@ -168,7 +191,8 @@ describe('ProviderWalletService.transactions', () => {
       bid: {
         id: 'bid-1',
         amount: 4500,
-        currency: 'USD',
+        currency: 'SAR',
+        amountScale: 2,
         pricingType: 'HOURLY',
         note: null,
       },
@@ -190,7 +214,8 @@ describe('ProviderWalletService.transactions', () => {
       bookingId: 'bk-1',
       status: 'COMPLETED',
       amount: 4500,
-      currency: 'USD',
+      currency: 'SAR',
+      amountScale: 2,
       city: 'Riyadh',
       service: { categorySlug: 'plumbing' },
     });

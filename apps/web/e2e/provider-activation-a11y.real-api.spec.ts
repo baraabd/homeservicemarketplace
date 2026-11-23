@@ -6,6 +6,7 @@ import { dirname, join } from 'node:path';
 
 import { seedLanguage } from './fixtures';
 import { api, newJar, otpFor, REAL_API, type Jar } from './real-api';
+import { LEGAL_ACCEPTANCE } from './legal-acceptance';
 
 // Sprint 09B.29 — accessibility for prototype screens 0 and 1.
 //
@@ -147,7 +148,13 @@ test.describe('activation screens 0 and 1 — accessibility', () => {
     const email = `${prefix}-${Date.now()}-${Math.floor(Math.random() * 1e6)}@itest.local`;
     const registered = await api<{ challengeId: string }>(jar, '/v1/auth/register', {
       method: 'POST',
-      body: { email, password: PASSWORD, firstName: 'Sam', lastName: 'Seeker' },
+      body: {
+        email,
+        password: PASSWORD,
+        firstName: 'Sam',
+        lastName: 'Seeker',
+        legalAcceptance: LEGAL_ACCEPTANCE,
+      },
     });
     expect(registered.status, 'register should be accepted').toBeLessThan(400);
     const verified = await api(jar, '/v1/auth/verify-otp', {

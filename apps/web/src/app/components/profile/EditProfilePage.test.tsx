@@ -571,23 +571,38 @@ describe('EditProfilePage — provider skills + serviceAreaCity', () => {
       updatedAt: '2026-04-30T00:00:00.000Z',
     },
   };
+  const electrical = {
+    id: 'cat-electrical',
+    slug: 'electrical',
+    labelEn: 'Electrical',
+    labelAr: 'كهرباء',
+    icon: '⚡',
+    parentId: 'group-maintenance',
+    isLeaf: true,
+    sortOrder: 1,
+  };
   const SERVICES = [
+    {
+      id: 'group-maintenance',
+      slug: 'home-maintenance',
+      labelEn: 'Home maintenance',
+      labelAr: 'الصيانة المنزلية',
+      icon: '🛠️',
+      parentId: null,
+      isLeaf: false,
+      sortOrder: 0,
+    },
     {
       id: 'cat-plumbing',
       slug: 'plumbing',
       labelEn: 'Plumbing',
       labelAr: 'سباكة',
       icon: '🔧',
+      parentId: 'group-maintenance',
+      isLeaf: true,
       sortOrder: 0,
     },
-    {
-      id: 'cat-electrical',
-      slug: 'electrical',
-      labelEn: 'Electrical',
-      labelAr: 'كهرباء',
-      icon: '⚡',
-      sortOrder: 1,
-    },
+    electrical,
   ];
 
   function mockProviderRoute(): void {
@@ -608,6 +623,7 @@ describe('EditProfilePage — provider skills + serviceAreaCity', () => {
       expect(screen.getByTestId('skill-pill-plumbing')).toBeInTheDocument();
       expect(screen.getByTestId('skill-pill-electrical')).toBeInTheDocument();
     });
+    expect(screen.queryByTestId('skill-pill-home-maintenance')).toBeNull();
     // The catalog and saved profile arrive independently. Wait for the saved
     // selection as well, rather than asserting as soon as the catalog renders.
     await waitFor(() => {
@@ -674,7 +690,7 @@ describe('EditProfilePage — provider skills + serviceAreaCity', () => {
           application: {
             id: 'app-1',
             status: 'PENDING',
-            category: SERVICES[1],
+            category: electrical,
             createdAt: '2026-08-22T00:00:00.000Z',
             updatedAt: '2026-08-22T00:00:00.000Z',
             supersededAt: null,
@@ -738,7 +754,7 @@ describe('EditProfilePage — provider skills + serviceAreaCity', () => {
     mock.onGet('/v1/me/provider/profile').reply(200, {
       profile: {
         ...PROVIDER_PROFILE_ROW.profile,
-        pendingCategories: [SERVICES[1]],
+        pendingCategories: [electrical],
       },
     });
     mock.onGet('/v1/services').reply(200, { items: SERVICES });
@@ -1011,5 +1027,75 @@ describe('EditProfilePage — first answer versus a different account', () => {
     first.release([200, { profile: STORED }]);
     await waitFor(() => expect(nameField().value).toBe('Ada Lovelace'));
     expect(screen.queryByDisplayValue('Ada Typed')).toBeNull();
+  });
+});
+
+describe('EditProfilePage — immutable phone account identity', () => {
+  const PHONE_ME = {
+    ...MOCK_ME_ADA,
+    email: null,
+    emailVerifiedAt: null,
+    phoneNumber: '+966501234567',
+  };
+  const PHONE_PROFILE = {
+    ...MOCK_PROFILE,
+    userId: PHONE_ME.id,
+    email: null,
+    phoneNumber: PHONE_ME.phoneNumber,
+  };
+  const nameField = () => screen.getByLabelText(/full name|الاسم الكامل/i) as HTMLInputElement;
+
+  it('preserves a phone-only user’s early edit when their first profile arrives', async () => {
+    mock.onGet('/v1/auth/me').reply(200, PHONE_ME);
+    let release!: (value: [number, unknown]) => void;
+    mock.onGet('/v1/me/profile').replyOnce(
+      () =>
+        new Promise<[number, unknown]>((resolve) => {
+          release = resolve;
+        }),
+    );
+    renderEdit();
+    await waitFor(() => expect(qc.getQueryData(['auth', 'me'])).toMatchObject({ id: 'u1' }));
+    fireEvent.change(nameField(), { target: { value: 'Typed Early' } });
+    release([200, { profile: PHONE_PROFILE }]);
+    await screen.findByDisplayValue(PHONE_ME.phoneNumber);
+    expect(nameField().value).toBe('Typed Early');
+  });
+
+  it('preserves edits when the same account later attaches an email', async () => {
+    mock.onGet('/v1/auth/me').reply(200, PHONE_ME);
+    mock.onGet('/v1/me/profile').reply(200, { profile: PHONE_PROFILE });
+    renderEdit();
+    await screen.findByDisplayValue('Ada Lovelace');
+    fireEvent.change(nameField(), { target: { value: 'Unsaved Phone Account Edit' } });
+    qc.setQueryData(['seeker', 'profile', 'get'], {
+      profile: {
+        ...PHONE_PROFILE,
+        email: 'ada@example.com',
+        updatedAt: '2026-05-01T00:00:00.000Z',
+      },
+    });
+    await screen.findByDisplayValue('ada@example.com');
+    expect(nameField().value).toBe('Unsaved Phone Account Edit');
+  });
+
+  it('clears edits between phone-only accounts even if both profile timestamps match', async () => {
+    mock.onGet('/v1/auth/me').reply(200, PHONE_ME);
+    mock.onGet('/v1/me/profile').reply(200, { profile: PHONE_PROFILE });
+    renderEdit();
+    await screen.findByDisplayValue('Ada Lovelace');
+    fireEvent.change(nameField(), { target: { value: 'Private Unsaved Edit' } });
+    qc.setQueryData(['auth', 'me'], { ...PHONE_ME, id: 'u2', firstName: 'Grace' });
+    qc.setQueryData(['seeker', 'profile', 'get'], {
+      profile: {
+        ...PHONE_PROFILE,
+        userId: 'u2',
+        displayName: 'Grace Hopper',
+        phoneNumber: '+966509876543',
+      },
+    });
+    await waitFor(() => expect(nameField().value).toBe('Grace Hopper'));
+    expect(screen.queryByDisplayValue('Private Unsaved Edit')).toBeNull();
+    expect(screen.getByDisplayValue('+966509876543')).toBeInTheDocument();
   });
 });

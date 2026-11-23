@@ -59,7 +59,7 @@ export const EVIDENCE_SCAN_LABELS = {
 
 export const EVIDENCE_REVIEW_COPY = {
   en: {
-    secure: 'Secure inspection',
+    secure: 'Restricted document access',
     currentDocuments: 'Current documents',
     previousDocuments: 'Previous documents',
     previousHint:
@@ -68,9 +68,10 @@ export const EVIDENCE_REVIEW_COPY = {
     uploaded: 'Uploaded',
     notSubmitted: 'Verification case has not been submitted',
     pending:
-      'Opening becomes available after the safety check completes. Refresh to check progress.',
+      'Opening becomes available after the automatic safety check completes. Its status updates automatically.',
     quarantined: 'This file failed the safety check. Ask the provider for a replacement.',
-    failed: 'The safety check could not complete. Refresh its status or request a replacement.',
+    failed:
+      'The safety check could not complete. Ask support to check the scanning service before continuing.',
     rejected:
       'The uploaded file could not be validated. Ask the provider for a supported, readable replacement.',
     unavailable:
@@ -84,7 +85,7 @@ export const EVIDENCE_REVIEW_COPY = {
     unnamedFile: 'Filename was not recorded',
   },
   ar: {
-    secure: 'فحص آمن',
+    secure: 'الوصول إلى الوثائق مقيّد',
     currentDocuments: 'الوثائق الحالية',
     previousDocuments: 'الوثائق السابقة',
     previousHint:
@@ -92,9 +93,9 @@ export const EVIDENCE_REVIEW_COPY = {
     noCurrentDocuments: 'لا توجد وثائق حالية. اطلب من المهني رفع الوثائق المطلوبة.',
     uploaded: 'تاريخ الرفع',
     notSubmitted: 'لم يُرسل طلب توثيق الهوية',
-    pending: 'يتاح فتح الوثيقة بعد اكتمال فحص الأمان. حدّث البيانات للتحقق من تقدم الفحص.',
+    pending: 'يتاح فتح الوثيقة بعد اكتمال الفحص الآلي لأمان الملف. تُحدّث حالته تلقائيًا.',
     quarantined: 'لم يجتز هذا الملف فحص الأمان. اطلب من المهني رفع بديل.',
-    failed: 'تعذّر إكمال فحص الأمان. حدّث حالة الوثيقة أو اطلب رفع بديل.',
+    failed: 'تعذّر إكمال فحص الأمان. اطلب من الدعم التحقق من خدمة الفحص قبل المتابعة.',
     rejected: 'تعذّر التحقق من الملف المرفوع. اطلب من المهني رفع وثيقة واضحة بصيغة مدعومة.',
     unavailable: 'لا يمكن فتح هذه الوثيقة حاليًا. حدّث حالتها أو اطلب وثيقة بديلة.',
     privateImage: 'افتح الصورة بأمان لفحصها',

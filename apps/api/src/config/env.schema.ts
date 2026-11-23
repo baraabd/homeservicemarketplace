@@ -1,5 +1,7 @@
 import { z } from 'zod';
 
+import { isGreenApiOrigin } from './green-api.config';
+
 const nodeEnv = z.enum(['development', 'test', 'staging', 'production']);
 
 const trueish = z
@@ -8,7 +10,21 @@ const trueish = z
     typeof v === 'boolean' ? v : ['1', 'true', 'yes', 'on'].includes(v.toLowerCase()),
   );
 
+// Empty optional provider settings are absent, including copied .env placeholders.
+const optionalProviderSetting = (schema: z.ZodString) =>
+  z.preprocess(
+    (value) => (typeof value === 'string' ? value.trim() || undefined : value),
+    schema.optional(),
+  );
+
 const baseEnvSchema = z.object({
+  MONEY_REFUND_AUTHORIZATION_ENABLED: trueish.default(false),
+  // Secret manager supplied sandbox configuration; never serialize or log this value.
+  MONEY_STRIPE_SANDBOX_JSON: z.string().max(65536).default(''),
+  MONEY_STRIPE_PUBLISHABLE_KEY: z
+    .string()
+    .regex(/^$|^pk_test_[A-Za-z0-9]{16,200}$/u)
+    .default(''),
   // No default key and no public rollout: private collaboration is explicitly configured.
   DISPUTE_PRIVATE_ACTIVE_KEY: z.string().default(''),
   DISPUTE_PRIVATE_KEYS_JSON: z.string().default(''),
@@ -243,6 +259,15 @@ const baseEnvSchema = z.object({
   // Must be true in production. Safe to set false for local dev and QA.
   AUTH_REQUIRE_EMAIL_VERIFICATION: trueish.default(true),
 
+  // Draft rehearsal requires explicit opt-in on APP_ENV=staging, even with NODE_ENV=production.
+  // Production (APP_ENV=prod, or production without staging identity) always requires approval.
+  LEGAL_DRAFT_ACCEPTANCE_ALLOWED: trueish.optional(),
+
+  AUTH_COOKIE_PREFIX: z
+    .string()
+    .regex(/^[a-z][a-z0-9_]{0,31}$/)
+    .refine((value) => value === value.trim(), 'Cookie prefix cannot contain whitespace')
+    .default('hsm'),
   COOKIE_DOMAIN: z.string().optional(),
   COOKIE_SECURE: trueish.default(true),
   COOKIE_SAMESITE: z.enum(['lax', 'strict', 'none']).default('lax'),
@@ -376,6 +401,34 @@ const baseEnvSchema = z.object({
   // until then a single env-driven rate is the right granularity.
   PROVIDER_PLATFORM_FEE_BPS: z.coerce.number().int().min(0).max(10_000).default(1000),
 
+  // The channel remains WhatsApp; the server selects its transport explicitly.
+  // Keep Meta as the default so existing deployments retain their sender.
+  WHATSAPP_PROVIDER: z.enum(['meta', 'greenapi']).default('meta'),
+
+  // GREEN-API instance credentials. Never expose these via public auth config.
+  GREEN_API_URL: optionalProviderSetting(
+    z.string().max(256).refine(isGreenApiOrigin, 'Must be a GREEN-API HTTPS origin'),
+  ),
+  GREEN_API_ID_INSTANCE: optionalProviderSetting(z.string().regex(/^[0-9]{5,32}$/)),
+  GREEN_API_TOKEN: optionalProviderSetting(z.string().regex(/^[A-Za-z0-9_-]{1,4096}$/)),
+  // WABA only: an approved AUTHENTICATION template identifier from GREEN-API.
+  // Ordinary linked-device instances send a text message without this setting.
+  GREEN_API_AUTH_TEMPLATE_ID: optionalProviderSetting(z.string().regex(/^[A-Za-z0-9_-]{1,256}$/)),
+
+  // Meta Cloud API authentication templates. Credentials never enter platform settings.
+  WHATSAPP_ACCESS_TOKEN: optionalProviderSetting(z.string().max(4096)),
+  WHATSAPP_PHONE_NUMBER_ID: optionalProviderSetting(z.string().regex(/^[0-9]{5,32}$/)),
+  WHATSAPP_GRAPH_API_VERSION: optionalProviderSetting(
+    z.string().regex(/^v[0-9]{1,3}\.[0-9]{1,2}$/),
+  ),
+  WHATSAPP_AUTH_TEMPLATE_NAME: optionalProviderSetting(z.string().regex(/^[a-z0-9_]{1,512}$/)),
+  WHATSAPP_AUTH_TEMPLATE_LANGUAGE: optionalProviderSetting(
+    z.string().regex(/^[a-z]{2,3}(?:_[A-Z]{2})?$/),
+  ),
+  // Explicit operator assertion after Meta approves an AUTHENTICATION / COPY_CODE template.
+  WHATSAPP_AUTH_TEMPLATE_APPROVED: trueish.default(false),
+  WHATSAPP_REQUEST_TIMEOUT_MS: z.coerce.number().int().min(1_000).max(30_000).default(10_000),
+
   // --- SMTP / Mail ---------------------------------------------------------
   // When SMTP_HOST is set the API uses Nodemailer; otherwise InMemoryMailAdapter.
   SMTP_HOST: z.string().optional(),
@@ -466,8 +519,13 @@ const baseEnvSchema = z.object({
   // Private portfolio staging: distinct from public media and identity evidence.
   // Required only when creating portfolio uploads with the S3 driver.
   S3_PORTFOLIO_BUCKET: z.string().optional(),
+  // MinIO has no public ACLs or AWS public-access-block API. Explicit opt-in
+  // requires an authenticated proof that its anonymous bucket policy is absent.
+  S3_PORTFOLIO_PRIVACY_MODE: z.enum(['aws', 'minio']).default('aws'),
   S3_REGION: z.string().default('us-east-1'),
   S3_ENDPOINT: z.string().optional(),
+  // API mode keeps the S3 endpoint private; browsers PUT signed capabilities to the API.
+  S3_UPLOAD_TRANSPORT: z.enum(['direct', 'api']).default('direct'),
   S3_FORCE_PATH_STYLE: trueish.default(false),
   S3_ACCESS_KEY_ID: z.string().optional(),
   S3_SECRET_ACCESS_KEY: z.string().optional(),
@@ -490,6 +548,44 @@ const baseEnvSchema = z.object({
 export const envSchema = baseEnvSchema.superRefine((env, ctx) => {
   const issue = (path: string, message: string) =>
     ctx.addIssue({ code: z.ZodIssueCode.custom, path: [path], message });
+  if (env.S3_PORTFOLIO_PRIVACY_MODE === 'minio') {
+    let validEndpoint = false;
+    try {
+      const endpoint = new URL(env.S3_ENDPOINT ?? '');
+      validEndpoint =
+        ['http:', 'https:'].includes(endpoint.protocol) &&
+        !endpoint.username &&
+        !endpoint.password &&
+        !endpoint.search &&
+        !endpoint.hash;
+    } catch {
+      // An absent or malformed endpoint must not select AWS with MinIO checks.
+    }
+    if (!validEndpoint)
+      issue('S3_ENDPOINT', 'MinIO privacy mode requires an explicit HTTP(S) endpoint');
+  }
+  if (env.STORAGE_DRIVER === 's3' && env.S3_UPLOAD_TRANSPORT === 'api') {
+    let valid = false;
+    try {
+      const url = new URL(env.PUBLIC_API_URL ?? '');
+      valid =
+        ['http:', 'https:'].includes(url.protocol) &&
+        !url.username &&
+        !url.password &&
+        !url.search &&
+        !url.hash &&
+        url.pathname === '/' &&
+        env.PUBLIC_API_URL === env.PUBLIC_API_URL?.trim() &&
+        (env.NODE_ENV !== 'production' || url.protocol === 'https:');
+    } catch {
+      /* Invalid public origins fail at boot, before any upload is issued. */
+    }
+    if (!valid)
+      issue(
+        'PUBLIC_API_URL',
+        'API-mediated S3 uploads require a valid public API origin (HTTPS in production)',
+      );
+  }
   if (env.OUTBOX_DELIVERY_DEADLINE_MS <= env.OUTBOX_DELIVERY_TX_TIMEOUT_MS)
     issue('OUTBOX_DELIVERY_DEADLINE_MS', 'Must exceed the delivery transaction timeout');
   if (env.OUTBOX_DELIVERY_TX_TIMEOUT_MS >= env.OUTBOX_CLAIM_TIMEOUT_MS)

@@ -11,6 +11,8 @@ export const MONEY_API_CAPABILITIES = [
   'money:refund:request:self',
   'money:review:read',
   'money:receipt:review',
+  'money:receipt:view',
+  'money:receipt:settlement',
   'money:refund:review',
 ] as const;
 export type MoneyApiCapability = (typeof MONEY_API_CAPABILITIES)[number];
@@ -78,3 +80,15 @@ export const MONEY_API_FAILURE_REASONS = [
   'MONEY_CONFIRMATION_RECONCILIATION_REQUIRED',
   'MONEY_REFUND_OUTCOME_CONFLICT',
 ] as const;
+
+/** Ephemeral owner-only response. Never cache, persist, log or place the client
+ * secret in a URL. Only authoritative application reads establish confirmation. */
+export interface MoneyStripeSessionV1 {
+  contractVersion: MoneyContractVersion;
+  attemptId: string;
+  paymentIntentId: string;
+  amount: MoneyWire;
+  state: 'AWAITING_PAYMENT' | 'PROCESSING' | 'CONFIRMED';
+  publishableKey: string | null;
+  clientSecret: string | null;
+}

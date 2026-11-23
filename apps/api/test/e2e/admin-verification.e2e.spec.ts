@@ -20,6 +20,7 @@ import request from 'supertest';
 
 import { AppConfigService } from '../../src/config/app-config.service';
 import { AllExceptionsFilter } from '../../src/infrastructure/http/all-exceptions.filter';
+import { PrismaService } from '../../src/infrastructure/prisma/prisma.service';
 import { AdminVerificationController } from '../../src/modules/admin/verification/admin-verification.controller';
 import { AdminVerificationService } from '../../src/modules/admin/verification/admin-verification.service';
 import { AdminVerificationCaseService } from '../../src/modules/admin/verification/admin-verification-case.service';
@@ -53,6 +54,7 @@ const verificationService = {
 let canReadDirectory = true;
 
 let fakeAuthedUser: { id: string; sessionId: string; jti: string; roles: string[] } | null = null;
+let liveAdmin = true;
 
 class FakeJwtAuthGuard {
   canActivate(ctx: ExecutionContext): boolean {
@@ -84,6 +86,21 @@ async function bootApp(): Promise<INestApplication> {
         },
       },
       { provide: AdminVerificationService, useValue: verificationService },
+      // K06 — CurrentAdminGuard re-reads live admin membership. Here it follows the
+      // fake user's claim unless a test removes the membership (liveAdmin = false).
+      {
+        provide: PrismaService,
+        useValue: {
+          client: {
+            userRole: {
+              findFirst: () =>
+                Promise.resolve(
+                  liveAdmin && fakeAuthedUser?.roles.includes('admin') ? { roleId: 'admin' } : null,
+                ),
+            },
+          },
+        },
+      },
       // Sprint 9B — the controller now also resolves the case service, for
       // GET /:providerProfileId/verification. Stubbed to null ("this provider
       // has never submitted"), which is a legitimate state, so these Sprint 6.2
@@ -371,5 +388,29 @@ describe('AdminVerification (e2e) — /v1/admin/providers/* (Sprint 6.2 refined)
       const res = await request(app.getHttpServer()).get('/v1/admin/providers/missing/audit');
       expect(res.status).toBe(404);
     });
+  });
+
+  // K06 — a token that still claims admin after the membership was removed.
+  describe('stale admin claim', () => {
+    beforeEach(() => {
+      fakeAuthedUser = { id: 'admin-1', sessionId: 's', jti: 'j', roles: ['admin'] };
+      liveAdmin = false;
+    });
+    afterEach(() => {
+      liveAdmin = true;
+    });
+    it.each(['approve', 'reject', 'suspend', 'reactivate'])(
+      'POST %s → 403 without calling the service',
+      async (action) => {
+        const res = await request(app.getHttpServer())
+          .post(`/v1/admin/providers/pp-1/${action}`)
+          .send({ reason: 'x' });
+        expect(res.status).toBe(403);
+        expect(verificationService.approve).not.toHaveBeenCalled();
+        expect(verificationService.reject).not.toHaveBeenCalled();
+        expect(verificationService.suspend).not.toHaveBeenCalled();
+        expect(verificationService.reactivate).not.toHaveBeenCalled();
+      },
+    );
   });
 });

@@ -1,37 +1,37 @@
 import { defineConfig, loadEnv } from 'vite';
 import path from 'path';
+import { createRequire } from 'node:module';
 import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
+import { csrfCookieName } from './src/lib/auth-cookie-names';
 import { buildWebCsp, injectWebCsp } from '../../scripts/production/security-app/web-csp.cjs';
+// Keep filesystem-backed development configuration in Node; Vite's bundled
+// ESM config must not inline this CommonJS helper's require calls.
+const { webApiEndpoint } = createRequire(import.meta.url)('../../scripts/dev/api-endpoint.cjs');
 
-// `VITE_API_URL` is baked into the client bundle at build time. If it is
-// missing during a production build, Vite silently replaces
-// `import.meta.env.VITE_API_URL` with undefined; the axios fallback then
-// points at http://localhost:4000 and every XHR dies in the user's
-// browser with no server-side trace. Fail the build loudly instead — the
-// Vercel deploy pipeline needs an actionable error, not a mystery outage.
-export default defineConfig(({ mode, command }) => {
+// The browser API origin is baked into production artifacts and must be
+// explicit there. Local development may follow the backend's configured PORT.
+export default defineConfig(async ({ mode, command, isPreview }) => {
   const env = loadEnv(mode, process.cwd(), '');
-  const apiUrl = env.VITE_API_URL?.trim();
+  const endpoint = await webApiEndpoint({
+    root: path.resolve(__dirname, '../..'),
+    webEnvironment: env,
+    apiEnvironment: process.env,
+    command,
+    mode,
+    isPreview,
+  });
+  // Fail the build on an invalid namespace, before it can break every mutation.
+  csrfCookieName(env.VITE_AUTH_COOKIE_PREFIX);
 
-  if (command === 'build' && mode === 'production' && !apiUrl) {
-    throw new Error(
-      'Missing required env var VITE_API_URL for production build. ' +
-        'Set it in the Vercel project dashboard (or your CI env) to the ' +
-        'absolute URL of the backend API — e.g. https://api.example.com. ' +
-        'Without it the client bundle silently falls back to http://localhost:4000.',
-    );
-  }
-  if (command === 'build' && apiUrl && !/^https?:\/\//i.test(apiUrl)) {
-    throw new Error(
-      'VITE_API_URL must be an absolute http(s) URL. ' +
-        'A relative or scheme-less value bakes into the bundle as-is and ' +
-        'produces unresolvable XHRs at runtime.',
-    );
-  }
   const documentPolicy = command === 'build' ? buildWebCsp(env) : null;
 
   return {
+    // Derive only a missing development origin from the same PORT contract as
+    // Nest. An explicit VITE_API_URL always wins; production still requires it.
+    ...(command === 'serve' && !isPreview && mode !== 'test' && endpoint.origin
+      ? { define: { 'import.meta.env.VITE_API_URL': JSON.stringify(endpoint.origin) } }
+      : {}),
     plugins: [
       // The React and Tailwind plugins are both required for Make, even if
       // Tailwind is not being actively used – do not remove them

@@ -35,6 +35,11 @@ export interface MoneyConfigurationPort {
     input: { planVersionId: string; method: PaymentMethod },
     tx: PrismaTx,
   ): Promise<MoneyBindingConfiguration | null>;
+  /** Optional version lookup: old obligations retain their immutable instructions. */
+  resolveBinding?(
+    binding: MoneyTransportBinding,
+    tx: PrismaTx,
+  ): Promise<MoneyBindingConfiguration | null>;
 }
 
 export interface MoneyCatalogFactory {
@@ -134,6 +139,9 @@ export interface MoneyReceiptAcceptancePort {
     },
     tx: PrismaTx,
   ): Promise<NormalizedMoneyExternalEvent>;
+  /** Final financial validation/decision participates in the R24 activation tx.
+   * Staging a received event is never final receipt approval. */
+  finalizeConfirmation?(event: NormalizedMoneyExternalEvent, tx: PrismaTx): Promise<void>;
 }
 
 export class UnavailableMoneyConfiguration implements MoneyConfigurationPort {

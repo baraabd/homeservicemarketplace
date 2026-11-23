@@ -12,6 +12,36 @@ beforeEach(() => {
 });
 afterEach(() => mock.restore());
 
+it('shows the phone identity for an account registered without an email', async () => {
+  mock.onGet('/v1/admin/roles').reply(200, { items: [] });
+  mock.onGet('/v1/admin/users').reply(200, {
+    items: [
+      {
+        id: 'phone-user',
+        firstName: 'Layla',
+        lastName: 'Mansour',
+        email: null,
+        phoneNumber: '+963944123456',
+        roles: ['provider'],
+        status: 'ACTIVE',
+        createdAt: '2026-09-01T12:00:00.000Z',
+      },
+    ],
+    nextCursor: null,
+  });
+  render(
+    <MemoryRouter>
+      <QueryClientProvider
+        client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
+      >
+        <UsersSection lang="ar" />
+      </QueryClientProvider>
+    </MemoryRouter>,
+  );
+  expect(await screen.findByText('+963944123456')).toHaveAttribute('dir', 'ltr');
+  expect(screen.getByRole('button', { name: 'Layla Mansour' })).toBeInTheDocument();
+});
+
 it('localizes Arabic roles and account states while preserving canonical API filters', async () => {
   mock.onGet('/v1/admin/roles').reply(200, { items: [{ id: 'role-provider', name: 'provider' }] });
   mock.onGet('/v1/admin/users').reply(200, {

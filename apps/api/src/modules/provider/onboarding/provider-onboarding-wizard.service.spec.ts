@@ -1,3 +1,4 @@
+import type { AuthenticationContacts } from '../../../shared/identity/verified-contact';
 import { ValidationPipe } from '@nestjs/common';
 import type {
   PatchOnboardingStepRequest,
@@ -142,6 +143,7 @@ function build(
   over: {
     profile?: ProviderProfileWithCategories | null;
     emailVerified?: boolean;
+    accountContact?: AuthenticationContacts;
     draft?: {
       id: string;
       version: number;
@@ -194,6 +196,9 @@ function build(
               user: {
                 email: 'ada@example.test',
                 emailVerifiedAt: new Date('2026-08-01T00:00:00Z'),
+                phoneNumber: null,
+                phoneVerifiedAt: null,
+                ...over.accountContact,
               },
               onboardingDraft: draft,
               equipment: [],
@@ -356,9 +361,11 @@ function build(
       listForProvider: jest.fn().mockResolvedValue(over.rejectedApplications ?? []),
     } as unknown as ProviderCategoryApplicationRepository,
     {
-      findById: jest
-        .fn()
-        .mockResolvedValue({ emailVerifiedAt: over.emailVerified === false ? null : new Date() }),
+      findById: jest.fn().mockResolvedValue({
+        email: 'ada@example.test',
+        emailVerifiedAt: over.emailVerified === false ? null : new Date(),
+        ...over.accountContact,
+      }),
     } as unknown as UserRepository,
     {
       findByKey: jest.fn().mockImplementation((key: string) => {
@@ -926,6 +933,52 @@ describe('submit — completeness and idempotency', () => {
 // OPTIMISTIC CONCURRENCY
 // ─────────────────────────────────────────────────────────────────────────────
 describe('patchStep — concurrency', () => {
+  it('persists related changes on the same transaction only after the version write succeeds', async () => {
+    const h = build();
+    const effect = jest.fn(async () => {
+      expect(h.drafts.advanceIfVersion).toHaveBeenCalled();
+    });
+    await h.service.patchStep('u-1', 'IDENTITY', { version: 3, profileImageUrl: null }, effect);
+    expect(effect).toHaveBeenCalledWith(h.trx, {
+      profileImageUrl: 'https://cdn.example.test/ada.jpg',
+    });
+  });
+
+  it.each(['stale', 'lost-race', 'review-locked'] as const)(
+    'does not persist related changes when the step is %s',
+    async (condition) => {
+      const h = build({
+        advanceCount: condition === 'lost-race' ? 0 : 1,
+        profile: makeCompleteProfile({
+          onboardingState: condition === 'review-locked' ? 'SUBMITTED' : 'DRAFT',
+        }),
+      });
+      const effect = jest.fn();
+      await expect(
+        h.service.patchStep(
+          'u-1',
+          'IDENTITY',
+          {
+            version: condition === 'stale' ? 1 : 3,
+            profileImageUrl: null,
+          },
+          effect,
+        ),
+      ).rejects.toMatchObject({ status: 409 });
+      expect(effect).not.toHaveBeenCalled();
+    },
+  );
+
+  it('propagates related persistence failures to the transaction runner', async () => {
+    const h = build();
+    const failure = new Error('ledger unavailable');
+    await expect(
+      h.service.patchStep('u-1', 'IDENTITY', { version: 3, profileImageUrl: null }, async () => {
+        throw failure;
+      }),
+    ).rejects.toBe(failure);
+  });
+
   it('accepts a patch at the current version', async () => {
     const h = build();
     await h.service.patchStep('u-1', 'PROFILE', { version: 3, bio: 'A new bio, long enough.' });
@@ -2248,5 +2301,36 @@ describe('C2 — a partial LOCATION write cannot bypass the market check', () =>
     await expect(
       h.service.patchStep('u-1', 'LOCATION', { version: 3, serviceAreaCity: 'Damascus' }),
     ).resolves.toBeDefined();
+  });
+});
+
+describe('wizard verified account contact', () => {
+  it('allows a phone-only verified account to complete the identity and submission gates', async () => {
+    const h = build({
+      accountContact: {
+        email: null,
+        emailVerifiedAt: null,
+        phoneNumber: '+966501234567',
+        phoneVerifiedAt: new Date(),
+      },
+    });
+    const view = await h.service.get('u-1');
+    expect(view.missing).not.toContainEqual({ field: 'contactVerified', code: 'UNVERIFIED' });
+    await expect(h.service.submit('u-1', { version: 3 })).resolves.toBeDefined();
+  });
+
+  it('does not treat a verified provider-profile phone as verified account identity', async () => {
+    const h = build({
+      profile: makeCompleteProfile({ phoneVerifiedAt: new Date() }),
+      accountContact: {
+        email: null,
+        emailVerifiedAt: null,
+        phoneNumber: null,
+        phoneVerifiedAt: null,
+      },
+    });
+    const view = await h.service.get('u-1');
+    expect(view.missing).toContainEqual({ field: 'contactVerified', code: 'UNVERIFIED' });
+    await expect(h.service.submit('u-1', { version: 3 })).rejects.toMatchObject({ status: 422 });
   });
 });

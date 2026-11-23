@@ -39,6 +39,8 @@ function makeRow(overrides: Partial<VerificationToken> = {}): VerificationToken 
     // OTP-specific columns added in the email-otp phase. Default to
     // null / 0 to keep existing link-token tests semantically unchanged.
     challengeId: null,
+    deliveryChannel: null,
+    deliveryTarget: null,
     attemptCount: 0,
     resendCount: 0,
     ...overrides,
