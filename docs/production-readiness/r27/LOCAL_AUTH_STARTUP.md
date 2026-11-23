@@ -161,8 +161,12 @@ commands, performance budgets or historical acceptance evidence.
 | Repair   | `64badf994c28eca864e239d3236d03e097ec98dc` | `83c6ba5b195207751fb7033163858f06724a7014` | `67891ac058cd673f3da35cd563e1eede4fe3b61c` |
 
 Each control changes only `package.json` and `apps/api/package.json`; all 25
-registered blobs must match the candidate. The retained baseline ref is
-`perf/r27-local-startup-baseline-20261121`. The repair control becomes a real
+registered blobs must match the candidate. The baseline is pinned by immutable
+commit `21d79b4aa3eef60fe92dbba7b888f10153f35758`, not by the moving tip of
+`perf/r27-local-startup-baseline-20261121`. PR #235 integrates current `develop`
+into that branch while retaining the original control in its ancestry. The
+workflow and dependency-control record continue to select the exact original
+commit. The repair control becomes a real
 second-parent ancestor of the complete fix through an ordinary content merge;
 that merge retains the complete fix's identical tree. The subsequent IPv4
 probe correction is an ordinary follow-up commit and leaves every registered
@@ -181,6 +185,38 @@ The active control record names the actual base as `originalPrBase`, retains
 all full-blob digests, and pins these new objects. The former record and control
 objects remain available at the immutable base commit; their historical
 results are not relabeled as this experiment. Final-head R27 must run anew.
+
+## PR #235 integration repair — 2026-11-23
+
+The original PR head was a historical measurement input, 252 commits behind
+`develop` at `ffea443d2365af4885703abb747680d4fe31c62d`. Several current
+workflows check out the PR head explicitly, so their newer definitions could
+not find the browser installer, environment inventory, authentication fixture,
+authentication diagnostics, dependency-control validator or web-build identity
+helper in that old source tree. Re-running that head cannot supply those files.
+
+An ordinary merge integrates the complete current source and preserves the
+immutable benchmark object. Both proposed manifest blobs already match
+`develop`; the integration therefore has an identical application tree to
+that base. The remaining changes document this integration and correct the
+scoped browser-test wait described below. Dependency
+versions, lockfile, performance controls, budgets and workflow gates are
+unchanged. No application fix needs to be recreated or reverted.
+
+The PR body records the final source identity and executed verification.
+Historical failures remain evidence for the old head; acceptance requires new
+CI, CodeQL and applicable workflow results for the repaired head. This merge
+does not establish a hosted deployment or external WhatsApp delivery result.
+
+The first repaired-head R04 run reached the real WhatsApp browser journey and
+exposed a separate notification wait race. Root displays its offline Snackbar
+for 5000 ms, and Snackbar waits another 320 ms before removing its DOM. The
+test's default 5000 ms assertion could therefore expire before the notification's
+normal lifecycle completed. Only that automatic-removal assertion now allows
+6000 ms; the following fresh-notification, keyboard-focus/Enter-dismissal and
+retained-OTP assertions remain unchanged. No application timing, suite timeout
+or performance budget was changed, and every assertion is retained. Fresh final-head R04
+evidence is required after this test correction.
 
 ## Rollout and rollback
 

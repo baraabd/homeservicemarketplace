@@ -593,8 +593,9 @@ async function run(data) {
           name: 'Dismiss notification',
           exact: true,
         });
-        // Let the previous notification expire naturally before creating another.
-        await expect(dismiss).toHaveCount(0);
+        // Root shows the notification for 5000ms; Snackbar then takes 320ms
+        // to remove it. Cover that lifecycle before creating another notice.
+        await expect(dismiss).toHaveCount(0, { timeout: 6_000 });
         await assertActualPolicy(await reconnectForPolicy(item.context, item.page), 'whatsapp');
         await expect(dismiss).toBeVisible();
         await dismiss.focus();
