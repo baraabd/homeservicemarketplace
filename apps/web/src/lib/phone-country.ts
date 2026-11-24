@@ -6,6 +6,11 @@ const DEFAULT_PHONE_COUNTRY = 'SA';
 
 /** A reversible UI suggestion, never evidence of a phone number's country. */
 export function suggestPhoneCountry(locales: readonly string[], timezone?: string): string {
+  // Prefer a known timezone over the browser's language/region setting: a
+  // device in Sweden can still use en-US. This remains a reversible hint.
+  const timezoneCountry = countryFromTimezone(timezone);
+  if (timezoneCountry && SUPPORTED_COUNTRIES.has(timezoneCountry)) return timezoneCountry;
+
   for (const locale of locales) {
     try {
       // Canonicalize case and scripts, and reject malformed locale tags. Do not
@@ -17,8 +22,7 @@ export function suggestPhoneCountry(locales: readonly string[], timezone?: strin
     }
   }
 
-  const country = countryFromTimezone(timezone);
-  return country && SUPPORTED_COUNTRIES.has(country) ? country : DEFAULT_PHONE_COUNTRY;
+  return DEFAULT_PHONE_COUNTRY;
 }
 
 /** Read device hints only; never requests coordinates, network, or storage. */

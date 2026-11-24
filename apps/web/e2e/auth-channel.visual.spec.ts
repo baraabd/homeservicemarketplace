@@ -26,6 +26,8 @@ async function assertNoOverflow(page: Page) {
 }
 
 async function assertPhoneControls(page: Page, country: string) {
+  await expect(page.getByRole('button', { name: /Use my location|استخدم موقعي/ })).toHaveCount(0);
+  await expect(page.getByText(/OpenStreetMap/)).toHaveCount(0);
   await expect(page.getByTestId('dial-code-select')).toHaveValue(country);
   const flag = page.getByTestId('selected-country-flag');
   await expect(flag).toHaveAttribute('data-country', country);
@@ -200,3 +202,71 @@ for (const channel of CHANNELS)
         expect(failures).toEqual([]);
       });
     }
+
+test.describe('automatic country without coordinate lookup', () => {
+  test.use({ locale: 'en-US', timezoneId: 'Europe/Stockholm' });
+
+  for (const lang of LANGUAGES) {
+    test(`${lang}: Stockholm timezone suggests Sweden and manual selection preserves digits`, async ({
+      page,
+    }, info) => {
+      const geocoderRequests: string[] = [];
+      const failures: string[] = [];
+      page.on('pageerror', (error) => failures.push(error.message));
+      await page.route('**://nominatim.openstreetmap.org/**', async (route) => {
+        geocoderRequests.push(route.request().url());
+        await route.abort();
+      });
+      await page.addInitScript((language) => {
+        localStorage.setItem('hsm.lang', language);
+        sessionStorage.setItem('fixnow_intended_app', 'admin');
+        const location = { requests: 0 };
+        Object.defineProperty(window, '__authGeolocationCalls', {
+          get: () => location.requests,
+        });
+        Object.defineProperty(navigator.geolocation, 'getCurrentPosition', {
+          value: () => {
+            location.requests += 1;
+          },
+        });
+      }, lang);
+      await page.route('**/v1/**', async (route) => {
+        const path = new URL(route.request().url()).pathname;
+        await route.fulfill({
+          status: path === '/v1/auth/config' ? 200 : 401,
+          contentType: 'application/json',
+          body: JSON.stringify(
+            path === '/v1/auth/config'
+              ? { otpChannel: 'whatsapp', whatsappAvailable: true }
+              : { error: { code: 'UNAUTHORIZED' } },
+          ),
+        });
+      });
+      await page.goto('/login');
+      await expect(page.getByTestId('auth-hero-admin')).toBeVisible();
+      await assertPhoneControls(page, 'SE');
+      const country = page.getByTestId('dial-code-select');
+      const phone = page.getByLabel(
+        lang === 'ar' ? 'رقم الهاتف المسجل في واتساب' : 'WhatsApp phone number',
+        { exact: true },
+      );
+      await expect(country.locator('option:checked')).toContainText('+46');
+      await phone.fill('0701234567');
+      await country.selectOption('SA');
+      await expect(phone).toHaveValue('0701234567');
+      await assertPhoneControls(page, 'SA');
+      await phone.fill('');
+      await country.selectOption('SE');
+      await assertPhoneControls(page, 'SE');
+      await page.setViewportSize({ width: 390, height: 844 });
+      await assertNoOverflow(page);
+      await page.screenshot({
+        path: info.outputPath(`login-auto-country-admin-${lang}-390.png`),
+        fullPage: true,
+      });
+      expect(await page.evaluate(() => Reflect.get(window, '__authGeolocationCalls'))).toBe(0);
+      expect(geocoderRequests).toEqual([]);
+      expect(failures).toEqual([]);
+    });
+  }
+});
