@@ -1,7 +1,7 @@
 import { Navigate, Outlet, useLocation, useOutletContext } from 'react-router';
 import { useAuth } from './auth-provider';
 import { getIntendedApp } from './intended-app';
-import { resolvePostAuthDestination } from './auth-experience';
+import { resolvePostAuthDestination } from './auth-destination';
 import { selectAuthReturnTo } from './auth-return-to';
 import { lazyPage } from '../app/lazy-page';
 

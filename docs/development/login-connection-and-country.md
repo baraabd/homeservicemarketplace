@@ -222,8 +222,9 @@ does not certify staging or production.
 
 Local validation used Node `24.21.0` and pnpm `10.32.1` with the frozen lockfile:
 
-- The focused Vitest run passed 128 tests across `phone-country`,
-  `phone-identity`, `PhoneIdentityField` and `auth-channel`.
+- The focused Vitest run passed 254 tests across 11 files: country/phone
+  identity, authentication policy, destination precedence, return-target
+  validation, route guards, intended-app storage and auth-page routing.
 - `node --test scripts/dev/auth-connection-doctor.test.cjs
 scripts/dev/whatsapp-doctor.test.cjs scripts/dev/api-endpoint.test.cjs` passed
   37 tests with no failures or skips, using controlled diagnostic fixtures.
@@ -245,6 +246,29 @@ new Stockholm-timezone cases exercise automatic Sweden selection, manual
 correction and the absence of coordinate requests. These API fixtures prove
 presentation only; real-service authentication acceptance remains a separately
 labeled CI workflow. Neither workflow sends to a real WhatsApp recipient.
+
+### Authentication bundle correction
+
+The first hosted R27 measurement found a 59-byte shell overrun: 189,499 Brotli
+bytes against the unchanged 189,440-byte limit. A local measurement with an
+explicitly empty `VITE_PROVIDER_ONBOARDING_V2` had only 15 bytes of headroom.
+Removing that variable from the process, as hosted R27 does, reproduced the
+189,499-byte result exactly. Empty and absent flags carry different provenance
+in the existing feature-flag resolver; their emitted chunk identities differed.
+
+The eager route guards imported destination resolution from the same module as
+all three authentication themes. The resolver read paths through that theme
+object, pulling presentation data into the initial shell. `auth-destination.ts`
+now resolves the same paths directly from `INTENDED_APP_PATHS`; eager guards
+import it directly, and `auth-experience.ts` retains its compatibility exports
+for auth surfaces. Destination precedence, return-target sanitization and role
+guards are unchanged. This separation is an authentication dependency change,
+not a change to the performance gate or the visual design.
+
+With the exact R27 flags, local shell size is 188,892 Brotli bytes and the auth
+increment is 19,703 bytes against its 20,480-byte limit. All ten original bundle
+checks pass. These are byte measurements, not page-load timing or production
+capacity claims. Hosted final-source evidence remains recorded in the PR.
 
 Rollback is a normal revert of this scoped change; no database action is
 needed. User-environment connectivity and live provider delivery still require
