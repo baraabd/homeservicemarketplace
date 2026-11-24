@@ -15,12 +15,25 @@ describe('phone country suggestions', () => {
     ['en-Latn-gb', 'GB'],
     ['en-US-u-hc-h23', 'US'],
   ])('uses a supported explicit locale region: %s', (locale, country) => {
-    expect(suggestPhoneCountry([locale], 'Asia/Dubai')).toBe(country);
+    expect(suggestPhoneCountry([locale], 'Etc/UTC')).toBe(country);
   });
 
   it('checks ordered device locales without assigning a country to a language', () => {
-    expect(suggestPhoneCountry(['ar', 'en', 'sv-SE'], 'Asia/Riyadh')).toBe('SE');
+    expect(suggestPhoneCountry(['ar', 'en', 'sv-SE'], 'Etc/UTC')).toBe('SE');
     expect(suggestPhoneCountry(['en'], 'Etc/UTC')).toBe('SA');
+  });
+
+  it.each([
+    ['en-US', 'Europe/Stockholm', 'SE'],
+    ['sv-SE', 'Asia/Riyadh', 'SA'],
+    ['ar-SA', 'Europe/Berlin', 'DE'],
+  ])('prefers a known timezone to a conflicting locale: %s / %s', (locale, timezone, country) => {
+    expect(suggestPhoneCountry([locale], timezone)).toBe(country);
+  });
+
+  it('falls back to a locale when the timezone is unavailable or unsupported', () => {
+    expect(suggestPhoneCountry(['en-US'], undefined)).toBe('US');
+    expect(suggestPhoneCountry(['sv-SE'], 'Pacific/Chatham')).toBe('SE');
   });
 
   it.each([
@@ -50,9 +63,13 @@ describe('phone country suggestions', () => {
     const getItem = vi.spyOn(Storage.prototype, 'getItem');
     const setItem = vi.spyOn(Storage.prototype, 'setItem');
     vi.stubGlobal('navigator', {
-      language: 'ar',
-      languages: ['ar', 'sv-SE'],
+      language: 'en-US',
+      languages: ['en-US', 'ar-SA'],
       geolocation: { getCurrentPosition },
+    });
+    vi.spyOn(Intl.DateTimeFormat.prototype, 'resolvedOptions').mockReturnValue({
+      ...new Intl.DateTimeFormat().resolvedOptions(),
+      timeZone: 'Europe/Stockholm',
     });
     vi.stubGlobal('fetch', fetch);
     expect(getDevicePhoneCountry()).toBe('SE');

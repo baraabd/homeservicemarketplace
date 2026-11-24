@@ -1,6 +1,6 @@
 import { StrictMode, useState, type ComponentProps } from 'react';
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { reverseGeocodeViaNominatim } from '../../../lib/reverse-geocode';
 import { toE164Phone } from '../../../lib/phone-identity';
 import { LanguageProvider, useLang } from '../../i18n/LanguageContext';
@@ -38,6 +38,19 @@ function LanguageControl() {
   return <button onClick={toggleLang}>Change language</button>;
 }
 
+function setDeviceTimezone(timeZone: string) {
+  const options = Intl.DateTimeFormat().resolvedOptions();
+  vi.spyOn(Intl.DateTimeFormat.prototype, 'resolvedOptions').mockReturnValue({
+    ...options,
+    timeZone,
+  });
+}
+
+beforeEach(() => {
+  // Locale fallback tests must not depend on the test runner's local timezone.
+  setDeviceTimezone('UTC');
+});
+
 afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
@@ -49,7 +62,7 @@ afterEach(() => {
 });
 
 describe('phone country selection', () => {
-  it('suggests the device region on mount without requesting location or network', () => {
+  it('uses the device locale when the timezone is unknown without location or network', () => {
     const getCurrentPosition = vi.fn();
     const fetch = vi.fn();
     vi.stubGlobal('navigator', { language: 'en-US', geolocation: { getCurrentPosition } });
@@ -70,14 +83,68 @@ describe('phone country selection', () => {
     ['Etc/UTC', 'SA'],
   ])('falls back from a regionless locale using %s', (timeZone, country) => {
     vi.stubGlobal('navigator', { language: 'ar', languages: ['ar', 'en'] });
-    const options = Intl.DateTimeFormat().resolvedOptions();
-    vi.spyOn(Intl.DateTimeFormat.prototype, 'resolvedOptions').mockReturnValue({
-      ...options,
-      timeZone,
-    });
+    setDeviceTimezone(timeZone);
     render(<Harness />);
     expect(screen.getByLabelText('Country and calling code')).toHaveValue(country);
   });
+
+  it.each(
+    (['seeker', 'provider', 'admin'] as const).flatMap((experience) =>
+      (['en', 'ar'] as const).map((lang) => [experience, lang] as const),
+    ),
+  )(
+    'suggests Sweden without a location card or external lookup for %s / %s',
+    (experience, lang) => {
+      const getCurrentPosition = vi.fn();
+      const watchPosition = vi.fn();
+      const fetch = vi.fn();
+      vi.stubGlobal('navigator', {
+        language: 'en-US',
+        languages: ['en-US', 'sv-SE'],
+        geolocation: { getCurrentPosition, watchPosition },
+      });
+      vi.stubGlobal('fetch', fetch);
+      setDeviceTimezone('Europe/Stockholm');
+      localStorage.setItem('hsm.lang', lang);
+      render(
+        <LanguageProvider>
+          <Harness experience={experience} />
+        </LanguageProvider>,
+      );
+      const country = screen.getByTestId('dial-code-select');
+      const phone = screen.getByLabelText(
+        lang === 'ar' ? 'رقم الهاتف المسجل في واتساب' : 'WhatsApp phone number',
+      );
+      expect(country).toHaveValue('SE');
+      expect(country).toBeEnabled();
+      expect(screen.getByTestId('selected-country-flag')).toHaveAttribute('data-country', 'SE');
+      expect(phone.parentElement).toHaveTextContent('+46');
+      expect(
+        screen.queryByRole('button', { name: /Use my location|استخدم موقعي/u }),
+      ).not.toBeInTheDocument();
+      expect(screen.queryByText(/OpenStreetMap/u)).not.toBeInTheDocument();
+
+      fireEvent.change(phone, { target: { value: '0701234567' } });
+      expect(screen.getByTestId('submitted-phone')).toHaveTextContent('+46701234567');
+      fireEvent.change(country, { target: { value: 'SY' } });
+      expect(country).toHaveValue('SY');
+      expect(phone).toHaveValue('0701234567');
+      fireEvent.click(
+        screen.getByRole('button', {
+          name: lang === 'ar' ? 'ابحث عن الدولة' : 'Search countries',
+        }),
+      );
+      fireEvent.change(screen.getByRole('searchbox'), { target: { value: 'SE' } });
+      fireEvent.change(country, { target: { value: 'SE' } });
+      expect(country).toHaveValue('SE');
+      expect(phone).toHaveValue('0701234567');
+      expect(screen.getByTestId('submitted-phone')).toHaveTextContent('+46701234567');
+      expect(getCurrentPosition).not.toHaveBeenCalled();
+      expect(watchPosition).not.toHaveBeenCalled();
+      expect(reverseGeocodeViaNominatim).not.toHaveBeenCalled();
+      expect(fetch).not.toHaveBeenCalled();
+    },
+  );
 
   it('preserves restored countries and digits instead of reinterpreting them from device hints', () => {
     vi.stubGlobal('navigator', { language: 'ar-SA' });
@@ -150,6 +217,7 @@ describe('phone country selection', () => {
       target: { value: '٠٧٠١٢٣٤٥٦٧' },
     });
     vi.stubGlobal('navigator', { language: 'en-US' });
+    setDeviceTimezone('America/New_York');
     fireEvent.click(screen.getByRole('button', { name: 'Change language' }));
     rerender(
       <LanguageProvider>
@@ -228,99 +296,6 @@ describe('phone country selection', () => {
     expect(screen.getByTestId('submitted-phone')).toHaveTextContent('+12025550123');
   });
 
-  it('fills the actual country after an explicit location request', async () => {
-    const getCurrentPosition = vi.fn((success: PositionCallback) =>
-      success({ coords: { latitude: 36.20123, longitude: 37.16123 } } as GeolocationPosition),
-    );
-    vi.stubGlobal('navigator', { geolocation: { getCurrentPosition } });
-    vi.mocked(reverseGeocodeViaNominatim).mockResolvedValue({
-      status: 'ok',
-      countryCode: 'SY',
-      country: 'Syria',
-      city: 'Aleppo',
-      formattedAddress: 'Aleppo',
-      lat: 36.2,
-      lng: 37.16,
-    });
-    render(<Harness />);
-    fireEvent.click(screen.getByRole('button', { name: 'Use my location' }));
-    await waitFor(() =>
-      expect(screen.getByLabelText('Country and calling code')).toHaveValue('SY'),
-    );
-    expect(reverseGeocodeViaNominatim).toHaveBeenCalledWith(
-      36.2,
-      37.16,
-      'en',
-      expect.any(AbortSignal),
-    );
-  });
-
-  it('retains manual selection when permission is denied', async () => {
-    const getCurrentPosition = vi.fn((_success: PositionCallback, failure: PositionErrorCallback) =>
-      failure({ code: 1 } as GeolocationPositionError),
-    );
-    vi.stubGlobal('navigator', { geolocation: { getCurrentPosition } });
-    render(<Harness />);
-    fireEvent.change(screen.getByLabelText('Country and calling code'), {
-      target: { value: 'SA' },
-    });
-    fireEvent.click(screen.getByRole('button', { name: 'Use my location' }));
-    expect(screen.getByLabelText('Country and calling code')).toHaveValue('SA');
-    expect(screen.getByRole('status')).toHaveTextContent('Choose your country manually');
-    expect(reverseGeocodeViaNominatim).not.toHaveBeenCalled();
-  });
-
-  it('does not overwrite a manual choice made while a geocoder request is pending', async () => {
-    let resolve: (value: Awaited<ReturnType<typeof reverseGeocodeViaNominatim>>) => void = () => {};
-    vi.mocked(reverseGeocodeViaNominatim).mockReturnValue(
-      new Promise((done) => {
-        resolve = done;
-      }),
-    );
-    vi.stubGlobal('navigator', {
-      geolocation: {
-        getCurrentPosition: (success: PositionCallback) =>
-          success({ coords: { latitude: 36.2, longitude: 37.16 } } as GeolocationPosition),
-      },
-    });
-    render(<Harness />);
-    fireEvent.click(screen.getByRole('button', { name: 'Use my location' }));
-    await waitFor(() => expect(reverseGeocodeViaNominatim).toHaveBeenCalledTimes(1));
-    fireEvent.change(screen.getByLabelText('Country and calling code'), {
-      target: { value: 'SE' },
-    });
-    await act(async () =>
-      resolve({
-        status: 'ok',
-        countryCode: 'SY',
-        country: 'Syria',
-        city: 'Aleppo',
-        formattedAddress: 'Aleppo',
-        lat: 36.2,
-        lng: 37.16,
-      }),
-    );
-    expect(screen.getByLabelText('Country and calling code')).toHaveValue('SE');
-  });
-
-  it('does not share coordinates when a manual edit cancels the lazy geocoder import', async () => {
-    vi.stubGlobal('navigator', {
-      geolocation: {
-        getCurrentPosition: (success: PositionCallback) =>
-          success({ coords: { latitude: 36.2, longitude: 37.16 } } as GeolocationPosition),
-      },
-    });
-    render(<Harness />);
-    fireEvent.click(screen.getByRole('button', { name: 'Use my location' }));
-    fireEvent.change(screen.getByLabelText('Country and calling code'), {
-      target: { value: 'SE' },
-    });
-    await act(async () => {});
-    expect(reverseGeocodeViaNominatim).not.toHaveBeenCalled();
-    expect(screen.getByLabelText('Country and calling code')).toHaveValue('SE');
-    expect(screen.getByRole('button', { name: 'Use my location' })).toBeEnabled();
-  });
-
   it('filters country choices by Arabic text and returns the ISO identity', () => {
     render(<Harness initialCountry="SA" />);
     fireEvent.click(screen.getByRole('button', { name: 'Search countries' }));
@@ -392,27 +367,9 @@ describe('phone country selection', () => {
     expect(screen.getByTestId('submitted-phone')).toBeEmptyDOMElement();
   });
 
-  it('does not request location after a full international number has been entered', () => {
-    const getCurrentPosition = vi.fn();
-    vi.stubGlobal('navigator', { geolocation: { getCurrentPosition } });
-    render(<Harness />);
-    fireEvent.change(screen.getByLabelText('WhatsApp phone number'), {
-      target: { value: '+963944123456' },
-    });
-    const locate = screen.getByRole('button', { name: 'Use my location' });
-    expect(locate).toBeDisabled();
-    fireEvent.click(locate);
-    expect(getCurrentPosition).not.toHaveBeenCalled();
-    expect(reverseGeocodeViaNominatim).not.toHaveBeenCalled();
-    expect(screen.getByLabelText('Country and calling code')).toHaveValue('SY');
-    expect(screen.getByTestId('submitted-phone')).toHaveTextContent('+963944123456');
-  });
-
-  it('never calls a country or number change callback for an incompatible manual or location override', () => {
+  it('never calls change callbacks for an incompatible manual override of a full number', () => {
     const onCountryChange = vi.fn();
     const onNumberChange = vi.fn();
-    const getCurrentPosition = vi.fn();
-    vi.stubGlobal('navigator', { geolocation: { getCurrentPosition } });
     render(
       <PhoneIdentityField
         countryCode="SA"
@@ -425,107 +382,30 @@ describe('phone country selection', () => {
     expect(country).toHaveValue('SY');
     expect(country).toBeDisabled();
     fireEvent.change(country, { target: { value: 'SA' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Use my location' }));
     expect(onCountryChange).not.toHaveBeenCalled();
     expect(onNumberChange).not.toHaveBeenCalled();
-    expect(getCurrentPosition).not.toHaveBeenCalled();
   });
 
-  it('cancels a pending browser location lookup on every phone edit before coordinates are shared', () => {
-    let locate: PositionCallback = () => {};
-    vi.stubGlobal('navigator', {
-      geolocation: {
-        getCurrentPosition: (success: PositionCallback) => {
-          locate = success;
-        },
-      },
-    });
-    render(<Harness />);
-    fireEvent.change(screen.getByLabelText('Country and calling code'), {
-      target: { value: 'SA' },
-    });
-    fireEvent.click(screen.getByRole('button', { name: 'Use my location' }));
-    fireEvent.change(screen.getByLabelText('WhatsApp phone number'), {
-      target: { value: '0501234567' },
-    });
-    act(() => locate({ coords: { latitude: 36.2, longitude: 37.16 } } as GeolocationPosition));
-    expect(reverseGeocodeViaNominatim).not.toHaveBeenCalled();
-    expect(screen.getByLabelText('Country and calling code')).toHaveValue('SA');
-    expect(screen.getByRole('button', { name: 'Use my location' })).toBeEnabled();
-    expect(screen.getByTestId('submitted-phone')).toHaveTextContent('+966501234567');
+  it('does not invent a country for an unsupported shared international calling code', () => {
+    render(<Harness initialCountry="SE" />);
+    const country = screen.getByLabelText('Country and calling code');
+    const phone = screen.getByLabelText('WhatsApp phone number');
+    fireEvent.change(phone, { target: { value: '+7 701 123 4567' } });
+    expect(country).toHaveValue('');
+    expect(screen.getByTestId('selected-country-flag')).toHaveAttribute('data-country', '');
+    expect(screen.getByText(/No country is assumed for this prefix/u)).toBeInTheDocument();
+    expect(phone).toHaveValue('+7 701 123 4567');
+    expect(screen.getByTestId('submitted-phone')).toHaveTextContent('+77011234567');
   });
 
-  it('ignores a stale geocoder response after an international number is pasted', async () => {
-    let resolve: (value: Awaited<ReturnType<typeof reverseGeocodeViaNominatim>>) => void = () => {};
-    vi.mocked(reverseGeocodeViaNominatim).mockReturnValue(
-      new Promise((done) => {
-        resolve = done;
-      }),
-    );
-    vi.stubGlobal('navigator', {
-      geolocation: {
-        getCurrentPosition: (success: PositionCallback) =>
-          success({ coords: { latitude: 24.7, longitude: 46.67 } } as GeolocationPosition),
-      },
-    });
-    render(<Harness />);
-    fireEvent.click(screen.getByRole('button', { name: 'Use my location' }));
-    await waitFor(() => expect(reverseGeocodeViaNominatim).toHaveBeenCalledTimes(1));
-    const signal = vi.mocked(reverseGeocodeViaNominatim).mock.calls[0]![3] as AbortSignal;
-    fireEvent.change(screen.getByLabelText('WhatsApp phone number'), {
-      target: { value: '+963944123456' },
-    });
-    expect(signal.aborted).toBe(true);
-    await act(async () =>
-      resolve({
-        status: 'ok',
-        countryCode: 'SA',
-        country: 'Saudi Arabia',
-        city: 'Riyadh',
-        formattedAddress: 'Riyadh',
-        lat: 24.7,
-        lng: 46.67,
-      }),
-    );
-    expect(screen.getByLabelText('Country and calling code')).toHaveValue('SY');
-    expect(screen.getByLabelText('WhatsApp phone number')).toHaveValue('+963944123456');
-    expect(screen.getByTestId('submitted-phone')).toHaveTextContent('+963944123456');
-  });
-
-  it('invalidates pending location work when a parent restores different country and number values', async () => {
-    let resolve: (value: Awaited<ReturnType<typeof reverseGeocodeViaNominatim>>) => void = () => {};
-    vi.mocked(reverseGeocodeViaNominatim).mockReturnValue(
-      new Promise((done) => {
-        resolve = done;
-      }),
-    );
-    vi.stubGlobal('navigator', {
-      geolocation: {
-        getCurrentPosition: (success: PositionCallback) =>
-          success({ coords: { latitude: 36.2, longitude: 37.16 } } as GeolocationPosition),
-      },
-    });
+  it('preserves country and number values restored by the parent after mount', () => {
     const callbacks = { onCountryChange: vi.fn(), onNumberChange: vi.fn() };
     const { rerender } = render(
       <PhoneIdentityField countryCode="SA" localNumber="" {...callbacks} />,
     );
-    fireEvent.click(screen.getByRole('button', { name: 'Use my location' }));
-    await waitFor(() => expect(reverseGeocodeViaNominatim).toHaveBeenCalledTimes(1));
-    const signal = vi.mocked(reverseGeocodeViaNominatim).mock.calls[0]![3] as AbortSignal;
     rerender(<PhoneIdentityField countryCode="SE" localNumber="0701234567" {...callbacks} />);
-    expect(signal.aborted).toBe(true);
-    await act(async () =>
-      resolve({
-        status: 'ok',
-        countryCode: 'SY',
-        country: 'Syria',
-        city: 'Aleppo',
-        formattedAddress: 'Aleppo',
-        lat: 36.2,
-        lng: 37.16,
-      }),
-    );
     expect(callbacks.onCountryChange).not.toHaveBeenCalled();
+    expect(callbacks.onNumberChange).not.toHaveBeenCalled();
     expect(screen.getByLabelText('Country and calling code')).toHaveValue('SE');
     expect(screen.getByLabelText('WhatsApp phone number')).toHaveValue('0701234567');
   });

@@ -1,7 +1,6 @@
-import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
-import { ChevronDown, MapPin, Phone, Search } from 'lucide-react';
+import { useEffect, useId, useMemo, useRef, useState } from 'react';
+import { ChevronDown, Phone, Search } from 'lucide-react';
 import { AUTH_EXPERIENCES, type AuthExperienceId } from '../../../lib/auth-experience';
-import { COUNTRY_DIAL_CODES } from '../../../lib/country-dial-codes';
 import { getDevicePhoneCountry } from '../../../lib/phone-country';
 import { phoneCountryDisplay } from '../../../lib/phone-identity';
 import { useLang } from '../../i18n/LanguageContext';
@@ -64,16 +63,8 @@ const COPY = {
     search: 'Search countries',
     number: 'WhatsApp phone number',
     hint: 'Use the number registered with WhatsApp. You can also paste a full number starting with +.',
-    locate: 'Use my location',
-    locating: 'Finding your country…',
-    privacy:
-      'Only if you choose this option, your location is shared with OpenStreetMap to find your country. You can select it manually instead.',
-    denied: 'Location was not available. Choose your country manually to continue.',
-    failed: 'We could not identify your country. Choose it manually to continue.',
-    found: 'Country selected from your location. Check the calling code before continuing.',
     noMatches: 'No matching countries. Clear the search or enter the full international number.',
-    international:
-      'The full number sets the calling code. Edit the number to change it; location cannot override it.',
+    international: 'The full number sets the calling code. Edit the number to change it.',
     shared:
       'This calling code is shared. Choose your country if listed; the number stays unchanged.',
     unresolved:
@@ -86,16 +77,8 @@ const COPY = {
     search: 'ابحث عن الدولة',
     number: 'رقم الهاتف المسجل في واتساب',
     hint: 'استخدم الرقم المسجل في واتساب. يمكنك أيضاً لصق الرقم الدولي كاملاً ابتداءً بعلامة +.',
-    locate: 'استخدم موقعي',
-    locating: 'جارٍ تحديد الدولة…',
-    privacy:
-      'عند اختيار هذا الخيار فقط، تتم مشاركة موقعك مع OpenStreetMap لتحديد الدولة. يمكنك اختيار الدولة يدوياً بدلاً من ذلك.',
-    denied: 'لم يتوفر الموقع. اختر دولتك يدوياً للمتابعة.',
-    failed: 'تعذر تحديد الدولة. اخترها يدوياً للمتابعة.',
-    found: 'تم اختيار الدولة من موقعك. تحقق من مفتاح الاتصال قبل المتابعة.',
     noMatches: 'لا توجد دولة مطابقة. امسح البحث أو أدخل الرقم الدولي كاملاً.',
-    international:
-      'يحدد الرقم الدولي مفتاح الاتصال. عدّل الرقم لتغييره؛ لا يمكن للموقع تغيير هذا المفتاح.',
+    international: 'يحدد الرقم الدولي مفتاح الاتصال. عدّل الرقم لتغييره.',
     shared: 'مفتاح الاتصال مشترك. اختر دولتك إن كانت مدرجة؛ سيبقى الرقم كما أدخلته.',
     unresolved: 'لا نفترض دولة لهذا المفتاح. يمكنك استخدام الرقم الدولي كاملاً دون اختيار دولة.',
   },
@@ -104,7 +87,7 @@ const COPY = {
 const baseFieldClass =
   'min-h-12 w-full min-w-0 rounded-2xl border-2 bg-white px-3 py-3 text-base text-slate-900 placeholder:text-slate-600 focus:outline-none focus:ring-2 disabled:bg-slate-50 disabled:text-slate-500';
 
-/** Device hints suggest the initial country; coordinates remain strictly opt-in. */
+/** Device settings suggest the initial country without requesting coordinates. */
 export function PhoneIdentityField({
   countryCode,
   onCountryChange,
@@ -121,15 +104,6 @@ export function PhoneIdentityField({
   const id = useId();
   const [search, setSearch] = useState('');
   const [searchOpen, setSearchOpen] = useState(false);
-  const [locationTarget, setLocationTarget] = useState<{
-    countryCode: string;
-    localNumber: string;
-  } | null>(null);
-  const locating = locationTarget !== null;
-  const [locationStatus, setLocationStatus] = useState<'denied' | 'failed' | 'found' | null>(null);
-  const generation = useRef(0);
-  const request = useRef<AbortController | null>(null);
-  const requestTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
   const initialized = useRef(false);
   const automaticCountry = useRef<string | null>(null);
 
@@ -168,35 +142,6 @@ export function PhoneIdentityField({
       );
   }, [search, lang, display.choices]);
 
-  const cancelRequest = useCallback(() => {
-    request.current?.abort();
-    request.current = null;
-    if (requestTimeout.current !== null) clearTimeout(requestTimeout.current);
-    requestTimeout.current = null;
-  }, []);
-
-  useEffect(
-    () => () => {
-      generation.current += 1;
-      cancelRequest();
-    },
-    [cancelRequest],
-  );
-  useEffect(() => {
-    // Parent-driven restoration/edits invalidate a pending GPS result too.
-    generation.current += 1;
-    cancelRequest();
-  }, [disabled, countryCode, localNumber, cancelRequest]);
-  if (
-    locationTarget &&
-    (disabled ||
-      display.international ||
-      locationTarget.countryCode !== countryCode ||
-      locationTarget.localNumber !== localNumber)
-  ) {
-    setLocationTarget(null);
-  }
-
   function selectCountry(value: string) {
     if (
       disabled ||
@@ -204,21 +149,13 @@ export function PhoneIdentityField({
       (display.international && value && !display.choices.some((entry) => entry.iso2 === value))
     )
       return;
-    generation.current += 1;
-    cancelRequest();
     automaticCountry.current = null;
-    setLocationTarget(null);
-    setLocationStatus(null);
     onCountryChange(value);
     setSearch('');
     setSearchOpen(false);
   }
 
   function changeNumber(value: string) {
-    generation.current += 1;
-    cancelRequest();
-    setLocationTarget(null);
-    setLocationStatus(null);
     // Locale/timezone hints cannot identify a country for shared prefixes
     // such as +1. Keep only an explicit/restored choice when pasting one.
     const next = phoneCountryDisplay(
@@ -232,71 +169,6 @@ export function PhoneIdentityField({
     setSearch('');
     setSearchOpen(false);
     onNumberChange(value);
-  }
-
-  function detectCountry() {
-    if (disabled || locating || display.international) return;
-    setLocationStatus(null);
-    if (!navigator.geolocation) {
-      setLocationStatus('denied');
-      return;
-    }
-    const current = ++generation.current;
-    cancelRequest();
-    const controller = new AbortController();
-    request.current = controller;
-    setLocationTarget({ countryCode, localNumber });
-    navigator.geolocation.getCurrentPosition(
-      (position) => {
-        if (current !== generation.current) return;
-        // Reduce coordinate precision before sharing: only a country is needed.
-        const lat = Number(position.coords.latitude.toFixed(2));
-        const lng = Number(position.coords.longitude.toFixed(2));
-        requestTimeout.current = setTimeout(() => {
-          if (current !== generation.current) return;
-          generation.current += 1;
-          controller.abort();
-          setLocationTarget(null);
-          setLocationStatus('failed');
-        }, 10_000);
-        // The optional geocoder is loaded only after explicit location consent.
-        // A cancelled edit must not share coordinates when its import resolves.
-        void import('../../../lib/reverse-geocode')
-          .then(({ reverseGeocodeViaNominatim }) => {
-            if (current !== generation.current || controller.signal.aborted) return null;
-            return reverseGeocodeViaNominatim(lat, lng, lang, controller.signal);
-          })
-          .then((result) => {
-            if (current !== generation.current || controller.signal.aborted || !result) return;
-            if (requestTimeout.current !== null) clearTimeout(requestTimeout.current);
-            requestTimeout.current = null;
-            setLocationTarget(null);
-            const iso2 = result.status === 'ok' ? result.countryCode : undefined;
-            if (!iso2 || !COUNTRY_DIAL_CODES.some((entry) => entry.iso2 === iso2)) {
-              setLocationStatus('failed');
-              return;
-            }
-            automaticCountry.current = null;
-            onCountryChange(iso2);
-            setSearch('');
-            setSearchOpen(false);
-            setLocationStatus('found');
-          })
-          .catch(() => {
-            if (current !== generation.current) return;
-            if (requestTimeout.current !== null) clearTimeout(requestTimeout.current);
-            requestTimeout.current = null;
-            setLocationTarget(null);
-            setLocationStatus('failed');
-          });
-      },
-      () => {
-        if (current !== generation.current) return;
-        setLocationTarget(null);
-        setLocationStatus('denied');
-      },
-      { enableHighAccuracy: false, timeout: 10_000, maximumAge: 60_000 },
-    );
   }
 
   return (
@@ -429,24 +301,6 @@ export function PhoneIdentityField({
             {error}
           </p>
         )}
-      </div>
-      <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
-        <p id={`${id}-privacy`} className="text-xs leading-relaxed text-slate-600">
-          {display.international ? copy.international : copy.privacy}
-        </p>
-        <button
-          type="button"
-          onClick={detectCountry}
-          disabled={disabled || locating || display.international}
-          aria-describedby={`${id}-privacy`}
-          className={`mt-1 flex min-h-11 items-center gap-2 rounded-xl px-2 text-sm font-semibold text-slate-700 focus-visible:outline-2 focus-visible:outline-offset-2 ${theme.focusOutline} disabled:opacity-60`}
-        >
-          <MapPin size={17} aria-hidden="true" />
-          {locating ? copy.locating : copy.locate}
-        </button>
-        <p role="status" className="text-sm text-slate-600">
-          {locationStatus ? copy[locationStatus] : ''}
-        </p>
       </div>
     </div>
   );

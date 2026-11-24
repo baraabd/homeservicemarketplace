@@ -74,6 +74,7 @@ async function run(data) {
     const context = await browser.newContext({
       viewport: { width, height: 844 },
       locale: 'en-US',
+      timezoneId: 'UTC',
       reducedMotion: 'reduce',
       serviceWorkers: 'block',
     });
