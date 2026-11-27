@@ -20,8 +20,8 @@ export interface EmailOtpPanelProps {
   codeRevision?: number;
   onVerify: (code: string) => Promise<void>;
   onResend: () => Promise<void>;
-  /** A new phone-only sign-in request after expiry; never resend an expired challenge. */
-  onRequestNewCode?: () => Promise<void>;
+  /** Start a fresh request or return to signup credentials; never resend an expired challenge. */
+  onRequestNewCode?: () => void | Promise<void>;
   isVerifying?: boolean;
   isResending?: boolean;
   /** Local request budget for passwordless login; the server also enforces its limits. */

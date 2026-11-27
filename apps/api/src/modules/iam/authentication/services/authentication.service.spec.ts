@@ -1163,6 +1163,200 @@ describe('WhatsApp authentication', () => {
     expect(h.delivery.dispatch).not.toHaveBeenCalled();
   });
 
+  describe('pending registration recovery', () => {
+    const pendingUser = (overrides: Partial<User> = {}) =>
+      phoneUser({ status: 'PENDING_VERIFICATION', phoneVerifiedAt: null, ...overrides });
+
+    it('issues a fresh challenge for the same pending account after current-password proof without changing its identity', async () => {
+      const h = makeHarness();
+      const pending = pendingUser({ failedLoginCount: 2 });
+      h.channels.getChannel.mockResolvedValue('whatsapp');
+      h.users.findByPhoneNumber.mockResolvedValue(pending);
+      h.passwords.verify.mockResolvedValue(true);
+      let committed = false;
+      jest.spyOn(h.tx, 'run').mockImplementation(async (fn) => {
+        const result = await fn(h.fakeTx as never);
+        expect(h.delivery.dispatch).not.toHaveBeenCalled();
+        committed = true;
+        return result;
+      });
+      jest.spyOn(h.delivery, 'dispatch').mockImplementation(async () => {
+        expect(committed).toBe(true);
+      });
+
+      const result = await h.svc.register(
+        { ...registration, firstName: 'Replacement', lastName: 'Profile' },
+        ctx,
+      );
+
+      expect(result).toMatchObject({
+        challengeId: 'chal-fake',
+        channel: 'whatsapp',
+        codeLength: 6,
+        expiresInSeconds: 300,
+      });
+      expect(result.maskedDestination).not.toBe(phoneNumber);
+      expect(h.passwords.verify).toHaveBeenCalledWith(pending.passwordHash, registration.password);
+      expect(h.otp.issue).toHaveBeenCalledWith(
+        pending.id,
+        'REGISTRATION_OTP',
+        h.fakeTx,
+        { channel: 'whatsapp', destination: phoneNumber },
+        h.preparedOtp,
+      );
+      expect(h.delivery.enqueue).toHaveBeenCalledWith(
+        expect.objectContaining({
+          userId: pending.id,
+          channel: 'whatsapp',
+          destination: phoneNumber,
+          purpose: 'REGISTRATION_OTP',
+        }),
+        h.fakeTx,
+      );
+      expect(h.audit.record).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: 'USER_REGISTERED',
+          userId: pending.id,
+          metadata: { outcome: 'verification-restarted' },
+        }),
+        h.fakeTx,
+      );
+      expect(h.users.create).not.toHaveBeenCalled();
+      expect(h.users.assignRole).not.toHaveBeenCalled();
+      expect(h.fakeTx.user.update).not.toHaveBeenCalled();
+      expect(h.fakeTx.user.updateMany).not.toHaveBeenCalled();
+      expect(h.fakeTx.userLegalAcceptance.createMany).not.toHaveBeenCalled();
+      expect(h.passwords.hash).not.toHaveBeenCalled();
+      expect(h.attempts.recordSuccess).not.toHaveBeenCalled();
+      expect(h.attempts.recordFailure).not.toHaveBeenCalled();
+      expect(h.sessions.createForLogin).not.toHaveBeenCalled();
+      expect(h.delivery.dispatch).toHaveBeenCalledTimes(1);
+    });
+
+    it('checks the latest password after acquiring the account lock', async () => {
+      const h = makeHarness();
+      h.channels.getChannel.mockResolvedValue('whatsapp');
+      h.users.findByPhoneNumber
+        .mockResolvedValueOnce(pendingUser({ passwordHash: 'old-hash' }))
+        .mockImplementationOnce(async () => {
+          expect(h.fakeTx.$queryRaw).toHaveBeenCalledTimes(1);
+          return pendingUser({ passwordHash: 'new-hash' });
+        });
+      h.passwords.verify.mockResolvedValue(false);
+
+      const result = await h.svc.register(registration, ctx);
+
+      expect(h.passwords.verify).toHaveBeenCalledWith('new-hash', registration.password);
+      expect(result.challengeId).not.toBe('chal-fake');
+      expect(h.otp.issue).not.toHaveBeenCalled();
+      expect(h.delivery.enqueue).not.toHaveBeenCalled();
+      expect(h.delivery.dispatch).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      ['active', { status: 'ACTIVE' }],
+      ['suspended', { status: 'SUSPENDED' }],
+      ['locked status', { status: 'LOCKED' }],
+      ['inactive', { isActive: false }],
+      ['deleted', { deletedAt: new Date() }],
+      ['verified phone', { phoneVerifiedAt: new Date() }],
+      ['missing password', { passwordHash: null }],
+    ] as Array<[string, Partial<User>]>)(
+      'keeps %s accounts neutral even with a matching password',
+      async (_name, changes) => {
+        const h = makeHarness();
+        h.channels.getChannel.mockResolvedValue('whatsapp');
+        h.users.findByPhoneNumber.mockResolvedValue(pendingUser(changes));
+        h.passwords.verify.mockResolvedValue(true);
+
+        const result = await h.svc.register(registration, ctx);
+
+        expect(result).toMatchObject({ channel: 'whatsapp', codeLength: 6, expiresInSeconds: 300 });
+        expect(result.challengeId).not.toBe('chal-fake');
+        expect(h.passwords.verify).toHaveBeenCalledTimes(1);
+        expect(h.otp.issue).not.toHaveBeenCalled();
+        expect(h.delivery.enqueue).not.toHaveBeenCalled();
+        expect(h.users.create).not.toHaveBeenCalled();
+        expect(h.fakeTx.user.update).not.toHaveBeenCalled();
+        expect(h.sessions.createForLogin).not.toHaveBeenCalled();
+      },
+    );
+
+    it('does not bypass an existing lockout or the verification policy', async () => {
+      for (const requireVerification of [true, false]) {
+        const h = makeHarness(requireVerification);
+        h.channels.getChannel.mockResolvedValue('whatsapp');
+        h.users.findByPhoneNumber.mockResolvedValue(pendingUser());
+        h.passwords.verify.mockResolvedValue(true);
+        h.attempts.isLocked.mockReturnValue(requireVerification);
+
+        const result = await h.svc.register(registration, ctx);
+
+        expect(result.challengeId).not.toBe('chal-fake');
+        expect(h.passwords.verify).toHaveBeenCalledTimes(1);
+        expect(h.otp.issue).not.toHaveBeenCalled();
+        expect(h.delivery.enqueue).not.toHaveBeenCalled();
+        expect(h.fakeTx.user.update).not.toHaveBeenCalled();
+        expect(h.attempts.recordSuccess).not.toHaveBeenCalled();
+      }
+    });
+
+    it.each([
+      ['removed', null],
+      ['reassigned', pendingUser({ id: 'new-owner' })],
+      ['changed phone', pendingUser({ phoneNumber: '+966509999999' })],
+      ['already verified', pendingUser({ status: 'ACTIVE', phoneVerifiedAt: new Date() })],
+    ] as Array<[string, User | null]>)(
+      'does not restart a registration %s while waiting for its account lock',
+      async (_name, current) => {
+        const h = makeHarness();
+        h.channels.getChannel.mockResolvedValue('whatsapp');
+        h.users.findByPhoneNumber
+          .mockResolvedValueOnce(pendingUser())
+          .mockResolvedValueOnce(current);
+        h.passwords.verify.mockResolvedValue(true);
+
+        const result = await h.svc.register(registration, ctx);
+
+        expect(result.challengeId).not.toBe('chal-fake');
+        expect(h.passwords.verify).toHaveBeenCalledWith(
+          current?.id === 'u-1' ? current.passwordHash : null,
+          registration.password,
+        );
+        expect(h.otp.issue).not.toHaveBeenCalled();
+        expect(h.delivery.enqueue).not.toHaveBeenCalled();
+        expect(h.users.create).not.toHaveBeenCalled();
+      },
+    );
+
+    it('does not dispatch a recovery when its durable delivery cannot commit', async () => {
+      const h = makeHarness();
+      h.channels.getChannel.mockResolvedValue('whatsapp');
+      h.users.findByPhoneNumber.mockResolvedValue(pendingUser());
+      h.passwords.verify.mockResolvedValue(true);
+      jest.spyOn(h.delivery, 'enqueue').mockRejectedValue(new Error('Synthetic outbox failure'));
+
+      await expect(h.svc.register(registration, ctx)).rejects.toThrow('Synthetic outbox failure');
+
+      expect(h.delivery.dispatch).not.toHaveBeenCalled();
+      expect(h.sessions.createForLogin).not.toHaveBeenCalled();
+    });
+
+    it('rejects a policy switch before the transaction can recover or create an account', async () => {
+      const h = makeHarness();
+      h.channels.getChannel.mockResolvedValueOnce('whatsapp').mockResolvedValueOnce('email');
+
+      await expect(h.svc.register(registration, ctx)).rejects.toMatchObject({
+        response: { code: 'AUTH_CHANNEL_CHANGED' },
+      });
+
+      expect(h.users.findByPhoneNumber).not.toHaveBeenCalled();
+      expect(h.users.create).not.toHaveBeenCalled();
+      expect(h.otp.issue).not.toHaveBeenCalled();
+      expect(h.delivery.enqueue).not.toHaveBeenCalled();
+    });
+  });
+
   it('treats a racing phone uniqueness collision as a neutral duplicate', async () => {
     const h = makeHarness();
     h.channels.getChannel.mockResolvedValue('whatsapp');
