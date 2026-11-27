@@ -406,7 +406,7 @@ export function SignUpScreen({
             <h2 className="text-slate-900 mb-1" style={{ fontSize: '22px', fontWeight: 800 }}>
               {t('letsGetStarted')}
             </h2>
-            <p className="text-slate-400" style={{ fontSize: '14px' }}>
+            <p className="text-slate-600" style={{ fontSize: '14px' }}>
               {t('fillDetails')}
             </p>
           </div>
@@ -443,10 +443,10 @@ export function SignUpScreen({
                   )}
                 </div>
                 <span
+                  className={i + 1 <= step ? experience.classes.accentText : 'text-slate-600'}
                   style={{
                     fontSize: '10px',
                     fontWeight: i + 1 <= step ? 700 : 400,
-                    color: i + 1 <= step ? experience.accentHex : '#94a3b8',
                   }}
                 >
                   {label}
@@ -531,6 +531,7 @@ export function SignUpScreen({
               <div>
                 <TextField
                   label={t('password')}
+                  contrast="strong"
                   type={showPw ? 'text' : 'password'}
                   autoComplete={recoveringRegistration ? 'current-password' : 'new-password'}
                   value={password}
@@ -722,7 +723,7 @@ export function SignUpScreen({
                   : t('register')
                 : t('next')}
             </Button>
-            <p className="text-center text-slate-400 mt-3" style={{ fontSize: '12px' }}>
+            <p className="text-center text-slate-600 mt-3" style={{ fontSize: '12px' }}>
               {t('alreadyHaveAccount')}{' '}
               <button onClick={onBack} className={`${experience.classes.accentText} font-semibold`}>
                 {t('login')}
