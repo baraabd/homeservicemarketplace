@@ -105,11 +105,10 @@ export class AuthenticationService {
 
   // --- Registration -------------------------------------------------------
   // Always returns an OTP challenge envelope. The challengeId is opaque
-  // (cryptographic random) in BOTH the real and the duplicate-email path —
-  // an attacker cannot distinguish the two from the response alone. Only
-  // the new-user path actually issues a DB row and sends email. The duplicate
-  // path returns a fake challengeId that will never verify (just like a
-  // wrong code), and no email is sent.
+  // (cryptographic random) in BOTH the real and neutral duplicate paths —
+  // an attacker cannot distinguish the two from the response alone. A pending
+  // WhatsApp signup can restart verification after proving its current password;
+  // all other duplicates receive a fake challengeId and no delivery.
   //
   // The user is NOT marked ACTIVE at this step — that only happens when the
   // REGISTRATION_OTP is successfully consumed at /verify-otp, which ALSO
@@ -130,6 +129,8 @@ export class AuthenticationService {
       // and neutral paths; a duplicate or suppressed delivery cannot skip it.
       const prepared = requireVerification ? await this.otp.prepare() : undefined;
       const result = await this.tx.run(async (trx) => {
+        if (contact.channel !== (await this.channels.getChannel(trx)))
+          throw new BadRequestException({ code: 'AUTH_CHANNEL_CHANGED' });
         const customer = await this.roles.findByName('customer', trx);
         if (!customer) {
           throw new AppError(
@@ -139,54 +140,69 @@ export class AuthenticationService {
           );
         }
         const existing = await this.findByContact(contact, trx);
+        let user: User;
+        let outcome: 'created' | 'verification-restarted';
         if (existing) {
-          await this.audit.record(
+          const pending = await this.findRecoverablePhoneRegistration(
+            existing,
+            contact,
+            input.password,
+            trx,
+          );
+          if (!requireVerification || !pending) {
+            await this.audit.record(
+              {
+                type: 'USER_REGISTERED',
+                userId: existing.id,
+                ipAddress: ctx.device.ipAddress,
+                userAgent: ctx.device.userAgent,
+                requestId: ctx.requestId,
+                metadata: { outcome: 'duplicate' },
+              },
+              trx,
+            );
+            return null;
+          }
+          // Recovery only replaces the verification challenge. The account,
+          // password, profile, roles and original legal acceptance stay intact.
+          user = pending;
+          outcome = 'verification-restarted';
+        } else {
+          const passwordHash = await this.passwords.hash(input.password);
+          user = await this.users.create(
             {
-              type: 'USER_REGISTERED',
-              userId: existing.id,
-              ipAddress: ctx.device.ipAddress,
-              userAgent: ctx.device.userAgent,
-              requestId: ctx.requestId,
-              metadata: { outcome: 'duplicate' },
+              email: contact.channel === 'email' ? contact.destination : null,
+              phoneNumber: contact.channel === 'whatsapp' ? contact.destination : null,
+              passwordHash,
+              firstName: input.firstName.trim(),
+              lastName: input.lastName.trim(),
             },
             trx,
           );
-          return null; // duplicate — fall through to fake envelope
-        }
+          await this.legal.recordSignupAcceptance(user.id, input.legalAcceptance, trx);
+          await this.users.assignRole(user.id, customer.id, trx);
+          outcome = 'created';
 
-        const passwordHash = await this.passwords.hash(input.password);
-        const user = await this.users.create(
-          {
-            email: contact.channel === 'email' ? contact.destination : null,
-            phoneNumber: contact.channel === 'whatsapp' ? contact.destination : null,
-            passwordHash,
-            firstName: input.firstName.trim(),
-            lastName: input.lastName.trim(),
-          },
-          trx,
-        );
-        await this.legal.recordSignupAcceptance(user.id, input.legalAcceptance, trx);
-        await this.users.assignRole(user.id, customer.id, trx);
-
-        if (!requireVerification) {
-          // Dev/QA shortcut — bypass the OTP round-trip entirely. The flag
-          // MUST be true in production; see env.schema.ts.
-          await trx.user.update({
-            where: { id: user.id },
-            data: { ...verifiedContactData(contact), status: 'ACTIVE' },
-          });
-          await this.audit.record(
-            {
-              type: 'USER_REGISTERED',
-              userId: user.id,
-              ipAddress: ctx.device.ipAddress,
-              userAgent: ctx.device.userAgent,
-              requestId: ctx.requestId,
-              metadata: { outcome: 'created-autoverified' },
-            },
-            trx,
-          );
-          return null;
+          if (!requireVerification) {
+            // Dev/QA shortcut — bypass the OTP round-trip entirely. The flag
+            // MUST be true in production; see env.schema.ts.
+            await trx.user.update({
+              where: { id: user.id },
+              data: { ...verifiedContactData(contact), status: 'ACTIVE' },
+            });
+            await this.audit.record(
+              {
+                type: 'USER_REGISTERED',
+                userId: user.id,
+                ipAddress: ctx.device.ipAddress,
+                userAgent: ctx.device.userAgent,
+                requestId: ctx.requestId,
+                metadata: { outcome: 'created-autoverified' },
+              },
+              trx,
+            );
+            return null;
+          }
         }
 
         const challenge = await this.otp.issue(user.id, 'REGISTRATION_OTP', trx, contact, prepared);
@@ -197,7 +213,7 @@ export class AuthenticationService {
             ipAddress: ctx.device.ipAddress,
             userAgent: ctx.device.userAgent,
             requestId: ctx.requestId,
-            metadata: { outcome: 'created' },
+            metadata: { outcome },
           },
           trx,
         );
@@ -228,7 +244,7 @@ export class AuthenticationService {
         };
       }
 
-      // Either duplicate email OR dev-mode auto-verify. Return an opaque
+      // Either an ineligible duplicate OR dev-mode auto-verify. Return an opaque
       // challengeId that will never verify so the client UX is identical
       // to the new-user path.
       return fakeOtpEnvelope(contact);
@@ -1197,6 +1213,39 @@ export class AuthenticationService {
     return current?.id === before.id ? current : null;
   }
 
+  private async findRecoverablePhoneRegistration(
+    before: User,
+    contact: OtpDeliveryBinding,
+    password: string,
+    trx: PrismaTx,
+  ): Promise<User | null> {
+    if (contact.channel !== 'whatsapp') return null;
+    await lockAuthAccount(trx, before.id);
+    const current = await this.findByContact(contact, trx);
+    const sameAccount = current?.id === before.id;
+    // Every duplicate phone signup pays one password KDF, including ineligible
+    // accounts. Verify the current hash only after the shared account lock: a
+    // concurrent password or identity change must not authorize this recovery.
+    const passwordMatches = await this.passwords.verify(
+      sameAccount ? current.passwordHash : null,
+      password,
+    );
+    if (
+      !current ||
+      !sameAccount ||
+      !current.passwordHash ||
+      !passwordMatches ||
+      !ownsContact(current, contact) ||
+      current.status !== 'PENDING_VERIFICATION' ||
+      current.phoneVerifiedAt ||
+      current.deletedAt ||
+      !current.isActive ||
+      this.attempts.isLocked(current)
+    )
+      return null;
+    return current;
+  }
+
   private findByContact(contact: OtpDeliveryBinding, trx?: PrismaTx) {
     return contact.channel === 'whatsapp'
       ? this.users.findByPhoneNumber(contact.destination, trx)
@@ -1236,7 +1285,7 @@ function normalizeEmail(raw: string): string {
   return raw.trim().toLowerCase();
 }
 
-// Opaque challenge envelope for the duplicate-email / auto-verify paths.
+// Opaque challenge envelope for the neutral duplicate / auto-verify paths.
 // The id is cryptographically random so an attacker cannot distinguish it
 // from a real one by shape, and the verify-otp endpoint will return
 // AUTH_OTP_INVALID (same as any bad code) when they try to consume it.

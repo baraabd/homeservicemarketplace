@@ -54,6 +54,7 @@ async function run(data) {
   const configurationRecovery = [];
   const signupRecovery = [];
   const restoredSignupRecovery = [];
+  const registrationRecovery = [];
   let signupPosts = 0;
   const mark = (name) => {
     phases.push(name);
@@ -529,6 +530,163 @@ async function run(data) {
     expect(verified.status()).toBe(expected);
     return verified;
   }
+  async function recoverPendingRegistration(lang) {
+    const { page } = await newPage(lang);
+    await page.clock.install();
+    const phone = data.signupPhones[lang];
+    const freshLabel = lang === 'ar' ? 'طلب رمز جديد' : 'Request a new code';
+    const requests = [];
+    page.on('request', (request) => {
+      if (
+        request.method() === 'POST' &&
+        ['/v1/auth/register', '/v1/auth/login', '/v1/auth/resend-otp'].some(
+          (endpoint) => request.url() === `${data.api}${endpoint}`,
+        )
+      )
+        requests.push(new URL(request.url()).pathname);
+    });
+    await page.goto(`${data.web}/signup`);
+    await expect(page.getByTestId('auth-channel-whatsapp')).toBeVisible();
+    await page
+      .getByLabel(lang === 'ar' ? 'الاسم الكامل' : 'Full Name', { exact: true })
+      .fill(lang === 'ar' ? 'نورة أحمد' : 'Noura Ahmad');
+    await page.locator('input[type="tel"]').fill(phone);
+    await page
+      .getByRole('button', { name: lang === 'ar' ? 'التالي' : 'Next', exact: true })
+      .click();
+    await page.locator('input[type="password"]').fill(data.password);
+    await page.getByRole('checkbox').check();
+    const initialResponse = responseTo(page, '/v1/auth/register');
+    await page
+      .getByRole('button', {
+        name: lang === 'ar' ? 'إنشاء الحساب' : 'Create Account',
+        exact: true,
+      })
+      .click();
+    const registered = await initialResponse;
+    expect(registered.status()).toBe(202);
+    const initial = await registered.json();
+    expect(initial).toMatchObject({
+      otpRequired: true,
+      channel: 'whatsapp',
+      expiresInSeconds: 300,
+      codeLength: 6,
+    });
+    const first = await deliveredCode(phone);
+    expect((await probe(page, '/v1/auth/me')).status).toBe(401);
+    expect(await rpc('signupEvidence', { phone })).toMatchObject({
+      sameAccount: true,
+      status: 'PENDING_VERIFICATION',
+      phoneVerified: false,
+      sessions: 0,
+      recoveries: 0,
+    });
+    await rpc('expireRegistration', { phone, challengeId: initial.challengeId });
+    await page.clock.fastForward(301_000);
+    await expect(page.getByTestId('otp-countdown')).toContainText('00:00');
+    await expect(page.getByTestId('otp-input')).toBeDisabled();
+    await snapshot(page, `signup-${lang}-expired-registration-390`);
+
+    // Exercise both visible exits: the explicit expired-code action in Arabic
+    // and the header back control in English. Both retain the pending identity.
+    await page
+      .getByRole('button', {
+        name: lang === 'ar' ? freshLabel : 'Back',
+        exact: true,
+      })
+      .click();
+    const password = page.locator('input[type="password"]');
+    const fresh = page.getByRole('button', { name: freshLabel, exact: true });
+    await expect(password).toHaveValue('');
+    await expect(password).toHaveAttribute('autocomplete', 'current-password');
+    await expect(fresh).toBeDisabled();
+    await expect(
+      page.getByRole('status').filter({
+        hasText:
+          lang === 'ar'
+            ? 'أدخل كلمة المرور التي اخترتها لهذا الرقم.'
+            : 'enter the password you chose for this number.',
+      }),
+    ).toBeVisible();
+    await expect(page.locator('html')).toHaveAttribute('dir', lang === 'ar' ? 'rtl' : 'ltr');
+    expect(requests).toEqual(['/v1/auth/register']);
+    for (const width of [320, 390, 430, 768, 1024, 1440]) {
+      await page.setViewportSize({ width, height: 844 });
+      await noOverflow(page);
+      if (width === 320 || width === 390) {
+        await password.scrollIntoViewIfNeeded();
+        await expect(password).toBeInViewport();
+        await expect(fresh).toBeInViewport();
+        await snapshot(page, `signup-${lang}-registration-recovery-${width}`);
+      }
+    }
+    await page.setViewportSize({ width: 390, height: 844 });
+    const scan = await new AxeBuilder({ page })
+      .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'])
+      .analyze();
+    accessibility.push({
+      surface: `pending-registration-recovery-${lang}`,
+      violations: scan.violations.map(({ id, impact }) => ({ id, impact })),
+    });
+    expect(
+      scan.violations.filter((violation) => ['serious', 'critical'].includes(violation.impact)),
+    ).toEqual([]);
+    await password.fill(data.password);
+    const renewalResponse = responseTo(page, '/v1/auth/register');
+    await fresh.click();
+    const renewed = await renewalResponse;
+    expect(renewed.status()).toBe(202);
+    const recovered = await renewed.json();
+    expect(recovered.challengeId).not.toBe(initial.challengeId);
+    const latest = await deliveredCode(phone, first.count);
+    await expect(page.getByTestId('otp-input')).toHaveValue('');
+    await expect(page.getByTestId('otp-countdown')).not.toContainText('00:00');
+    await snapshot(page, `signup-${lang}-registration-recovered-otp-390`);
+    let evidence;
+    await expect
+      .poll(async () => {
+        evidence = await rpc('signupEvidence', { phone });
+        return evidence.acceptedDeliveries;
+      })
+      .toBe(2);
+    expect(evidence).toMatchObject({
+      sameAccount: true,
+      status: 'PENDING_VERIFICATION',
+      phoneVerified: false,
+      sessions: 0,
+      recoveries: 1,
+    });
+    const oldCode = await probe(page, '/v1/auth/verify-otp', 'POST', {
+      challengeId: initial.challengeId,
+      code: first.code,
+    });
+    expect(oldCode.status).toBe(400);
+    const verified = await verify(page, latest.code);
+    expect(verified.request().postDataJSON().challengeId).toBe(recovered.challengeId);
+    expect((await probe(page, '/v1/auth/me')).status).toBe(200);
+    const completed = await rpc('signupEvidence', { phone });
+    expect(completed).toMatchObject({
+      sameAccount: true,
+      status: 'ACTIVE',
+      phoneVerified: true,
+      sessions: 1,
+      acceptedDeliveries: 2,
+      recoveries: 1,
+    });
+    expect(requests).toEqual(['/v1/auth/register', '/v1/auth/register']);
+    registrationRecovery.push({
+      language: lang,
+      api: 'ACTUAL_REGISTER_AND_VERIFY_OTP',
+      expiry: 'PRIVATE_IPC_OWNED_CHALLENGE_AND_BROWSER_CLOCK',
+      samePersistedAccount: completed.sameAccount,
+      recoveryAuditCount: completed.recoveries,
+      acceptedCapturedDeliveries: completed.acceptedDeliveries,
+      sessionsBeforeOtpProof: 0,
+      sessionsAfterOtpProof: completed.sessions,
+      staleChallengeRejected: true,
+      loginOrResendRequests: 0,
+    });
+  }
   try {
     await mkdir(data.output, { recursive: true });
     for (const lang of ['en', 'ar']) {
@@ -557,6 +715,9 @@ async function run(data) {
       for (const role of Object.keys(data.actors)) await recoverSignupPolicy(page, role, lang);
     }
     mark('signup-policy-recovery-and-restored-step-two');
+    expect(signupPosts).toBe(0);
+    for (const lang of ['en', 'ar']) await recoverPendingRegistration(lang);
+    mark('pending-signup-expiry-and-password-proved-recovery');
 
     const signedIn = {};
     for (const role of ['seeker', 'provider', 'admin']) {
@@ -704,7 +865,7 @@ async function run(data) {
     // OTP submission above uses keyboard Enter against the real code field.
     mark('accessibility-and-keyboard');
     expect(pageErrors).toEqual([]);
-    expect(signupPosts).toBe(0);
+    expect(signupPosts).toBe(4);
     await writeFile(
       path.join(data.output, 'acceptance.json'),
       JSON.stringify(
@@ -716,6 +877,7 @@ async function run(data) {
           configurationRecovery,
           signupRecovery,
           restoredSignupRecovery,
+          registrationRecovery,
           signupPosts,
           phases,
           accessibility,

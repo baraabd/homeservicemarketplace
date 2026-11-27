@@ -23,7 +23,12 @@ const enabled = process.env.RUN_WHATSAPP_BROWSER === '1';
     seeker: '+12025550101',
     provider: '+12025550102',
     admin: '+12025550103',
+    signupEn: '+12025550104',
+    signupAr: '+12025550105',
   };
+  const signupPhones = [phones.signupEn, phones.signupAr];
+  const signupUsers = new Map<string, string>();
+  let signupFixtureOwned = false;
   const progress: string[] = [];
 
   afterAll(async () => {
@@ -47,6 +52,18 @@ const enabled = process.env.RUN_WHATSAPP_BROWSER === '1';
     if (h) {
       const db = h.fixture.db;
       try {
+        // These two synthetic phones are reserved by this disposable suite.
+        // Include partially completed signup flows when a browser assertion fails.
+        const created = signupFixtureOwned
+          ? await db.user.findMany({
+              where: { phoneNumber: { in: signupPhones } },
+              select: { id: true },
+            })
+          : [];
+        const ids = created.map((user) => user.id);
+        await db.emailDelivery.deleteMany({ where: { userId: { in: ids } } });
+        await db.auditEvent.deleteMany({ where: { userId: { in: ids } } });
+        await db.user.deleteMany({ where: { id: { in: ids } } });
         if (policyCaptured) {
           await db.platformSettingHistory.deleteMany({
             where: { key: 'auth.otpChannel', changedBy: { in: Object.values(h.fixture.users) } },
@@ -92,6 +109,9 @@ const enabled = process.env.RUN_WHATSAPP_BROWSER === '1';
       },
     });
     const { db, users } = h.fixture;
+    if ((await db.user.count({ where: { phoneNumber: { in: signupPhones } } })) !== 0)
+      throw new Error('Synthetic registration recipients must start unused.');
+    signupFixtureOwned = true;
     previousPolicy = await db.platformSetting.findUnique({
       where: { key: 'auth.otpChannel' },
       select: { value: true, updatedBy: true },
@@ -203,6 +223,50 @@ const enabled = process.env.RUN_WHATSAPP_BROWSER === '1';
             if (result.count !== 1)
               throw new Error('Expiry control must target one owned login challenge');
             data = true;
+          } else if (m.kind === 'expireRegistration' || m.kind === 'signupEvidence') {
+            const phone = String(p.phone);
+            if (!signupPhones.includes(phone)) throw new Error('Unknown synthetic signup');
+            const user = await db.user.findFirstOrThrow({
+              where: { phoneNumber: phone },
+              select: { id: true, status: true, phoneVerifiedAt: true },
+            });
+            if (!signupUsers.has(phone)) signupUsers.set(phone, user.id);
+            if (m.kind === 'expireRegistration') {
+              const result = await db.verificationToken.updateMany({
+                where: {
+                  challengeId: String(p.challengeId),
+                  userId: signupUsers.get(phone),
+                  purpose: 'REGISTRATION_OTP',
+                  deliveryChannel: 'whatsapp',
+                  deliveryTarget: phone,
+                },
+                data: { expiresAt: new Date(Date.now() - 1000) },
+              });
+              if (result.count !== 1)
+                throw new Error('Expiry must target one owned registration challenge');
+              data = true;
+            } else {
+              data = {
+                sameAccount: signupUsers.get(phone) === user.id,
+                status: user.status,
+                phoneVerified: user.phoneVerifiedAt !== null,
+                sessions: await db.session.count({ where: { userId: user.id } }),
+                acceptedDeliveries: await db.emailDelivery.count({
+                  where: {
+                    userId: user.id,
+                    template: 'auth.registration_otp',
+                    status: 'ACCEPTED',
+                  },
+                }),
+                recoveries: await db.auditEvent.count({
+                  where: {
+                    userId: user.id,
+                    type: 'USER_REGISTERED',
+                    metadata: { path: ['outcome'], equals: 'verification-restarted' },
+                  },
+                }),
+              };
+            }
           } else if (m.kind === 'emailCode') {
             data = h!.otp(`${users.seeker}@example.test`);
           } else if (m.kind === 'policyEvidence') {
@@ -235,6 +299,7 @@ const enabled = process.env.RUN_WHATSAPP_BROWSER === '1';
           web,
           output,
           actors,
+          signupPhones: { en: phones.signupEn, ar: phones.signupAr },
           email: `${users.seeker}@example.test`,
           password: h!.fixture.password,
         },
@@ -245,6 +310,7 @@ const enabled = process.env.RUN_WHATSAPP_BROWSER === '1';
         'form-first-policy-failure-and-real-api-recovery',
         'responsive-selected-methods',
         'signup-policy-recovery-and-restored-step-two',
+        'pending-signup-expiry-and-password-proved-recovery',
         'issued-challenge-survives-policy-refresh',
         'all-role-phone-only-sessions',
         'expiry-and-fresh-code',

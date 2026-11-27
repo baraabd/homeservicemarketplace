@@ -134,6 +134,7 @@ export function SignUpScreen({
   const [localNumber, setLocalNumber] = useState(draft?.localNumber ?? '');
   const [email, setEmail] = useState(draft?.email ?? '');
   const [password, setPassword] = useState('');
+  const [recoveringPhone, setRecoveringPhone] = useState<string | null>(null);
   const [showPw, setShowPw] = useState(false);
   const [acceptance, setAcceptance] = useState<LegalAcceptanceInput | null>(null);
   const [policyOpen, setPolicyOpen] = useState<'terms' | 'privacy' | null>(null);
@@ -178,6 +179,7 @@ export function SignUpScreen({
   const requestFlight = useRef(false);
 
   const phoneNumber = toE164Phone(countryCode, localNumber);
+  const recoveringRegistration = channel === 'whatsapp' && recoveringPhone === phoneNumber;
   const configurationReady = configuration.status === 'ready';
   const canStep1 =
     configurationReady &&
@@ -214,6 +216,7 @@ export function SignUpScreen({
         if (!Number.isFinite(issued.expiresInSeconds) || issued.expiresInSeconds <= 0)
           throw new Error('The verification request could not be confirmed.');
         clearSignupDraft();
+        if (channel === 'whatsapp') setPassword('');
         setChallenge({ ...issued, channel: issued.channel ?? channel });
         setExpiresAt(Date.now() + issued.expiresInSeconds * 1000);
         setCodeRevision((current) => current + 1);
@@ -320,6 +323,32 @@ export function SignUpScreen({
     }
   };
 
+  const restartWhatsAppRegistration = () => {
+    if (requestFlight.current) return;
+    // An expired or neutral challenge cannot be resent. The existing signup
+    // endpoint can recover a pending phone only after checking its password.
+    setRecoveringPhone(phoneNumber);
+    setPassword('');
+    setShowPw(false);
+    setChallenge(null);
+    setExpiresAt(undefined);
+    setOtpError(undefined);
+    setOtpRecovery(null);
+    setResendNotice(undefined);
+    setSignUpError(undefined);
+    setStep(2);
+  };
+
+  const handleBack = () => {
+    if (step === 3 && (challenge?.channel ?? channel) === 'whatsapp') {
+      restartWhatsAppRegistration();
+    } else if (step > 1) {
+      setStep((current) => current - 1);
+    } else {
+      onBack();
+    }
+  };
+
   if (step < 3 && legalDocs && !legalReady) {
     return (
       <SwipeableScreen onBack={onBack}>
@@ -356,12 +385,9 @@ export function SignUpScreen({
   const stepLabels = [t('accountInfo'), t('createAccount'), t('verification')];
 
   return (
-    <SwipeableScreen onBack={step > 1 ? () => setStep((s) => s - 1) : onBack}>
+    <SwipeableScreen onBack={handleBack}>
       <div className="flex flex-col bg-white" style={{ height: '100svh' }}>
-        <AuthTopBar
-          title={t('createAccount')}
-          onBack={step > 1 ? () => setStep((s) => s - 1) : onBack}
-        />
+        <AuthTopBar title={t('createAccount')} onBack={handleBack} />
 
         <div
           className="flex-1 overflow-y-auto px-6 py-6"
@@ -380,7 +406,7 @@ export function SignUpScreen({
             <h2 className="text-slate-900 mb-1" style={{ fontSize: '22px', fontWeight: 800 }}>
               {t('letsGetStarted')}
             </h2>
-            <p className="text-slate-400" style={{ fontSize: '14px' }}>
+            <p className="text-slate-600" style={{ fontSize: '14px' }}>
               {t('fillDetails')}
             </p>
           </div>
@@ -417,10 +443,10 @@ export function SignUpScreen({
                   )}
                 </div>
                 <span
+                  className={i + 1 <= step ? experience.classes.accentText : 'text-slate-600'}
                   style={{
                     fontSize: '10px',
                     fontWeight: i + 1 <= step ? 700 : 400,
-                    color: i + 1 <= step ? experience.accentHex : '#94a3b8',
                   }}
                 >
                   {label}
@@ -495,11 +521,19 @@ export function SignUpScreen({
                   </button>
                 </div>
               )}
+              {recoveringRegistration && (
+                <p role="status" className="text-sm text-slate-700">
+                  {lang === 'ar'
+                    ? 'لاستكمال التسجيل وطلب رمز جديد، أدخل كلمة المرور التي اخترتها لهذا الرقم.'
+                    : 'To continue registration and request a new code, enter the password you chose for this number.'}
+                </p>
+              )}
               <div>
                 <TextField
                   label={t('password')}
+                  contrast="strong"
                   type={showPw ? 'text' : 'password'}
-                  autoComplete="new-password"
+                  autoComplete={recoveringRegistration ? 'current-password' : 'new-password'}
                   value={password}
                   onChange={setPassword}
                   leadingIcon={<Lock size={16} />}
@@ -623,22 +657,27 @@ export function SignUpScreen({
               codeRevision={codeRevision}
               onVerify={handleOtpVerify}
               onResend={handleOtpResend}
+              onRequestNewCode={
+                (challenge.channel ?? channel) === 'whatsapp'
+                  ? restartWhatsAppRegistration
+                  : undefined
+              }
               isVerifying={isVerifying}
               isResending={isResending}
               verifyError={otpError?.[lang]}
               recovery={otpRecovery}
               resendNotice={resendNotice}
               experience={experience}
-              onRestart={() =>
-                (challenge.channel ?? channel) === 'email' && onRecoverVerification
-                  ? onRecoverVerification(email.trim())
-                  : onBack()
-              }
+              onRestart={() => {
+                if ((challenge.channel ?? channel) === 'whatsapp') restartWhatsAppRegistration();
+                else if (onRecoverVerification) onRecoverVerification(email.trim());
+                else onBack();
+              }}
               restartLabel={
                 (challenge.channel ?? channel) === 'whatsapp'
                   ? lang === 'ar'
-                    ? 'العودة لتسجيل الدخول'
-                    : 'Back to sign in'
+                    ? 'استكمال التسجيل'
+                    : 'Continue registration'
                   : lang === 'ar'
                     ? 'طلب رابط تحقق بدلاً من الرمز'
                     : 'Use a verification link instead'
@@ -676,9 +715,15 @@ export function SignUpScreen({
               onClick={goNext}
               leadingIcon={step < 2 ? <ArrowRight size={16} /> : <CheckCircle2 size={16} />}
             >
-              {step === 2 ? t('register') : t('next')}
+              {step === 2
+                ? recoveringRegistration
+                  ? lang === 'ar'
+                    ? 'طلب رمز جديد'
+                    : 'Request a new code'
+                  : t('register')
+                : t('next')}
             </Button>
-            <p className="text-center text-slate-400 mt-3" style={{ fontSize: '12px' }}>
+            <p className="text-center text-slate-600 mt-3" style={{ fontSize: '12px' }}>
               {t('alreadyHaveAccount')}{' '}
               <button onClick={onBack} className={`${experience.classes.accentText} font-semibold`}>
                 {t('login')}
