@@ -75,6 +75,8 @@ const authService = {
   logoutAll: jest.fn(),
   forgotPassword: jest.fn(),
   resetPassword: jest.fn(),
+  forgotPasswordOtp: jest.fn(),
+  resetPasswordOtp: jest.fn(),
   // Added in the email-otp phase.
   verifyOtp: jest.fn(),
   resendOtp: jest.fn(),
@@ -482,8 +484,8 @@ describe('Authentication controller (e2e)', () => {
     });
   });
 
-  describe('anonymous WhatsApp OTP response boundary', () => {
-    const challengeId = `wa_login_${'a'.repeat(32)}`;
+  describe.each(['wa_login_', 'wa_reset_'])('anonymous WhatsApp %s response boundary', (prefix) => {
+    const challengeId = `${prefix}${'a'.repeat(32)}`;
 
     it.each(['AUTH_OTP_INVALID', 'AUTH_OTP_EXPIRED', 'AUTH_OTP_LOCKED'])(
       'normalizes marked verification %s to the same 400 without session cookies',
@@ -501,6 +503,30 @@ describe('Authentication controller (e2e)', () => {
         expect(res.body.error.code).toBe('AUTH_OTP_INVALID');
         expect(res.headers['set-cookie']).toBeUndefined();
         expect(res.body.tokens).toBeUndefined();
+      },
+    );
+
+    it.each(['AUTH_OTP_INVALID', 'AUTH_OTP_EXPIRED', 'AUTH_OTP_LOCKED'])(
+      'normalizes reset %s without revealing challenge state or creating session cookies',
+      async (code) => {
+        app = await bootApp();
+        authService.resetPasswordOtp.mockRejectedValueOnce(
+          code === 'AUTH_OTP_LOCKED'
+            ? new ForbiddenException({ code })
+            : new BadRequestException({ code }),
+        );
+        const res = await request(app.getHttpServer())
+          .post('/v1/auth/reset-password-otp')
+          .send({ challengeId, code: '123456', newPassword: 'New-valid-passphrase-2026!' });
+        expect(res.status).toBe(400);
+        expect(res.body.error.code).toBe('AUTH_OTP_INVALID');
+        expect(res.headers['set-cookie']).toBeUndefined();
+        expect(authService.resetPasswordOtp).toHaveBeenCalledWith(
+          challengeId,
+          '123456',
+          'New-valid-passphrase-2026!',
+          expect.any(Object),
+        );
       },
     );
 
@@ -562,7 +588,7 @@ describe('Authentication controller (e2e)', () => {
         if (id === emailChallenge) return issuedSession();
         throw new BadRequestException({ code: 'AUTH_OTP_INVALID' });
       });
-      const forged = `wa_login_${emailChallenge}`;
+      const forged = `${prefix}${emailChallenge}`;
       const res = await request(app.getHttpServer())
         .post('/v1/auth/verify-otp')
         .send({ challengeId: forged, code: '123456' });
@@ -572,15 +598,24 @@ describe('Authentication controller (e2e)', () => {
       expect(authService.verifyOtp).toHaveBeenCalledWith(forged, '123456', expect.any(Object));
     });
 
-    it.each(['verify', 'resend'] as const)(
+    it.each(['verify', 'resend', 'reset-password'] as const)(
       'does not turn unexpected marked %s failures into a successful operation',
       async (method) => {
         app = await bootApp();
-        const service = method === 'verify' ? authService.verifyOtp : authService.resendOtp;
+        const service =
+          method === 'verify'
+            ? authService.verifyOtp
+            : method === 'resend'
+              ? authService.resendOtp
+              : authService.resetPasswordOtp;
         service.mockRejectedValueOnce(new Error('Synthetic database failure'));
         const res = await request(app.getHttpServer())
           .post(`/v1/auth/${method}-otp`)
-          .send({ challengeId, ...(method === 'verify' ? { code: '123456' } : {}) });
+          .send({
+            challengeId,
+            ...(method !== 'resend' ? { code: '123456' } : {}),
+            ...(method === 'reset-password' ? { newPassword: 'New-valid-passphrase-2026!' } : {}),
+          });
         expect(res.status).toBe(500);
         expect(res.headers['set-cookie']).toBeUndefined();
       },

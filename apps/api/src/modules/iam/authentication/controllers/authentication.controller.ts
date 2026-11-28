@@ -22,7 +22,7 @@ import type {
 } from '@homeservicemarketplace/contracts';
 
 import { contactIdentity } from '../helpers/contact-identity';
-import { isWhatsAppLoginChallenge } from '../helpers/otp-codec';
+import { isAnonymousWhatsAppChallenge } from '../helpers/otp-codec';
 import { OTP_TTL_MINUTES } from '../services/otp.service';
 import { AppError } from '../../../../shared/errors/app-error';
 import {
@@ -193,18 +193,18 @@ export class AuthenticationController {
     @Res({ passthrough: true }) res: Response,
   ): Promise<AuthResponse> {
     const startedAt = Date.now();
-    const anonymousPhoneLogin = isWhatsAppLoginChallenge(body.challengeId);
+    const anonymousPhoneChallenge = isAnonymousWhatsAppChallenge(body.challengeId);
     try {
       const result = await this.auth.verifyOtp(body.challengeId, body.code, buildContext(req));
       return this.shapeAuthResponse(req, res, result);
     } catch (error) {
       // The marker selects only public response shaping. Never strip it or
       // reinterpret an old challenge: authorization uses the complete ID.
-      if (anonymousPhoneLogin && expectedOtpError(error, NEUTRAL_PHONE_VERIFY_ERRORS))
+      if (anonymousPhoneChallenge && expectedOtpError(error, NEUTRAL_PHONE_VERIFY_ERRORS))
         throw new BadRequestException({ code: 'AUTH_OTP_INVALID' });
       throw error;
     } finally {
-      if (anonymousPhoneLogin) {
+      if (anonymousPhoneChallenge) {
         const remaining = this.config.get('AUTH_ANTI_ENUM_DELAY_MS') - (Date.now() - startedAt);
         if (remaining > 0) await new Promise((resolve) => setTimeout(resolve, remaining));
       }
@@ -225,7 +225,7 @@ export class AuthenticationController {
       return { success: true, expiresInSeconds };
     } catch (error) {
       if (
-        isWhatsAppLoginChallenge(body.challengeId) &&
+        isAnonymousWhatsAppChallenge(body.challengeId) &&
         expectedOtpError(error, NEUTRAL_PHONE_RESEND_ERRORS)
       )
         return { success: true, expiresInSeconds: OTP_TTL_MINUTES * 60 };
@@ -344,13 +344,28 @@ export class AuthenticationController {
     @Body() body: ResetPasswordOtpDto,
     @Req() req: Request,
   ): Promise<{ success: true }> {
-    await this.auth.resetPasswordOtp(
-      body.challengeId,
-      body.code,
-      body.newPassword,
-      buildContext(req),
-    );
-    return { success: true };
+    const startedAt = Date.now();
+    const anonymousPhoneChallenge = isAnonymousWhatsAppChallenge(body.challengeId);
+    try {
+      await this.auth.resetPasswordOtp(
+        body.challengeId,
+        body.code,
+        body.newPassword,
+        buildContext(req),
+      );
+      return { success: true };
+    } catch (error) {
+      // Recovery IDs can be submitted to either public verifier. Neither may
+      // reveal whether a challenge exists, expired or exhausted its attempts.
+      if (anonymousPhoneChallenge && expectedOtpError(error, NEUTRAL_PHONE_VERIFY_ERRORS))
+        throw new BadRequestException({ code: 'AUTH_OTP_INVALID' });
+      throw error;
+    } finally {
+      if (anonymousPhoneChallenge) {
+        const remaining = this.config.get('AUTH_ANTI_ENUM_DELAY_MS') - (Date.now() - startedAt);
+        if (remaining > 0) await new Promise((resolve) => setTimeout(resolve, remaining));
+      }
+    }
   }
 
   @UseGuards(JwtAuthGuard, CsrfGuard)
