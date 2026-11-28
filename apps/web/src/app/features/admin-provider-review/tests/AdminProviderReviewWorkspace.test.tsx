@@ -379,3 +379,51 @@ describe('review decisions', () => {
     await waitFor(() => expect(opener).toHaveFocus());
   });
 });
+
+describe('account and profile contact evidence', () => {
+  it.each(['en', 'ar'] as const)(
+    'shows verified account WhatsApp separately from unverified profile phone and absent email in %s',
+    async (lang) => {
+      localStorage.setItem('hsm.lang', lang);
+      const profile = review.submission!.snapshot!.profile;
+      profile.email = null;
+      profile.emailVerified = false;
+      profile.accountPhoneNumber = '+966501234567';
+      profile.accountPhoneVerified = true;
+      profile.contactVerified = true;
+      profile.phoneNumber = '+966509876543';
+      profile.phoneVerifiedAt = null;
+      setup();
+      await screen.findByRole('heading', { name: 'Current provider' });
+      const t = REVIEW_COPY[lang];
+      const accountPhone = within(screen.getByText(t.accountPhone).parentElement!);
+      expect(accountPhone.getByText('+966501234567')).toBeInTheDocument();
+      expect(accountPhone.getByText(t.proven)).toHaveClass('ar-badge-success');
+      const profilePhone = within(screen.getByText(t.phone).parentElement!);
+      expect(profilePhone.getByText('+966509876543')).toBeInTheDocument();
+      expect(profilePhone.getByText(t.unproven)).toBeInTheDocument();
+      const email = within(screen.getByText(t.email).parentElement!);
+      expect(email.getByText(t.notProvided)).toBeInTheDocument();
+      expect(email.queryByText(t.proven)).not.toBeInTheDocument();
+      expect(
+        within(screen.getByText(t.accountContact).parentElement!).getByText(t.proven),
+      ).toBeInTheDocument();
+    },
+  );
+
+  it('does not infer account proof from a historically verified provider-profile phone', async () => {
+    review.submission!.snapshot!.profile.phoneVerifiedAt = STAMP;
+    setup();
+    await screen.findByRole('heading', { name: 'Current provider' });
+    const t = REVIEW_COPY.en;
+    const accountContact = within(screen.getByText(t.accountContact).parentElement!);
+    expect(accountContact.getByText(t.notCaptured)).toBeInTheDocument();
+    expect(accountContact.queryByText(t.proven)).not.toBeInTheDocument();
+    expect(
+      within(screen.getByText(t.accountPhone).parentElement!).getByText(t.notCaptured),
+    ).toBeInTheDocument();
+    expect(
+      within(screen.getByText(t.phone).parentElement!).getByText(t.proven),
+    ).toBeInTheDocument();
+  });
+});

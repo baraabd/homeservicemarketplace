@@ -5,6 +5,7 @@
 // a new emission site means adding the symbol here in the same change.
 export const AuthErrorCode = {
   InvalidCredentials: 'AUTH_INVALID_CREDENTIALS',
+  ChannelChanged: 'AUTH_CHANNEL_CHANGED',
   AccountUnverified: 'AUTH_ACCOUNT_UNVERIFIED',
   AccountLocked: 'AUTH_ACCOUNT_LOCKED',
   AccountSuspended: 'AUTH_ACCOUNT_SUSPENDED',

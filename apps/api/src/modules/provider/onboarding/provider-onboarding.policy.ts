@@ -38,11 +38,14 @@ export interface OnboardingCandidate {
   serviceAreaRadiusKm: number | null;
   serviceCategoryCount: number;
   /**
-   * The OWNING ACCOUNT's email verification. A provider application is
+   * The OWNING ACCOUNT's email verification (retained for legacy callers). A provider application is
    * reviewable only from an identity we can actually contact — otherwise the
    * review queue fills with addresses nobody controls.
    */
   emailVerified: boolean;
+  /** Server-derived proof of the owning account's email OR authentication phone.
+   * Provider-profile phone verification is a separate business-contact fact. */
+  contactVerified?: boolean;
 
   // ── Sprint 8 ────────────────────────────────────────────────────────────
   // OPTIONAL on purpose. The same policy judges profiles created before the
@@ -95,10 +98,10 @@ export function evaluateOnboarding(candidate: OnboardingCandidate): ProviderOnbo
     issues.push({ field: 'phoneNumber', code: 'REQUIRED' });
   }
 
-  // Contact verification is its own axis: a present-but-unverified email is a
-  // different problem from a missing one, and the app should say so.
-  if (!candidate.emailVerified) {
-    issues.push({ field: 'emailVerified', code: 'UNVERIFIED' });
+  // New callers supply verified account contact; legacy email-only callers
+  // retain their existing requirement. Profile phone proof cannot satisfy it.
+  if (!(candidate.contactVerified ?? candidate.emailVerified)) {
+    issues.push({ field: 'contactVerified', code: 'UNVERIFIED' });
   }
 
   if (!trimmed(candidate.serviceAreaCity)) {
@@ -272,7 +275,7 @@ export const ISSUE_OWNER: Record<ProviderOnboardingIssue['code'], IssueOwner> = 
   REQUIRED: 'PROVIDER',
   /** Present but below the minimum useful length. They lengthen it. */
   TOO_SHORT: 'PROVIDER',
-  /** Their account email is unverified. They complete the verification. */
+  /** Their account has no verified login contact. They complete verification. */
   UNVERIFIED: 'PROVIDER',
   /** A field they must prove, such as their phone. They prove it. */
   NOT_VERIFIED: 'PROVIDER',

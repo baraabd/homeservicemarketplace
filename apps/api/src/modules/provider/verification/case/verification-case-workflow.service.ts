@@ -1,3 +1,7 @@
+import {
+  hasVerifiedAuthenticationContact,
+  type AuthenticationContacts,
+} from '../../../../shared/identity/verified-contact';
 import { Injectable, Logger } from '@nestjs/common';
 import { Prisma } from '@homeservicemarketplace/database';
 import type {
@@ -86,7 +90,7 @@ interface LoadedCase {
     serviceAreaCountryCode?: string | null;
     serviceAreaRadiusKm: number | null;
     acceptedConsentVersion: string | null;
-    user?: { emailVerifiedAt?: Date | null } | null;
+    user?: AuthenticationContacts | null;
     _count?: { serviceCategories?: number; categoryApplications?: number } | null;
   };
   documents: Array<{
@@ -977,7 +981,14 @@ export class VerificationCaseWorkflowService {
           include: {
             // emailVerifiedAt, not a boolean: the column records WHEN, and a
             // derived boolean is what the onboarding policy wants.
-            user: { select: { emailVerifiedAt: true } },
+            user: {
+              select: {
+                email: true,
+                emailVerifiedAt: true,
+                phoneNumber: true,
+                phoneVerifiedAt: true,
+              },
+            },
             _count: {
               select: {
                 serviceCategories: true,
@@ -1052,7 +1063,8 @@ export class VerificationCaseWorkflowService {
       serviceAreaRadiusKm: p.serviceAreaRadiusKm,
       serviceCategoryCount: p._count?.serviceCategories ?? 0,
       pendingSpecialtyCount: p._count?.categoryApplications ?? 0,
-      emailVerified: p.user?.emailVerifiedAt != null,
+      emailVerified: Boolean(p.user?.email && p.user.emailVerifiedAt),
+      contactVerified: hasVerifiedAuthenticationContact(p.user),
     };
   }
 }

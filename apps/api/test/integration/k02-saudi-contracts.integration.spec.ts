@@ -80,6 +80,9 @@ const enabled = process.env.RUN_DB_INTEGRATION === '1';
   beforeAll(async () => {
     h = await disputeHttpApp({
       env: { WORK_ACCESS_ENFORCED: 'true', VERIFICATION_ENFORCED: 'true' },
+      // This suite verifies legal acceptance during email registration. Global
+      // channel persistence/defaults are exercised in their isolated DB suite.
+      emailAuthentication: true,
     });
     const { db } = h.fixture;
     await clean();

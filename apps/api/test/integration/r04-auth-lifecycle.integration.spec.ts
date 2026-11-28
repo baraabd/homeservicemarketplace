@@ -3,11 +3,13 @@
 // Faults are injected only at named boundaries to prove rollback. This suite's
 // mail adapter is in-memory; the separate browser workflow proves real SMTP.
 export {};
-import { randomUUID } from 'node:crypto';
+import { randomInt, randomUUID } from 'node:crypto';
+import type { OtpDeliveryInput } from '../../src/infrastructure/auth-channel/otp-delivery.service';
 import type { PrismaTx } from '@homeservicemarketplace/database';
 import { withAdvisoryLock } from '../support/db-isolation';
 import { makeTestSecret } from '../support/test-secrets';
 import { currentLegalAcceptance, legalAcceptanceServiceFor } from '../support/legal-acceptance';
+import { emailAuthenticationServices } from '../support/auth-channel';
 const suite = process.env.RUN_DB_INTEGRATION === '1' ? describe : describe.skip;
 jest.setTimeout(60000);
 suite('R04 account lifecycle invariants (real Postgres)', () => {
@@ -159,6 +161,7 @@ suite('R04 account lifecycle invariants (real Postgres)', () => {
     const mail = new InMemoryMailAdapter();
     // Real bus with no subscribers: publishing is fire-and-forget, and the
     // realtime gateway is not part of this graph.
+    const [channels, delivery] = emailAuthenticationServices(config, mail);
     const auth = new AuthenticationService(
       users,
       roles,
@@ -173,10 +176,14 @@ suite('R04 account lifecycle invariants (real Postgres)', () => {
       securityEvents,
       mail,
       legalAcceptanceServiceFor(config),
+      channels,
+      delivery,
     );
 
     s = {
       auth,
+      channels,
+      delivery,
       tx,
       audit,
       tokens,
@@ -369,6 +376,46 @@ suite('R04 account lifecycle invariants (real Postgres)', () => {
     expect(await prisma.session.count({ where: { userId: f.user.id } })).toBe(0);
   });
 
+  it.each(['a'.repeat(64), `otp-v2:${'b'.repeat(64)}`, `otp-v3:${'c'.repeat(64)}`])(
+    'upgrades a live pre-v4 OTP through resend without changing ownership or clearing limits',
+    async (legacyHash) => {
+      const f = await register();
+      const before = await prisma.verificationToken.update({
+        where: { challengeId: f.challenge.challengeId },
+        data: {
+          tokenHash: legacyHash,
+          attemptCount: 1,
+          deliveryChannel: null,
+          deliveryTarget: null,
+        },
+      });
+      await expect(s.auth.verifyOtp(f.challenge.challengeId, f.code, ctx)).rejects.toMatchObject({
+        response: { code: 'AUTH_OTP_EXPIRED' },
+      });
+      expect(
+        await prisma.verificationToken.findUniqueOrThrow({ where: { id: before.id } }),
+      ).toEqual(before);
+      expect(await prisma.session.count({ where: { userId: f.user.id } })).toBe(0);
+
+      await s.auth.resendOtp(f.challenge.challengeId, ctx);
+      const after = await prisma.verificationToken.findUniqueOrThrow({ where: { id: before.id } });
+      expect(after).toMatchObject({
+        userId: f.user.id,
+        challengeId: f.challenge.challengeId,
+        purpose: 'REGISTRATION_OTP',
+        attemptCount: 1,
+        resendCount: 1,
+        deliveryChannel: null,
+        deliveryTarget: null,
+        usedAt: null,
+      });
+      expect(after.tokenHash).toMatch(/^otp-v4:\$argon2id\$/);
+      await expect(
+        s.auth.verifyOtp(f.challenge.challengeId, mailCode(f.address), ctx),
+      ).resolves.toHaveProperty('issued.session.id');
+    },
+  );
+
   // PostgreSQL casts a timestamp-without-time-zone to the session timezone
   // when comparing it with timestamptz. Prisma stores these token fields in
   // UTC. Exercise the actual repository under both offset directions; keep
@@ -408,7 +455,15 @@ suite('R04 account lifecycle invariants (real Postgres)', () => {
               : await s.otp.issue(f.user.id, purpose, tx);
           const before = await utcClock(tx);
           const verdict = await s.otp.verifyForLogin(challenge.challengeId, challenge.rawCode, tx);
-          expect(verdict).toEqual({ consumed: { userId: f.user.id, purpose } });
+          expect(verdict).toEqual({
+            consumed: {
+              userId: f.user.id,
+              purpose,
+              ...(purpose === 'REGISTRATION_OTP'
+                ? { channel: 'email', destination: f.address }
+                : {}),
+            },
+          });
           const row = await tx.verificationToken.findUniqueOrThrow({
             where: { challengeId: challenge.challengeId },
           });
@@ -518,7 +573,12 @@ suite('R04 account lifecycle invariants (real Postgres)', () => {
           ),
         ).toBe(false);
         expect(await s.otp.verifyForLogin(f.challenge.challengeId, rotated.rawCode, tx)).toEqual({
-          consumed: { userId: f.user.id, purpose: 'REGISTRATION_OTP' },
+          consumed: {
+            userId: f.user.id,
+            purpose: 'REGISTRATION_OTP',
+            channel: 'email',
+            destination: f.address,
+          },
         });
         expect(
           await s.verifRepo.recordFailedAttempt(after.challengeId, after.tokenHash, 5, tx),
@@ -575,9 +635,11 @@ suite('R04 account lifecycle invariants (real Postgres)', () => {
     ).resolves.toHaveProperty('issued');
   });
 
-  it('a link verification is not a session, and an unverified login remains forbidden', async () => {
+  it('a link verification and an unfinished-registration login never create a session', async () => {
     const f = await register();
-    await expect(s.auth.login({ email: f.address, password }, ctx)).rejects.toBeDefined();
+    const pending = await s.auth.login({ email: f.address, password }, ctx);
+    expect(pending).toHaveProperty('challengeId');
+    expect(await prisma.session.count({ where: { userId: f.user.id } })).toBe(0);
     await s.auth.resendVerification(f.address, ctx);
     const link = /token=([A-Za-z0-9_-]+)/u.exec(s.mail.lastSentTo(f.address)?.text ?? '')?.[1];
     expect(link).toBeDefined();
@@ -588,4 +650,364 @@ suite('R04 account lifecycle invariants (real Postgres)', () => {
       'challengeId',
     );
   });
+  /** The Meta transport is a stand-in here. Database identity, tokens,
+   * consumption, locks, password hashes and sessions are real. */
+  function captureWhatsAppCodes() {
+    const captured: OtpDeliveryInput[] = [];
+    const enqueue = s.delivery.enqueue.bind(s.delivery);
+    const channel = jest.spyOn(s.channels, 'getChannel').mockResolvedValue('whatsapp');
+    jest.spyOn(s.channels, 'getPublicConfig').mockImplementation(async () => ({
+      otpChannel: await s.channels.getChannel(),
+      whatsappAvailable: true,
+    }));
+    jest.spyOn(s.channels, 'assertWhatsAppReady').mockImplementation(() => undefined);
+    jest.spyOn(s.delivery, 'enqueue').mockImplementation(async (input: unknown, tx: unknown) => {
+      captured.push(input as OtpDeliveryInput);
+      return enqueue(input, tx);
+    });
+    jest.spyOn(s.delivery, 'dispatch').mockResolvedValue(undefined);
+    return {
+      channel,
+      captured,
+      code: () => {
+        const latest = captured.at(-1);
+        if (!latest) throw new Error('Expected a captured authentication delivery');
+        return latest.rawCode;
+      },
+    };
+  }
+  const uniquePhone = () => `+9665${randomInt(10_000_000, 100_000_000)}`;
+  async function registerPhone(phoneNumber: string) {
+    const challenge = await s.auth.register(
+      {
+        phoneNumber,
+        password,
+        firstName: 'Synthetic',
+        lastName: 'WhatsApp',
+        legalAcceptance: currentLegalAcceptance(),
+      },
+      ctx,
+    );
+    const user = await prisma.user.findUniqueOrThrow({ where: { phoneNumber } });
+    createdUserIds.add(user.id);
+    return { challenge, user };
+  }
+
+  it('phone-only signup and login persist verified identity; a policy switch never reroutes an outstanding code', async () => {
+    const capture = captureWhatsAppCodes();
+    const phoneNumber = uniquePhone();
+    const f = await registerPhone(phoneNumber);
+    expect(f.user).toMatchObject({
+      email: null,
+      emailVerifiedAt: null,
+      phoneNumber,
+      phoneVerifiedAt: null,
+      status: 'PENDING_VERIFICATION',
+    });
+    expect(await prisma.session.count({ where: { userId: f.user.id } })).toBe(0);
+    const initialCode = capture.code();
+    capture.channel.mockResolvedValue('email');
+    await s.auth.resendOtp(f.challenge.challengeId, ctx);
+    expect(capture.captured.at(-1)).toMatchObject({
+      channel: 'whatsapp',
+      destination: phoneNumber,
+    });
+    expect(capture.code()).not.toBe(initialCode);
+    await expect(s.auth.verifyOtp(f.challenge.challengeId, initialCode, ctx)).rejects.toBeDefined();
+    const activated = await s.auth.verifyOtp(f.challenge.challengeId, capture.code(), ctx);
+    expect(activated.user).toMatchObject({
+      email: null,
+      emailVerifiedAt: null,
+      phoneNumber,
+      status: 'ACTIVE',
+    });
+    expect(activated.user.phoneVerifiedAt).toBeInstanceOf(Date);
+    await expect(s.auth.login({ phoneNumber }, ctx)).rejects.toMatchObject({
+      response: { code: 'AUTH_CHANNEL_CHANGED' },
+    });
+    capture.channel.mockResolvedValue('whatsapp');
+    const login = await s.auth.login({ phoneNumber }, ctx);
+    expect(login.channel).toBe('whatsapp');
+    await s.auth.verifyOtp(login.challengeId, capture.code(), ctx);
+    expect(await prisma.session.count({ where: { userId: f.user.id, revokedAt: null } })).toBe(2);
+  });
+
+  it('WhatsApp recovery cannot log in and atomically replaces the password, revokes sessions and expires other challenges', async () => {
+    const capture = captureWhatsAppCodes();
+    const phoneNumber = uniquePhone();
+    const f = await registerPhone(phoneNumber);
+    await s.auth.verifyOtp(f.challenge.challengeId, capture.code(), ctx);
+    const staleLogin = await s.auth.login({ phoneNumber }, ctx);
+    const staleCode = capture.code();
+    const recovery = await s.auth.forgotPasswordOtp(phoneNumber, ctx);
+    const recoveryCode = capture.code();
+    await expect(s.auth.verifyOtp(recovery.challengeId, recoveryCode, ctx)).rejects.toBeDefined();
+    expect(
+      (
+        await prisma.verificationToken.findUniqueOrThrow({
+          where: { challengeId: recovery.challengeId },
+        })
+      ).usedAt,
+    ).toBeNull();
+    const wrong = recoveryCode === '000000' ? '111111' : '000000';
+    await expect(
+      s.auth.resetPasswordOtp(recovery.challengeId, wrong, replacement, ctx),
+    ).rejects.toBeDefined();
+    expect(
+      (
+        await prisma.verificationToken.findUniqueOrThrow({
+          where: { challengeId: recovery.challengeId },
+        })
+      ).attemptCount,
+    ).toBe(1);
+    await s.auth.resetPasswordOtp(recovery.challengeId, recoveryCode, replacement, ctx);
+    expect(await prisma.session.count({ where: { userId: f.user.id, revokedAt: null } })).toBe(0);
+    expect(
+      await prisma.verificationToken.count({ where: { userId: f.user.id, usedAt: null } }),
+    ).toBe(0);
+    await expect(s.auth.verifyOtp(staleLogin.challengeId, staleCode, ctx)).rejects.toBeDefined();
+    await expect(
+      s.auth.resetPasswordOtp(recovery.challengeId, recoveryCode, password, ctx),
+    ).rejects.toBeDefined();
+    // Password reset still changes the password used by contact enrollment,
+    // while a WhatsApp sign-in proves possession through its new OTP alone.
+    const updated = await prisma.user.findUniqueOrThrow({ where: { id: f.user.id } });
+    await expect(s.passwords.verify(updated.passwordHash, password)).resolves.toBe(false);
+    await expect(s.passwords.verify(updated.passwordHash, replacement)).resolves.toBe(true);
+    const nextLogin = await s.auth.login({ phoneNumber }, ctx);
+    expect(await prisma.session.count({ where: { userId: f.user.id, revokedAt: null } })).toBe(0);
+    await expect(
+      s.auth.verifyOtp(nextLogin.challengeId, capture.code(), ctx),
+    ).resolves.toHaveProperty('issued.session.id');
+  });
+
+  it('enrolls a verified phone on an existing email account only after password and phone proof', async () => {
+    const existing = await verified();
+    const capture = captureWhatsAppCodes();
+    const phoneNumber = uniquePhone();
+    const enrollment = await s.auth.requestPhoneEnrollment(
+      existing.user.id,
+      phoneNumber,
+      password,
+      ctx,
+    );
+    const code = capture.code();
+    expect(
+      (await prisma.user.findUniqueOrThrow({ where: { id: existing.user.id } })).phoneNumber,
+    ).toBeNull();
+    await expect(s.auth.verifyOtp(enrollment.challengeId, code, ctx)).rejects.toBeDefined();
+    await s.auth.verifyPhoneEnrollment(existing.user.id, enrollment.challengeId, code, ctx);
+    const linked = await prisma.user.findUniqueOrThrow({ where: { id: existing.user.id } });
+    expect(linked).toMatchObject({ email: existing.address, phoneNumber, status: 'ACTIVE' });
+    expect(linked.phoneVerifiedAt).toBeInstanceOf(Date);
+    expect(linked.emailVerifiedAt).toBeInstanceOf(Date);
+    const challenge = await s.auth.login({ phoneNumber }, ctx);
+    await expect(
+      s.auth.verifyOtp(challenge.challengeId, capture.code(), ctx),
+    ).resolves.toHaveProperty('issued.session.id');
+  });
+  it.each([
+    { deliveryChannel: null, deliveryTarget: '+966501234567' },
+    { deliveryChannel: 'whatsapp', deliveryTarget: null },
+    { deliveryChannel: 'invalid', deliveryTarget: '+966501234567' },
+    { deliveryChannel: 'email', deliveryTarget: '' },
+  ])('database rejects an incomplete or invalid delivery binding: %p', async (binding) => {
+    const f = await register();
+    await expect(
+      prisma.verificationToken.create({
+        data: {
+          userId: f.user.id,
+          purpose: 'LOGIN_OTP',
+          tokenHash: randomUUID(),
+          challengeId: randomUUID(),
+          expiresAt: new Date(Date.now() + 60_000),
+          ...binding,
+        },
+      }),
+    ).rejects.toBeDefined();
+    expect(await prisma.verificationToken.count({ where: { userId: f.user.id } })).toBe(1);
+  });
+
+  it('recipient suppression rolls back recovery issuance without invalidating the previous usable challenge', async () => {
+    const capture = captureWhatsAppCodes();
+    const phoneNumber = uniquePhone();
+    const f = await registerPhone(phoneNumber);
+    await s.auth.verifyOtp(f.challenge.challengeId, capture.code(), ctx);
+    const existing = await s.auth.forgotPasswordOtp(phoneNumber, ctx);
+    const existingCode = capture.code();
+    const wrong = existingCode === '000000' ? '111111' : '000000';
+    await expect(
+      s.auth.resetPasswordOtp(existing.challengeId, wrong, replacement, ctx),
+    ).rejects.toBeDefined();
+    const before = await prisma.verificationToken.findUniqueOrThrow({
+      where: { challengeId: existing.challengeId },
+    });
+    expect(before.attemptCount).toBe(1);
+    const countBefore = await prisma.verificationToken.count({ where: { userId: f.user.id } });
+    const dispatchCount = s.delivery.dispatch.mock.calls.length;
+    jest.spyOn(s.delivery, 'enqueue').mockResolvedValueOnce({ deliveryId: null, intent: null });
+
+    const neutral = await s.auth.forgotPasswordOtp(phoneNumber, ctx);
+
+    expect(neutral.challengeId).not.toBe(existing.challengeId);
+    expect(await prisma.verificationToken.count({ where: { userId: f.user.id } })).toBe(
+      countBefore,
+    );
+    expect(
+      await prisma.verificationToken.findUniqueOrThrow({
+        where: { challengeId: existing.challengeId },
+      }),
+    ).toEqual(before);
+    expect(s.delivery.dispatch.mock.calls.length).toBe(dispatchCount);
+    await expect(
+      s.auth.resetPasswordOtp(existing.challengeId, existingCode, replacement, ctx),
+    ).resolves.toBeUndefined();
+  });
+
+  it('recipient suppression rolls back resend rotation and retains the previous code and limits', async () => {
+    const capture = captureWhatsAppCodes();
+    const phoneNumber = uniquePhone();
+    const f = await registerPhone(phoneNumber);
+    const originalCode = capture.code();
+    const wrong = originalCode === '000000' ? '111111' : '000000';
+    await expect(s.auth.verifyOtp(f.challenge.challengeId, wrong, ctx)).rejects.toBeDefined();
+    const before = await prisma.verificationToken.findUniqueOrThrow({
+      where: { challengeId: f.challenge.challengeId },
+    });
+    const dispatchCount = s.delivery.dispatch.mock.calls.length;
+    jest.spyOn(s.delivery, 'enqueue').mockResolvedValueOnce({ deliveryId: null, intent: null });
+
+    await expect(s.auth.resendOtp(f.challenge.challengeId, ctx)).rejects.toMatchObject({
+      code: 'RATE_LIMITED',
+      status: 429,
+    });
+
+    expect(
+      await prisma.verificationToken.findUniqueOrThrow({
+        where: { challengeId: f.challenge.challengeId },
+      }),
+    ).toEqual(before);
+    expect(s.delivery.dispatch.mock.calls.length).toBe(dispatchCount);
+    await expect(
+      s.auth.verifyOtp(f.challenge.challengeId, originalCode, ctx),
+    ).resolves.toHaveProperty('issued.session.id');
+  });
+
+  it('links verified email to a phone-only account without using the enrollment OTP as a session', async () => {
+    const capture = captureWhatsAppCodes();
+    const f = await registerPhone(uniquePhone());
+    await s.auth.verifyOtp(f.challenge.challengeId, capture.code(), ctx);
+    const destination = email();
+    const pending = await s.auth.requestEmailEnrollment(f.user.id, destination, password, ctx);
+    const code = capture.code();
+    expect(capture.captured.at(-1)).toMatchObject({
+      channel: 'email',
+      destination,
+      purpose: 'EMAIL_CONTACT_OTP',
+    });
+    expect((await prisma.user.findUniqueOrThrow({ where: { id: f.user.id } })).email).toBeNull();
+    await expect(s.auth.verifyOtp(pending.challengeId, code, ctx)).rejects.toBeDefined();
+    await s.auth.verifyEmailEnrollment(f.user.id, pending.challengeId, code, ctx);
+    const updated = await prisma.user.findUniqueOrThrow({ where: { id: f.user.id } });
+    expect(updated.email).toBe(destination);
+    expect(updated.emailVerifiedAt).toBeInstanceOf(Date);
+    expect(updated.phoneVerifiedAt).toBeInstanceOf(Date);
+    capture.channel.mockResolvedValue('email');
+    await expect(s.auth.login({ phoneNumber: updated.phoneNumber! }, ctx)).rejects.toMatchObject({
+      response: { code: 'AUTH_CHANNEL_CHANGED' },
+    });
+    const login = await s.auth.login({ email: destination, password }, ctx);
+    expect(login.channel).toBe('email');
+    expect(capture.captured.at(-1)).toMatchObject({
+      channel: 'email',
+      destination,
+      purpose: 'LOGIN_OTP',
+    });
+    await s.auth.verifyOtp(login.challengeId, capture.code(), ctx);
+  });
+
+  it.each(['forgotPassword', 'resendVerification'] as const)(
+    '%s cannot issue a link to an email changed while it waits for the account lock',
+    async (requestMethod) => {
+      const f = await verified();
+      if (requestMethod === 'resendVerification') {
+        // A verified WhatsApp account can still have a pending, unverified email.
+        await prisma.user.update({
+          where: { id: f.user.id },
+          data: {
+            emailVerifiedAt: null,
+            phoneNumber: uniquePhone(),
+            phoneVerifiedAt: new Date(),
+          },
+        });
+      }
+      const destination = email();
+      const pending = await s.auth.requestEmailEnrollment(f.user.id, destination, password, ctx);
+      const code = mailCode(destination);
+      const oldMessage = s.mail.lastSentTo(f.address);
+      let releaseEnrollment!: () => void;
+      const gate = new Promise<void>((resolve) => {
+        releaseEnrollment = resolve;
+      });
+      let enrollmentWritten!: () => void;
+      const written = new Promise<void>((resolve) => {
+        enrollmentWritten = resolve;
+      });
+      let oldAddressRead!: () => void;
+      const read = new Promise<void>((resolve) => {
+        oldAddressRead = resolve;
+      });
+      const record = s.audit.record.bind(s.audit);
+      jest.spyOn(s.audit, 'record').mockImplementation(async (...args: any[]) => {
+        await record(...args);
+        if (args[0].type === 'EMAIL_VERIFIED' && args[0].metadata?.reason === 'contact-linked') {
+          enrollmentWritten();
+          await gate;
+        }
+      });
+      const findByEmail = s.users.findByEmail.bind(s.users);
+      jest.spyOn(s.users, 'findByEmail').mockImplementation(async (...args: any[]) => {
+        const user = await findByEmail(...args);
+        if (args[0] === f.address) oldAddressRead();
+        return user;
+      });
+      async function atBarrier(barrier: Promise<void>): Promise<void> {
+        let timer!: ReturnType<typeof setTimeout>;
+        try {
+          await Promise.race([
+            barrier,
+            new Promise<never>((_, reject) => {
+              timer = setTimeout(() => reject(new Error('Account race barrier timed out')), 2000);
+            }),
+          ]);
+        } finally {
+          clearTimeout(timer);
+        }
+      }
+      const enrollment = s.auth.verifyEmailEnrollment(f.user.id, pending.challengeId, code, ctx);
+      let request: Promise<void> | undefined;
+      try {
+        await atBarrier(written);
+        request = s.auth[requestMethod](f.address, ctx);
+        await atBarrier(read);
+      } finally {
+        releaseEnrollment();
+        await Promise.all([enrollment, request]);
+      }
+
+      expect((await prisma.user.findUniqueOrThrow({ where: { id: f.user.id } })).email).toBe(
+        destination,
+      );
+      expect(s.mail.lastSentTo(f.address)).toEqual(oldMessage);
+      expect(
+        await prisma.verificationToken.count({
+          where: {
+            userId: f.user.id,
+            purpose: requestMethod === 'forgotPassword' ? 'PASSWORD_RESET' : 'EMAIL_VERIFICATION',
+            usedAt: null,
+          },
+        }),
+      ).toBe(0);
+    },
+  );
 });

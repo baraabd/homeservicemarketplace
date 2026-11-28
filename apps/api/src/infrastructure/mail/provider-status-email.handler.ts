@@ -56,6 +56,9 @@ export class ProviderStatusEmailHandler implements OutboxHandler {
     const user = profile?.user;
     // A removed profile or account gets nothing; not an error to retry.
     if (!profile || profile.deletedAt || !user || user.deletedAt || !user.isActive) return;
+    // Phone-only accounts receive the existing in-app notification. A WhatsApp
+    // authentication template must never be repurposed for status notifications.
+    if (!user.email) return;
 
     const intent = intentFor(event, user.email, user.id);
     const ticket = await this.mail.enqueue(intent, tx);

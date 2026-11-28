@@ -97,7 +97,7 @@ suite('read-only authentication diagnostic (isolated real PostgreSQL)', () => {
   }
 
   async function account(overrides: Partial<Prisma.UserCreateInput> = {}, roles = ['customer']) {
-    return prisma.user.create({
+    const created = await prisma.user.create({
       data: {
         email: newEmail(),
         firstName: 'Synthetic',
@@ -109,6 +109,8 @@ suite('read-only authentication diagnostic (isolated real PostgreSQL)', () => {
         userRoles: { create: roles.map((name) => ({ roleId: roleIds.get(name)! })) },
       },
     });
+    if (!created.email) throw new Error('Email diagnostic fixtures require an email');
+    return { ...created, email: created.email };
   }
 
   it('distinguishes an absent normalized email without exposing a known neighboring account', async () => {

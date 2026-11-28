@@ -35,6 +35,13 @@
 import { type IntendedApp, INTENDED_APP_PATHS, getIntendedApp } from './intended-app';
 import { sanitizeAuthReturnTo } from './auth-return-to';
 
+// Preserve the public auth API while eager route guards import routing alone.
+export {
+  resolvePostAuthDestination,
+  SELECT_PATH,
+  type ResolveDestinationInput,
+} from './auth-destination';
+
 export type AuthExperienceId = IntendedApp;
 
 // One experience = the per-app theme + post-auth path. Tailwind class
@@ -78,6 +85,9 @@ export interface AuthExperience {
     accentText: string;
     // Step-indicator ring colour for the active step.
     activeRing: string;
+    // Accessible field and action focus colours shared by auth controls.
+    focusRing: string;
+    focusOutline: string;
     // Step-indicator connector for completed steps.
     activeConnector: string;
     // Chip / icon backgrounds inside the SignUp wizard.
@@ -108,8 +118,10 @@ export const AUTH_EXPERIENCES: Readonly<Record<AuthExperienceId, AuthExperience>
       accentBorder: 'border-amber-500',
       softBg: 'bg-amber-50',
       softBorder: 'border-amber-100',
-      accentText: 'text-amber-600',
+      accentText: 'text-amber-700',
       activeRing: 'ring-amber-200',
+      focusRing: 'focus:ring-amber-600',
+      focusOutline: 'focus-visible:outline-amber-600',
       activeConnector: 'bg-amber-300',
       iconChipBg: 'bg-amber-100',
       iconChipText: 'text-amber-600',
@@ -129,6 +141,8 @@ export const AUTH_EXPERIENCES: Readonly<Record<AuthExperienceId, AuthExperience>
       softBorder: 'border-blue-100',
       accentText: 'text-blue-600',
       activeRing: 'ring-blue-200',
+      focusRing: 'focus:ring-blue-600',
+      focusOutline: 'focus-visible:outline-blue-600',
       activeConnector: 'bg-blue-300',
       iconChipBg: 'bg-blue-100',
       iconChipText: 'text-blue-600',
@@ -148,6 +162,8 @@ export const AUTH_EXPERIENCES: Readonly<Record<AuthExperienceId, AuthExperience>
       softBorder: 'border-slate-200',
       accentText: 'text-slate-700',
       activeRing: 'ring-slate-300',
+      focusRing: 'focus:ring-slate-600',
+      focusOutline: 'focus-visible:outline-slate-600',
       activeConnector: 'bg-slate-400',
       iconChipBg: 'bg-slate-100',
       iconChipText: 'text-slate-700',
@@ -210,75 +226,4 @@ export function resolveAuthExperience(input: ResolveExperienceInput = {}): AuthE
   const fromStorage = getExperienceForIntendedApp();
   if (fromStorage) return AUTH_EXPERIENCES[fromStorage];
   return AUTH_EXPERIENCES[DEFAULT_EXPERIENCE_ID];
-}
-
-// ─── Resolver: where should I send the user after auth? ──────────────────────
-
-export interface ResolveDestinationInput {
-  // returnTo (sanitised). The strongest signal — the user was bounced
-  // off a specific URL and wants to go back to it.
-  returnTo?: string | null | undefined;
-  // Recorded launcher intent (sessionStorage). Falls back to
-  // `getIntendedApp()` when not provided.
-  intentApp?: AuthExperienceId | null | undefined;
-  // The experience the auth surface is currently THEMED as. Sprint
-  // 5.1.1 patch 2: this is a third-strongest signal sitting between
-  // intent and role inference. The Login/Signup pages resolve their
-  // experience at render time (from explicit state.app, returnTo,
-  // intent, or default); when the user finishes auth, the destination
-  // should respect the experience the user just saw — even if the
-  // intent has been cleared mid-flight (which used to drop Provider
-  // signup users on /home).
-  experienceId?: AuthExperienceId | null | undefined;
-  // The roles attached to the authenticated session. Used only when
-  // returnTo, intent, and experienceId are all missing.
-  userRoles?: readonly string[] | null | undefined;
-}
-
-const PROVIDER_ROLE = 'provider';
-const ADMIN_ROLE = 'admin';
-
-// The SELECT path is reused from the existing AppSelector route and
-// kept here so consumers don't have to know it.
-export const SELECT_PATH = '/select';
-
-// Multi-role precedence (Sprint 5.1.1 patch 2):
-//
-//   1. returnTo — wins. The user was deep-linking somewhere specific.
-//   2. intentApp — wins. The user clicked an app card on /select.
-//   3. experienceId — the theme the auth surface was rendered as.
-//      Sits between intent and role inference because the user just
-//      VISUALLY confirmed which app they were authing into; landing
-//      anywhere else after that would be jarring even if the
-//      sessionStorage intent has since been cleared.
-//   4. role inference — only when none of the above signals exist:
-//      a. exactly one of {provider, admin} → that app
-//      b. both provider AND admin → /select (let the user pick)
-//      c. neither (e.g. just `customer`) → /home
-//
-// Roles are advisory at this layer; backend RolesGuards remain the
-// authoritative authorization. A user who selects Provider and lacks
-// the role still lands on /provider — the Provider app's onboarding
-// screen handles the upgrade flow, per Slice 5.1. An admin-themed auth
-// flow lands the user on /admin where RequireAdmin (route guard) does
-// the actual access check.
-export function resolvePostAuthDestination(input: ResolveDestinationInput): string {
-  const returnTo = sanitizeAuthReturnTo(input.returnTo);
-  if (returnTo) return returnTo;
-  const intent = isAuthExperienceId(input.intentApp)
-    ? input.intentApp
-    : getExperienceForIntendedApp();
-  if (intent) return AUTH_EXPERIENCES[intent].path;
-
-  if (isAuthExperienceId(input.experienceId)) {
-    return AUTH_EXPERIENCES[input.experienceId].path;
-  }
-
-  const roles = input.userRoles ?? [];
-  const hasProvider = roles.includes(PROVIDER_ROLE);
-  const hasAdmin = roles.includes(ADMIN_ROLE);
-  if (hasProvider && hasAdmin) return SELECT_PATH;
-  if (hasProvider) return AUTH_EXPERIENCES.provider.path;
-  if (hasAdmin) return AUTH_EXPERIENCES.admin.path;
-  return AUTH_EXPERIENCES.seeker.path;
 }

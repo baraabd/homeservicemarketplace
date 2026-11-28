@@ -15,7 +15,9 @@
 //  - validation failures are normalized through the existing filter
 
 import {
+  BadRequestException,
   ExecutionContext,
+  ForbiddenException,
   INestApplication,
   Module,
   UnauthorizedException,
@@ -39,6 +41,7 @@ import {
 import { AuthenticationService } from '../../src/modules/iam/authentication/services/authentication.service';
 import { TokenService } from '../../src/modules/iam/authentication/services/token.service';
 import { currentLegalAcceptance } from '../support/legal-acceptance';
+import { AppError } from '../../src/shared/errors/app-error';
 
 jest.setTimeout(30_000);
 
@@ -49,6 +52,7 @@ function makeConfig(overrides: Record<string, unknown> = {}): AppConfigService {
     COOKIE_SAMESITE: 'lax',
     COOKIE_DOMAIN: undefined,
     JWT_ACCESS_TTL_SECONDS: 600,
+    AUTH_ANTI_ENUM_DELAY_MS: 0,
     isProduction: false,
   };
   const merged = { ...values, ...overrides };
@@ -391,6 +395,35 @@ describe('Authentication controller (e2e)', () => {
       const setCookie = (res.headers['set-cookie'] as unknown as string[]) ?? [];
       expect(setCookie.join('\n')).not.toMatch(/hsm_at|hsm_rt|hsm_csrf/);
     });
+
+    it('accepts phone-only WhatsApp input and does not issue cookies or tokens', async () => {
+      app = await bootApp();
+      authService.login.mockResolvedValueOnce(
+        issuedChallenge({ challengeId: `wa_login_${'a'.repeat(32)}`, channel: 'whatsapp' }),
+      );
+      const res = await request(app.getHttpServer())
+        .post('/v1/auth/login')
+        .send({ phoneNumber: '+966501234567' });
+      expect(res.status).toBe(200);
+      expect(res.body).toMatchObject({ otpRequired: true, channel: 'whatsapp' });
+      expect(res.body.tokens).toBeUndefined();
+      expect(res.headers['set-cookie']).toBeUndefined();
+      expect(authService.login).toHaveBeenCalledWith(
+        expect.objectContaining({ phoneNumber: '+966501234567' }),
+        expect.any(Object),
+      );
+      expect(authService.login.mock.calls[0]![0].password).toBeUndefined();
+    });
+
+    it('still rejects an email login missing its password before the service', async () => {
+      app = await bootApp();
+      const res = await request(app.getHttpServer())
+        .post('/v1/auth/login')
+        .send({ email: 'ada@example.com' });
+      expect(res.status).toBe(400);
+      expect(res.body.error.code).toBe('VALIDATION_ERROR');
+      expect(authService.login).not.toHaveBeenCalled();
+    });
   });
 
   // --- Verify OTP: THIS is where sessions are now issued -----------------
@@ -447,6 +480,111 @@ describe('Authentication controller (e2e)', () => {
       expect(res.body.error.code).toBe('VALIDATION_ERROR');
       expect(authService.verifyOtp).not.toHaveBeenCalled();
     });
+  });
+
+  describe('anonymous WhatsApp OTP response boundary', () => {
+    const challengeId = `wa_login_${'a'.repeat(32)}`;
+
+    it.each(['AUTH_OTP_INVALID', 'AUTH_OTP_EXPIRED', 'AUTH_OTP_LOCKED'])(
+      'normalizes marked verification %s to the same 400 without session cookies',
+      async (code) => {
+        app = await bootApp();
+        authService.verifyOtp.mockRejectedValueOnce(
+          code === 'AUTH_OTP_LOCKED'
+            ? new ForbiddenException({ code })
+            : new BadRequestException({ code }),
+        );
+        const res = await request(app.getHttpServer())
+          .post('/v1/auth/verify-otp')
+          .send({ challengeId, code: '123456' });
+        expect(res.status).toBe(400);
+        expect(res.body.error.code).toBe('AUTH_OTP_INVALID');
+        expect(res.headers['set-cookie']).toBeUndefined();
+        expect(res.body.tokens).toBeUndefined();
+      },
+    );
+
+    it.each([
+      'AUTH_OTP_INVALID',
+      'AUTH_OTP_EXPIRED',
+      'AUTH_OTP_LOCKED',
+      'AUTH_OTP_RESEND_EXCEEDED',
+      'RATE_LIMITED',
+      'DEPENDENCY_UNAVAILABLE',
+    ])('acknowledges marked resend %s neutrally while the service rejects it', async (code) => {
+      app = await bootApp();
+      authService.resendOtp.mockRejectedValueOnce(
+        code === 'RATE_LIMITED' || code === 'DEPENDENCY_UNAVAILABLE'
+          ? new AppError(code, 'Synthetic delivery rejection', 429)
+          : new BadRequestException({ code }),
+      );
+      const res = await request(app.getHttpServer())
+        .post('/v1/auth/resend-otp')
+        .send({ challengeId });
+      expect(res.status).toBe(202);
+      expect(res.body).toEqual({ success: true, expiresInSeconds: 300 });
+      expect(res.headers['set-cookie']).toBeUndefined();
+      expect(authService.resendOtp).toHaveBeenCalledTimes(1);
+    });
+
+    it('acknowledges a live marked resend with the same envelope as a neutral rejection', async () => {
+      app = await bootApp();
+      authService.resendOtp.mockResolvedValueOnce({ expiresInSeconds: 300 });
+      const res = await request(app.getHttpServer())
+        .post('/v1/auth/resend-otp')
+        .send({ challengeId });
+      expect(res.status).toBe(202);
+      expect(res.body).toEqual({ success: true, expiresInSeconds: 300 });
+    });
+
+    it.each(['verify', 'resend'] as const)(
+      'preserves the existing unmarked %s error contract for email and contact enrollment',
+      async (method) => {
+        app = await bootApp();
+        const service = method === 'verify' ? authService.verifyOtp : authService.resendOtp;
+        service.mockRejectedValueOnce(new ForbiddenException({ code: 'AUTH_OTP_LOCKED' }));
+        const res = await request(app.getHttpServer())
+          .post(`/v1/auth/${method}-otp`)
+          .send({
+            challengeId: 'original-challenge-1234',
+            ...(method === 'verify' ? { code: '123456' } : {}),
+          });
+        expect(res.status).toBe(403);
+        expect(res.body.error.code).toBe('AUTH_OTP_LOCKED');
+        expect(res.headers['set-cookie']).toBeUndefined();
+      },
+    );
+
+    it('never strips a forged phone marker to authenticate an existing email challenge', async () => {
+      app = await bootApp();
+      const emailChallenge = 'b'.repeat(32);
+      authService.verifyOtp.mockImplementation(async (id: string) => {
+        if (id === emailChallenge) return issuedSession();
+        throw new BadRequestException({ code: 'AUTH_OTP_INVALID' });
+      });
+      const forged = `wa_login_${emailChallenge}`;
+      const res = await request(app.getHttpServer())
+        .post('/v1/auth/verify-otp')
+        .send({ challengeId: forged, code: '123456' });
+      expect(res.status).toBe(400);
+      expect(res.body.error.code).toBe('AUTH_OTP_INVALID');
+      expect(res.headers['set-cookie']).toBeUndefined();
+      expect(authService.verifyOtp).toHaveBeenCalledWith(forged, '123456', expect.any(Object));
+    });
+
+    it.each(['verify', 'resend'] as const)(
+      'does not turn unexpected marked %s failures into a successful operation',
+      async (method) => {
+        app = await bootApp();
+        const service = method === 'verify' ? authService.verifyOtp : authService.resendOtp;
+        service.mockRejectedValueOnce(new Error('Synthetic database failure'));
+        const res = await request(app.getHttpServer())
+          .post(`/v1/auth/${method}-otp`)
+          .send({ challengeId, ...(method === 'verify' ? { code: '123456' } : {}) });
+        expect(res.status).toBe(500);
+        expect(res.headers['set-cookie']).toBeUndefined();
+      },
+    );
   });
 
   describe('staging cookie namespace', () => {
@@ -641,17 +779,34 @@ describe('Authentication controller (e2e)', () => {
       expect(JSON.stringify(res.body)).not.toMatch(/stack|at Function|at Object/);
     });
 
-    it('GET /v1/auth/me → 200 with safe shape (no passwordHash, no mfaSecret) when authenticated', async () => {
+    it.each([
+      {
+        identity: 'email',
+        email: 'ada@example.com',
+        emailVerifiedAt: new Date('2024-01-01T00:00:00Z'),
+        phoneNumber: null,
+        phoneVerifiedAt: null,
+      },
+      {
+        identity: 'WhatsApp',
+        email: null,
+        emailVerifiedAt: null,
+        phoneNumber: '+966501234567',
+        phoneVerifiedAt: new Date('2026-11-18T00:00:00Z'),
+      },
+    ])('GET /v1/auth/me → 200 with safe shape for $identity identity', async (contact) => {
       app = await bootApp();
       fakeAuthedUser = { id: 'u-1', sessionId: 'sess-1', jti: 'j', roles: ['customer'] };
       userRepo.findById.mockResolvedValueOnce({
         id: 'u-1',
-        email: 'ada@example.com',
+        email: contact.email,
+        phoneNumber: contact.phoneNumber,
         passwordHash: '$argon2id$leaky',
         firstName: 'Ada',
         lastName: 'Lovelace',
         status: 'ACTIVE',
-        emailVerifiedAt: new Date('2024-01-01T00:00:00Z'),
+        emailVerifiedAt: contact.emailVerifiedAt,
+        phoneVerifiedAt: contact.phoneVerifiedAt,
         mfaEnabled: false,
         mfaSecret: Buffer.from('secret-must-not-leak'),
       });
@@ -661,11 +816,13 @@ describe('Authentication controller (e2e)', () => {
       expect(res.status).toBe(200);
       expect(res.body).toEqual({
         id: 'u-1',
-        email: 'ada@example.com',
+        email: contact.email,
+        phoneNumber: contact.phoneNumber,
         firstName: 'Ada',
         lastName: 'Lovelace',
         status: 'ACTIVE',
-        emailVerifiedAt: '2024-01-01T00:00:00.000Z',
+        emailVerifiedAt: contact.emailVerifiedAt?.toISOString() ?? null,
+        phoneVerifiedAt: contact.phoneVerifiedAt?.toISOString() ?? null,
         mfaEnabled: false,
         roles: ['customer'],
       });

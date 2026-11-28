@@ -189,8 +189,10 @@ try {
     await a.page.goto(`${WEB}/home/profile?from=r04#details`);
     await expect(a.page).toHaveURL(/\/login$/u);
     await a.page.getByRole('button', { name: 'Sign Up', exact: true }).click();
+    await expect(a.page.getByTestId('auth-channel-email')).toBeVisible();
     await a.page.getByLabel('Full Name', { exact: true }).fill('R04 Customer');
-    await a.page.locator('input[type="tel"]').fill('701234567');
+    // Email signup no longer asks for an optional, unsaved phone number.
+    await expect(a.page.locator('input[type="tel"]')).toHaveCount(0);
     await a.page.getByRole('button', { name: 'Next', exact: true }).click();
     await a.page.getByLabel('Email Address', { exact: true }).fill(addressA);
     await a.page.getByLabel('Password', { exact: true }).fill(pwd);
@@ -352,7 +354,7 @@ try {
       legalAcceptance: await legalAcceptance('ar'),
     });
     assert.equal(result.status, 202);
-    await ownUser(address);
+    const pendingUser = await ownUser(address);
     await code(address);
     await b.page.goto(`${WEB}/login?returnTo=%2Fadmin`);
     await expect(b.page.getByRole('heading', { name: 'FixNow Admin', exact: true })).toBeVisible();
@@ -431,25 +433,41 @@ try {
     const { response: unverifiedResponse } = await unverifiedLogin;
     assert.ok(unverifiedResponse, 'The Arabic login response must arrive');
     recoveryStep = 'arabic-response-received';
-    assert.equal(unverifiedResponse.status(), 403);
-    assert.equal((await unverifiedResponse.json()).error.code, 'AUTH_ACCOUNT_UNVERIFIED');
-    await expect(recoveryButton).toBeVisible();
-    await expect(
-      b.page.getByText('يرجى التحقق من بريدك الإلكتروني قبل تسجيل الدخول.', { exact: true }),
-    ).toBeVisible();
-    recoveryStep = 'arabic-recovery-visible';
-    await expect(b.page.getByTestId('otp-input')).toHaveCount(0);
+    // Correct credentials on a pending account resume registration ownership
+    // verification. A challenge is not an authenticated session.
+    assert.equal(unverifiedResponse.status(), 200);
+    const recoveryChallenge = await unverifiedResponse.json();
+    assert.equal(recoveryChallenge.otpRequired, true);
+    assert.equal(recoveryChallenge.channel, 'email');
+    assert.equal(typeof recoveryChallenge.challengeId, 'string');
+    const token = await db.query(
+      'SELECT "purpose", "userId" FROM "VerificationToken" WHERE "challengeId"=$1',
+      [recoveryChallenge.challengeId],
+    );
+    assert.equal(token.rows.length, 1);
+    assert.equal(token.rows[0].purpose, 'REGISTRATION_OTP');
+    assert.equal(token.rows[0].userId, pendingUser.id);
+    await code(address);
+    await expect(b.page.getByTestId('otp-input')).toBeEnabled();
+    assert.equal((await call(b.page, '/v1/auth/me')).status, 401);
+    assert.equal((await ownUser(address)).status, 'PENDING_VERIFICATION');
+    assert.equal(
+      (
+        await db.query('SELECT count(*)::int AS n FROM "Session" WHERE "userId"=$1', [
+          pendingUser.id,
+        ])
+      ).rows[0].n,
+      0,
+    );
+    recoveryStep = 'arabic-registration-challenge-without-session';
     assert.equal(loginRequests, 2);
     assert.equal(refreshRequests, 0);
     b.page.off('request', countRequests);
     await b.page.screenshot({
-      path: path.join(OUT, 'login-unverified-ar-320.png'),
+      path: path.join(OUT, 'login-pending-otp-ar-320.png'),
       fullPage: true,
     });
-    await recoveryButton.click();
-    await expect(b.page).toHaveURL(/\/check-email$/u);
-    await expect(b.page.getByLabel('البريد الإلكتروني', { exact: true })).toHaveValue(address);
-    // Reopen without router state: recovery must also work from a cold page.
+    // Email-link recovery must still work from a cold page without router state.
     await b.page.goto(`${WEB}/check-email`);
     await expect(b.page.getByTestId('auth-logout-notice')).toHaveCount(0);
     await b.page.getByLabel('البريد الإلكتروني', { exact: true }).fill(address);
@@ -466,6 +484,16 @@ try {
       b.page.getByRole('heading', { name: 'تم التحقق من البريد الإلكتروني', exact: true }),
     ).toBeVisible();
     assert.equal((await call(b.page, '/v1/auth/me')).status, 401);
+    assert.equal((await ownUser(address)).status, 'ACTIVE');
+    assert.equal(
+      (
+        await db.query('SELECT count(*)::int AS n FROM "Session" WHERE "userId"=$1', [
+          pendingUser.id,
+        ])
+      ).rows[0].n,
+      0,
+      'Email-link activation alone must not create a session',
+    );
     const size = await b.page.evaluate(() => ({
       width: globalThis.document.documentElement.clientWidth,
       content: globalThis.document.documentElement.scrollWidth,

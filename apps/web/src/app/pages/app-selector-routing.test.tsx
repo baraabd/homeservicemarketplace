@@ -92,6 +92,7 @@ let qc: QueryClient;
 
 beforeEach(() => {
   mock = new MockAdapter(api);
+  mock.onGet('/v1/auth/config').reply(200, { otpChannel: 'email', whatsappAvailable: false });
   qc = createAuthQueryClient();
   clearIntendedApp();
 });
@@ -348,17 +349,16 @@ describe('Provider intent survives the entire auth flow', () => {
         signUpBtn!.click();
       });
 
-      // 4. step 1 of signup wizard: name + phone
+      // 4. step 1 of email signup wizard: name
       await waitFor(() => {
-        expect(document.querySelector('input[type="tel"]')).toBeTruthy();
+        expect(document.querySelector('input[type="text"]')).toBeTruthy();
       });
       const nameInput = document.querySelectorAll('input')[0] as HTMLInputElement;
-      const phoneInput = document.querySelector('input[type="tel"]') as HTMLInputElement;
       await act(async () => {
         fireEvent.change(nameInput, { target: { value: 'Ada Lovelace' } });
-        fireEvent.change(phoneInput, { target: { value: '5551234567' } });
       });
       const nextBtn = screen.getAllByRole('button').find((b) => /next/i.test(b.textContent ?? ''))!;
+      await waitFor(() => expect(nextBtn).toBeEnabled());
       await act(async () => {
         nextBtn.click();
       });
@@ -704,9 +704,9 @@ describe('Auth primary buttons follow the resolved experience', () => {
     });
     await waitFor(() => expect(screen.getByTestId('auth-hero-provider')).toBeInTheDocument());
 
-    const loginBtn = screen
-      .getAllByRole('button')
-      .find((b) => /^log ?in|^sign ?in/i.test(b.textContent ?? ''))!;
+    // The hero mounts before policy confirmation; wait for the selected email action.
+    const loginBtn = await screen.findByRole('button', { name: 'Log In', exact: true });
+    expect(loginBtn).toBeEnabled();
     expect(loginBtn.getAttribute('data-tone')).toBe('provider');
     expect(loginBtn.className).not.toMatch(/amber/);
     expect(loginBtn.className).toMatch(/blue/);
@@ -722,9 +722,9 @@ describe('Auth primary buttons follow the resolved experience', () => {
     });
     await waitFor(() => expect(screen.getByTestId('auth-hero-seeker')).toBeInTheDocument());
 
-    const loginBtn = screen
-      .getAllByRole('button')
-      .find((b) => /^log ?in|^sign ?in/i.test(b.textContent ?? ''))!;
+    // The hero mounts before policy confirmation; wait for the selected email action.
+    const loginBtn = await screen.findByRole('button', { name: 'Log In', exact: true });
+    expect(loginBtn).toBeEnabled();
     expect(loginBtn.getAttribute('data-tone')).toBe('seeker');
     expect(loginBtn.className).toMatch(/amber/);
     expect(loginBtn.className).not.toMatch(/\bblue\b|\bslate-700\b/);
@@ -738,9 +738,9 @@ describe('Auth primary buttons follow the resolved experience', () => {
     renderRouter('/login');
     await waitFor(() => expect(screen.getByTestId('auth-hero-admin')).toBeInTheDocument());
 
-    const loginBtn = screen
-      .getAllByRole('button')
-      .find((b) => /^log ?in|^sign ?in/i.test(b.textContent ?? ''))!;
+    // The hero mounts before policy confirmation; wait for the selected email action.
+    const loginBtn = await screen.findByRole('button', { name: 'Log In', exact: true });
+    expect(loginBtn).toBeEnabled();
     expect(loginBtn.getAttribute('data-tone')).toBe('admin');
     expect(loginBtn.className).not.toMatch(/amber|\bblue\b/);
     expect(loginBtn.className).toMatch(/slate/);

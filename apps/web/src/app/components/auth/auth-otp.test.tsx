@@ -49,6 +49,7 @@ function renderAuth(path: '/login' | '/signup', app?: 'seeker' | 'provider' | 'a
 
 beforeEach(() => {
   mock = new MockAdapter(api);
+  mock.onGet('/v1/auth/config').reply(200, { otpChannel: 'email', whatsappAvailable: false });
   qc = createAuthQueryClient();
 });
 
@@ -68,6 +69,7 @@ const OTP_CHALLENGE = {
 };
 
 async function submitLoginCredentials(emailValue = 'ada@example.com') {
+  await waitFor(() => expect(document.querySelector('input[type="email"]')).toBeTruthy());
   // Login form puts the email + password fields and the submit button on
   // screen after /me resolves. The TextField renders native <input>s.
   const email = document.querySelector('input[type="email"]') as HTMLInputElement;
@@ -101,6 +103,44 @@ async function enterOtp(code: string) {
 }
 
 describe('Login → OTP → authenticated', () => {
+  it.each([
+    ['typed Arabic', '٠١٢٣٤٥', true],
+    ['pasted Persian', '۰۱۲۳۴۵', false],
+    ['overlong mixed input', '٠۱2٣۴5٦', false],
+  ] as const)(
+    'submits %s digits as six ASCII digits with a leading zero',
+    async (_label, digits, typed) => {
+      localStorage.setItem('hsm.lang', 'ar');
+      mock.onGet('/v1/auth/me').reply(401, {});
+      mock.onPost('/v1/auth/login').reply(200, OTP_CHALLENGE);
+      mock.onPost('/v1/auth/verify-otp').reply(400, { error: { code: 'AUTH_OTP_INVALID' } });
+      renderAuth('/login');
+      await submitLoginCredentials();
+      const input = (await screen.findByTestId('otp-input')) as HTMLInputElement;
+      if (typed) {
+        for (const digit of digits) {
+          fireEvent.change(input, { target: { value: input.value + digit } });
+        }
+      } else {
+        // Native paste/autofill produces one change with the complete input value.
+        fireEvent.change(input, { target: { value: digits } });
+      }
+      expect(input).toHaveValue('012345');
+      expect(screen.getByTestId('otp-box-0')).toHaveTextContent('0');
+      fireEvent.keyDown(input, { key: 'Enter' });
+      await waitFor(() => {
+        const requests = mock.history.post.filter(
+          (request) => request.url === '/v1/auth/verify-otp',
+        );
+        expect(requests).toHaveLength(1);
+        expect(JSON.parse(requests[0]!.data)).toEqual({
+          challengeId: OTP_CHALLENGE.challengeId,
+          code: '012345',
+        });
+      });
+    },
+  );
+
   it('valid credentials reveal the OTP panel; no session before OTP success', async () => {
     mock.onGet('/v1/auth/me').reply(401, {});
     mock.onPost('/v1/auth/refresh').reply(401, {});
@@ -267,7 +307,7 @@ describe('Login → OTP → authenticated', () => {
     // non-enumerating request notice and the exact resend endpoint assertions.
     await waitFor(() =>
       expect(screen.getByRole('status')).toHaveTextContent(
-        'Request received. Check your inbox and use the most recent code.',
+        'Request received. Use the most recent code you receive.',
       ),
     );
   });
@@ -555,17 +595,16 @@ describe('Register → OTP → authenticated', () => {
 
     renderAuth('/signup');
 
-    // Step 1: name + phone (dial code is preselected from geo fallback).
+    // Email registration requests only the name before credentials.
     await waitFor(() => {
-      expect(document.querySelector('input[type="tel"]')).toBeTruthy();
+      expect(document.querySelector('input[type="text"]')).toBeTruthy();
     });
     const name = document.querySelectorAll('input')[0] as HTMLInputElement;
-    const phone = document.querySelector('input[type="tel"]') as HTMLInputElement;
     await act(async () => {
       typeInto(name, 'Ada Lovelace');
-      typeInto(phone, '5551234567');
     });
     const nextBtn = screen.getAllByRole('button').find((b) => /next/i.test(b.textContent ?? ''))!;
+    await waitFor(() => expect(nextBtn).toBeEnabled());
     await act(async () => {
       nextBtn.click();
     });
@@ -635,9 +674,15 @@ describe.each(['en', 'ar'] as const)('OTP challenge recovery (%s)', (lang) => {
     renderAuth(path);
     if (path === '/login') await submitLoginCredentials();
     else {
+      await waitFor(() => expect(document.querySelector('input[type="text"]')).toBeTruthy());
       fireEvent.change(document.querySelectorAll('input')[0]!, {
         target: { value: 'Ada Lovelace' },
       });
+      await waitFor(() =>
+        expect(
+          screen.getByRole('button', { name: lang === 'ar' ? 'التالي' : 'Next' }),
+        ).toBeEnabled(),
+      );
       fireEvent.click(screen.getByRole('button', { name: lang === 'ar' ? 'التالي' : 'Next' }));
       fireEvent.change(document.querySelector('input[type="email"]')!, {
         target: { value: 'ada@example.com' },
@@ -674,10 +719,11 @@ describe.each(['en', 'ar'] as const)('OTP challenge recovery (%s)', (lang) => {
       const alert = await screen.findByRole('alert');
       expect(alert).toHaveTextContent(lang === 'ar' ? 'خيار الاستعادة' : 'recovery option');
       expect(alert).not.toHaveTextContent('private-server-detail');
-      expect(screen.getByRole('button', { name: resendLabel })).toBeDisabled();
+      const retryResend = screen.getByRole('button', { name: resendLabel });
+      expect(retryResend).toBeDisabled();
       expect(screen.getByRole('button', { name: confirmLabel })).toBeDisabled();
       expect(screen.getByTestId('otp-input')).toBeDisabled();
-      fireEvent.click(screen.getByRole('button', { name: resendLabel }));
+      fireEvent.click(retryResend);
       expect(
         mock.history.post.filter((request) => request.url === '/v1/auth/resend-otp'),
       ).toHaveLength(1);
@@ -700,7 +746,12 @@ describe.each(['en', 'ar'] as const)('OTP challenge recovery (%s)', (lang) => {
     expect(await screen.findByRole('alert')).toHaveTextContent(
       lang === 'ar' ? 'خيار الاستعادة' : 'recovery option',
     );
-    expect(screen.getByRole('button', { name: resendLabel })).toBeDisabled();
+    const expiredResend = screen.getByRole('button', { name: resendLabel });
+    expect(expiredResend).toBeDisabled();
+    fireEvent.click(expiredResend);
+    expect(
+      mock.history.post.filter((request) => request.url === '/v1/auth/resend-otp'),
+    ).toHaveLength(1);
     fireEvent.click(
       screen.getByRole('button', {
         name: lang === 'ar' ? 'طلب رابط تحقق بدلاً من الرمز' : 'Use a verification link instead',
@@ -761,17 +812,22 @@ describe.each(['en', 'ar'] as const)('OTP challenge recovery (%s)', (lang) => {
     },
   );
 
-  it('keeps localized recovery and entered digits on a language switch, then resets for a new challenge', async () => {
+  it('keeps localized recovery and clears expired digits on a language switch, then resets for a new challenge', async () => {
     mock.onPost('/v1/auth/resend-otp').reply(400, { error: { code: 'AUTH_OTP_EXPIRED' } });
     await openOtp();
+    const destination = screen.getByText('ada@example.com');
+    expect(destination.tagName).toBe('BDI');
+    expect(destination).toHaveAttribute('dir', 'ltr');
     fireEvent.change(screen.getByTestId('otp-input'), { target: { value: '123456' } });
     fireEvent.click(screen.getByRole('button', { name: resendLabel }));
     await screen.findByRole('alert');
     fireEvent.click(screen.getByTestId('lang-toggle'));
+    expect(screen.getByText('ada@example.com')).toBe(destination);
+    expect(destination).toHaveAttribute('dir', 'ltr');
     expect(screen.getByRole('alert')).toHaveTextContent(
       lang === 'en' ? 'خيار الاستعادة' : 'recovery option',
     );
-    expect(screen.getByTestId('otp-input')).toHaveValue('123456');
+    expect(screen.getByTestId('otp-input')).toHaveValue('');
     expect(screen.getByTestId('otp-input')).toBeDisabled();
     fireEvent.click(
       screen.getByRole('button', {

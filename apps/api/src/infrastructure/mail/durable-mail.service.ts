@@ -1,7 +1,8 @@
-import { Inject, Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
 import type { EmailDelivery, PrismaTx } from '@homeservicemarketplace/database';
 
+import { WhatsAppAuthAdapter, WhatsAppDeliveryError } from '../auth-channel/whatsapp-auth.adapter';
 import { AppConfigService } from '../../config/app-config.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { nextAttemptAt, type RetryPolicy } from '../outbox/outbox.retry';
@@ -33,14 +34,16 @@ import {
  *  aimed at one inbox. Over the limit nothing is recorded or sent, and the
  *  caller's public response is unchanged (no enumeration signal).
  *
- *  OTP mail is not listed: a login code needs the account password, a
- *  registration code is sent once per new account, and OTP resends are
- *  already capped per challenge — throttling them here would only lock out
- *  the account owner. */
+ *  Email login codes still require a password. WhatsApp login is passwordless,
+ *  so its initial codes and resends also consume this recipient budget. The
+ *  issuing transaction holds the account lock so count + insert is serialized.
+ *  Registration and authenticated contact enrollment retain their own gates. */
 export const AUTH_THROTTLE = { limit: 6, windowMs: 15 * 60_000 } as const;
 const THROTTLED_TEMPLATES: ReadonlySet<string> = new Set([
   'auth.password_reset',
+  'auth.password_reset_otp',
   'auth.email_verification',
+  'auth.email_contact_otp',
 ]);
 
 const MAX_ATTEMPTS = { AUTH: 6, NOTIFICATION: 8 } as const;
@@ -72,6 +75,7 @@ export class DurableMailService extends MailPort {
     private readonly prisma: PrismaService,
     private readonly config: AppConfigService,
     private readonly metrics: MailMetrics,
+    @Optional() private readonly whatsapp?: WhatsAppAuthAdapter,
   ) {
     super();
   }
@@ -87,11 +91,16 @@ export class DurableMailService extends MailPort {
 
   override async enqueue(intent: MailIntent, tx?: PrismaTx): Promise<MailTicket> {
     const vars = validateTemplateVars(intent.template, intent.vars);
+    if (intent.channel === 'whatsapp' && !isOtpTemplate(intent.template))
+      throw new WhatsAppDeliveryError('EENVELOPE');
     const category = templateCategory(intent.template);
-    const hash = recipientHash(intent.to);
+    const hash = recipientHash(intent.channel === 'whatsapp' ? `whatsapp:${intent.to}` : intent.to);
     const db = tx ?? (this.prisma.client as unknown as PrismaTx);
 
-    if (THROTTLED_TEMPLATES.has(intent.template)) {
+    if (
+      THROTTLED_TEMPLATES.has(intent.template) ||
+      (intent.channel === 'whatsapp' && intent.template === 'auth.login_otp')
+    ) {
       const since = new Date(Date.now() - AUTH_THROTTLE.windowMs);
       const recent = await this.repo.countRecent(hash, intent.template, since, db);
       if (recent >= AUTH_THROTTLE.limit) {
@@ -109,7 +118,11 @@ export class DurableMailService extends MailPort {
         template: intent.template,
         userId: intent.userId ?? null,
         recipientHash: hash,
-        envelope: this.cipher.seal(messageKey, { to: intent.to.trim(), vars }),
+        envelope: this.cipher.seal(messageKey, {
+          to: intent.to.trim(),
+          vars,
+          channel: intent.channel ?? 'email',
+        }),
         expiresAt: intent.expiresAt,
         maxAttempts: MAX_ATTEMPTS[category],
       },
@@ -186,7 +199,16 @@ export class DurableMailService extends MailPort {
 
     const attempts = row.attempts + 1;
     try {
-      const result = await this.transport.send(message);
+      let result: MailSendResult | void = undefined;
+      if (envelope.channel === 'whatsapp') {
+        if (!this.whatsapp) throw new WhatsAppDeliveryError('EAUTH');
+        if (!isOtpTemplate(row.template)) throw new WhatsAppDeliveryError('EENVELOPE');
+        const vars = validateTemplateVars(row.template, envelope.vars);
+        if (!('code' in vars)) throw new WhatsAppDeliveryError('EENVELOPE');
+        await this.whatsapp.sendCode(envelope.to, vars.code);
+      } else {
+        result = await this.transport.send(message);
+      }
       const smtpCode = (result && result.smtpCode) ?? null;
       await this.repo.markAccepted(row.id, workerId, attempts, smtpCode);
       this.metrics.attemptsTotal.inc({ category, outcome: 'accepted' });
@@ -247,4 +269,13 @@ export function senderDomain(from: string): string {
 export function deliveryIdFromMessageId(messageId: string): string | null {
   const match = /^<?([a-z0-9]{20,40})@[A-Za-z0-9.-]+>?$/.exec(messageId.trim());
   return match?.[1] ?? null;
+}
+
+function isOtpTemplate(template: string): boolean {
+  return [
+    'auth.registration_otp',
+    'auth.login_otp',
+    'auth.password_reset_otp',
+    'auth.phone_verification_otp',
+  ].includes(template);
 }

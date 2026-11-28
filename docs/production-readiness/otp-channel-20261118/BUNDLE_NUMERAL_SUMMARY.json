@@ -1,0 +1,158 @@
+{
+  "schemaVersion": 2,
+  "scope": "Local production chunk bytes after numeral normalization; no hosted browser or delivery claim",
+  "measuredAt": "2026-11-18T07:09:26.112Z",
+  "source": {
+    "commit": "d6cdb2243fd691a98efbffed87af08f6601fb850",
+    "tree": "0290095bf6d61682d2cc51071d021ea93457b5f9",
+    "branch": "feat/configurable-otp-channel-20261118",
+    "measurementHarnessCommit": null,
+    "dirtyPaths": [
+      "apps/web/src/app/components/admin/AdminContactEnrollment.tsx",
+      "apps/web/src/app/components/admin/AuthChannelSetting.test.tsx",
+      "apps/web/src/app/components/auth/AuthScreens.tsx",
+      "apps/web/src/app/components/auth/auth-otp.test.tsx",
+      "apps/web/src/lib/phone-identity.test.ts",
+      "apps/web/src/lib/phone-identity.ts",
+      "apps/web/src/lib/provider/phone-format.ts",
+      "docs/production-readiness/otp-channel-20261118/IMPLEMENTATION_AND_VERIFICATION.md",
+      "docs/production-readiness/otp-channel-20261118/WHATSAPP_OPERATIONS.md",
+      "apps/web/src/lib/normalize-decimal-digits.test.ts",
+      "apps/web/src/lib/normalize-decimal-digits.ts"
+    ],
+    "lockfileSha256": "0a0e9798d23c0891dc2b0e3bf0ab0a1122a2d38a91fc9f2718e61572c06a4c12"
+  },
+  "sourceSha256": [
+    {
+      "path": "apps/web/src/lib/normalize-decimal-digits.ts",
+      "sha256": "ef34d3cca2d6e8c928501e6119d48e508427d31a52cfdbf0c1bd51655b37414d"
+    },
+    {
+      "path": "apps/web/src/lib/phone-identity.ts",
+      "sha256": "f905cb41f73469e2818572331ac000755fd7accb58b81f490ffe56f2cdec7f27"
+    },
+    {
+      "path": "apps/web/src/lib/provider/phone-format.ts",
+      "sha256": "de548775da5875f6a42d10400f3115657e55fb7392845a696ed75a7b44bbd2e2"
+    },
+    {
+      "path": "apps/web/src/app/components/auth/AuthScreens.tsx",
+      "sha256": "620f801dd48fb996d0143229e4d9e5c6c8077c0908ccf5fdd28630c6119b6937"
+    },
+    {
+      "path": "apps/web/src/app/components/admin/AdminContactEnrollment.tsx",
+      "sha256": "20a0a5e79ec051b21bc716e480a2856a0067f0d680ea86aff2de4c2560357620"
+    }
+  ],
+  "reportSha256": "10fdba7c5e518b16eada16d9a1924c462bb66d7774eb995810c23e366034945e",
+  "buildFlags": {
+    "VITE_API_URL": "https://api.example.test"
+  },
+  "buildWallClockMs": {
+    "value": 9828,
+    "note": "build time only; not a page-load metric"
+  },
+  "compression": {
+    "gzip": "zlib level 1 (nginx.conf default)",
+    "brotli": "quality 11 (lower bound)"
+  },
+  "thresholdFile": "scripts/perf/post-r18/budgets.proposed.json",
+  "thresholdSha256": "f88e7225cba5daece30877a4d98580b004e9684a2fdf8c11108819013e13afb8",
+  "thresholdsModified": false,
+  "measurements": [
+    {
+      "name": "shell",
+      "brotliBytes": 189207
+    },
+    {
+      "name": "auth",
+      "brotliBytes": 18980
+    },
+    {
+      "name": "seeker-home",
+      "brotliBytes": 58171
+    },
+    {
+      "name": "provider-workspace",
+      "brotliBytes": 36011
+    },
+    {
+      "name": "provider-onboarding",
+      "brotliBytes": 76618
+    },
+    {
+      "name": "admin",
+      "brotliBytes": 108279
+    },
+    {
+      "name": "disputes",
+      "brotliBytes": 43315
+    },
+    {
+      "name": "job-wizard",
+      "brotliBytes": 64928
+    }
+  ],
+  "checks": [
+    {
+      "check": "shell JS (brotli)",
+      "actual": 184.8,
+      "limit": 185,
+      "pass": true
+    },
+    {
+      "check": "+auth JS (brotli)",
+      "actual": 18.5,
+      "limit": 20,
+      "pass": true
+    },
+    {
+      "check": "+seeker-home JS (brotli)",
+      "actual": 56.8,
+      "limit": 60,
+      "pass": true
+    },
+    {
+      "check": "+provider-workspace JS (brotli)",
+      "actual": 35.2,
+      "limit": 40,
+      "pass": true
+    },
+    {
+      "check": "+provider-onboarding JS (brotli)",
+      "actual": 74.8,
+      "limit": 75,
+      "pass": true
+    },
+    {
+      "check": "+admin JS (brotli)",
+      "actual": 105.7,
+      "limit": 110,
+      "pass": true
+    },
+    {
+      "check": "+disputes JS (brotli)",
+      "actual": 42.3,
+      "limit": 45,
+      "pass": true
+    },
+    {
+      "check": "+job-wizard JS (brotli)",
+      "actual": 63.4,
+      "limit": 65,
+      "pass": true
+    },
+    {
+      "check": "recharts only in admin-dashboard-charts",
+      "actual": "contained",
+      "limit": "admin-dashboard-charts",
+      "pass": true
+    },
+    {
+      "check": "leaflet only in job-wizard, address-map",
+      "actual": "contained",
+      "limit": "job-wizard, address-map",
+      "pass": true
+    }
+  ]
+}

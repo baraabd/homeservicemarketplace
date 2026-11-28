@@ -39,6 +39,8 @@ export interface MailSendResult {
 
 export interface MailIntent<T extends MailTemplateId = MailTemplateId> {
   template: T;
+  /** Persisted in the authenticated envelope; missing means legacy email. */
+  channel?: 'email' | 'whatsapp';
   to: string;
   vars: MailTemplateVars[T];
   userId?: string | null;
@@ -70,6 +72,8 @@ export abstract class MailPort {
 
   async dispatch(ticket: MailTicket): Promise<void> {
     if (!ticket.intent) return;
+    if (ticket.intent.channel === 'whatsapp')
+      throw new Error('WhatsApp requires a configured durable delivery transport');
     const rendered = renderMail(ticket.intent.template, ticket.intent.vars, this.renderContext());
     await this.send({ to: ticket.intent.to, ...rendered });
   }

@@ -1,6 +1,7 @@
 import { Logger } from '@nestjs/common';
 import type { EmailDelivery } from '@homeservicemarketplace/database';
 
+import type { WhatsAppAuthAdapter } from '../auth-channel/whatsapp-auth.adapter';
 import type { AppConfigService } from '../../config/app-config.service';
 import type { PrismaService } from '../prisma/prisma.service';
 import { MetricsService } from '../telemetry/metrics.service';
@@ -34,6 +35,7 @@ function harness() {
         MAIL_DISPATCH_LEASE_MS: 90_000,
       })[k],
   } as unknown as AppConfigService;
+  const whatsapp = { sendCode: jest.fn().mockResolvedValue(undefined) };
   const svc = new DurableMailService(
     transport,
     cipher,
@@ -41,6 +43,7 @@ function harness() {
     {} as PrismaService,
     config,
     metrics,
+    whatsapp as unknown as WhatsAppAuthAdapter,
   );
   const row = (over: Partial<EmailDelivery> = {}): EmailDelivery => {
     const messageKey = over.messageKey ?? 'auth.password_reset:k1';
@@ -68,10 +71,75 @@ function harness() {
       ...over,
     } as EmailDelivery;
   };
-  return { svc, repo, transport, cipher, row };
+  return { svc, repo, transport, cipher, row, whatsapp };
 }
 
 describe('DurableMailService.process', () => {
+  it('keeps the sealed WhatsApp channel across retries and never routes it to SMTP', async () => {
+    const h = harness();
+    const key = 'auth.registration_otp:whatsapp';
+    const row = h.row({
+      messageKey: key,
+      template: 'auth.registration_otp',
+      envelope: h.cipher.seal(key, {
+        to: '+966500000001',
+        vars: { code: '012345', minutes: 5 },
+        channel: 'whatsapp',
+      }),
+    });
+    await h.svc.process(row, WORKER);
+    expect(h.whatsapp.sendCode).toHaveBeenCalledWith('+966500000001', '012345');
+    expect(h.transport.outbox).toHaveLength(0);
+    expect(h.repo.markAccepted).toHaveBeenCalledWith(row.id, WORKER, 1, null);
+  });
+
+  it('retries WhatsApp transport failures without falling back to email', async () => {
+    const h = harness();
+    h.whatsapp.sendCode.mockRejectedValueOnce(
+      Object.assign(new Error('transport detail'), { code: 'ECONNECTION' }),
+    );
+    const key = 'auth.login_otp:whatsapp';
+    const row = h.row({
+      messageKey: key,
+      template: 'auth.login_otp',
+      envelope: h.cipher.seal(key, {
+        to: '+966500000001',
+        vars: { code: '012345', minutes: 5 },
+        channel: 'whatsapp',
+      }),
+    });
+    await h.svc.process(row, WORKER);
+    expect(h.transport.outbox).toHaveLength(0);
+    expect(h.repo.markRetry).toHaveBeenCalledWith(
+      row.id,
+      WORKER,
+      1,
+      expect.any(Date),
+      'transient',
+      null,
+    );
+    expect(h.repo.markAccepted).not.toHaveBeenCalled();
+  });
+
+  it('refuses non-OTP templates in a WhatsApp envelope', async () => {
+    const h = harness();
+    const key = 'auth.password_reset:whatsapp';
+    await h.svc.process(
+      h.row({
+        messageKey: key,
+        envelope: h.cipher.seal(key, {
+          to: '+966500000001',
+          vars: { token: TOKEN },
+          channel: 'whatsapp',
+        }),
+      }),
+      WORKER,
+    );
+    expect(h.whatsapp.sendCode).not.toHaveBeenCalled();
+    expect(h.transport.outbox).toHaveLength(0);
+    expect(h.repo.markAccepted).not.toHaveBeenCalled();
+  });
+
   it('sends the rendered bilingual message with a stable Message-ID and records ACCEPTED, not DELIVERED', async () => {
     const h = harness();
     await h.svc.process(h.row(), WORKER);
@@ -261,6 +329,39 @@ describe('DurableMailService.enqueue throttle', () => {
     expect(h.repo.insertIfAbsent).not.toHaveBeenCalled();
   });
 
+  it('throttles repeated email-contact enrollment codes for one recipient', async () => {
+    const h = withCounts(6);
+    const ticket = await h.svc.enqueue(
+      {
+        template: 'auth.email_contact_otp',
+        channel: 'email',
+        to: 'a@x.test',
+        vars: { code: '012345', minutes: 5 },
+        expiresAt: later(),
+      },
+      tx,
+    );
+    expect(ticket).toEqual({ deliveryId: null, intent: null });
+    expect(h.repo.insertIfAbsent).not.toHaveBeenCalled();
+  });
+
+  it('rejects email-contact proof routed to a WhatsApp destination before inserting an intent', async () => {
+    const h = withCounts(0);
+    await expect(
+      h.svc.enqueue(
+        {
+          template: 'auth.email_contact_otp',
+          channel: 'whatsapp',
+          to: '+966500000001',
+          vars: { code: '012345', minutes: 5 },
+          expiresAt: later(),
+        },
+        tx,
+      ),
+    ).rejects.toMatchObject({ code: 'EENVELOPE' });
+    expect(h.repo.insertIfAbsent).not.toHaveBeenCalled();
+  });
+
   it('records the 6th', async () => {
     const h = withCounts(5);
     const t = await h.svc.enqueue(
@@ -275,7 +376,7 @@ describe('DurableMailService.enqueue throttle', () => {
     expect(t.deliveryId).toBe('d1');
   });
 
-  it('never throttles OTP mail, which only the account owner can trigger repeatedly', async () => {
+  it('does not add the anonymous budget to password-gated email login OTP', async () => {
     const h = withCounts(99);
     const t = await h.svc.enqueue(
       {
@@ -289,6 +390,39 @@ describe('DurableMailService.enqueue throttle', () => {
     expect(t.deliveryId).toBe('d1');
     expect(h.repo.countRecent).not.toHaveBeenCalled();
   });
+
+  it.each([
+    { recent: 5, permitted: true },
+    { recent: 6, permitted: false },
+  ])(
+    'bounds passwordless WhatsApp login delivery when $recent were already queued',
+    async ({ recent, permitted }) => {
+      const h = withCounts(recent);
+      const ticket = await h.svc.enqueue(
+        {
+          template: 'auth.login_otp',
+          channel: 'whatsapp',
+          to: '+966501234567',
+          vars: { code: '123456', minutes: 5 },
+          expiresAt: later(),
+        },
+        tx,
+      );
+      expect(h.repo.countRecent).toHaveBeenCalledWith(
+        expect.any(String),
+        'auth.login_otp',
+        expect.any(Date),
+        tx,
+      );
+      if (permitted) {
+        expect(ticket.deliveryId).toBe('d1');
+        expect(h.repo.insertIfAbsent).toHaveBeenCalledTimes(1);
+      } else {
+        expect(ticket).toEqual({ deliveryId: null, intent: null });
+        expect(h.repo.insertIfAbsent).not.toHaveBeenCalled();
+      }
+    },
+  );
 
   it('rejects invalid template variables before anything is stored', async () => {
     const h = withCounts(0);

@@ -11,7 +11,6 @@ import { AdminDisputeInbox } from '../../features/disputes/workspace/AdminDisput
 import { WorkspacePanel } from '../../features/disputes/workspace/WorkspacePanel';
 import { ApprovalCenter } from '../../features/admin-approvals/ApprovalCenter';
 import { FinancialsSection } from './FinancialsSection';
-import { SettingsSection } from './SettingsSection';
 import { AuditLogsSection } from './AuditLogsSection';
 import { SupportSection } from './SupportSection';
 import { directoryReturn, type AdminRoute } from './admin-routes';
@@ -20,6 +19,10 @@ import { directoryReturn, type AdminRoute } from './admin-routes';
 // minification). Every other admin section and the approval queue above the
 // charts must not wait for, or download, that chunk. A failed load keeps the
 // approval queue usable and offers a reload in place of the charts.
+// Settings and contact enrollment are fetched when their route is opened.
+const SettingsSection = lazy(() =>
+  import('./SettingsSection').then((module) => ({ default: module.SettingsSection })),
+);
 const DashboardOverview = lazy(() =>
   import('./DashboardOverview').then((module) => ({ default: module.DashboardOverview })),
 );
@@ -122,7 +125,11 @@ export function AdminRouteContent({ route }: { route: AdminRoute }) {
     case 'support':
       return <SupportSection lang={lang} />;
     case 'settings':
-      return <SettingsSection lang={lang} />;
+      return (
+        <AsyncBoundary>
+          <SettingsSection lang={lang} />
+        </AsyncBoundary>
+      );
     case 'audit':
       return <AuditLogsSection lang={lang} />;
   }

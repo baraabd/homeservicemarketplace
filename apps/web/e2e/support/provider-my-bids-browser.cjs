@@ -73,6 +73,10 @@ async function run(data) {
 
   async function login() {
     await page.goto(`${data.web}/login`);
+    // This real-API fixture explicitly selects email; the public screen exposes
+    // only the operator-selected method, with no client-side channel override.
+    await expect(page.getByTestId('auth-channel-email')).toBeVisible({ timeout: 180000 });
+    await expect(page.getByTestId('auth-channel-whatsapp')).toHaveCount(0);
     await page.locator('input[type=email]').waitFor({ timeout: 180000 });
     await page.locator('input[type=email]').fill(data.provider.email);
     await page.locator('input[type=password]').fill(data.provider.password);

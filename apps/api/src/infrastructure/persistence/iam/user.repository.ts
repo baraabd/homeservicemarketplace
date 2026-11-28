@@ -4,7 +4,8 @@ import type { Prisma, PrismaTx, User } from '@homeservicemarketplace/database';
 import { PrismaService } from '../../prisma/prisma.service';
 
 export interface CreateUserInput {
-  email: string;
+  email?: string | null;
+  phoneNumber?: string | null;
   passwordHash?: string | null;
   firstName: string;
   lastName: string;
@@ -29,6 +30,10 @@ export class UserRepository {
 
   findById(id: string, tx?: PrismaTx): Promise<User | null> {
     return this.db(tx).user.findFirst({ where: { id, deletedAt: null } });
+  }
+
+  findByPhoneNumber(phoneNumber: string, tx?: PrismaTx): Promise<User | null> {
+    return this.db(tx).user.findFirst({ where: { phoneNumber, deletedAt: null } });
   }
 
   findByEmail(email: string, tx?: PrismaTx): Promise<User | null> {
@@ -75,6 +80,7 @@ export class UserRepository {
         ? {
             OR: [
               { email: { contains: args.q, mode: 'insensitive' } },
+              { phoneNumber: { contains: args.q } },
               { firstName: { contains: args.q, mode: 'insensitive' } },
               { lastName: { contains: args.q, mode: 'insensitive' } },
             ],

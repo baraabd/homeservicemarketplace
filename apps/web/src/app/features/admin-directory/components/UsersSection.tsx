@@ -245,7 +245,9 @@ export function UsersSection({ lang }: { lang: string }) {
                       >
                         {u.firstName} {u.lastName}
                       </button>
-                      <p className="text-slate-400 text-xs">{u.email}</p>
+                      <p className="text-slate-400 text-xs">
+                        <bdi dir="ltr">{u.email ?? u.phoneNumber ?? '—'}</bdi>
+                      </p>
                     </td>
                     <td className="px-4 py-3" data-testid="cell-roles">
                       <div className="flex flex-wrap gap-1">
@@ -401,7 +403,7 @@ function UserDetailDrawer({
                   {user.firstName} {user.lastName}
                 </p>
                 <p className="break-all text-slate-500 text-sm" dir="ltr">
-                  {user.email}
+                  {user.email ?? user.phoneNumber ?? '—'}
                 </p>
                 <span
                   className={`mt-1 inline-block w-fit px-2 py-1 rounded-full ${statusBadgeClass(user.status)}`}
@@ -426,12 +428,21 @@ function UserDetailDrawer({
 
               <div className="grid grid-cols-2 gap-3 text-slate-500 text-xs">
                 <div>
-                  <p className="font-bold">{isAr ? 'تم التحقق' : 'Email verified'}</p>
+                  <p className="font-bold">{isAr ? 'توثيق البريد' : 'Email verified'}</p>
                   <p>
                     {user.emailVerifiedAt
                       ? new Date(user.emailVerifiedAt).toLocaleString(lang)
                       : '—'}
                   </p>
+                </div>
+                <div>
+                  <p className="font-bold">{isAr ? 'توثيق واتساب' : 'WhatsApp verified'}</p>
+                  <p>
+                    {user.phoneVerifiedAt
+                      ? new Date(user.phoneVerifiedAt).toLocaleString(lang)
+                      : '—'}
+                  </p>
+                  <bdi>{user.phoneNumber ?? ''}</bdi>
                 </div>
                 <div>
                   <p className="font-bold">MFA</p>

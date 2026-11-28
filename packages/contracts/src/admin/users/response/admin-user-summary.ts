@@ -15,7 +15,9 @@ import type { AdminUserStatus } from '../request/list-admin-users.query';
 //   adminAccessRequestStatus  where does its request for admin stand?
 export interface AdminUserSummary {
   id: string;
-  email: string;
+  email: string | null;
+  phoneNumber?: string | null;
+  phoneVerifiedAt?: string | null;
   firstName: string;
   lastName: string;
   status: AdminUserStatus;

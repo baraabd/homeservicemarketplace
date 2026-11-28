@@ -63,6 +63,10 @@ async function run(data) {
       page.setDefaultTimeout(30000);
       pages[role] = page;
       await page.goto(`${data.web}/login`);
+      // Email is explicitly selected by the real-API fixture. The alternate
+      // method is absent, as it is on the production sign-in surface.
+      await expect(page.getByTestId('auth-channel-email')).toBeVisible({ timeout: 30000 });
+      await expect(page.getByTestId('auth-channel-whatsapp')).toHaveCount(0);
       await page.locator('input[type=email]').fill(data.credentials[role].email);
       await page.locator('input[type=password]').fill(data.credentials[role].password);
       const response = page.waitForResponse(

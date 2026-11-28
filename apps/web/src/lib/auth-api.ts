@@ -18,7 +18,8 @@ import { withAuthCookieLock } from './auth-cookie-lock';
 // must await before treating the user as authenticated.
 
 export interface RegisterInput {
-  email: string;
+  email?: string;
+  phoneNumber?: string;
   password: string;
   firstName: string;
   lastName: string;
@@ -52,8 +53,15 @@ export async function getLegalDocuments(): Promise<LegalDocumentsResponse> {
 }
 
 export interface LoginInput {
-  email: string;
-  password: string;
+  email?: string;
+  phoneNumber?: string;
+  /** Email sign-in requires a password; WhatsApp sign-in requests an OTP with a phone only. */
+  password?: string;
+}
+
+export interface OtpResendResponse {
+  success: true;
+  expiresInSeconds: number;
 }
 
 export async function register(data: RegisterInput): Promise<OtpChallengeResponse> {
@@ -75,8 +83,16 @@ export async function verifyOtp(challengeId: string, code: string): Promise<void
   });
 }
 
-export async function resendOtp(challengeId: string): Promise<void> {
-  await api.post('/v1/auth/resend-otp', { challengeId });
+export async function resendOtp(challengeId: string): Promise<OtpResendResponse> {
+  const { data } = await api.post<OtpResendResponse>('/v1/auth/resend-otp', { challengeId });
+  if (
+    !data ||
+    data.success !== true ||
+    !Number.isFinite(data.expiresInSeconds) ||
+    data.expiresInSeconds <= 0
+  )
+    throw new Error('The verification request could not be confirmed.');
+  return data;
 }
 
 export async function getMe(signal?: AbortSignal): Promise<MeResponse> {
@@ -114,4 +130,27 @@ export async function verifyEmail(token: string): Promise<void> {
 
 export async function resendVerification(email: string): Promise<void> {
   await api.post('/v1/auth/resend-verification', { email });
+}
+
+export async function forgotPasswordOtp(phoneNumber: string): Promise<OtpChallengeResponse> {
+  const { data } = await api.post<OtpChallengeResponse>('/v1/auth/forgot-password-otp', {
+    phoneNumber,
+  });
+  return data;
+}
+
+export async function resetPasswordOtp(
+  challengeId: string,
+  code: string,
+  newPassword: string,
+): Promise<void> {
+  await withAuthCookieLock(authRequestScope(), async () => {
+    await api.post(
+      '/v1/auth/reset-password-otp',
+      { challengeId, code, newPassword },
+      { timeout: 15_000 },
+    );
+    recordSessionEnded();
+    window.dispatchEvent(new Event('auth:credentials-reset'));
+  });
 }

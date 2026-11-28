@@ -83,12 +83,13 @@ function toSummary(user: User, profile: UserProfile | null): ProfileSummary {
   const firstName = user.firstName;
   const lastName = user.lastName;
   return {
+    userId: user.id,
     firstName,
     lastName,
-    displayName: deriveDisplayName(firstName, lastName, user.email),
+    displayName: deriveDisplayName(firstName, lastName, user.email, user.phoneNumber),
     initials: deriveInitials(firstName, lastName, user.email),
     email: user.email,
-    phoneNumber: profile?.phoneNumber ?? null,
+    phoneNumber: profile?.phoneNumber ?? user.phoneNumber ?? null,
     city: profile?.city ?? null,
     bio: profile?.bio ?? null,
     avatarUrl: profile?.avatarUrl ?? null,
@@ -102,17 +103,22 @@ function toSummary(user: User, profile: UserProfile | null): ProfileSummary {
 // Match the frontend's deriveDisplayName / deriveInitials in
 // apps/web/src/lib/use-auth-identity.ts so server-side and client-side
 // strings stay identical.
-function deriveDisplayName(first: string, last: string, email: string): string {
+function deriveDisplayName(
+  first: string,
+  last: string,
+  email: string | null,
+  phoneNumber: string | null,
+): string {
   const f = (first ?? '').trim();
   const l = (last ?? '').trim();
   if (f && l) return `${f} ${l}`;
   if (f) return f;
   if (l) return l;
   const local = (email ?? '').split('@')[0]?.trim();
-  return local && local.length > 0 ? local : '';
+  return local && local.length > 0 ? local : (phoneNumber ?? '').trim();
 }
 
-function deriveInitials(first: string, last: string, email: string): string {
+function deriveInitials(first: string, last: string, email: string | null): string {
   const f = (first ?? '').trim();
   const l = (last ?? '').trim();
   if (f && l) return (f[0]! + l[0]!).toUpperCase();

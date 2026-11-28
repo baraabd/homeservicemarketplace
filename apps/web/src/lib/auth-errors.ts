@@ -65,10 +65,40 @@ const LOGIN_ERROR_COPY = {
   },
 } as const;
 
-export function loginErrorMessage(err: unknown, lang: 'en' | 'ar' = 'en'): string {
+export function loginErrorMessage(
+  err: unknown,
+  lang: 'en' | 'ar' = 'en',
+  channel: 'email' | 'whatsapp' = 'email',
+): string {
   const { code, status } = extractAuthError(err);
-  const copy = LOGIN_ERROR_COPY[lang];
+  const emailCopy = LOGIN_ERROR_COPY[lang];
+  const copy =
+    channel === 'email'
+      ? emailCopy
+      : {
+          ...emailCopy,
+          invalid:
+            lang === 'ar'
+              ? 'تعذّر بدء الدخول عبر واتساب. تحقق من الرقم وحاول مجددًا.'
+              : 'Could not start WhatsApp sign-in. Check your number and try again.',
+          validation:
+            lang === 'ar'
+              ? 'تحقق من رقم واتساب ثم حاول مجددًا.'
+              : 'Check your WhatsApp number and try again.',
+          locked:
+            lang === 'ar'
+              ? 'تم قفل الحساب مؤقتًا لكثرة المحاولات. حاول لاحقًا.'
+              : 'Account temporarily locked due to too many attempts. Try again later.',
+          unverified:
+            lang === 'ar'
+              ? 'تحقق من رقم واتساب لإكمال الدخول.'
+              : 'Verify your WhatsApp number to continue.',
+        };
   switch (code) {
+    case 'AUTH_CHANNEL_CHANGED':
+      return lang === 'ar'
+        ? 'تغيرت طريقة الدخول المعتمدة. تابع باستخدام الطريقة المحددة الآن.'
+        : 'The selected sign-in method has changed. Continue with the method now shown.';
     case 'AUTH_INVALID_CREDENTIALS':
       return copy.invalid;
     case 'AUTH_ACCOUNT_LOCKED':

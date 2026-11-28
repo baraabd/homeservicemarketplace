@@ -151,6 +151,10 @@ async function login(current: Session, account: Account): Promise<Response> {
   const previous = privateJson<Delivery>(account.otpFile).id;
   // Enter the protected route so the real returnTo and auth-boundary logic run.
   await page.goto(`${baseUrl}${planPath(account.subscriptionId)}`);
+  // The isolated R31 fixture selects email for these verified test accounts.
+  // The browser must show only that configured method before password/OTP proof.
+  await expect(page.getByTestId('auth-channel-email')).toBeVisible();
+  await expect(page.getByTestId('auth-channel-whatsapp')).toHaveCount(0);
   await expect(page.locator('input[type="email"]')).toBeVisible();
   await page.locator('input[type="email"]').fill(account.email);
   await page.locator('input[type="password"]').fill(account.password);

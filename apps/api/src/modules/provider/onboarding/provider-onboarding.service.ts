@@ -1,3 +1,4 @@
+import { hasVerifiedAuthenticationContact } from '../../../shared/identity/verified-contact';
 import { Injectable, Logger } from '@nestjs/common';
 import type {
   ProviderOnboardingStatus,
@@ -66,8 +67,8 @@ export class ProviderOnboardingService {
    * that is enabled and then 422s.
    */
   async getStatus(userId: string): Promise<ProviderOnboardingStatus> {
-    const { profile, emailVerified } = await this.load(userId);
-    const issues = evaluateOnboarding(toCandidate(profile, emailVerified));
+    const { profile, emailVerified, contactVerified } = await this.load(userId);
+    const issues = evaluateOnboarding(toCandidate(profile, emailVerified, contactVerified));
     // Sprint 09B.29 — the two axes, on the legacy surface too.
     //
     // `complete` answers "can I submit?", which is what this endpoint's own
@@ -97,7 +98,7 @@ export class ProviderOnboardingService {
    */
   async submitForReview(userId: string): Promise<SubmitProviderForReviewResponse> {
     const result = await this.tx.run(async (trx) => {
-      const { profile, emailVerified } = await this.load(userId, trx);
+      const { profile, emailVerified, contactVerified } = await this.load(userId, trx);
 
       // State-machine gate, with a DISTINCT message per illegal source state.
       // "Not submittable" is not actionable; "your application is already in
@@ -113,7 +114,9 @@ export class ProviderOnboardingService {
       // prompted by the submission being refused. Pending moderation continues
       // to gate activation and work access, which are decided by the admin
       // review path and the work-access grant rather than here.
-      const missing = providerActionIssues(evaluateOnboarding(toCandidate(profile, emailVerified)));
+      const missing = providerActionIssues(
+        evaluateOnboarding(toCandidate(profile, emailVerified, contactVerified)),
+      );
       if (missing.length > 0) {
         // 422, not 400: the payload is well-formed, the RESOURCE is
         // incomplete. `details.missing` is machine-readable so the app can
@@ -226,7 +229,11 @@ export class ProviderOnboardingService {
   private async load(
     userId: string,
     tx?: Parameters<ProviderProfileRepository['findByUserIdWithCategories']>[1],
-  ): Promise<{ profile: ProviderProfileWithCategories; emailVerified: boolean }> {
+  ): Promise<{
+    profile: ProviderProfileWithCategories;
+    emailVerified: boolean;
+    contactVerified: boolean;
+  }> {
     const [profile, user] = await Promise.all([
       this.providers.findByUserIdWithCategories(userId, tx),
       this.users.findById(userId, tx),
@@ -238,13 +245,18 @@ export class ProviderOnboardingService {
         404,
       );
     }
-    return { profile, emailVerified: user?.emailVerifiedAt != null };
+    return {
+      profile,
+      emailVerified: Boolean(user?.email && user.emailVerifiedAt),
+      contactVerified: hasVerifiedAuthenticationContact(user),
+    };
   }
 }
 
 function toCandidate(
   profile: ProviderProfileWithCategories,
   emailVerified: boolean,
+  contactVerified: boolean,
 ): OnboardingCandidate {
   return {
     displayName: profile.displayName,
@@ -256,6 +268,7 @@ function toCandidate(
     serviceAreaRadiusKm: profile.serviceAreaRadiusKm,
     serviceCategoryCount: profile.serviceCategories.length,
     emailVerified,
+    contactVerified,
     // Sprint 09B.29 — the legacy path could not SEE pending moderation.
     //
     // Without this the policy had no way to tell "has not chosen a service"

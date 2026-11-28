@@ -1,6 +1,11 @@
 import { Injectable } from '@nestjs/common';
 import {
+  AuthChannelService,
+  AUTH_OTP_CHANNEL_SETTING,
+} from '../../../infrastructure/auth-channel/auth-channel.service';
+import {
   ADMIN_SETTINGS_SCHEMA,
+  DEFAULT_AUTH_OTP_CHANNEL,
   type AdminSettingsBulkResponse,
   type AdminSettingValue,
   type AdminSettingsValues,
@@ -47,6 +52,7 @@ export class AdminSettingsService {
     private readonly history: PlatformSettingHistoryRepository,
     private readonly audit: AdminAuditService,
     private readonly tx: TransactionRunner,
+    private readonly channels: AuthChannelService,
   ) {}
 
   // ─── Bulk surface (Sprint 6.5 canonical) ─────────────────────
@@ -101,6 +107,8 @@ export class AdminSettingsService {
       await this.requireCurrentAdmin(adminUserId, tx);
       await this.lockKeys([...normalised.keys()], tx);
       for (const [key, newValue] of normalised) {
+        if (key === AUTH_OTP_CHANNEL_SETTING)
+          await this.channels.assertSelectable(newValue, adminUserId, tx);
         const previous = await this.settings.findByKey(key, tx);
         const previousValue = previous ? previous.value : null;
         // Idempotent: same value → skip the write but still emit
@@ -208,6 +216,8 @@ export class AdminSettingsService {
     const result = await this.tx.run(async (tx) => {
       await this.requireCurrentAdmin(adminUserId, tx);
       await this.lockKeys([key], tx);
+      if (key === AUTH_OTP_CHANNEL_SETTING)
+        await this.channels.assertSelectable(newValue, adminUserId, tx);
       const previous = await this.settings.findByKey(key, tx);
       const previousValue = previous ? previous.value : null;
       const changed = !previous || !deepEqual(previousValue, newValue);
@@ -258,6 +268,8 @@ export class AdminSettingsService {
     await this.tx.run(async (tx) => {
       await this.requireCurrentAdmin(adminUserId, tx);
       await this.lockKeys([key], tx);
+      if (key === AUTH_OTP_CHANNEL_SETTING)
+        await this.channels.assertSelectable(DEFAULT_AUTH_OTP_CHANNEL, adminUserId, tx);
       const previous = await this.settings.findByKey(key, tx);
       if (!previous) throw new AppError('NOT_FOUND', 'Setting not found.', 404);
       await this.settings.delete(key, tx);

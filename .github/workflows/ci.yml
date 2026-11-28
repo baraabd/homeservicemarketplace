@@ -570,6 +570,8 @@ jobs:
         run: pnpm --filter @homeservicemarketplace/database build
       - name: Seed baseline roles / permissions
         run: pnpm --filter @homeservicemarketplace/database seed
+      - name: Select email for disposable SMTP browser fixtures
+        run: NODE_ENV=test APP_ENV=test node scripts/testing/email-auth-fixture.cjs --scope ci-browser
       - name: Build the API
         run: pnpm --filter @homeservicemarketplace/api build
       - name: Build the web app with V2 ON at BUILD time
@@ -1266,6 +1268,8 @@ jobs:
         run: pnpm --filter @homeservicemarketplace/database build
       - name: Seed baseline roles / permissions
         run: pnpm --filter @homeservicemarketplace/database seed
+      - name: Select email for disposable SMTP browser fixtures
+        run: NODE_ENV=test APP_ENV=test node scripts/testing/email-auth-fixture.cjs --scope ci-browser
       - name: Build the API
         run: pnpm --filter @homeservicemarketplace/api build
       - name: Build the web app with V2 ON at BUILD time
@@ -1475,6 +1479,8 @@ jobs:
         run: pnpm --filter @homeservicemarketplace/database build
       - name: Seed baseline roles / permissions
         run: pnpm --filter @homeservicemarketplace/database seed
+      - name: Select email for disposable SMTP browser fixtures
+        run: NODE_ENV=test APP_ENV=test node scripts/testing/email-auth-fixture.cjs --scope ci-browser
       - name: Build the API
         run: pnpm --filter @homeservicemarketplace/api build
       - name: Install Chromium

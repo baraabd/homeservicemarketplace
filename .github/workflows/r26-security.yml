@@ -96,6 +96,8 @@ jobs:
         env:
           RUN_DB_INTEGRATION: '1'
         run: pnpm --filter @homeservicemarketplace/api exec jest test/integration/r26-authorization.integration.spec.ts test/integration/r18-admin-floor.integration.spec.ts --runInBand
+      - name: Select email for disposable SMTP browser fixtures
+        run: NODE_ENV=test APP_ENV=test node scripts/testing/email-auth-fixture.cjs --scope r26
       - name: Build API and production SPA and check adversarial policy cases
         run: |
           set -euo pipefail

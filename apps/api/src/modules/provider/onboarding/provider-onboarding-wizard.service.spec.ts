@@ -1,3 +1,4 @@
+import type { AuthenticationContacts } from '../../../shared/identity/verified-contact';
 import { ValidationPipe } from '@nestjs/common';
 import type {
   PatchOnboardingStepRequest,
@@ -142,6 +143,7 @@ function build(
   over: {
     profile?: ProviderProfileWithCategories | null;
     emailVerified?: boolean;
+    accountContact?: AuthenticationContacts;
     draft?: {
       id: string;
       version: number;
@@ -194,6 +196,9 @@ function build(
               user: {
                 email: 'ada@example.test',
                 emailVerifiedAt: new Date('2026-08-01T00:00:00Z'),
+                phoneNumber: null,
+                phoneVerifiedAt: null,
+                ...over.accountContact,
               },
               onboardingDraft: draft,
               equipment: [],
@@ -356,9 +361,11 @@ function build(
       listForProvider: jest.fn().mockResolvedValue(over.rejectedApplications ?? []),
     } as unknown as ProviderCategoryApplicationRepository,
     {
-      findById: jest
-        .fn()
-        .mockResolvedValue({ emailVerifiedAt: over.emailVerified === false ? null : new Date() }),
+      findById: jest.fn().mockResolvedValue({
+        email: 'ada@example.test',
+        emailVerifiedAt: over.emailVerified === false ? null : new Date(),
+        ...over.accountContact,
+      }),
     } as unknown as UserRepository,
     {
       findByKey: jest.fn().mockImplementation((key: string) => {
@@ -2294,5 +2301,36 @@ describe('C2 — a partial LOCATION write cannot bypass the market check', () =>
     await expect(
       h.service.patchStep('u-1', 'LOCATION', { version: 3, serviceAreaCity: 'Damascus' }),
     ).resolves.toBeDefined();
+  });
+});
+
+describe('wizard verified account contact', () => {
+  it('allows a phone-only verified account to complete the identity and submission gates', async () => {
+    const h = build({
+      accountContact: {
+        email: null,
+        emailVerifiedAt: null,
+        phoneNumber: '+966501234567',
+        phoneVerifiedAt: new Date(),
+      },
+    });
+    const view = await h.service.get('u-1');
+    expect(view.missing).not.toContainEqual({ field: 'contactVerified', code: 'UNVERIFIED' });
+    await expect(h.service.submit('u-1', { version: 3 })).resolves.toBeDefined();
+  });
+
+  it('does not treat a verified provider-profile phone as verified account identity', async () => {
+    const h = build({
+      profile: makeCompleteProfile({ phoneVerifiedAt: new Date() }),
+      accountContact: {
+        email: null,
+        emailVerifiedAt: null,
+        phoneNumber: null,
+        phoneVerifiedAt: null,
+      },
+    });
+    const view = await h.service.get('u-1');
+    expect(view.missing).toContainEqual({ field: 'contactVerified', code: 'UNVERIFIED' });
+    await expect(h.service.submit('u-1', { version: 3 })).rejects.toMatchObject({ status: 422 });
   });
 });

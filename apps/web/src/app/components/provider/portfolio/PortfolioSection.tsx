@@ -20,7 +20,8 @@ import {
 } from '../../../../lib/provider/provider-portfolio-api';
 import { PORTFOLIO_COPY, portfolioErrorText } from './portfolio-copy';
 import { currentPublicationAck } from '../../../../lib/provider/publication-ack';
-import { Button, IconButton } from '../../ds/Button';
+import { Button } from '../../ds/Button';
+import { IconButton } from '../../ds/IconButton';
 import { Badge } from '../../ui/badge';
 import { Input } from '../../ui/input';
 import { Label } from '../../ui/label';
