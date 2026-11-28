@@ -31,7 +31,11 @@ import type { LegalAcceptanceInput } from '@homeservicemarketplace/contracts';
 import { AuditService } from '../../audit/audit.service';
 import { LegalAcceptanceService } from '../../legal/legal-acceptance.service';
 import { isInGoodStanding } from '../helpers/account-standing';
-import { isWhatsAppLoginChallenge, WHATSAPP_LOGIN_CHALLENGE_PREFIX } from '../helpers/otp-codec';
+import {
+  isAnonymousWhatsAppChallenge,
+  WHATSAPP_LOGIN_CHALLENGE_PREFIX,
+  WHATSAPP_RECOVERY_CHALLENGE_PREFIX,
+} from '../helpers/otp-codec';
 import { LoginAttemptService } from './login-attempt.service';
 import {
   OTP_CODE_LENGTH,
@@ -689,7 +693,7 @@ export class AuthenticationService {
         assertOtpTicket(mail);
         return { expiresInSeconds: challenge.expiresInSeconds, mail };
       });
-      if (isWhatsAppLoginChallenge(challengeId)) {
+      if (isAnonymousWhatsAppChallenge(challengeId)) {
         this.dispatchAfterCommit(delivery.mail, ctx, 'otp-resend');
       } else {
         try {
@@ -881,11 +885,11 @@ export class AuthenticationService {
   async forgotPasswordOtp(phoneNumber: string, ctx: ClientContext): Promise<OtpChallengeIssuance> {
     const startedAt = Date.now();
     const contact = contactIdentity({ phoneNumber });
-    const neutral = fakeOtpEnvelope(contact);
+    const neutral = fakeOtpEnvelope(contact, WHATSAPP_RECOVERY_CHALLENGE_PREFIX);
     try {
       // Account existence, verification and recipient suppression must not
       // decide whether this anonymous request performs the OTP KDF.
-      const prepared = await this.otp.prepare();
+      const prepared = await this.otp.prepare('PASSWORD_RESET_OTP', contact);
       const result = await this.tx.run(async (trx) => {
         let user = await this.findByContact(contact, trx);
         if (!user) return null;

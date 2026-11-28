@@ -1,11 +1,14 @@
 import { ConfigService } from '@nestjs/config';
+import { type INestApplication, ValidationPipe, VersioningType } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { Test, type TestingModule } from '@nestjs/testing';
 import { randomUUID } from 'node:crypto';
+import request from 'supertest';
 import { CURRENT_LEGAL_DOCUMENTS } from '@homeservicemarketplace/contracts';
 import type { PrismaClient, User } from '@homeservicemarketplace/database';
 
 import { AppConfigService } from '../../src/config/app-config.service';
+import { AllExceptionsFilter } from '../../src/infrastructure/http/all-exceptions.filter';
 import { envSchema, type AppEnv } from '../../src/config/env.schema';
 import { AuthChannelService } from '../../src/infrastructure/auth-channel/auth-channel.service';
 import { OtpDeliveryService } from '../../src/infrastructure/auth-channel/otp-delivery.service';
@@ -34,10 +37,12 @@ import { PlatformSettingRepository } from '../../src/infrastructure/persistence/
 import { PrismaService } from '../../src/infrastructure/prisma/prisma.service';
 import { TransactionRunner } from '../../src/infrastructure/prisma/transaction.runner';
 import { MetricsService } from '../../src/infrastructure/telemetry/metrics.service';
+import { RegistrationThrottleService } from '../../src/infrastructure/throttle/registration-throttle.service';
 import { AdminAuditService } from '../../src/modules/admin/admin-audit.service';
 import { AdminSettingsService } from '../../src/modules/admin/settings/admin-settings.service';
 import { AuditService } from '../../src/modules/iam/audit/audit.service';
 import { OTP_HASH_PREFIX } from '../../src/modules/iam/authentication/helpers/otp-codec';
+import { AuthenticationController } from '../../src/modules/iam/authentication/controllers/authentication.controller';
 import {
   AuthenticationService,
   type OtpChallengeIssuance,
@@ -63,6 +68,7 @@ jest.setTimeout(120_000);
 suite('Passwordless WhatsApp login (isolated real PostgreSQL)', () => {
   let isolated: IsolatedDatabase | undefined;
   let module: TestingModule | undefined;
+  let app: INestApplication | undefined;
   let prisma: PrismaClient;
   let auth: AuthenticationService;
   let settings: AdminSettingsService;
@@ -108,6 +114,7 @@ suite('Passwordless WhatsApp login (isolated real PostgreSQL)', () => {
     });
     const config = new AppConfigService(new ConfigService<AppEnv, true>(values));
     module = await Test.createTestingModule({
+      controllers: [AuthenticationController],
       providers: [
         { provide: AppConfigService, useValue: config },
         { provide: PrismaService, useValue: { client: prisma } },
@@ -122,6 +129,9 @@ suite('Passwordless WhatsApp login (isolated real PostgreSQL)', () => {
         { provide: MAIL_TRANSPORT, useClass: InMemoryMailAdapter },
         { provide: MAIL_ENVELOPE_CIPHER, useValue: MailEnvelopeCipher.ephemeral() },
         { provide: MAIL_PORT, useExisting: DurableMailService },
+        // The registration HTTP route is not used in this suite; its Redis
+        // registration limiter has a separate real-service acceptance suite.
+        { provide: RegistrationThrottleService, useValue: { assertWithinBudget: jest.fn() } },
         AuthenticationService,
         AdminSettingsService,
         AdminAuditService,
@@ -151,7 +161,13 @@ suite('Passwordless WhatsApp login (isolated real PostgreSQL)', () => {
         SecurityEventsBus,
       ],
     }).compile();
-    await module.init();
+    app = module.createNestApplication({ logger: false });
+    app.enableVersioning({ type: VersioningType.URI, defaultVersion: '1' });
+    app.useGlobalPipes(
+      new ValidationPipe({ whitelist: true, transform: true, forbidNonWhitelisted: true }),
+    );
+    app.useGlobalFilters(new AllExceptionsFilter(config));
+    await app.init();
     auth = module.get(AuthenticationService);
     settings = module.get(AdminSettingsService);
     channels = module.get(AuthChannelService);
@@ -192,7 +208,8 @@ suite('Passwordless WhatsApp login (isolated real PostgreSQL)', () => {
   });
 
   afterAll(async () => {
-    await module?.close();
+    if (app) await app.close();
+    else await module?.close();
     await isolated?.dispose();
   });
 
@@ -282,6 +299,162 @@ suite('Passwordless WhatsApp login (isolated real PostgreSQL)', () => {
     expect(result).toMatchObject({ channel: 'whatsapp', codeLength: 6, expiresInSeconds: 300 });
     expect(result.challengeId).toMatch(/^wa_login_[A-Za-z0-9_-]{32}$/);
   }
+
+  describe('anonymous WhatsApp recovery over real HTTP and PostgreSQL', () => {
+    async function recovery(phone: string): Promise<string> {
+      const response = await request(app!.getHttpServer())
+        .post('/v1/auth/forgot-password-otp')
+        .send({ phoneNumber: phone });
+      expect(response.status).toBe(202);
+      expect(response.body).toMatchObject({
+        otpRequired: true,
+        channel: 'whatsapp',
+        codeLength: 6,
+        expiresInSeconds: 300,
+        challengeId: expect.stringMatching(/^wa_reset_[A-Za-z0-9_-]{32}$/u),
+      });
+      expect(response.headers['set-cookie']).toBeUndefined();
+      return response.body.challengeId as string;
+    }
+
+    async function resend(challengeId: string): Promise<void> {
+      const response = await request(app!.getHttpServer())
+        .post('/v1/auth/resend-otp')
+        .send({ challengeId });
+      expect(response.status).toBe(202);
+      expect(response.body).toEqual({ success: true, expiresInSeconds: 300 });
+      expect(response.headers['set-cookie']).toBeUndefined();
+    }
+
+    it('keeps known, unknown and unverified recovery/resend indistinguishable without fake deliveries or sessions', async () => {
+      const known = await account();
+      const unverified = await account({ phoneVerifiedAt: null });
+      const knownId = await recovery(known.phoneNumber!);
+      const unknownId = await recovery(phoneNumber());
+      const unverifiedId = await recovery(unverified.phoneNumber!);
+      for (const id of [knownId, unknownId, unverifiedId]) await resend(id);
+      await drainDispatches();
+
+      expect(
+        await prisma.verificationToken.findUnique({ where: { challengeId: knownId } }),
+      ).toMatchObject({
+        purpose: 'PASSWORD_RESET_OTP',
+        deliveryChannel: 'whatsapp',
+        resendCount: 1,
+        attemptCount: 0,
+      });
+      expect(
+        await prisma.verificationToken.count({
+          where: { challengeId: { in: [unknownId, unverifiedId] } },
+        }),
+      ).toBe(0);
+      expect(sent.map((message) => message.phone)).toEqual([known.phoneNumber, known.phoneNumber]);
+      expect(
+        await prisma.session.count({ where: { userId: { in: [known.id, unverified.id] } } }),
+      ).toBe(0);
+    });
+
+    it.each([
+      ['expired', { expiresAt: new Date(0) }],
+      ['used', { usedAt: new Date() }],
+      ['locked', { attemptCount: 5 }],
+      ['resend exhausted', { resendCount: 3 }],
+    ] as const)(
+      'acknowledges %s recovery neutrally without rotating or delivering',
+      async (_state, patch) => {
+        const user = await account();
+        const challengeId = await recovery(user.phoneNumber!);
+        await drainDispatches();
+        await prisma.verificationToken.update({ where: { challengeId }, data: patch });
+        const before = await prisma.verificationToken.findUniqueOrThrow({ where: { challengeId } });
+        sent.length = 0;
+        await resend(challengeId);
+        await resend(`wa_reset_${'z'.repeat(32)}`);
+        await drainDispatches();
+        const after = await prisma.verificationToken.findUniqueOrThrow({ where: { challengeId } });
+        expect(after).toMatchObject({
+          tokenHash: before.tokenHash,
+          attemptCount: before.attemptCount,
+          resendCount: before.resendCount,
+          usedAt: before.usedAt,
+          expiresAt: before.expiresAt,
+        });
+        expect(sent).toEqual([]);
+      },
+    );
+
+    it('enforces the persisted resend and attempt ceilings while both public verifiers stay neutral', async () => {
+      const user = await account();
+      const challengeId = await recovery(user.phoneNumber!);
+      for (let attempt = 0; attempt < 4; attempt += 1) await resend(challengeId);
+      const correct = await deliveredCode(user.phoneNumber!);
+      const wrong = correct === '000000' ? '000001' : '000000';
+      expect(sent).toHaveLength(4); // initial plus three permitted resends
+      for (let attempt = 0; attempt < 6; attempt += 1) {
+        for (const id of [challengeId, `wa_reset_${'z'.repeat(32)}`]) {
+          const response = await request(app!.getHttpServer())
+            .post('/v1/auth/reset-password-otp')
+            .send({
+              challengeId: id,
+              code: wrong,
+              newPassword: 'Replacement-valid-password-2026!',
+            });
+          expect(response.status).toBe(400);
+          expect(response.body.error.code).toBe('AUTH_OTP_INVALID');
+          expect(response.headers['set-cookie']).toBeUndefined();
+        }
+      }
+      const login = await request(app!.getHttpServer())
+        .post('/v1/auth/verify-otp')
+        .send({ challengeId, code: correct });
+      expect(login.status).toBe(400);
+      expect(login.body.error.code).toBe('AUTH_OTP_INVALID');
+      expect(login.headers['set-cookie']).toBeUndefined();
+      await resend(challengeId);
+      await drainDispatches();
+      expect(
+        await prisma.verificationToken.findUniqueOrThrow({ where: { challengeId } }),
+      ).toMatchObject({ resendCount: 3, attemptCount: 5, usedAt: null });
+      expect(sent).toHaveLength(4);
+      expect(await prisma.session.count({ where: { userId: user.id } })).toBe(0);
+    });
+
+    it('never reinterprets a recovery ID as login and consumes the original reset code only once', async () => {
+      const user = await account();
+      const challengeId = await recovery(user.phoneNumber!);
+      const code = await deliveredCode(user.phoneNumber!);
+      const forged = challengeId.replace(/^wa_reset_/u, 'wa_login_');
+      await resend(forged);
+      for (const id of [challengeId, forged]) {
+        const response = await request(app!.getHttpServer())
+          .post('/v1/auth/verify-otp')
+          .send({ challengeId: id, code });
+        expect(response.status).toBe(400);
+        expect(response.body.error.code).toBe('AUTH_OTP_INVALID');
+        expect(response.headers['set-cookie']).toBeUndefined();
+      }
+      expect(
+        await prisma.verificationToken.findUniqueOrThrow({ where: { challengeId } }),
+      ).toMatchObject({ resendCount: 0, attemptCount: 0, usedAt: null });
+      const newPassword = 'Replacement-valid-password-2026!';
+      const reset = await request(app!.getHttpServer())
+        .post('/v1/auth/reset-password-otp')
+        .send({ challengeId, code, newPassword });
+      expect(reset.status).toBe(200);
+      expect(reset.body).toEqual({ success: true });
+      expect(reset.headers['set-cookie']).toBeUndefined();
+      const replay = await request(app!.getHttpServer())
+        .post('/v1/auth/reset-password-otp')
+        .send({ challengeId, code, newPassword });
+      expect(replay.status).toBe(400);
+      expect(replay.body.error.code).toBe('AUTH_OTP_INVALID');
+      expect(await prisma.session.count({ where: { userId: user.id } })).toBe(0);
+      const updated = await prisma.user.findUniqueOrThrow({ where: { id: user.id } });
+      expect(await module!.get(PasswordService).verify(updated.passwordHash!, newPassword)).toBe(
+        true,
+      );
+    });
+  });
 
   describe('pending WhatsApp registration recovery', () => {
     it('restarts expired verification for the existing account and preserves identity until the fresh OTP is proven', async () => {

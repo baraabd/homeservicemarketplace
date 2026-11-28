@@ -1564,6 +1564,9 @@ describe('WhatsApp recovery and contact enrollment', () => {
     const unverified = await h.svc.forgotPasswordOtp(phoneNumber, ctx);
     expect(unknown).toMatchObject({ channel: 'whatsapp', codeLength: 6, expiresInSeconds: 300 });
     expect(unverified).toMatchObject({ channel: 'whatsapp', codeLength: 6, expiresInSeconds: 300 });
+    expect(unknown.challengeId).toMatch(/^wa_reset_[A-Za-z0-9_-]{32}$/u);
+    expect(unverified.challengeId).toMatch(/^wa_reset_[A-Za-z0-9_-]{32}$/u);
+    expect(unknown.challengeId).not.toBe(unverified.challengeId);
     expect(h.otp.issue).not.toHaveBeenCalled();
     expect(h.delivery.enqueue).not.toHaveBeenCalled();
   });
@@ -1575,6 +1578,10 @@ describe('WhatsApp recovery and contact enrollment', () => {
       .mockResolvedValueOnce({ ...phoneUser(), id: 'u-new-owner' });
     await expect(h.svc.forgotPasswordOtp(phoneNumber, ctx)).resolves.toMatchObject({
       channel: 'whatsapp',
+    });
+    expect(h.otp.prepare).toHaveBeenCalledWith('PASSWORD_RESET_OTP', {
+      channel: 'whatsapp',
+      destination: phoneNumber,
     });
     expect(h.otp.issue).not.toHaveBeenCalled();
     expect(h.delivery.enqueue).not.toHaveBeenCalled();
@@ -1615,6 +1622,49 @@ describe('WhatsApp recovery and contact enrollment', () => {
       challengeId: 'chal-fake',
       channel: 'whatsapp',
     });
+  });
+
+  it('resends marked recovery after commit without waiting for provider latency', async () => {
+    const h = makeHarness();
+    const challengeId = `wa_reset_${'a'.repeat(32)}`;
+    h.users.findById.mockResolvedValue(phoneUser());
+    h.otp.resend.mockResolvedValue({
+      rawCode: '654321',
+      userId: 'u-1',
+      purpose: 'PASSWORD_RESET_OTP',
+      channel: 'whatsapp',
+      destination: phoneNumber,
+      expiresInSeconds: 300,
+    });
+    let finishDelivery!: () => void;
+    const delivery = new Promise<void>((resolve) => {
+      finishDelivery = resolve;
+    });
+    let committed = false;
+    jest.spyOn(h.tx, 'run').mockImplementation(async (fn) => {
+      const result = await fn(h.fakeTx as never);
+      expect(h.delivery.dispatch).not.toHaveBeenCalled();
+      committed = true;
+      return result;
+    });
+    jest.spyOn(h.delivery, 'dispatch').mockImplementation(() => {
+      expect(committed).toBe(true);
+      return delivery;
+    });
+    let acknowledged = false;
+    const operation = h.svc.resendOtp(challengeId, ctx).then((value) => {
+      acknowledged = true;
+      return value;
+    });
+    try {
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      expect(acknowledged).toBe(true);
+      expect(h.delivery.dispatch).toHaveBeenCalledTimes(1);
+      expect(h.sessions.createForLogin).not.toHaveBeenCalled();
+    } finally {
+      finishDelivery();
+      await expect(operation).resolves.toEqual({ expiresInSeconds: 300 });
+    }
   });
 
   it('resets a phone-only account, clears lockout and revokes sessions and other challenges atomically', async () => {
