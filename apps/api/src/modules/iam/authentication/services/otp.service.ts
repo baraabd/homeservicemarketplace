@@ -9,9 +9,12 @@ import {
   assertOtpChallengeId,
   assertOtpCode,
   hashOtpCode,
+  isAnonymousWhatsAppChallenge,
   isWhatsAppLoginChallenge,
+  isWhatsAppRecoveryChallenge,
   OTP_HASH_PREFIX,
   WHATSAPP_LOGIN_CHALLENGE_PREFIX,
+  WHATSAPP_RECOVERY_CHALLENGE_PREFIX,
 } from '../helpers/otp-codec';
 
 // Limits. The numbers are conservative: short-lived, few attempts, fewer
@@ -70,8 +73,12 @@ export class OtpService {
   ): Promise<PreparedOtpChallenge> {
     const rawCode = generateNumericCode(OTP_CODE_LENGTH);
     const prefix =
-      purpose === 'LOGIN_OTP' && delivery?.channel === 'whatsapp'
-        ? WHATSAPP_LOGIN_CHALLENGE_PREFIX
+      delivery?.channel === 'whatsapp'
+        ? purpose === 'LOGIN_OTP'
+          ? WHATSAPP_LOGIN_CHALLENGE_PREFIX
+          : purpose === 'PASSWORD_RESET_OTP'
+            ? WHATSAPP_RECOVERY_CHALLENGE_PREFIX
+            : ''
         : '';
     const challengeId = prefix + randomBytes(24).toString('base64url');
     const tokenHash = await this.hashChallenge(rawCode, challengeId);
@@ -171,9 +178,9 @@ export class OtpService {
   ): Promise<ConsumedOtp> {
     assertOtpChallengeId(challengeId);
     assertOtpCode(rawCode);
-    // Anonymous WhatsApp login must pay the same one bounded KDF for unknown,
+    // Anonymous WhatsApp requests pay the same one bounded KDF for unknown,
     // expired, used, locked and live challenges before inspecting stored state.
-    const preparedHash = isWhatsAppLoginChallenge(challengeId)
+    const preparedHash = isAnonymousWhatsAppChallenge(challengeId)
       ? await this.hashChallenge(rawCode, challengeId)
       : undefined;
     let row = await this.repo.findByChallengeId(challengeId, tx);
@@ -188,9 +195,9 @@ export class OtpService {
       throw new BadRequestException({ code: 'AUTH_OTP_INVALID' });
     }
     assertChallengeScope(challengeId, row);
-    assertLiveOtp(row);
     if (!allowedPurposes.includes(row.purpose as OtpPurpose))
       throw new BadRequestException({ code: 'AUTH_OTP_INVALID' });
+    assertLiveOtp(row);
 
     // Re-check after the account lock. Reset revokes outstanding challenges
     // before releasing that same lock; no pre-reset OTP can create a new session.
@@ -249,7 +256,7 @@ export class OtpService {
     destination?: string;
   }> {
     assertOtpChallengeId(challengeId);
-    const preparedCode = isWhatsAppLoginChallenge(challengeId)
+    const preparedCode = isAnonymousWhatsAppChallenge(challengeId)
       ? generateNumericCode(OTP_CODE_LENGTH)
       : undefined;
     const preparedHash =
@@ -372,8 +379,10 @@ function deliveryBinding(row: VerificationToken): Partial<OtpDeliveryBinding> {
 
 function assertChallengeScope(challengeId: string, row: VerificationToken): void {
   if (
-    isWhatsAppLoginChallenge(challengeId) &&
-    (row.purpose !== 'LOGIN_OTP' || row.deliveryChannel !== 'whatsapp')
+    (isWhatsAppLoginChallenge(challengeId) &&
+      (row.purpose !== 'LOGIN_OTP' || row.deliveryChannel !== 'whatsapp')) ||
+    (isWhatsAppRecoveryChallenge(challengeId) &&
+      (row.purpose !== 'PASSWORD_RESET_OTP' || row.deliveryChannel !== 'whatsapp'))
   )
     throw new BadRequestException({ code: 'AUTH_OTP_INVALID' });
 }

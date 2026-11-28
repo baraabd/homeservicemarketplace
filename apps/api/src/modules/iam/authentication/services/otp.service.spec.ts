@@ -560,20 +560,24 @@ describe('OTP delivery binding and purpose separation', () => {
   });
 });
 
-describe('anonymous WhatsApp login challenge namespace', () => {
+describe.each([
+  { purpose: 'LOGIN_OTP' as const, prefix: 'wa_login_', otherPurpose: 'PASSWORD_RESET_OTP' },
+  { purpose: 'PASSWORD_RESET_OTP' as const, prefix: 'wa_reset_', otherPurpose: 'LOGIN_OTP' },
+])('anonymous WhatsApp $purpose challenge namespace', ({ purpose, prefix, otherPurpose }) => {
   const delivery = { channel: 'whatsapp' as const, destination: '+966501234567' };
   afterEach(() => jest.restoreAllMocks());
 
-  it('keeps 192 random bits in marked phone login IDs without marking registration or email', async () => {
+  it('keeps 192 random bits in marked phone IDs without marking registration or email', async () => {
     const { repo } = makeRepo();
     const svc = new OtpService(repo, cfg);
-    const phone = await svc.issue('u-1', 'LOGIN_OTP', undefined, delivery);
+    const phone = await svc.issue('u-1', purpose, undefined, delivery);
     const registration = await svc.issue('u-1', 'REGISTRATION_OTP', undefined, delivery);
     const email = await svc.issue('u-1', 'LOGIN_OTP', undefined, {
       channel: 'email',
       destination: 'ada@example.test',
     });
-    expect(phone.challengeId).toMatch(/^wa_login_[A-Za-z0-9_-]{32}$/u);
+    expect(phone.challengeId.startsWith(prefix)).toBe(true);
+    expect(phone.challengeId.slice(prefix.length)).toMatch(/^[A-Za-z0-9_-]{32}$/u);
     expect(registration.challengeId).toMatch(/^[A-Za-z0-9_-]{32}$/u);
     expect(email.challengeId).toMatch(/^[A-Za-z0-9_-]{32}$/u);
   });
@@ -587,7 +591,7 @@ describe('anonymous WhatsApp login challenge namespace', () => {
         channel: 'email',
         destination: 'ada@example.test',
       });
-      const forged = `wa_login_${email.challengeId}`;
+      const forged = `${prefix}${email.challengeId}`;
       await expect(
         method === 'verify' ? svc.verify(forged, email.rawCode) : svc.resend(forged),
       ).rejects.toMatchObject({ response: { code: 'AUTH_OTP_INVALID' } });
@@ -605,14 +609,14 @@ describe('anonymous WhatsApp login challenge namespace', () => {
     ['used', { usedAt: new Date() }],
     ['expired', { expiresAt: new Date(0) }],
     ['locked', { attemptCount: OTP_MAX_ATTEMPTS }],
-    ['other purpose', { purpose: 'PASSWORD_RESET_OTP' }],
+    ['other purpose', { purpose: otherPurpose }],
     ['other channel', { deliveryChannel: 'email' }],
   ] as const)(
     'performs exactly one KDF before lookup on marked %s verify and resend',
     async (_state, patch) => {
       const { repo, rows, reset } = makeRepo();
       const svc = new OtpService(repo, cfg);
-      const issued = await svc.issue('u-1', 'LOGIN_OTP', undefined, delivery);
+      const issued = await svc.issue('u-1', purpose, undefined, delivery);
       if (patch === null) reset();
       else Object.assign(rows()[0]!, patch);
       const hash = jest.spyOn(otpCodec, 'hashOtpCode');
@@ -622,7 +626,7 @@ describe('anonymous WhatsApp login challenge namespace', () => {
         lookup.mockClear();
         await expect(
           method === 'verify'
-            ? svc.verify(issued.challengeId, issued.rawCode)
+            ? svc.verify(issued.challengeId, issued.rawCode, undefined, [purpose])
             : svc.resend(issued.challengeId),
         ).rejects.toBeDefined();
         expect(hash).toHaveBeenCalledTimes(1);
@@ -638,9 +642,10 @@ describe('anonymous WhatsApp login challenge namespace', () => {
     async (method) => {
       const { repo, rows } = makeRepo();
       const svc = new OtpService(repo, cfg);
-      const issued = await svc.issue('u-1', 'LOGIN_OTP', undefined, delivery);
+      const issued = await svc.issue('u-1', purpose, undefined, delivery);
       const hash = jest.spyOn(otpCodec, 'hashOtpCode');
-      if (method === 'verify') await svc.verify(issued.challengeId, issued.rawCode);
+      if (method === 'verify')
+        await svc.verify(issued.challengeId, issued.rawCode, undefined, [purpose]);
       else await svc.resend(issued.challengeId);
       expect(hash).toHaveBeenCalledTimes(1);
       expect(rows()[0]!.attemptCount).toBe(0);
@@ -650,7 +655,7 @@ describe('anonymous WhatsApp login challenge namespace', () => {
   it('keeps a marked resend cap authoritative after doing the same KDF work', async () => {
     const { repo, rows } = makeRepo();
     const svc = new OtpService(repo, cfg);
-    const issued = await svc.issue('u-1', 'LOGIN_OTP', undefined, delivery);
+    const issued = await svc.issue('u-1', purpose, undefined, delivery);
     rows()[0]!.resendCount = OTP_MAX_RESENDS;
     const beforeHash = rows()[0]!.tokenHash;
     const hash = jest.spyOn(otpCodec, 'hashOtpCode');
@@ -666,7 +671,7 @@ describe('anonymous WhatsApp login challenge namespace', () => {
   it('leaves the current code untouched on a repeated candidate without a second KDF', async () => {
     const { repo, rows } = makeRepo();
     const svc = new OtpService(repo, cfg);
-    const issued = await svc.issue('u-1', 'LOGIN_OTP', undefined, delivery);
+    const issued = await svc.issue('u-1', purpose, undefined, delivery);
     const beforeHash = rows()[0]!.tokenHash;
     const hash = jest.spyOn(otpCodec, 'hashOtpCode').mockResolvedValue(beforeHash);
     await expect(svc.resend(issued.challengeId)).rejects.toMatchObject({
@@ -677,4 +682,25 @@ describe('anonymous WhatsApp login challenge namespace', () => {
     expect(rows()[0]!.resendCount).toBe(0);
     expect(repo.rotateLiveChallenge).not.toHaveBeenCalled();
   });
+
+  it.each([
+    ['live', {}],
+    ['expired', { expiresAt: new Date(0) }],
+    ['locked', { attemptCount: OTP_MAX_ATTEMPTS }],
+  ] as const)(
+    'rejects a %s challenge at another-purpose verifier without exposing its state',
+    async (_state, patch) => {
+      const { repo, rows } = makeRepo();
+      const svc = new OtpService(repo, cfg);
+      const issued = await svc.issue('u-1', purpose, undefined, delivery);
+      Object.assign(rows()[0]!, patch);
+      const hash = jest.spyOn(otpCodec, 'hashOtpCode');
+      await expect(
+        svc.verify(issued.challengeId, issued.rawCode, undefined, ['PHONE_VERIFICATION_OTP']),
+      ).rejects.toMatchObject({ response: { code: 'AUTH_OTP_INVALID' } });
+      expect(hash).toHaveBeenCalledTimes(1);
+      expect(repo.consumeByChallenge).not.toHaveBeenCalled();
+      expect(repo.recordFailedAttempt).not.toHaveBeenCalled();
+    },
+  );
 });
